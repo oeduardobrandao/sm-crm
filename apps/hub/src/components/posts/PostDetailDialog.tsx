@@ -39,7 +39,10 @@ import { useEditSuggestion } from '../../hooks/useEditSuggestion';
 import { computePostNavigation, usePostNavigation } from '../../hooks/usePostNavigation';
 import { usePostAdvance, type ConfirmFlash, type SlideDir } from '../../hooks/usePostAdvance';
 import { usePostReferences } from '../../hooks/usePostReferences';
-import { useOpenMaterialRequest } from '../../hooks/useOpenMaterialRequest';
+import {
+  useOpenMaterialRequest,
+  useStickyMaterialRequest,
+} from '../../hooks/useOpenMaterialRequest';
 import { MaterialRequestDialog } from '../material/MaterialRequestDialog';
 import type { ReferenceItem } from '../../types/postReferences';
 import {
@@ -336,7 +339,9 @@ function PostDetailContent({
   // The post's open material request (shared requests list, not the per-post references).
   const materialRequest = useOpenMaterialRequest(token, post.id);
   const [materialOpen, setMaterialOpen] = useState(false);
-  const materialDialogOpen = materialOpen && materialRequest !== null;
+  // While the items dialog is up it keeps the request even after a refetch drops it (closed).
+  const materialDialog = useStickyMaterialRequest(materialRequest, post.id, materialOpen);
+  const materialDialogOpen = materialOpen && materialDialog.entry !== null;
   const materialItemLabels = useMemo(
     () =>
       materialRequest
@@ -1354,10 +1359,11 @@ function PostDetailContent({
       {!ghost && viewerItem && (
         <ReferenceViewer item={viewerItem} onClose={() => setViewerItem(null)} />
       )}
-      {!ghost && materialRequest && (
+      {!ghost && materialDialog.entry && (
         <MaterialRequestDialog
           token={token}
-          entry={materialRequest}
+          entry={materialDialog.entry}
+          closed={materialDialog.closed}
           open={materialDialogOpen}
           onOpenChange={setMaterialOpen}
           showViewPost={false}

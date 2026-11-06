@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import i18n from 'i18next';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -98,8 +98,11 @@ const request: HubMaterialRequest = {
   },
 };
 
+let lastQc: QueryClient;
+
 function renderDialog(p: HubPost = post()) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  lastQc = qc;
   render(
     <QueryClientProvider client={qc}>
       <HubContext.Provider value={hubValue}>
@@ -136,6 +139,17 @@ describe('PostDetailDialog material request notice', () => {
     expect(await screen.findByText('A equipe pediu material para este post')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Ver itens' }));
     expect(await screen.findByText('A equipe precisa de 2 itens')).toBeInTheDocument();
+  });
+
+  it('keeps the items dialog open, marked closed, when the request leaves the open list', async () => {
+    renderDialog();
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver itens' }));
+    await screen.findByText('A equipe precisa de 2 itens');
+    vi.mocked(fetchMaterialRequests).mockResolvedValue([]);
+    await act(() => lastQc.invalidateQueries({ queryKey: ['hub-material', 'tok'] }));
+    expect(await screen.findByText('Este pedido foi encerrado pela equipe.')).toBeInTheDocument();
+    expect(screen.getByText('A equipe precisa de 2 itens')).toBeInTheDocument();
+    expect(screen.queryByText('A equipe pediu material para este post')).not.toBeInTheDocument();
   });
 
   it('shows nothing for a post without an open request', async () => {

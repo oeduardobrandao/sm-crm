@@ -141,11 +141,12 @@ export function AprovacoesPage() {
   // A post deep link (/aprovacoes/:id) always means the Posts view.
   const aba = searchParams.get('aba');
   const showLinha = featureLinha && aba === 'linha' && currentId === null;
-  // Stays on Material while the list loads, falls back to Posts once the last request closes.
+  // Stays on Material while the list loads, falls back to Posts once the last request closes,
+  // except while a request dialog is open (`?pedido=`): it stays up, marked closed.
   const showMaterial =
     aba === 'material' &&
     currentId === null &&
-    (materialLoading || materialCount > 0 || materialFailed);
+    (materialLoading || materialCount > 0 || materialFailed || searchParams.has('pedido'));
   const { data: feedData } = useQuery({
     queryKey: ['hub-instagram-feed', token],
     queryFn: () => fetchInstagramFeed(token),

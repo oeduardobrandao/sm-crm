@@ -49,7 +49,10 @@
     "enviarItem": "Enviar arquivo para {{label}}",
     "arquivosDoItem": "Arquivos de {{label}}",
     "encerrado": "Este pedido foi encerrado pela equipe.",
-    "saindoComEnvio": "Um envio ainda está em andamento. Sair e cancelar o envio?"
+    "saindoComEnvio": "Um envio ainda está em andamento. Sair e cancelar o envio?",
+    "tudoEnviado": "Tudo enviado. A equipe foi avisada.",
+    "avisada": "Pronto. A equipe foi avisada.",
+    "fecharBotao": "Fechar"
   },
   "aviso": {
     "texto": "A equipe pediu material para este post",

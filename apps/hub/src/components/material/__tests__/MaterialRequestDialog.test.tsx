@@ -14,6 +14,7 @@ import type { HubPost } from '../../../types';
 vi.mock('../../../services/postReferences', async (orig) => ({
   ...(await orig<typeof import('../../../services/postReferences')>()),
   uploadPostReference: vi.fn(),
+  removePostReference: vi.fn(),
   addPostReferenceLink: vi.fn(),
   fetchPostReferences: vi.fn(),
 }));
@@ -31,6 +32,8 @@ import {
   PostReferenceError,
   fetchPostReferences,
   uploadPostReference,
+  addPostReferenceLink,
+  removePostReference,
 } from '../../../services/postReferences';
 import { closeMaterialRequest, fetchMaterialRequests } from '../../../services/materialRequests';
 import { fetchPosts } from '../../../api';
@@ -232,5 +235,49 @@ describe('MaterialRequestDialog', () => {
     expect(
       within(row('Foto do consultório')).getByRole('button', { name: /Enviar/ }),
     ).toBeDisabled();
+  });
+
+  it('lets the client remove an item file the server marks removable, then refetches requests', async () => {
+    vi.mocked(removePostReference).mockResolvedValue(undefined);
+    const { invalidate } = setup(entry({}, [true, false, false]), {
+      items: [
+        makeReferenceItem(5, { name: 'checkup.mov', material_item_id: 10, can_remove: true }),
+      ],
+    });
+    const r = row('Vídeo do Dr. Paulo');
+    fireEvent.click(await within(r).findByRole('button', { name: 'Remover referência' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Remover' }));
+    await waitFor(() => expect(removePostReference).toHaveBeenCalledWith('tok', 5));
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: [HUB_MATERIAL_KEY, 'tok'] }),
+    );
+  });
+
+  it('offers no remove or note control on an item file the server locked', async () => {
+    setup(entry({}, [true, false, false]), {
+      items: [
+        makeReferenceItem(5, { name: 'checkup.mov', material_item_id: 10, can_remove: false }),
+      ],
+    });
+    const r = row('Vídeo do Dr. Paulo');
+    await within(r).findByText('checkup.mov');
+    expect(within(r).queryByRole('button', { name: 'Remover referência' })).not.toBeInTheDocument();
+    expect(within(r).queryByRole('button', { name: 'Adicionar nota' })).not.toBeInTheDocument();
+  });
+
+  it('says the team closed the request when an item link hits post_not_pending', async () => {
+    vi.mocked(addPostReferenceLink).mockRejectedValue(new PostReferenceError('post_not_pending'));
+    setup(entry());
+    await waitFor(() => expect(fetchPostReferences).toHaveBeenCalled());
+    fireEvent.click(within(row('Lista de exames')).getByRole('button', { name: /Enviar/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Link' }));
+    fireEvent.change(await screen.findByLabelText('Endereço'), {
+      target: { value: 'exemplo.com.br/exames' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Adicionar link' }));
+    expect(await screen.findByText('Este pedido foi encerrado pela equipe.')).toBeInTheDocument();
+    expect(vi.mocked(addPostReferenceLink).mock.calls[0][2]).toEqual(
+      expect.objectContaining({ materialItemId: 12 }),
+    );
   });
 });

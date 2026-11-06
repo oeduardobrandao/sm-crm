@@ -4,13 +4,7 @@ import type { PostReferencesState, UploadEntry } from '../../hooks/usePostRefere
 import type { MaterialItem } from '../../services/materialRequests';
 import type { ReferenceItem } from '../../types/postReferences';
 import { ReferencePicker } from '../posts/references/ReferencePicker';
-import { UploadRow } from '../posts/references/ReferenceRow';
-import { ReferenceOpen, ReferenceThumb } from '../posts/references/ReferenceTiles';
-import {
-  formatMegabytes,
-  formatReferenceWhen,
-  referenceTitle,
-} from '../posts/references/referenceFormat';
+import { ReferenceRow, UploadRow } from '../posts/references/ReferenceRow';
 
 interface MaterialItemRowProps {
   item: MaterialItem;
@@ -23,6 +17,10 @@ interface MaterialItemRowProps {
   /** At the post's 10-reference cap. */
   disabled: boolean;
   onAdded: (item: ReferenceItem) => void;
+  /** Image/video viewer for an item file. */
+  onOpenFile: (item: ReferenceItem) => void;
+  onRemoveFile: (id: number) => Promise<void>;
+  onNoteDirtyChange: (id: number, dirty: boolean) => void;
   onOverlayChange: (open: boolean) => void;
 }
 
@@ -35,11 +33,13 @@ export function MaterialItemRow({
   refs,
   disabled,
   onAdded,
+  onOpenFile,
+  onRemoveFile,
+  onNoteDirtyChange,
   onOverlayChange,
 }: MaterialItemRowProps) {
-  const { t, i18n } = useTranslation('hubMaterial');
+  const { t } = useTranslation('hubMaterial');
   const { t: tPosts } = useTranslation('hubPosts');
-  const locale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
 
   return (
     <li className="flex flex-col gap-2.5 p-3 border-t hub-border first:border-t-0">
@@ -82,37 +82,23 @@ export function MaterialItemRow({
         />
       </div>
       {files.length > 0 && (
+        // Same row as the Referências tab: remove and note only where the server says can_remove.
         <ul
           aria-label={t('dialogo.arquivosDoItem', { label: item.label })}
-          className="ml-[34px] flex flex-col gap-1.5"
+          className="ml-[34px] divide-y divide-[var(--hub-bd)]"
         >
-          {files.map((file) => {
-            const title = referenceTitle(file);
-            const meta = [
-              tPosts('references.you', 'Você'),
-              formatReferenceWhen(file.created_at, locale, tPosts),
-              file.kind === 'file' && file.size_bytes != null
-                ? formatMegabytes(file.size_bytes, locale)
-                : null,
-            ]
-              .filter(Boolean)
-              .join(' · ');
-            return (
-              <li key={file.id}>
-                <ReferenceOpen
-                  item={file}
-                  label={tPosts('references.open', 'Abrir {{name}}', { name: title })}
-                  className="flex items-center gap-2.5 rounded-[10px] hub-bg-soft p-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--hub-acc)]"
-                >
-                  <ReferenceThumb item={file} size={40} />
-                  <span className="flex min-w-0 flex-col gap-0.5">
-                    <span className="truncate text-[13px] font-semibold hub-txt">{title}</span>
-                    <span className="text-[12px] hub-tx3">{meta}</span>
-                  </span>
-                </ReferenceOpen>
-              </li>
-            );
-          })}
+          {files.map((file) => (
+            <ReferenceRow
+              key={file.id}
+              item={file}
+              fresh={false}
+              onOpen={onOpenFile}
+              onSaveNote={refs.updateNote}
+              onRemove={onRemoveFile}
+              onDirtyChange={onNoteDirtyChange}
+              onOverlayChange={onOverlayChange}
+            />
+          ))}
         </ul>
       )}
       {uploads.length > 0 && (

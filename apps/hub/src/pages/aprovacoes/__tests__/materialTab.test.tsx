@@ -1,11 +1,17 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import i18n from 'i18next';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import ptHubMaterial from '../../../../../../packages/i18n/locales/pt/hubMaterial.json';
 import enHubMaterial from '../../../../../../packages/i18n/locales/en/hubMaterial.json';
 import { HubContext } from '../../../HubContext';
+import {
+  makePostReferencesStub,
+  makeReferenceItem,
+} from '../../../hooks/__tests__/postReferencesStub';
+import type { PostReferencesState } from '../../../hooks/usePostReferences';
+import { HUB_MATERIAL_KEY } from '../../../queries';
 import type { HubMaterialRequest } from '../../../services/materialRequests';
 import { MaterialTab } from '../MaterialTab';
 
@@ -13,15 +19,28 @@ vi.mock('../../../services/materialRequests', () => ({
   fetchMaterialRequests: vi.fn(),
   closeMaterialRequest: vi.fn(),
 }));
-vi.mock('../../../hooks/usePostReferences', async (orig) => {
-  const { makePostReferencesStub } = await import('../../../hooks/__tests__/postReferencesStub');
-  const stub = makePostReferencesStub();
-  return {
-    ...(await orig<typeof import('../../../hooks/usePostReferences')>()),
-    usePostReferences: () => stub,
-  };
-});
-import { fetchMaterialRequests } from '../../../services/materialRequests';
+const refsState = vi.hoisted(() => ({ current: null as unknown }));
+vi.mock('../../../hooks/usePostReferences', async (orig) => ({
+  ...(await orig<typeof import('../../../hooks/usePostReferences')>()),
+  usePostReferences: () => refsState.current,
+}));
+const toastMock = vi.hoisted(() => vi.fn());
+vi.mock('sonner', () => ({ toast: toastMock }));
+import { closeMaterialRequest, fetchMaterialRequests } from '../../../services/materialRequests';
+
+let lastQc: QueryClient;
+
+function LocationProbe() {
+  const loc = useLocation();
+  return <span data-testid="location">{loc.search}</span>;
+}
+
+/** Files on every item, so the per-post list says all three are done. */
+function allItemsSent(): PostReferencesState {
+  return makePostReferencesStub({
+    items: [10, 11, 12].map((id) => makeReferenceItem(id, { material_item_id: id })),
+  });
+}
 
 function req(over: Partial<HubMaterialRequest> = {}): HubMaterialRequest {
   const labels = ['Vídeo do Dr. Paulo', 'Foto do consultório', 'Lista de exames'];
@@ -56,11 +75,13 @@ function req(over: Partial<HubMaterialRequest> = {}): HubMaterialRequest {
 
 function renderTab(onOpen = vi.fn(), url = '/?aba=material') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  lastQc = qc;
   render(
     <QueryClientProvider client={qc}>
       <HubContext.Provider value={{ token: 'tok', workspace: 'ws', bootstrap: {} } as never}>
         <MemoryRouter initialEntries={[url]}>
           <MaterialTab onOpen={onOpen} />
+          <LocationProbe />
         </MemoryRouter>
       </HubContext.Provider>
     </QueryClientProvider>,
@@ -74,7 +95,56 @@ describe('MaterialTab', () => {
     i18n.addResourceBundle('en', 'hubMaterial', enHubMaterial, true, true);
   });
   beforeEach(() => {
-    vi.mocked(fetchMaterialRequests).mockResolvedValue([req()]);
+    refsState.current = makePostReferencesStub();
+    toastMock.mockReset();
+    vi.mocked(closeMaterialRequest).mockReset();
+    vi.mocked(fetchMaterialRequests).mockReset().mockResolvedValue([req()]);
+  });
+
+  async function refetchEmpty() {
+    vi.mocked(fetchMaterialRequests).mockResolvedValue([]);
+    await act(() => lastQc.invalidateQueries({ queryKey: [HUB_MATERIAL_KEY, 'tok'] }));
+  }
+
+  it('keeps the dialog open when the team closes the request, saying so and blocking uploads', async () => {
+    renderTab(vi.fn(), '/?aba=material&pedido=1');
+    await screen.findByText('A equipe precisa de 3 itens');
+    await refetchEmpty();
+    expect(await screen.findByText('Este pedido foi encerrado pela equipe.')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Novembro Azul' })).toBeInTheDocument();
+    for (const b of screen.getAllByRole('button', { name: /^Enviar arquivo para/ })) {
+      expect(b).toBeDisabled();
+    }
+    expect(screen.queryByRole('button', { name: 'Enviei o que tenho' })).not.toBeInTheDocument();
+    expect(screen.getByTestId('location')).toHaveTextContent('pedido=1');
+  });
+
+  it('says everything was sent when the request closes with every item filled', async () => {
+    refsState.current = allItemsSent();
+    renderTab(vi.fn(), '/?aba=material&pedido=1');
+    await screen.findByText('A equipe precisa de 3 itens');
+    await refetchEmpty();
+    expect(await screen.findByText('Tudo enviado. A equipe foi avisada.')).toBeInTheDocument();
+    expect(screen.queryByText('Este pedido foi encerrado pela equipe.')).not.toBeInTheDocument();
+  });
+
+  it('after Enviei o que tenho: closes the dialog, drops pedido and confirms with a toast', async () => {
+    refsState.current = allItemsSent();
+    vi.mocked(closeMaterialRequest).mockImplementation(async () => {
+      vi.mocked(fetchMaterialRequests).mockResolvedValue([]);
+    });
+    renderTab(vi.fn(), '/?aba=material&pedido=1');
+    fireEvent.click(await screen.findByRole('button', { name: 'Enviei o que tenho' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Avisar a equipe' }));
+    await waitFor(() => expect(screen.getByTestId('location')).not.toHaveTextContent('pedido'));
+    expect(screen.queryByRole('dialog', { name: 'Novembro Azul' })).not.toBeInTheDocument();
+    expect(toastMock).toHaveBeenCalledWith('Pronto. A equipe foi avisada.');
+  });
+
+  it('drops a ?pedido= that is not an open request once the list loaded', async () => {
+    renderTab(vi.fn(), '/?aba=material&pedido=99');
+    await waitFor(() => expect(screen.getByTestId('location')).not.toHaveTextContent('pedido'));
+    expect(screen.getByTestId('location')).toHaveTextContent('aba=material');
   });
 
   it('renders the tile with progress, struck-through done items and the pill', async () => {

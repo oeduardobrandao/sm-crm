@@ -49,7 +49,10 @@
     "enviarItem": "Send a file for {{label}}",
     "arquivosDoItem": "Files for {{label}}",
     "encerrado": "The team closed this request.",
-    "saindoComEnvio": "An upload is still in progress. Leave and cancel the upload?"
+    "saindoComEnvio": "An upload is still in progress. Leave and cancel the upload?",
+    "tudoEnviado": "Everything sent. The team was notified.",
+    "avisada": "Done. The team was notified.",
+    "fecharBotao": "Close"
   },
   "aviso": {
     "texto": "The team asked for material for this post",

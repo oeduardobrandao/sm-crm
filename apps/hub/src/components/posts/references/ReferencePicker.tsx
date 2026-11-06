@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ImagePlus, Link2, Paperclip, Plus } from 'lucide-react';
 import type { AddReferenceLinkInput, PostReferencesState } from '../../../hooks/usePostReferences';
-import { REFERENCE_ACCEPT } from '../../../services/postReferences';
+import { PostReferenceError, REFERENCE_ACCEPT } from '../../../services/postReferences';
 import type { ReferenceItem } from '../../../types/postReferences';
 import { AddReferenceSheet } from './AddReferenceSheet';
 import { ReferenceLinkForm } from './ReferenceLinkForm';
@@ -72,9 +72,23 @@ export function ReferencePicker({
   }
 
   async function submitLink(input: AddReferenceLinkInput) {
-    const item = await refs.addLink(
-      materialItemId !== undefined ? { ...input, materialItemId } : input,
-    );
+    let item: ReferenceItem;
+    try {
+      item = await refs.addLink(
+        materialItemId !== undefined ? { ...input, materialItemId } : input,
+      );
+    } catch (err) {
+      // On a draft the handler's own gate answers post_not_pending once the request closes;
+      // for an item that only ever means the request closed (same mapping as item uploads).
+      if (
+        materialItemId !== undefined &&
+        err instanceof PostReferenceError &&
+        err.code === 'post_not_pending'
+      ) {
+        throw new PostReferenceError('request_closed');
+      }
+      throw err;
+    }
     onAdded?.(item);
     setLinkOpen(false);
   }

@@ -1,19 +1,9 @@
 import { ArrowRight, Check } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { StatusPill } from '../../components/StatusPill';
+import { shortDate } from '../../lib/materialDates';
 import { getTipoLabel } from '../../lib/postView';
 import type { HubMaterialRequest } from '../../services/materialRequests';
-
-/** "14 nov" in the client's language; null when the post has no date yet. */
-export function shortDate(iso: string | null, lang: string): string | null {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleDateString(lang === 'en' ? 'en-US' : 'pt-BR', {
-    day: 'numeric',
-    month: 'short',
-  });
-}
 
 export function MaterialTile({
   request,
