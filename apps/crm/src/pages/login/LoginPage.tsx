@@ -8,7 +8,7 @@ import { PasswordInput } from '@/components/ui/password-input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
-import { Sparkles, ChevronRight, Images, Film, Camera } from 'lucide-react';
+import { Sparkles, ChevronRight, Images, Film, Camera, MailCheck } from 'lucide-react';
 import { signIn, signUp, resetPassword, resendSignupConfirmation } from '../../lib/supabase';
 import { clearStoredReferral, getStoredReferral } from '../../lib/referral';
 import { captureEvent, identifySignup } from '@/lib/analytics';
@@ -390,7 +390,13 @@ export default function LoginPage() {
               </div>
             ) : registerSuccess ? (
               <div className="auth-form" style={{ textAlign: 'center' }}>
-                <p style={{ fontSize: '2rem', marginBottom: '0.25rem' }}>📧</p>
+                <div
+                  aria-hidden="true"
+                  className="mx-auto flex h-12 w-12 items-center justify-center rounded-full"
+                  style={{ background: 'var(--surface-hover)', color: 'var(--text-main)' }}
+                >
+                  <MailCheck className="h-6 w-6" strokeWidth={1.75} />
+                </div>
                 <p style={{ fontWeight: 600, marginBottom: '0.25rem' }}>
                   {t('registerSuccess.title')}
                 </p>
