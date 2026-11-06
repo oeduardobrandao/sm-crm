@@ -51,10 +51,20 @@ export const NURTURE_SAMPLE: Omit<NurtureEmailInput, "step" | "appBaseUrl" | "un
 };
 
 export function nurtureUtm(appBaseUrl: string, path: string, step: NurtureStep): string {
-  return `${appBaseUrl}${path}?utm_source=email&utm_medium=nurture&utm_campaign=nurture_${step}`;
+  return `${appBaseUrl.replace(/\/+$/, "")}${path}?utm_source=email&utm_medium=nurture&utm_campaign=nurture_${step}`;
 }
 
 const FOOTER_SENTENCE = "Você recebeu este e-mail porque criou uma conta no Mesaas. Não quer mais receber dicas?";
+
+/** Signup names every workspace "Meu Workspace"; never put that (or a blank name) in copy. */
+const DEFAULT_WORKSPACE_NAME = "meu workspace";
+
+/** The workspace name for copy, or null when it is blank or still the signup default. */
+export function nurtureWorkspaceName(name: string | null | undefined): string | null {
+  const t = (name ?? "").trim();
+  if (!t || t.toLowerCase() === DEFAULT_WORKSPACE_NAME) return null;
+  return t;
+}
 
 const trialGrid = () =>
   featureGrid([
@@ -168,8 +178,13 @@ export function buildNurtureEmail(p: NurtureEmailInput): { subject: string; html
         : `Você já tem ${n} ${n === 1 ? "cliente" : "clientes"} no Mesaas. Teste o resto por 30 dias`;
       preheader = atLimit ? "Seu Free parou em 2 clientes. O teste libera tudo." : "O teste libera tudo do Mesaas por 30 dias.";
       eyebrow = "Teste grátis";
+      // No article before user-supplied names: "a Meu Workspace", "o Ana" read wrong.
+      const ws = nurtureWorkspaceName(p.workspaceName);
+      const b1Heading = ws
+        ? (p.firstName ? `${p.firstName}, ${ws} já está no Mesaas.` : `${ws} já está no Mesaas.`)
+        : (p.firstName ? `${p.firstName}, sua agência já está no Mesaas.` : "Sua agência já está no Mesaas.");
       sections = [
-        heading(p.firstName ? `${p.firstName}, a ${p.workspaceName} já está no Mesaas.` : `A ${p.workspaceName} já está no Mesaas.`) +
+        heading(b1Heading) +
         paragraph(
           atLimit
             ? `Você já cadastrou ${n} clientes, e esse é o limite do plano Free. Para seguir crescendo, e para usar o que o Mesaas tem de melhor, dá pra testar tudo por 30 dias.`
@@ -184,18 +199,18 @@ export function buildNurtureEmail(p: NurtureEmailInput): { subject: string; html
     case "b2": {
       const who = p.firstClientName?.trim() || null;
       subject = "Seu cliente aprova o post pelo celular";
-      preheader = who ? `O ${who} pode aprovar a semana inteira num link.` : "Seu cliente pode aprovar a semana inteira num link.";
+      preheader = who ? `${who} pode aprovar a semana inteira num link.` : "Seu cliente pode aprovar a semana inteira num link.";
       eyebrow = "Dica";
       sections = [
         greet +
         paragraph(
-          `Imagina mandar para ${who ? `o ${who}` : "o seu cliente"} um link só, com os posts da semana. Ele abre no celular, aprova os que estão bons e comenta nos que precisam de ajuste. Sem login, sem print, sem áudio.`,
+          `Imagina mandar um link só, com os posts da semana, para o seu cliente${who ? ` ${who}` : ""}. Ele abre no celular, aprova os que estão bons e comenta nos que precisam de ajuste. Sem login, sem print, sem áudio.`,
         ) +
         paragraph(
           "Esse é o Hub do cliente. Ele vem com a sua marca, e cada aprovação já atualiza o status do post no seu kanban.",
         ),
         callout("O Hub, a equipe e o Instagram fazem parte do teste grátis de 30 dias."),
-        button(u("/comecar"), who ? `Testar o Hub com o ${who}` : "Testar o Hub com meu cliente") + spacer(24) + signature(),
+        button(u("/comecar"), "Testar o Hub com meu cliente") + spacer(24) + signature(),
       ];
       break;
     }
@@ -223,7 +238,7 @@ export function buildNurtureEmail(p: NurtureEmailInput): { subject: string; html
       sections = [
         greet +
         paragraph(
-          `Vi que a ${p.workspaceName} já usa o Mesaas com seus clientes, mas ainda não testou os planos pagos. Não quero insistir.`,
+          "Vi que você já usa o Mesaas com seus clientes, mas ainda não testou os planos pagos. Não quero insistir.",
         ) +
         paragraph(
           "Se puder, me responde com uma linha só: o que faltou para testar? Preço, um recurso, o momento? Eu leio todas e isso muda o que a gente constrói.",

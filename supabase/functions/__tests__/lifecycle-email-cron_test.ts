@@ -774,7 +774,7 @@ Deno.test("nurture: blank nome sends without a first name", async () => {
   const { deps, nurtureSent } = makeDeps(db, { nurtureEnabled: true });
   await runLifecycleEmailCron(deps);
   assertEquals(nurtureSent.length, 1);
-  assert(nurtureSent[0].html.includes("A Agencia N já está no Mesaas."));
+  assert(nurtureSent[0].html.includes(">Agencia N já está no Mesaas."));
 });
 
 Deno.test("nurture preview sends 8 without touching ledgers", async () => {

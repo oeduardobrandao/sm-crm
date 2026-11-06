@@ -5,6 +5,7 @@ import {
   type NurtureEmailInput,
   type NurtureStep,
   nurtureUtm,
+  nurtureWorkspaceName,
 } from "../_shared/nurture-emails.ts";
 
 const STEPS: NurtureStep[] = ["a1", "a2", "a3", "a4", "b1", "b2", "b3", "b4"];
@@ -17,6 +18,8 @@ const mk = (step: NurtureStep, o: Partial<NurtureEmailInput> = {}) =>
 
 Deno.test("nurtureUtm builds the tracked url", () => {
   assert(nurtureUtm(BASE, "/clientes", "a1") === `${BASE}/clientes?utm_source=email&utm_medium=nurture&utm_campaign=nurture_a1`);
+  assert(nurtureUtm(`${BASE}/`, "/clientes", "a1") === nurtureUtm(BASE, "/clientes", "a1"));
+  assert(nurtureUtm(`${BASE}///`, "/comecar", "b1").startsWith(`${BASE}/comecar?`));
 });
 
 Deno.test("every step has subject, utm links and the unsub footer", () => {
@@ -46,15 +49,19 @@ Deno.test("b1 free-limit line only from 2 clients", () => {
   assert(one.subject.includes("1 cliente no Mesaas"));
   assert(mk("b1", { clientCount: 2 }).subject.includes("2 clientes no Mesaas"));
   assert(mk("b1", { clientCount: 0 }).subject === "Teste tudo do Mesaas por 30 dias");
-  assert(mk("b1", { firstName: null }).html.includes("A Agência Aurora já está no Mesaas."));
+  assert(mk("b1", { firstName: null }).html.includes("Agência Aurora já está no Mesaas."));
+  assert(mk("b1").html.includes("Ana, Agência Aurora já está no Mesaas."));
 });
 
 Deno.test("b2 names first client or falls back", () => {
   const named = mk("b2", { firstClientName: "Studio Bela" });
-  assert(named.html.includes("para o Studio Bela"));
+  assert(named.html.includes("com os posts da semana, para o seu cliente Studio Bela. Ele abre no celular"));
+  assert(named.html.includes("Studio Bela pode aprovar a semana inteira num link."));
+  assert(named.html.includes("Testar o Hub com meu cliente"));
   const generic = mk("b2", { firstClientName: null });
   assert(!generic.html.includes("null") && !generic.html.includes("Studio Bela"));
-  assert(generic.html.includes("o seu cliente"));
+  assert(generic.html.includes("com os posts da semana, para o seu cliente. Ele abre no celular"));
+  assert(generic.html.includes("Seu cliente pode aprovar a semana inteira num link."));
 });
 
 Deno.test("b3 instagram variant", () => {
@@ -68,7 +75,8 @@ Deno.test("a4/b4 whatsapp button only with url", () => {
     assert(mk(s).html.includes("wa.me"));
     assert(!mk(s, { whatsappUrl: null }).html.includes("wa.me"));
   }
-  assert(mk("b4", { workspaceName: "Zeta" }).html.includes("a Zeta já usa o Mesaas"));
+  const b4 = mk("b4", { workspaceName: "Zeta" }).html;
+  assert(b4.includes("Vi que você já usa o Mesaas com seus clientes") && !b4.includes("Zeta"));
 });
 
 Deno.test("user data is escaped", () => {
@@ -76,6 +84,8 @@ Deno.test("user data is escaped", () => {
   for (const s of STEPS) {
     const { subject, html } = mk(s, o);
     assert(!html.includes("<img src=x") && !html.includes("<script>"), s);
+    // the steps that print a user value print it escaped
+    if (s === "a3" || s === "b1" || s === "b2") assert(html.includes("&lt;"), `${s} escaped`);
     assert(!/[\r\n]/.test(subject), s);
   }
 });
@@ -89,7 +99,37 @@ Deno.test("ctas", () => {
 Deno.test("b2 empty/blank client name falls back; non-finite clientCount is 0", () => {
   for (const v of ["", "   "]) {
     const h = mk("b2", { firstClientName: v }).html;
-    assert(!h.includes("para  um") && h.includes("para o seu cliente") && h.includes("Testar o Hub com meu cliente"));
+    assert(!h.includes("cliente  ") && h.includes("para o seu cliente. Ele abre") && h.includes("Testar o Hub com meu cliente"));
   }
   assert(mk("b1", { clientCount: NaN }).subject === "Teste tudo do Mesaas por 30 dias");
+});
+
+Deno.test("no gendered article before user names; default workspace name falls back", () => {
+  assert(nurtureWorkspaceName("Meu Workspace") === null);
+  assert(nurtureWorkspaceName("  meu workspace ") === null);
+  assert(nurtureWorkspaceName("   ") === null);
+  assert(nurtureWorkspaceName(" Zeta ") === "Zeta");
+
+  const def = mk("b1", { workspaceName: "Meu Workspace" }).html;
+  assert(def.includes("Ana, sua agência já está no Mesaas.") && !def.includes("Meu Workspace"));
+  assert(mk("b1", { workspaceName: "  meu workspace  ", firstName: null }).html.includes("Sua agência já está no Mesaas."));
+  assert(mk("b1", { workspaceName: "" }).html.includes("Ana, sua agência já está no Mesaas."));
+
+  // masculine and feminine names for every user string
+  const cases = [
+    { firstName: "Pedro", workspaceName: "Estúdio Norte", firstClientName: "João Pedro" },
+    { firstName: "Mariana", workspaceName: "Agência Lua", firstClientName: "Clínica Bela" },
+    { firstName: "Ana", workspaceName: "Meu Workspace", firstClientName: "Dra. Marina" },
+  ];
+  for (const o of cases) {
+    for (const s of STEPS) {
+      const { subject, html } = mk(s, o);
+      const text = `${subject} ${html}`;
+      for (const name of [o.firstName, o.workspaceName, o.firstClientName]) {
+        assert(!text.includes(` o ${name}`) && !text.includes(` a ${name}`), `${s} article before ${name}`);
+        assert(!text.includes(`>O ${name}`) && !text.includes(`>A ${name}`), `${s} capital article before ${name}`);
+      }
+      assert(!text.includes("a Meu Workspace") && !text.includes("A Meu Workspace"), `${s} a Meu Workspace`);
+    }
+  }
 });
