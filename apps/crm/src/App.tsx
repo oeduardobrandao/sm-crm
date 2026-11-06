@@ -12,6 +12,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { getSavedLanguage, i18n, loadLazyNamespaces } from '@mesaas/i18n';
+import { isNativeApp } from './native/platform';
 
 // The authenticated shell stays out of the entry chunk the public landing page downloads.
 // ProtectedRoute imports AppLayout (isLayoutGuardedPath), so both must be lazy for the shell
@@ -34,12 +35,13 @@ const AppLayout = lazy(() => import('./components/layout/AppLayout'));
 // Phosphor icons, which a signed-in visitor reading the landing or the blog must not download.
 try {
   const isAppShell = document.querySelector('meta[name="robots"][content*="noindex"]') !== null;
-  for (let i = 0; isAppShell && i < localStorage.length; i++) {
-    if (/^sb-[a-z0-9]+-auth-token$/.test(localStorage.key(i) ?? '')) {
-      void import('./components/layout/ProtectedRoute').catch(() => {});
-      break;
-    }
+  // Inside the iOS app the session sits in the Keychain (native/authStorage.ts), so there is
+  // no sb-* key to find; the app only ever shows the CRM, so warm the shell there too.
+  let hasSession = isAppShell && isNativeApp();
+  for (let i = 0; isAppShell && !hasSession && i < localStorage.length; i++) {
+    hasSession = /^sb-[a-z0-9]+-auth-token$/.test(localStorage.key(i) ?? '');
   }
+  if (hasSession) void import('./components/layout/ProtectedRoute').catch(() => {});
 } catch {
   // Storage blocked: the shell loads when its route renders.
 }
