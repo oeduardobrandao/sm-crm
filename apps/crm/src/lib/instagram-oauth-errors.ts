@@ -10,6 +10,7 @@
  */
 export type IgErrorAction =
   | { kind: 'off_meta' }
+  | { kind: 'plan_limit' }
   | { kind: 'toast'; level: 'info' | 'error'; i18nKey: string };
 
 const KNOWN_ERROR_KEYS: Record<string, string> = {
@@ -24,6 +25,9 @@ const KNOWN_ERROR_KEYS: Record<string, string> = {
 export function resolveIgError(code: string | null): IgErrorAction | null {
   if (!code) return null;
   if (code === 'off_meta_activity') return { kind: 'off_meta' };
+  // The agency's plan has no Instagram slot left. The CRM pairs it with an upgrade action; the
+  // public /conectar page tells the client to talk to the agency (the client can't upgrade).
+  if (code === 'plan_limit') return { kind: 'plan_limit' };
   if (code === 'cancelled') return { kind: 'toast', level: 'info', i18nKey: 'detail.igCancelled' };
   const known = KNOWN_ERROR_KEYS[code];
   return { kind: 'toast', level: 'error', i18nKey: known ?? 'detail.igError' };

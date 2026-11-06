@@ -58,3 +58,11 @@ Deno.test("classifyOAuthError: signed-state lifetime expiry", () => {
 Deno.test("classifyOAuthError: connect link revoked during the flow", () => {
   assertEquals(classifyOAuthError("CONNECT_LINK_REVOKED", noParams), "link_revoked");
 });
+
+Deno.test("classifyOAuthError: Instagram plan limit raised by the insert trigger", () => {
+  assertEquals(classifyOAuthError("plan_limit_exceeded:max_instagram_accounts", noParams), "plan_limit");
+});
+
+Deno.test("classifyOAuthError: other plan limits stay generic", () => {
+  assertEquals(classifyOAuthError("plan_limit_exceeded:max_clients", noParams), "1");
+});

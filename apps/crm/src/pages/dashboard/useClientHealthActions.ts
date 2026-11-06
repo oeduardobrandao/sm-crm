@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import type { ClientHealth } from '../../services/clientHealth';
+import { handleEntitlementMutationError } from '../../lib/entitlement-toast';
 import { getInstagramAuthUrl, syncInstagramData } from '../../services/instagram';
 
 /** Conectar/Reconectar (Instagram OAuth) and Sincronizar of a client health card, shared
@@ -15,8 +16,8 @@ export function useClientHealthActions(c: ClientHealth) {
     try {
       const url = await getInstagramAuthUrl(c.client_id);
       window.location.href = url;
-    } catch {
-      toast.error(t('health.error'));
+    } catch (err) {
+      if (!handleEntitlementMutationError(err, null)) toast.error(t('health.error'));
       setBusy(false);
     }
   }

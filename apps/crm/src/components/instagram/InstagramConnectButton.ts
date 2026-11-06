@@ -1,6 +1,7 @@
 // =============================================
 // Mesaas - Instagram Connect Button Component
 // =============================================
+import { handleEntitlementMutationError } from '../../lib/entitlement-toast';
 import { getInstagramAuthUrl } from '../../services/instagram';
 import { showToast, escapeHTML } from '../../router';
 import { i18n } from '@mesaas/i18n';
@@ -40,6 +41,7 @@ export function renderInstagramConnectButton(container: HTMLElement, clientId: n
       } catch (err: any) {
         btn.innerHTML = `<i class="ph ph-instagram-logo" aria-hidden="true"></i> ${escapeHTML(t('instagram.connectFallback'))}`;
         btn.disabled = false;
+        if (handleEntitlementMutationError(err, null)) return;
         showToast(t('instagram.connectError', { error: err.message }), 'error');
       }
     });
