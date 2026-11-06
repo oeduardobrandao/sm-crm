@@ -8,6 +8,8 @@ import { handleListWorkspaceEvents } from "./event-history.ts";
 import { handleGetMrr, handleGetTrials } from "./mrr.ts";
 import { handleGetChurned } from "./churn.ts";
 import { handleGetDeposits } from "./deposits.ts";
+import { handleEmailMetrics } from "./email-metrics.ts";
+import { handleEmailBackfill } from "./email-backfill.ts";
 import { handleGetMetricsHistory } from "./metrics-history.ts";
 import { defaultBackfillDeps, handleBackfillMetrics } from "./metrics-backfill.ts";
 import { handleListPopups, handleCreatePopup, handleUpdatePopup, handleDeletePopup } from "./popups.ts";
@@ -148,6 +150,10 @@ Deno.serve(async (req: Request) => {
         return await handleGetChurned(svc, headers);
       case "get-deposits":
         return await handleGetDeposits(headers);
+      case "email-metrics":
+        return await handleEmailMetrics(svc, body, headers);
+      case "email-backfill":
+        return await handleEmailBackfill(svc, body, headers);
       case "get-metrics-history":
         return await handleGetMetricsHistory(svc, headers);
       case "backfill-metrics":
