@@ -27,8 +27,8 @@ const CONFIRM =
 const MAX_PAGES = 500;
 
 interface Props {
-  /** Runs after the import (also after a failure): refetches; returns the coverage "desde" text. */
-  onDone: (inserted: number) => Promise<string | null>;
+  /** Runs after the import (`ok` false after a failure): refreshes the metrics; returns the coverage "desde" text. */
+  onDone: (inserted: number, ok: boolean) => Promise<string | null>;
   /** Formats an ISO timestamp as DD/MM/AAAA. */
   formatSince: (iso: string) => string;
   onMessage: (message: string | null) => void;
@@ -52,27 +52,39 @@ export function EmailsBackfill({ onDone, onMessage, formatSince }: Props) {
     let cursor: string | null = null;
     let total = 0;
     let earliest: string | null = null;
+    let failed = false;
     try {
-      for (let page = 0; page < MAX_PAGES; page++) {
-        const r = await runEmailBackfill(cursor);
-        total += r.inserted;
-        setProgress(total);
-        if (r.oldestReached && (!earliest || r.oldestReached < earliest)) {
-          earliest = r.oldestReached;
+      try {
+        for (let page = 0; page < MAX_PAGES; page++) {
+          const r = await runEmailBackfill(cursor);
+          total += r.inserted;
+          setProgress(total);
+          if (r.oldestReached && (!earliest || r.oldestReached < earliest)) {
+            earliest = r.oldestReached;
+          }
+          if (r.done) break;
+          cursor = r.nextCursor;
         }
-        if (r.done) break;
-        cursor = r.nextCursor;
+      } catch {
+        failed = true;
+        await onDone(total, false).catch(() => null);
+        toast.error(
+          `Não foi possível importar o histórico. Importados ${total.toLocaleString('pt-BR')} e-mails antes do erro.`,
+        );
       }
-      const fallback = await onDone(total);
-      const since = earliest ? formatSince(earliest) : fallback;
-      const msg = `Importados ${total.toLocaleString('pt-BR')} e-mails${since ? `, desde ${since}` : ''}`;
-      onMessage(msg);
-      toast.success(msg);
-    } catch {
-      await onDone(total).catch(() => null);
-      toast.error(
-        `Não foi possível importar o histórico. Importados ${total.toLocaleString('pt-BR')} e-mails antes do erro.`,
-      );
+      if (!failed) {
+        // The import is finished: nothing below may turn it into the error toast.
+        const fallback = await onDone(total, true).catch(() => null);
+        let since: string | null = fallback;
+        try {
+          if (earliest) since = formatSince(earliest) || fallback;
+        } catch {
+          since = fallback;
+        }
+        const msg = `Importados ${total.toLocaleString('pt-BR')} e-mails${since ? `, desde ${since}` : ''}`;
+        onMessage(msg);
+        toast.success(msg);
+      }
     } finally {
       busy.current = false;
       setRunning(false);

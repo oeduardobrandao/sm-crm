@@ -160,3 +160,21 @@ Deno.test("handleEmailMetrics: 400 on bad range, passes rpc json, generic 500", 
   assertEquals(bad.status, 500);
   assertEquals(await bad.json(), { error: "Internal server error" });
 });
+
+Deno.test("backfill: recipient and subject only kept for PII events within 90 days", async () => {
+  const now = Date.parse("2026-11-06T00:00:00Z");
+  const t = makeDeps([{
+    data: [
+      item("new", "2026-10-01T00:00:00Z", { last_event: "bounced" }),
+      item("old", "2026-07-01T00:00:00Z", { last_event: "bounced" }),
+    ],
+    has_more: false,
+  }]);
+  t.deps.now = () => now;
+  await runEmailBackfill(null, t.deps);
+  const [fresh, old] = t.rows[0];
+  assertEquals(fresh.recipient, "a@b.com");
+  assertEquals(fresh.subject, "s");
+  assertEquals(old.recipient, null);
+  assertEquals(old.subject, null);
+});

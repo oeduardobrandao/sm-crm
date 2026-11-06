@@ -47,8 +47,12 @@ export function EmailsRecentBounces({ recent }: { recent: EmailMetricsRecent[] }
                   {EVENT_LABELS[r.last_event] ?? r.last_event}
                 </span>
                 {r.recipient_masked ? ` · ${r.recipient_masked}` : ''}
+                {r.bounce_type ? ` · ${r.bounce_type}` : ''}
                 {r.bounce_message ? ` · ${r.bounce_message}` : ''}
               </div>
+              {r.subject ? (
+                <div className="mt-0.5 truncate text-[13px] text-muted-foreground">{r.subject}</div>
+              ) : null}
             </li>
           ))}
         </ul>

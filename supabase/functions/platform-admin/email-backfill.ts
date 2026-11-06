@@ -36,17 +36,22 @@ export interface BackfillDeps {
   listPage: (cursor: string | null) => Promise<{ data: ResendListItem[]; has_more: boolean }>;
   insertRows: (rows: EmailSendRow[]) => Promise<number>;
   sleep: (ms: number) => Promise<void>;
+  /** Injected clock (ms) for the PII retention window; defaults to Date.now. */
+  now?: () => number;
 }
 
 const PAGE_LIMIT = 100;
+/** Recipient/subject are kept only for e-mails this recent (same window as the webhook rows). */
+const PII_RETENTION_MS = 90 * 86_400_000;
 const PAGE_DELAY_MS = 120;
 const json = (body: unknown, status: number, headers: Headers) =>
   new Response(JSON.stringify(body), { status, headers });
 
-function toRow(it: ResendListItem): EmailSendRow {
+function toRow(it: ResendListItem, nowMs: number): EmailSendRow {
   const last = normalizeLastEvent(it.last_event);
   const { category, type } = classifyEmail({ from: it.from ?? "", subject: it.subject ?? "" });
-  const pii = PII_EVENTS.has(last);
+  const age = nowMs - Date.parse(it.created_at);
+  const pii = PII_EVENTS.has(last) && Number.isFinite(age) && age <= PII_RETENTION_MS;
   return {
     email_id: it.id,
     category,
@@ -77,7 +82,7 @@ export async function runEmailBackfill(
     const res = await deps.listPage(next);
     const data = Array.isArray(res?.data) ? res.data : [];
     if (data.length > 0) {
-      inserted += await deps.insertRows(data.map(toRow));
+      inserted += await deps.insertRows(data.map((it) => toRow(it, (deps.now ?? Date.now)())));
       scanned += data.length;
       next = data[data.length - 1].id;
       for (const it of data) {

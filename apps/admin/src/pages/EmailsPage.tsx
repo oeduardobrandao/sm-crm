@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Mail } from 'lucide-react';
 import { SegmentedControl } from '@mesaas/ios-kit';
 import { PageHeader } from '../components/PageHeader';
@@ -20,7 +21,7 @@ import {
   saoPauloDate,
   validateCustomRange,
 } from './emails/email-metrics-view';
-import { useEmailMetrics } from './emails/useEmailMetrics';
+import { EMAIL_METRICS_KEY, useEmailMetrics } from './emails/useEmailMetrics';
 
 type Preset = '7d' | '30d' | '90d' | 'custom';
 
@@ -31,18 +32,26 @@ const SEGMENTS: { value: Preset; label: string }[] = [
   { value: 'custom', label: 'Personalizado' },
 ];
 
-/** 'YYYY-MM-DD...' to 'DD/MM/AAAA' (São Paulo day). */
+/** ISO or Postgres timestamp to 'DD/MM/AAAA' (São Paulo day). Never throws: unparseable input
+ * falls back to its leading date part, or an empty string. */
 function formatDay(iso: string): string {
-  const [y, m, d] = (iso.length > 10 ? saoPauloDate(new Date(iso)) : iso).split('-');
-  return `${d}/${m}/${y}`;
+  let ymd = '';
+  if (iso.length <= 10) ymd = iso;
+  else {
+    const t = new Date(iso.replace(' ', 'T'));
+    ymd = Number.isNaN(t.getTime()) ? iso.slice(0, 10) : saoPauloDate(t);
+  }
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : '';
 }
 
 const FOOTER_TAIL =
   'E-mails de login, confirmação de cadastro e recuperação de senha, e os convites enviados pelo sistema de login, saem por outro servidor e não aparecem aqui. Os convites de equipe e de acesso demo estão incluídos.';
 
-/** E-mails: transactional sends through Resend, from the `email_log` webhook mirror. */
+/** E-mails: transactional sends through Resend, from the `email_sends` webhook mirror. */
 export default function EmailsPage() {
   const isPhone = useIsPhone();
+  const queryClient = useQueryClient();
   const [preset, setPreset] = useState<Preset>('7d');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
@@ -63,7 +72,10 @@ export default function EmailsPage() {
     <SegmentedControl
       aria-label="Período"
       value={preset}
-      onChange={setPreset}
+      onChange={(p) => {
+        setMessage(null);
+        setPreset(p);
+      }}
       options={SEGMENTS.map((s) => ({ value: s.value, label: s.label }))}
     />
   );
@@ -72,14 +84,23 @@ export default function EmailsPage() {
     <EmailsBackfill
       onMessage={setMessage}
       formatSince={formatDay}
-      onDone={async () => {
-        const r = await q.refetch();
-        return r.data?.coverage_start ? formatDay(r.data.coverage_start) : null;
+      onDone={async (_inserted, ok) => {
+        if (!ok) {
+          await q.refetch();
+          return null;
+        }
+        await queryClient.invalidateQueries({ queryKey: EMAIL_METRICS_KEY });
+        const cs = queryClient.getQueryData<{ coverage_start: string | null }>([
+          ...EMAIL_METRICS_KEY,
+          range.start,
+          range.end,
+        ])?.coverage_start;
+        return cs ? formatDay(cs) || null : null;
       }}
     />
   );
 
-  const empty = view !== null && view.kpis.sent === 0 && view.excluded.length === 0;
+  const empty = view !== null && view.categories.length === 0 && view.excluded.length === 0;
 
   let body;
   if (customError) {
@@ -141,14 +162,20 @@ export default function EmailsPage() {
             aria-label="Data inicial"
             className="w-auto"
             value={customStart}
-            onChange={(e) => setCustomStart(e.target.value)}
+            onChange={(e) => {
+              setMessage(null);
+              setCustomStart(e.target.value);
+            }}
           />
           <Input
             type="date"
             aria-label="Data final"
             className="w-auto"
             value={customEnd}
-            onChange={(e) => setCustomEnd(e.target.value)}
+            onChange={(e) => {
+              setMessage(null);
+              setCustomEnd(e.target.value);
+            }}
           />
           {customError ? (
             <p role="alert" className="text-sm text-destructive">

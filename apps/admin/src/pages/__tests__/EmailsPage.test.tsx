@@ -94,6 +94,81 @@ describe('EmailsPage', () => {
     expect(await screen.findByText('Nenhum e-mail no período')).toBeInTheDocument();
   });
 
+  it('shows the table, not the empty state, when every e-mail was not sent', async () => {
+    vi.mocked(api.getEmailMetrics).mockResolvedValue({
+      coverage_start: null,
+      by_type: [
+        {
+          category: 'notificacoes',
+          type: 'notification_digest',
+          sent: 0,
+          delivered: 0,
+          bounced: 0,
+          ...counts,
+          not_sent: 4,
+        },
+      ],
+      daily: [],
+      recent: [],
+    });
+    renderPage();
+    expect(await screen.findByTestId('email-kpi-sent')).toHaveTextContent('0');
+    expect(screen.queryByText('Nenhum e-mail no período')).toBeNull();
+    expect(screen.getByRole('columnheader', { name: 'Não enviados' })).toBeInTheDocument();
+    expect(screen.getAllByText('Sem envios').length).toBeGreaterThan(0);
+    const row = screen.getByRole('button', { name: /Notificações/ }).closest('tr');
+    expect(row).toHaveTextContent('4');
+  });
+
+  it('backfill success survives an unparseable oldestReached date', async () => {
+    const { toast } = await import('sonner');
+    vi.mocked(toast.success).mockClear();
+    vi.mocked(toast.error).mockClear();
+    vi.mocked(api.runEmailBackfill).mockResolvedValueOnce({
+      inserted: 3,
+      scanned: 3,
+      nextCursor: null,
+      oldestReached: 'garbage',
+      done: true,
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByTestId('email-kpi-sent');
+    await user.click(screen.getByRole('button', { name: 'Mais ações' }));
+    await user.click(await screen.findByRole('menuitem', { name: /Importar histórico/ }));
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Importar' }),
+    );
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(screen.getByRole('status')).toHaveTextContent('Importados 3 e-mails, desde 01/10/2026');
+  });
+
+  it('formats a Postgres-style oldestReached and clears the message on preset change', async () => {
+    vi.mocked(api.runEmailBackfill).mockResolvedValueOnce({
+      inserted: 1,
+      scanned: 1,
+      nextCursor: null,
+      oldestReached: '2026-09-02 10:00:00.123456+00',
+      done: true,
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByTestId('email-kpi-sent');
+    await user.click(screen.getByRole('button', { name: 'Mais ações' }));
+    await user.click(await screen.findByRole('menuitem', { name: /Importar histórico/ }));
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Importar' }),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'Importados 1 e-mails, desde 02/09/2026',
+      ),
+    );
+    await user.click(screen.getByRole('radio', { name: '30 dias' }));
+    expect(screen.queryByText(/Importados 1 e-mails/)).toBeNull();
+  });
+
   it('shows the error state', async () => {
     vi.mocked(api.getEmailMetrics).mockRejectedValue(new Error('x'));
     renderPage();
