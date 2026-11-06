@@ -83,6 +83,8 @@ declare
     'youtube_traffic_daily', 'youtube_video_daily', 'youtube_videos',
     'youtube_pdf_purges',                 -- fila do youtube-sync-cron
     'mensagens_last_seen',                -- só hub-mensagens / client-event-email-cron
+    -- pedido de material: só service role; edges aplicam o escopo via _shared/client-scope.ts
+    'post_material_requests', 'post_material_items',
     'tiktok_post_metrics_daily',          -- só tiktok-sync-cron / tiktok-analytics (Task 13)
     -- policy única "Service role full access" TO public USING (auth.role() = 'service_role'):
     -- authenticated não lê; só os syncs/analytics do Instagram e TikTok (Task 13)
