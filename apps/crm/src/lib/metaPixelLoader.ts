@@ -106,3 +106,16 @@ export function trackMetaEvent(event: string, params?: Record<string, unknown>):
   if (params) fbq('track', event, params);
   else fbq('track', event);
 }
+
+/**
+ * Sends a custom Meta event (`fbq('trackCustom', ...)`), e.g. `IniciouCadastro`. Same consent gate
+ * as trackMetaEvent. Returns whether the event was handed to the pixel, so a caller that fires
+ * once can retry after the visitor accepts the cookie banner.
+ */
+export function trackMetaCustomEvent(event: string, params?: Record<string, unknown>): boolean {
+  if (!META_PIXEL_ID || getConsent()?.marketing !== true) return false;
+  loadMetaPixel();
+  if (params) fbq('trackCustom', event, params);
+  else fbq('trackCustom', event);
+  return true;
+}

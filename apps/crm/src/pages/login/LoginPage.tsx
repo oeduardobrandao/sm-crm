@@ -13,6 +13,7 @@ import { signIn, signUp, resetPassword } from '../../lib/supabase';
 import { clearStoredReferral, getStoredReferral } from '../../lib/referral';
 import { captureEvent, identifySignup } from '@/lib/analytics';
 import { trackMetaEvent } from '@/lib/metaPixelLoader';
+import { markSignupStarted } from './signupStarted';
 import { useAuth } from '@/context/AuthContext';
 import { CookiePreferencesLink } from '@/components/consent/CookiePreferencesLink';
 import { parsePlanIntent, buildPlanIntentQuery } from '@/pages/comecar/plan-intent';
@@ -278,7 +279,7 @@ export default function LoginPage() {
                 </Button>
               </div>
             ) : (
-              <form onSubmit={handleRegister} className="auth-form">
+              <form onSubmit={handleRegister} onFocus={markSignupStarted} className="auth-form">
                 <div className="space-y-1">
                   <Label htmlFor="reg-nome">{t('register.fullName')}</Label>
                   <Input
