@@ -48,6 +48,7 @@ try {
 const LoginPage = lazy(() => import('./pages/login/LoginPage'));
 const ConectarPage = lazy(() => import('./pages/conectar/ConectarPage'));
 const DescadastrarPage = lazy(() => import('./pages/descadastrar/DescadastrarPage'));
+const CancelarAvisosPage = lazy(() => import('./pages/cancelar-avisos/CancelarAvisosPage'));
 const ConfigurarSenhaPage = lazy(() => import('./pages/configurar-senha/ConfigurarSenhaPage'));
 const WorkspaceSetupPage = lazy(() => import('./pages/workspace-setup/WorkspaceSetupPage'));
 const ComecarPage = lazy(() => import('./pages/comecar/ComecarPage'));
@@ -224,6 +225,7 @@ export default function App() {
               <Route path="/login" element={<LoginPage />} />
               <Route path="/conectar/:token" element={<ConectarPage />} />
               <Route path="/descadastrar/:token" element={<DescadastrarPage />} />
+              <Route path="/cancelar-avisos/:token" element={<CancelarAvisosPage />} />
               <Route path="/afiliados" element={<AfiliadosPage />} />
               <Route path="/afiliados/entrar" element={<AfiliadoEntrarPage />} />
               <Route path="/afiliados/painel" element={<AfiliadoPainelPage />} />

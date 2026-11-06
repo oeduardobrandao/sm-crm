@@ -329,3 +329,25 @@ export async function verifyUnsubToken(
   const alvo = await verifyUnsubTokenKind(token, secret);
   return alvo?.tipo === "cliente" ? alvo.id : null;
 }
+
+/**
+ * Footer link for a client/guest unsubscribe token. Points at the CRM page
+ * `/cancelar-avisos/<token>` when the app URL is known: the Supabase gateway
+ * serves function HTML as text/plain with a sandbox CSP, so the function's own
+ * page shows as raw markup. Without an app URL it falls back to the function,
+ * which still works for the RFC 8058 One-Click POST. The List-Unsubscribe
+ * header must keep using `clientUnsubFunctionUrl`.
+ */
+export function clientUnsubFooterUrl(
+  pageBaseUrl: string | null | undefined,
+  functionBaseUrl: string,
+  token: string,
+): string {
+  const base = pageBaseUrl?.trim().replace(/\/+$/, "");
+  return base ? `${base}/cancelar-avisos/${token}` : clientUnsubFunctionUrl(functionBaseUrl, token);
+}
+
+/** `${SUPABASE_URL}/functions/v1/client-email-unsub/<token>` (List-Unsubscribe target). */
+export function clientUnsubFunctionUrl(functionBaseUrl: string, token: string): string {
+  return `${functionBaseUrl.replace(/\/+$/, "")}/functions/v1/client-email-unsub/${token}`;
+}

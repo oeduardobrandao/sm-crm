@@ -35,7 +35,7 @@ import {
   montarEmailAgendaCliente,
   varianteAgendaCliente,
 } from "../_shared/agenda-cliente-email.ts";
-import { signUnsubTokenFor } from "../_shared/client-event-email.ts";
+import { clientUnsubFooterUrl, clientUnsubFunctionUrl, signUnsubTokenFor } from "../_shared/client-event-email.ts";
 import { sanitizeFromName } from "../_shared/email-headers.ts";
 import type { sendViaResend } from "../_shared/lifecycle-emails.ts";
 
@@ -62,6 +62,11 @@ export interface AgendaClienteEmailDeps {
   tokenSecret: string;
   /** SUPABASE_URL -- the unsub link is `${unsubBaseUrl}/functions/v1/client-email-unsub/<token>`. */
   unsubBaseUrl: string;
+  /**
+   * APP_BASE_URL for the footer's CRM confirmation page (`/cancelar-avisos/`).
+   * null/absent: the footer falls back to the function URL.
+   */
+  unsubPageBaseUrl?: string | null;
   now: () => number;
   deadlineMs?: number;
 }
@@ -169,11 +174,11 @@ export async function runAgendaClienteEmail(
         unsubToken = await signUnsubTokenFor({ c: item.cliente_id }, deps.tokenSecret);
         ctxBotao = { hubUrl: await deps.resolveHubUrl(item.cliente_id, item.conta_id) };
       }
-      const unsubUrl = `${deps.unsubBaseUrl}/functions/v1/client-email-unsub/${unsubToken}`;
+      const unsubUrl = clientUnsubFunctionUrl(deps.unsubBaseUrl, unsubToken);
 
       const { subject, html, attachments } = montarEmailAgendaCliente(item, {
         ...ctxBotao,
-        unsubUrl,
+        unsubUrl: clientUnsubFooterUrl(deps.unsubPageBaseUrl, deps.unsubBaseUrl, unsubToken),
         agora: new Date(deps.now()),
       });
       const workspaceName = item.workspace_nome?.trim() || "Mesaas";

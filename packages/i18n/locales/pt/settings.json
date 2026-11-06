@@ -632,5 +632,17 @@
     "invalidTitle": "Link inválido",
     "invalidBody": "Este link de descadastro não é válido. Para parar de receber as dicas, entre no Mesaas e desligue em Configurações > Notificações.",
     "error": "Não foi possível salvar agora. Tente de novo."
+  },
+  "clientUnsub": {
+    "title": "Deixar de receber estes avisos?",
+    "bodyClient": "Você vai parar de receber e-mails de pendências desta agência.",
+    "bodyGuest": "Você vai parar de receber convites e avisos de eventos desta agência neste endereço.",
+    "cta": "Cancelar avisos",
+    "submitting": "Salvando...",
+    "doneTitle": "Pronto.",
+    "doneBody": "Você não vai mais receber estes avisos.",
+    "invalidTitle": "Link inválido",
+    "invalidBody": "Este link não é válido.",
+    "error": "Não foi possível processar seu pedido agora. Tente de novo."
   }
 }

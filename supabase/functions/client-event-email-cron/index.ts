@@ -5,6 +5,7 @@ import { createJsonResponder } from "../_shared/http.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
 import { sendViaResend } from "../_shared/lifecycle-emails.ts";
 import { resolveHubUrl as resolveHubUrlImpl } from "../_shared/hub-url.ts";
+import { appBaseUrl } from "../_shared/app-url.ts";
 import { reportCronFailure } from "../_shared/triage.ts";
 import {
   type ClientEventEmailCronDeps,
@@ -55,6 +56,7 @@ Deno.serve(createClientEventEmailCronHandler({
         resendEnabled: !!Deno.env.get("RESEND_API_KEY"),
         tokenSecret: TOKEN_ENCRYPTION_KEY,
         unsubBaseUrl: SUPABASE_URL,
+        unsubPageBaseUrl: optionalAppBaseUrl(),
         resolveHubUrl: (clienteId, contaId) => resolveHubUrlImpl(svc, clienteId, contaId),
         sendEmail: (p) => sendViaResend(p.to, p.subject, p.html, p.idempotencyKey, p.from, undefined, p.headers),
         auditLog: (entry) => insertAuditLog(svc, entry),
@@ -73,3 +75,12 @@ Deno.serve(createClientEventEmailCronHandler({
     }
   },
 }));
+
+/** APP_BASE_URL for the unsubscribe page, or null (footer then links the function). */
+function optionalAppBaseUrl(): string | null {
+  try {
+    return appBaseUrl();
+  } catch {
+    return null;
+  }
+}

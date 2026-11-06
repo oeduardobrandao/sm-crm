@@ -22,6 +22,7 @@ export const APP_ROUTE_PREFIXES = [
   'comecar',
   'conectar',
   'descadastrar',
+  'cancelar-avisos',
   'oauth',
   'dashboard',
   'clientes',

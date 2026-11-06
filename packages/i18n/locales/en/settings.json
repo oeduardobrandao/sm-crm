@@ -632,5 +632,17 @@
     "invalidTitle": "Invalid link",
     "invalidBody": "This unsubscribe link is not valid. To stop receiving tips, sign in to Mesaas and turn them off in Settings > Notifications.",
     "error": "Could not save right now. Please try again."
+  },
+  "clientUnsub": {
+    "title": "Stop receiving these notices?",
+    "bodyClient": "You will stop receiving pending-item emails from this agency.",
+    "bodyGuest": "You will stop receiving invites and event notices from this agency at this address.",
+    "cta": "Stop notices",
+    "submitting": "Saving...",
+    "doneTitle": "Done.",
+    "doneBody": "You will no longer receive these notices.",
+    "invalidTitle": "Invalid link",
+    "invalidBody": "This link is not valid.",
+    "error": "Could not process your request right now. Please try again."
   }
 }
