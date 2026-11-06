@@ -10,9 +10,16 @@ vi.mock('../../lib/api', () => ({
   listWorkspaces: vi.fn(),
   getMrr: vi.fn(),
   getTrials: vi.fn(),
+  getChurned: vi.fn(),
 }));
 
-import { getMrr, getTrials, listWorkspaces, type ListWorkspacesParams } from '../../lib/api';
+import {
+  getChurned,
+  getMrr,
+  getTrials,
+  listWorkspaces,
+  type ListWorkspacesParams,
+} from '../../lib/api';
 import DashboardPage from '../DashboardPage';
 
 const DAY = 86_400_000;
@@ -92,6 +99,7 @@ let restorePhone: () => void;
 
 beforeEach(() => {
   restorePhone = mockPhone();
+  vi.mocked(getChurned).mockReturnValue(new Promise(() => {}) as never);
   vi.mocked(listWorkspaces).mockImplementation(((params?: ListWorkspacesParams) =>
     Promise.resolve(params?.status === 'pendente' ? PENDING : RECENT)) as never);
   vi.mocked(getMrr).mockResolvedValue({

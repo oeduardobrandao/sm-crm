@@ -579,6 +579,43 @@ export function getTrials() {
   return adminApi<TrialsSummary>('get-trials');
 }
 
+/**
+ * churn: paid at least one day, then left. trial_expired: had a trial, never paid.
+ * unknown: canceled before the daily snapshots began (2026-09-25), no evidence either way.
+ */
+export type EndedKind = 'churn' | 'trial_expired' | 'unknown';
+
+export interface EndedWorkspace {
+  workspace_id: string;
+  name: string;
+  plan_name: string | null;
+  kind: EndedKind;
+  /** When the subscription row last changed, i.e. the cancel. */
+  ended_at: string;
+  /** Last paid monthly amount, in centavos; null unless kind is 'churn'. */
+  monthly_cents: number | null;
+  created_at: string | null;
+  last_activity_at: string | null;
+  owner_name: string | null;
+  owner_email: string | null;
+  owner_telefone: string | null;
+  owner_marketing_opt_in: boolean;
+}
+
+export interface ChurnedSummary {
+  /** Ended in the last `window_days`, newest first. */
+  workspaces: EndedWorkspace[];
+  churn_count: number;
+  trial_expired_count: number;
+  lost_mrr_cents: number;
+  window_days: number;
+  currency: string;
+}
+
+export function getChurned() {
+  return adminApi<ChurnedSummary>('get-churned');
+}
+
 export function createPlan(params: Record<string, unknown>) {
   return adminApi<{ plan: Plan }>('create-plan', params);
 }

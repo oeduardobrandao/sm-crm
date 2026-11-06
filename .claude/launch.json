@@ -4,49 +4,89 @@
     {
       "name": "crm",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 5173,
       "autoPort": true
     },
     {
       "name": "crm-staging",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev:staging"],
+      "runtimeArgs": [
+        "run",
+        "dev:staging"
+      ],
       "port": 5173,
       "autoPort": true
     },
     {
       "name": "hub",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev:hub"],
+      "runtimeArgs": [
+        "run",
+        "dev:hub"
+      ],
       "port": 5175,
       "autoPort": true
     },
     {
       "name": "hub-staging",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev:hub:staging", "--", "--port", "5173"],
+      "runtimeArgs": [
+        "run",
+        "dev:hub:staging",
+        "--",
+        "--port",
+        "5173"
+      ],
       "port": 5173,
       "autoPort": false
     },
     {
       "name": "admin",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev:admin"],
+      "runtimeArgs": [
+        "run",
+        "dev:admin"
+      ],
       "port": 5177
     },
     {
       "name": "admin-staging",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev:admin:staging"],
+      "runtimeArgs": [
+        "run",
+        "dev:admin:staging"
+      ],
       "port": 5178,
       "autoPort": true
     },
     {
       "name": "mcp-widgets",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["vite", "--config", "apps/mcp-widgets/vite.config.ts", "--port", "5199"],
+      "runtimeArgs": [
+        "vite",
+        "--config",
+        "apps/mcp-widgets/vite.config.ts",
+        "--port",
+        "5199"
+      ],
       "port": 5199
+    },
+    {
+      "name": "admin-env",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "with-env",
+        "--",
+        "npm",
+        "run",
+        "dev:admin"
+      ],
+      "port": 5177
     }
   ]
 }

@@ -4,6 +4,7 @@ import { PLAN_TEXT_CLASS, getPlanColor } from '../../lib/plan-colors';
 import { describeActivity } from '../workspace-activity';
 import type { MrrSummary, TrialsSummary, WorkspaceSummary } from '../../lib/api';
 import type { RiskCardProps } from './RiskCard';
+import type { ChurnCardProps } from './ChurnCard';
 
 export function PlanBadge({ name }: { name: string | null }) {
   if (!name) return <span className="text-dim-foreground">—</span>;
@@ -82,6 +83,7 @@ export interface DashboardKpi {
 export interface DashboardViewProps {
   kpis: DashboardKpi[];
   risk: RiskCardProps;
+  churn: Omit<ChurnCardProps, 'phone' | 'className'>;
   mrr: { loading: boolean; data: MrrSummary | undefined };
   trials: {
     loading: boolean;
