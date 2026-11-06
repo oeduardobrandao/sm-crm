@@ -181,6 +181,9 @@ verify_jwt = false
 [functions.pagarme-webhook]
 verify_jwt = false
 
+[functions.resend-webhook]
+verify_jwt = false
+
 [functions.pagarme-subscription]
 verify_jwt = false
 

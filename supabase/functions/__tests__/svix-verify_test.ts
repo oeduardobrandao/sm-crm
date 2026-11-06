@@ -67,3 +67,16 @@ Deno.test("rejects non-numeric timestamp", async () => {
   const sig = "v1," + await sign(ID, "abc", BODY);
   assertEquals(await verifySvixSignature(args({ signature: sig, timestamp: "abc" })), false);
 });
+
+Deno.test("official Svix test vector", async () => {
+  const vec = {
+    secret: "whsec_plJ3nmyCDGBKInavdOK15jsl",
+    id: "msg_loFOjxBNrRLzqYUf",
+    timestamp: "1731705121",
+    signature: "v1,rAvfW3dJ/X/qxhsaXPOyyCGmRKsaKWcsNccKXlIktD0=",
+    body: '{"event_type":"ping","data":{"success":true}}',
+    nowSeconds: 1731705121,
+  };
+  assertEquals(await verifySvixSignature(vec), true);
+  assertEquals(await verifySvixSignature({ ...vec, body: vec.body + " " }), false);
+});
