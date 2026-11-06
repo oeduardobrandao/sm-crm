@@ -87,5 +87,7 @@ describe('validateCustomRange', () => {
     expect(validateCustomRange('2025-11-06', '2026-11-06')).toBeNull();
     expect(validateCustomRange('2025-11-05', '2026-11-06')).not.toBeNull();
     expect(validateCustomRange('', '2026-01-01')).not.toBeNull();
+    expect(validateCustomRange('2026-13-45', '2026-12-01')).toBe('Data inválida.');
+    expect(validateCustomRange('2026-02-30', '2026-03-01')).toBe('Data inválida.');
   });
 });

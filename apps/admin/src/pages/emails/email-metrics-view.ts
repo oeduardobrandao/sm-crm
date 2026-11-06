@@ -224,6 +224,11 @@ export function presetRange(
 export function validateCustomRange(start: string, end: string): string | null {
   const re = /^\d{4}-\d{2}-\d{2}$/;
   if (!re.test(start) || !re.test(end)) return 'Informe as duas datas.';
+  const valid = (ymd: string) => {
+    const t = Date.parse(ymd);
+    return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === ymd;
+  };
+  if (!valid(start) || !valid(end)) return 'Data inválida.';
   if (start > end) return 'A data inicial não pode ser depois da final.';
   const diff = (Date.parse(end) - Date.parse(start)) / 86_400_000;
   if (diff > MAX_RANGE_DAYS) return 'O período máximo é de 365 dias.';
