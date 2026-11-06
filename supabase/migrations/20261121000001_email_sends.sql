@@ -56,6 +56,19 @@ returns int language sql immutable set search_path = public as $$
   end
 $$;
 
+create or replace function public.email_sends_cleanup()
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  delete from email_webhook_events where received_at < now() - interval '7 days';
+  update email_sends
+     set recipient = null, subject = null, bounce_message = null
+   where sent_at < now() - interval '90 days'
+     and (recipient is not null or subject is not null or bounce_message is not null);
+end $$;
+
+revoke execute on function public.email_sends_cleanup() from public, anon, authenticated;
+grant execute on function public.email_sends_cleanup() to service_role;
+
 -- Dedupe + upsert monotônico na mesma transação. false = svix_id repetido (nada aplicado).
 create or replace function public.email_sends_apply_event(
   p_svix_id text, p_email_id text, p_event text, p_sent_at timestamptz,
@@ -77,18 +90,20 @@ begin
   insert into email_sends as s (email_id, category, type, sent_at, last_event, bounce_type,
                                 bounce_subtype, bounce_message, recipient, subject, source)
   values (p_email_id, p_category, p_type, p_sent_at, p_event,
-          p_bounce_type, p_bounce_subtype, left(p_bounce_message, 500),
+          case when v_pii then p_bounce_type end,
+          case when v_pii then p_bounce_subtype end,
+          case when v_pii then left(p_bounce_message, 500) end,
           case when v_pii then p_recipient end,
           case when v_pii then p_subject end,
           'webhook')
   on conflict (email_id) do update set
     last_event = case when _email_event_rank(p_event) > _email_event_rank(s.last_event)
                       then p_event else s.last_event end,
-    bounce_type = case when _email_event_rank(p_event) > _email_event_rank(s.last_event)
+    bounce_type = case when v_pii and _email_event_rank(p_event) > _email_event_rank(s.last_event)
                        then coalesce(p_bounce_type, s.bounce_type) else s.bounce_type end,
-    bounce_subtype = case when _email_event_rank(p_event) > _email_event_rank(s.last_event)
+    bounce_subtype = case when v_pii and _email_event_rank(p_event) > _email_event_rank(s.last_event)
                           then coalesce(p_bounce_subtype, s.bounce_subtype) else s.bounce_subtype end,
-    bounce_message = case when _email_event_rank(p_event) > _email_event_rank(s.last_event)
+    bounce_message = case when v_pii and _email_event_rank(p_event) > _email_event_rank(s.last_event)
                           then coalesce(left(p_bounce_message, 500), s.bounce_message) else s.bounce_message end,
     recipient = case when v_pii and _email_event_rank(p_event) > _email_event_rank(s.last_event)
                      then coalesce(p_recipient, s.recipient) else s.recipient end,
@@ -104,11 +119,7 @@ begin
 
   -- Limpeza oportunista (~1% das chamadas): sem cron novo.
   if random() < 0.01 then
-    delete from email_webhook_events where received_at < now() - interval '7 days';
-    update email_sends
-       set recipient = null, subject = null, bounce_message = null
-     where sent_at < now() - interval '90 days'
-       and (recipient is not null or subject is not null or bounce_message is not null);
+    perform email_sends_cleanup();
   end if;
 
   return true;
@@ -137,7 +148,8 @@ begin
   with base as (
     select *, (sent_at at time zone 'America/Sao_Paulo')::date as day
       from email_sends
-     where (sent_at at time zone 'America/Sao_Paulo')::date between p_start and p_end
+     where sent_at >= (p_start::timestamp at time zone 'America/Sao_Paulo')
+       and sent_at < ((p_end + 1)::timestamp at time zone 'America/Sao_Paulo')
   ),
   customer as (
     select * from base where category not in ('interno','externo')
@@ -180,10 +192,11 @@ begin
         'bounced', bounced, 'other', sent - delivered - bounced) order by day) from daily), '[]'::jsonb),
     'recent', coalesce((select jsonb_agg(jsonb_build_object(
         'sent_at', sent_at, 'category', category, 'type', type, 'last_event', last_event,
-        'bounce_type', bounce_type, 'bounce_message', bounce_message,
-        'recipient_masked', case when recipient is null then null
+        'bounce_type', bounce_type, 'bounce_message', case when sent_at < now() - interval '90 days' then null else bounce_message end,
+        'recipient_masked', case when recipient is null or sent_at < now() - interval '90 days' then null
             else left(recipient, 1) || '***@' || split_part(recipient, '@', 2) end,
-        'subject', subject) order by sent_at desc) from recent), '[]'::jsonb)
+        'subject', case when sent_at < now() - interval '90 days' then null else subject end)
+        order by sent_at desc) from recent), '[]'::jsonb)
   ) into v_result;
 
   return v_result;

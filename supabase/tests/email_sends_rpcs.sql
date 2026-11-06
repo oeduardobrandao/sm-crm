@@ -20,6 +20,9 @@ begin
   perform email_sends_apply_event('sv-2', 'em-1', 'delivered', now(), 'x', 'y', true, null, null, null, 'a@b.com', 'A');
   assert (select last_event from email_sends where email_id = 'em-1') = 'delivered';
   assert (select recipient from email_sends where email_id = 'em-1') is null, 'delivered nao guarda PII';
+  perform email_sends_apply_event('sv-2b', 'em-0', 'delivered', now(), 'x', 'y', true, 'Permanent', 'G', 'msg', 'p@q.com', 'S');
+  assert (select bounce_type is null and bounce_subtype is null and bounce_message is null and recipient is null
+            from email_sends where email_id = 'em-0'), 'delivered nao guarda bounce_*';
   perform email_sends_apply_event('sv-3', 'em-1', 'sent', now(), 'x', 'y', true, null, null, null, null, null);
   assert (select last_event from email_sends where email_id = 'em-1') = 'delivered', 'sent nao rebaixa';
   assert (select category from email_sends where email_id = 'em-1') = 'convites', 'categoria nao muda';
@@ -44,9 +47,15 @@ begin
   perform email_sends_apply_event('sv-8', 'em-2', 'bounced', now(), 'cobranca', 'fatura', true, 'Transient', null, 'm', 'z@y.com', 's');
   assert (select last_event from email_sends where email_id = 'em-2') = 'bounced';
 
+  perform email_sends_apply_event('sv-f1', 'em-4', 'failed', now(), 'cobranca', 'fatura', true, null, null, 'smtp', 'fail@x.com', 'Fatura');
+  assert (select recipient from email_sends where email_id = 'em-4') = 'fail@x.com', 'failed guarda recipient';
+  assert (select bounce_message from email_sends where email_id = 'em-4') = 'smtp', 'failed guarda bounce_message';
+  perform email_sends_apply_event('sv-f2', 'em-4', 'complained', now(), 'x', 'y', true, null, null, null, null, null);
+  assert (select last_event from email_sends where email_id = 'em-4') = 'complained', 'complained vence failed';
+
   -- mesmo svix_id: false e linha inalterada
-  select updated_at into t1 from email_sends where email_id = 'em-2';
-  perform pg_sleep(0.01);
+  update email_sends set updated_at = '2020-01-01 00:00:00+00' where email_id = 'em-2';
+  t1 := '2020-01-01 00:00:00+00';
   r := email_sends_apply_event('sv-8', 'em-2', 'complained', now(), 'x', 'y', true, null, null, null, null, null);
   assert r = false, 'svix repetido retorna false';
   assert (select updated_at from email_sends where email_id = 'em-2') = t1, 'linha inalterada';
@@ -132,6 +141,14 @@ begin
   m := email_metrics('2027-01-01', '2027-01-03');
   assert jsonb_array_length(m->'daily') = 3 and jsonb_array_length(m->'by_type') = 0;
 
+  m := email_metrics('2026-01-01', '2027-01-02');
+  assert jsonb_array_length(m->'daily') = 367, '366 dias de diferenca ok';
+  ok := false;
+  begin
+    perform email_metrics('2026-01-01', '2027-01-03');
+  exception when others then ok := true; end;
+  assert ok, '367 levanta';
+  ok := false;
   begin
     perform email_metrics('2026-11-10', '2026-11-08');
   exception when others then ok := true; end;
@@ -141,6 +158,31 @@ begin
     perform email_metrics('2025-01-01', '2026-11-08');
   exception when others then ok := true; end;
   assert ok, '> 366 dias levanta';
+end $$;
+
+-- janela de 90 dias em recent e email_sends_cleanup
+do $$
+declare
+  m jsonb;
+begin
+  delete from email_sends;
+  insert into email_sends (email_id, category, type, sent_at, last_event, bounce_message, recipient, subject, source)
+    values ('o1', 'convites', 'convite', now() - interval '91 days', 'bounced', 'old', 'old@x.com', 'Velho', 'webhook'),
+           ('o2', 'convites', 'convite', now() - interval '1 day', 'bounced', 'new', 'new@x.com', 'Novo', 'webhook');
+  m := email_metrics((current_date - 120), current_date + 1);
+  assert (select x->'recipient_masked' from jsonb_array_elements(m->'recent') x where x->>'type' = 'convite'
+            and x->>'bounce_message' is null limit 1) = 'null'::jsonb, 'velho sem mascara';
+  assert (select count(*) from jsonb_array_elements(m->'recent') x
+           where x->>'subject' is null and x->>'recipient_masked' is null and x->>'bounce_message' is null) = 1, 'so o velho zerado';
+
+  insert into email_webhook_events (svix_id, received_at) values ('w10', now() - interval '10 days'), ('w8', now() - interval '8 days'), ('w1', now() - interval '1 day');
+  perform email_sends_cleanup();
+  assert (select recipient is null and subject is null and bounce_message is null from email_sends where email_id = 'o1'), 'o1 zerado';
+  assert (select recipient is not null from email_sends where email_id = 'o2'), 'o2 mantido';
+  assert not exists (select 1 from email_webhook_events where svix_id in ('w10','w8')), 'eventos antigos apagados';
+  assert exists (select 1 from email_webhook_events where svix_id = 'w1'), 'evento recente fica';
+  assert not has_function_privilege('authenticated', 'public.email_sends_cleanup()', 'execute');
+  assert has_function_privilege('service_role', 'public.email_sends_cleanup()', 'execute');
 end $$;
 
 rollback;
