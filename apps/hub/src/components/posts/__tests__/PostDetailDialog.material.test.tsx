@@ -24,7 +24,8 @@ vi.mock('../../../hooks/usePostReferences', async (orig) => ({
   ...(await orig<typeof import('../../../hooks/usePostReferences')>()),
   usePostReferences: () => refsState.current,
 }));
-vi.mock('../../../services/materialRequests', () => ({
+vi.mock('../../../services/materialRequests', async (orig) => ({
+  ...(await orig<typeof import('../../../services/materialRequests')>()),
   fetchMaterialRequests: vi.fn(),
   closeMaterialRequest: vi.fn(),
 }));
@@ -82,7 +83,6 @@ const request: HubMaterialRequest = {
     status: 'aberto',
     closed_by: null,
     closed_at: null,
-    opened_by: null,
     opened_at: '2026-11-01T10:00:00.000Z',
     items: [
       { id: 10, label: 'Vídeo do Dr. Paulo', detail: null, position: 0, file_count: 1, done: true },

@@ -10,16 +10,18 @@ vi.mock('@mesaas/app-lifecycle', () => ({ useUnsavedWork: vi.fn() }));
 vi.mock('@/store/postReferences', () => ({ saveMaterialRequest: vi.fn() }));
 
 let mockEntregasPerm: 'editar' | 'ver' = 'editar';
+/** Acesso por cliente: restricted to these clientes when set ('atribuidos'). */
+let mockAssigned: number[] | null = null;
 vi.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({
-    can: makeCan(
-      fakeMembership({
-        role: 'agent',
-        role_id: 1,
-        permissions: { entregas: mockEntregasPerm } as never,
-      }),
-    ),
-  }),
+  useAuth: () => {
+    const membership = fakeMembership({
+      role: 'agent',
+      role_id: 1,
+      permissions: { entregas: mockEntregasPerm } as never,
+      ...(mockAssigned ? { client_scope: 'atribuidos', cliente_ids: mockAssigned } : {}),
+    });
+    return { can: makeCan(membership), membership };
+  },
 }));
 
 import { MaterialRequestEditor, MaterialStatusBadge } from '../references/MaterialRequestEditor';
@@ -48,7 +50,9 @@ function request(over: Partial<CrmMaterialRequest> = {}): CrmMaterialRequest {
   };
 }
 
-function renderEditor(props: { request?: CrmMaterialRequest | null; freeFormCount?: number } = {}) {
+function renderEditor(
+  props: { request?: CrmMaterialRequest | null; freeFormCount?: number; clienteId?: number } = {},
+) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const tree = (p: typeof props) => (
     <QueryClientProvider client={qc}>
@@ -56,6 +60,7 @@ function renderEditor(props: { request?: CrmMaterialRequest | null; freeFormCoun
         postId={10}
         request={p.request ?? null}
         freeFormCount={p.freeFormCount ?? 0}
+        clienteId={p.clienteId ?? 7}
       />
     </QueryClientProvider>
   );
@@ -67,6 +72,7 @@ describe('MaterialRequestEditor', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockEntregasPerm = 'editar';
+    mockAssigned = null;
   });
 
   it('shows the switch off with no request', () => {
@@ -141,6 +147,29 @@ describe('MaterialRequestEditor', () => {
     expect(screen.queryByRole('switch')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Salvar pedido' })).toBeNull();
     expect(screen.getByText('Logo')).toBeInTheDocument();
+  });
+
+  it('own-only ("é dele") member: read-only request, nothing without one', () => {
+    // Restricted to client 8; the post's client 7 is outside their scope.
+    mockAssigned = [8];
+    renderEditor({ request: request() });
+    expect(screen.queryByRole('switch')).toBeNull();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Salvar pedido' })).toBeNull();
+    expect(screen.getByText('Logo')).toBeInTheDocument();
+  });
+
+  it('own-only member without a request renders nothing', () => {
+    mockAssigned = [8];
+    const { container } = renderEditor();
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('restricted member on an assigned client keeps the editable request', () => {
+    mockAssigned = [7];
+    renderEditor({ request: request() });
+    expect(screen.getByRole('switch', { name: 'Pedir material ao cliente' })).toBeChecked();
+    expect(screen.getByRole('textbox', { name: 'Nome do item 1' })).toBeInTheDocument();
   });
 
   it('registers unsaved work while a save is in flight and while the form is dirty', async () => {

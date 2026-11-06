@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { StatusPill } from '../../components/StatusPill';
 import { shortDate } from '../../lib/materialDates';
 import { getTipoLabel } from '../../lib/postView';
-import type { HubMaterialRequest } from '../../services/materialRequests';
+import { materialTitle, type HubMaterialRequest } from '../../services/materialRequests';
 
 export function MaterialTile({
   request,
@@ -18,12 +18,13 @@ export function MaterialTile({
   const total = items.length;
   const done = items.filter((i) => i.done).length;
   const date = shortDate(request.scheduled_at, i18n.language) ?? t('semData');
+  const title = materialTitle(request, t('semTitulo'));
 
   return (
     <button
       type="button"
       onClick={() => onOpen(request.post_id)}
-      aria-label={t('abrir', { titulo: request.titulo })}
+      aria-label={t('abrir', { titulo: title })}
       className="hub-card relative flex aspect-[4/5] w-full flex-col gap-1.5 p-3 text-left hub-focus-accent focus:outline-none"
     >
       <span className="self-start">
@@ -31,11 +32,13 @@ export function MaterialTile({
           {t('pill')}
         </StatusPill>
       </span>
-      <span className="font-display mt-1 text-[15px] leading-[1.2] hub-txt">{request.titulo}</span>
-      <span className="text-[12px] font-semibold hub-txt">{t('progresso', { done, total })}</span>
+      <span className="font-display mt-1 text-[15px] leading-[1.2] hub-txt">{title}</span>
+      <span className="text-[12px] font-semibold hub-txt">
+        {t('progresso', { done, count: total })}
+      </span>
       <span
         role="progressbar"
-        aria-label={t('progressoRotulo', { done, total })}
+        aria-label={t('progressoRotulo', { done, count: total })}
         aria-valuenow={done}
         aria-valuemin={0}
         aria-valuemax={total}
@@ -81,9 +84,7 @@ export function MaterialTile({
         ))}
       </span>
       <span className="mt-auto flex items-center justify-between gap-2 text-[12px] hub-tx3">
-        <span>
-          {getTipoLabel(tCommon, request.tipo)} · {date}
-        </span>
+        <span>{request.tipo ? `${getTipoLabel(tCommon, request.tipo)} · ${date}` : date}</span>
         <span className="flex items-center gap-1 font-semibold hub-txt">
           {t('enviar')}
           <ArrowRight aria-hidden="true" size={13} />

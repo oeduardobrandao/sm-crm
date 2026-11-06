@@ -18,7 +18,8 @@ vi.mock('../../../services/postReferences', async (orig) => ({
   addPostReferenceLink: vi.fn(),
   fetchPostReferences: vi.fn(),
 }));
-vi.mock('../../../services/materialRequests', () => ({
+vi.mock('../../../services/materialRequests', async (orig) => ({
+  ...(await orig<typeof import('../../../services/materialRequests')>()),
   fetchMaterialRequests: vi.fn(),
   closeMaterialRequest: vi.fn(),
 }));
@@ -55,7 +56,6 @@ function entry(over: Partial<HubMaterialRequest> = {}, done = [false, false, fal
       status: 'aberto',
       closed_by: null,
       closed_at: null,
-      opened_by: null,
       opened_at: '2026-11-01T10:00:00.000Z',
       items: labels.map((label, i) => ({
         id: 10 + i,
@@ -98,7 +98,7 @@ function hubPost(over: Partial<HubPost> = {}): HubPost {
 
 function setup(
   e: HubMaterialRequest,
-  opts: { items?: ReturnType<typeof makeReferenceItem>[] } = {},
+  opts: { items?: ReturnType<typeof makeReferenceItem>[]; closed?: boolean } = {},
 ) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   qc.setQueryData([HUB_MATERIAL_KEY, 'tok'], [e]);
@@ -106,17 +106,24 @@ function setup(
   vi.mocked(fetchPostReferences).mockResolvedValue({ can_add: false, items: opts.items ?? [] });
   const onOpenChange = vi.fn();
   const invalidate = vi.spyOn(qc, 'invalidateQueries');
-  render(
+  const tree = (closed: boolean) => (
     <QueryClientProvider client={qc}>
       <HubContext.Provider value={{ token: 'tok', workspace: 'ws', bootstrap: {} } as never}>
         <MemoryRouter>
           <BadgeProbe />
-          <MaterialRequestDialog token="tok" entry={e} open onOpenChange={onOpenChange} />
+          <MaterialRequestDialog
+            token="tok"
+            entry={e}
+            open
+            onOpenChange={onOpenChange}
+            closed={closed}
+          />
         </MemoryRouter>
       </HubContext.Provider>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
-  return { qc, onOpenChange, invalidate };
+  const { rerender } = render(tree(opts.closed ?? false));
+  return { qc, onOpenChange, invalidate, setClosed: (c: boolean) => rerender(tree(c)) };
 }
 
 /** Stands in for the nav badge, which keeps the requests query observed in the app. */
@@ -279,5 +286,82 @@ describe('MaterialRequestDialog', () => {
     expect(vi.mocked(addPostReferenceLink).mock.calls[0][2]).toEqual(
       expect.objectContaining({ materialItemId: 12 }),
     );
+  });
+
+  it('uses the singular with a single item', () => {
+    setup(entry({ request: { ...entry().request, items: [entry().request.items[0]] } }));
+    expect(screen.getByText('A equipe precisa de 1 item')).toBeInTheDocument();
+    expect(screen.getByText('0 de 1 enviado')).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: '0 de 1 item' })).toBeInTheDocument();
+    expect(
+      screen.getByText('Quando o item tiver arquivo, a equipe é avisada. Não tem?'),
+    ).toBeInTheDocument();
+  });
+
+  it('falls back to Post sem título and omits the type when they are null', () => {
+    setup(entry({ titulo: null, tipo: null }));
+    expect(screen.getAllByRole('heading', { name: 'Post sem título' }).length).toBeGreaterThan(0);
+    expect(screen.queryByText('Carrossel')).not.toBeInTheDocument();
+  });
+
+  it('closed: reads Material enviado and hides remove/note on item files', async () => {
+    setup(entry({}, [true, false, false]), {
+      closed: true,
+      items: [
+        makeReferenceItem(5, { name: 'checkup.mov', material_item_id: 10, can_remove: true }),
+      ],
+    });
+    expect(screen.getByText('Material enviado')).toBeInTheDocument();
+    expect(screen.queryByText('Aguardando material')).not.toBeInTheDocument();
+    const r = row('Vídeo do Dr. Paulo');
+    await within(r).findByText('checkup.mov');
+    expect(within(r).queryByRole('button', { name: 'Remover referência' })).not.toBeInTheDocument();
+    expect(within(r).queryByRole('button', { name: 'Adicionar nota' })).not.toBeInTheDocument();
+  });
+
+  it('after the auto-close, the rest of the same selection still lands as done', async () => {
+    // One item: the first file completes the request and the host flips to closed; the server
+    // still accepts the queued files of that selection (10-minute window), so they show as files.
+    const uploaded: ReturnType<typeof makeReferenceItem>[] = [];
+    const pending: Array<() => void> = [];
+    let n = 0;
+    vi.mocked(uploadPostReference).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          const id = 200 + n;
+          n += 1;
+          pending.push(() => {
+            const item = makeReferenceItem(id, { name: `foto${id}.jpg`, material_item_id: 10 });
+            uploaded.push(item);
+            resolve(item);
+          });
+        }),
+    );
+    const one = entry({ request: { ...entry().request, items: [entry().request.items[0]] } });
+    const { setClosed } = setup(one);
+    vi.mocked(fetchPostReferences).mockImplementation(async () => ({
+      can_add: false,
+      items: [...uploaded],
+    }));
+    await waitFor(() => expect(fetchPostReferences).toHaveBeenCalled());
+    const input = within(row('Vídeo do Dr. Paulo')).getByTestId('reference-file-input-item-10');
+    fireEvent.change(input, {
+      target: {
+        files: [0, 1, 2].map((i) => new File(['x'], `f${i}.jpg`, { type: 'image/jpeg' })),
+      },
+    });
+    // Two run at once, the third waits in the queue.
+    await waitFor(() => expect(uploadPostReference).toHaveBeenCalledTimes(2));
+    pending[0]();
+    expect(await screen.findByText('foto200.jpg')).toBeInTheDocument();
+    setClosed(true);
+    await waitFor(() => expect(uploadPostReference).toHaveBeenCalledTimes(3));
+    pending[1]();
+    pending[2]();
+    const r = row('Vídeo do Dr. Paulo');
+    expect(await within(r).findByText('foto201.jpg')).toBeInTheDocument();
+    expect(await within(r).findByText('foto202.jpg')).toBeInTheDocument();
+    expect(screen.queryByText('Este pedido foi encerrado pela equipe.')).not.toBeInTheDocument();
+    expect(screen.getByText('Tudo enviado. A equipe foi avisada.')).toBeInTheDocument();
   });
 });

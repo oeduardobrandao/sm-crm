@@ -17,7 +17,10 @@ vi.mock('../../api', () => ({
   submitEditSuggestion: vi.fn(),
   fetchPostHistory: vi.fn().mockResolvedValue({ events: [], approvals: [] }),
 }));
-vi.mock('../../services/materialRequests', () => ({ fetchMaterialRequests: vi.fn() }));
+vi.mock('../../services/materialRequests', async (orig) => ({
+  ...(await orig<typeof import('../../services/materialRequests')>()),
+  fetchMaterialRequests: vi.fn(),
+}));
 vi.mock('../../hooks/usePostReferences', async () => {
   const { makePostReferencesStub } = await import('../../hooks/__tests__/postReferencesStub');
   const stub = makePostReferencesStub();
@@ -63,7 +66,6 @@ function materialReq(postId: number, done: boolean[] = [false]) {
       status: 'aberto',
       closed_by: null,
       closed_at: null,
-      opened_by: null,
       opened_at: '2026-11-01T10:00:00.000Z',
       items: done.map((d, i) => ({
         id: postId * 10 + i,

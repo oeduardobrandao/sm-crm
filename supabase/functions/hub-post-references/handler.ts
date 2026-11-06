@@ -5,6 +5,21 @@ import { resolveHubToken } from "../_shared/hub-token.ts";
 import { getClientIP } from "../_shared/rate-limit.ts";
 import { computeEmProducaoByPost, isHubVisiblePost, type StatusEventRow } from "../hub-posts/em-producao.ts";
 import { loadOpenRequestsForClient, type MaterialRequestDTO } from "../_shared/material-requests.ts";
+
+/** Quem abriu o pedido (uuid de membro da equipe) nunca vai para o Hub. */
+export type HubMaterialRequestDTO = Omit<MaterialRequestDTO, "opened_by">;
+function toHubRequest(r: MaterialRequestDTO): HubMaterialRequestDTO {
+  const { opened_by: _openedBy, opened_by_name: _openedByName, ...rest } = r as MaterialRequestDTO & {
+    opened_by_name?: unknown;
+  };
+  return rest;
+}
+
+/**
+ * Janela depois do concluido/auto em que o RPC ainda aceita arquivo de item (o resto da mesma
+ * seleção múltipla). Espelha post_reference_file_insert/link_insert (20261121000001).
+ */
+const AUTO_CLOSE_GRACE_MS = 10 * 60 * 1000;
 import {
   finalizeReferenceFile,
   type HeadObject,
@@ -177,7 +192,7 @@ export function createHubPostReferencesHandler(deps: HubPostReferencesHandlerDep
           scheduled_at: p.scheduled_at,
           platform: p.platform,
           client_visible: isHubVisiblePost({ id: p.id, status: p.status }, emProducao),
-          request,
+          request: toHubRequest(request),
           files_by_item: filesByItem,
         });
       }
@@ -279,7 +294,7 @@ export function createHubPostReferencesHandler(deps: HubPostReferencesHandlerDep
       return json({
         can_add: owned.status === "enviado_cliente" && listed.items.length < MAX_REFERENCES_PER_POST,
         items: listed.items,
-        request,
+        request: request ? toHubRequest(request) : null,
       });
     }
 
@@ -294,7 +309,22 @@ export function createHubPostReferencesHandler(deps: HubPostReferencesHandlerDep
         console.error("[hub-post-references:gate] request load failed:", e);
         return send(referenceError("internal"));
       }
-      if (open.get(postId)?.status !== "aberto") return send(referenceError("post_not_pending"));
+      if (open.get(postId)?.status !== "aberto") {
+        // Recém-concluído pelo próprio upload (concluido/auto há menos de 10 min): os arquivos
+        // seguintes da mesma seleção ainda passam; o RPC confere a mesma regra sob o lock.
+        const { data: q, error: qErr } = await db.from("post_material_requests")
+          .select("status, closed_by, closed_at")
+          .eq("conta_id", contaId).eq("post_id", postId).maybeSingle();
+        if (qErr) {
+          console.error("[hub-post-references:gate] request lookup failed:", qErr);
+          return send(referenceError("internal"));
+        }
+        const r = q as { status?: string; closed_by?: string | null; closed_at?: string | null } | null;
+        const closedAt = r?.closed_at ? Date.parse(r.closed_at) : NaN;
+        const recentAuto = r?.status === "concluido" && r.closed_by === "auto" &&
+          Number.isFinite(closedAt) && Date.parse(deps.now()) - closedAt < AUTO_CLOSE_GRACE_MS;
+        if (!recentAuto) return send(referenceError("post_not_pending"));
+      }
     }
 
     if (route === "presign") {

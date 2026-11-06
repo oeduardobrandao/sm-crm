@@ -284,7 +284,17 @@ Deno.test("post-references: PUT happy path saves and returns request.items", asy
   assertEquals(request.opened_by_name, "Ana");
   assertEquals(db.calls.find((c) => c.table === "rpc:post_material_request_save")?.payload, {
     p_conta: "conta-1", p_post: 99, p_user: "user-1", p_open: true, p_items: [{ label: "Logo", detail: null }],
+  });  const audit = db.calls.find((c) => c.table === "audit_log");
+  assertEquals(audit?.operation, "insert");
+  assertEquals(audit?.payload, {
+    conta_id: "conta-1",
+    actor_user_id: "user-1",
+    action: "save_post_material_request",
+    resource_type: "post_material_request",
+    resource_id: "3",
+    metadata: { post_id: 99, open: true, status: "aberto", item_count: 1 },
   });
+  assert(!JSON.stringify(audit?.payload).includes("Logo"), "no item labels in the audit entry");
 });
 
 Deno.test("post-references: PUT bad body and invalid item are 400; closing with no request is null", async () => {
@@ -307,6 +317,7 @@ Deno.test("post-references: PUT bad body and invalid item are 400; closing with 
   const r3 = await makeHandler(db3)(putReq("/requests/99", { open: false, items: [] }));
   assertEquals(r3.status, 200);
   assertEquals(await readJson(r3), { request: null });
+  assertEquals(db3.calls.find((c) => c.table === "audit_log"), undefined);
 });
 
 Deno.test("post-references: summary rejects 201 ids and drops ids outside the scope", async () => {
@@ -377,4 +388,5 @@ Deno.test("post-references: a PUT whose RPC raises too_many_items answers 409", 
   const res = await makeHandler(db)(putReq("/requests/99", { open: true, items: [{ label: "Logo" }] }));
   assertEquals(res.status, 409);
   assertEquals(await readJson(res), { error: "too_many_items" });
+  assertEquals(db.calls.find((c) => c.table === "audit_log"), undefined);
 });

@@ -12,7 +12,11 @@ import { compactHubToken } from '../../lib/hubLinks';
 import { getTipoLabel } from '../../lib/postView';
 import { shortDate } from '../../lib/materialDates';
 import { HUB_MATERIAL_KEY, hubPostsQuery } from '../../queries';
-import { closeMaterialRequest, type HubMaterialRequest } from '../../services/materialRequests';
+import {
+  closeMaterialRequest,
+  materialTitle,
+  type HubMaterialRequest,
+} from '../../services/materialRequests';
 import { MAX_REFERENCES_PER_POST } from '../../services/postReferences';
 import { PostHistoryPanel } from '../PostHistoryPanel';
 import { StatusPill } from '../StatusPill';
@@ -148,6 +152,7 @@ function DialogBody({
   }
 
   const date = shortDate(entry.scheduled_at, i18n.language);
+  const title = materialTitle(entry, t('semTitulo'));
   const platform =
     entry.platform && KNOWN_PLATFORMS.includes(entry.platform)
       ? platformNames([entry.platform as PlatformId])
@@ -168,7 +173,7 @@ function DialogBody({
   );
 
   return (
-    <HubDialog open onRequestClose={requestClose} title={entry.titulo}>
+    <HubDialog open onRequestClose={requestClose} title={title}>
       <div
         className={`hub-bg-card w-full h-full md:h-[min(720px,calc(100dvh-3rem))] md:rounded-[4px] overflow-hidden shadow-2xl flex ${hasLeftPane ? 'md:w-[min(1040px,calc(100vw-3rem))] md:grid md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]' : 'md:w-[min(560px,calc(100vw-3rem))]'}`}
       >
@@ -198,13 +203,19 @@ function DialogBody({
             <div className="flex items-start gap-3 px-4 pt-4 pb-3 border-b hub-border">
               <div className="flex min-w-0 flex-1 flex-col gap-2">
                 <h3 className="font-display text-[19px] md:text-[18px] leading-[1.15] hub-txt">
-                  {entry.titulo}
+                  {title}
                 </h3>
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <StatusPill tone="accent" semantic="wait">
-                    {t('pill')}
-                  </StatusPill>
-                  <StatusPill tone="neutral">{getTipoLabel(tRoot, entry.tipo)}</StatusPill>
+                  {closed ? (
+                    <StatusPill tone="neutral">{t('pillEnviado')}</StatusPill>
+                  ) : (
+                    <StatusPill tone="accent" semantic="wait">
+                      {t('pill')}
+                    </StatusPill>
+                  )}
+                  {entry.tipo && (
+                    <StatusPill tone="neutral">{getTipoLabel(tRoot, entry.tipo)}</StatusPill>
+                  )}
                   {platform && <StatusPill tone="neutral">{platform}</StatusPill>}
                   {date && <StatusPill tone="neutral">{date}</StatusPill>}
                 </div>
@@ -223,15 +234,15 @@ function DialogBody({
             <div className="mx-4 mt-3.5 flex items-center justify-between gap-3">
               <span className="flex items-center gap-[7px] text-[13.5px] md:text-[13px] font-semibold hub-txt">
                 <FolderUp size={15} aria-hidden="true" className="hidden md:block" />
-                {total === 1 ? t('dialogo.precisa.um') : t('dialogo.precisa.varios', { n: total })}
+                {t('dialogo.precisa', { count: total })}
               </span>
               <span className="text-[12.5px] md:text-[12px] font-semibold hub-tx2">
-                {t('dialogo.enviados', { done, total })}
+                {t('dialogo.enviados', { done, count: total })}
               </span>
             </div>
             <span
               role="progressbar"
-              aria-label={t('progressoRotulo', { done, total })}
+              aria-label={t('progressoRotulo', { done, count: total })}
               aria-valuenow={done}
               aria-valuemin={0}
               aria-valuemax={total}
@@ -297,6 +308,7 @@ function DialogBody({
                         done={isDone(item.id, item.done)}
                         refs={refs}
                         disabled={atCap || closed}
+                        closed={closed}
                         onAdded={invalidateRequests}
                         onOpenFile={setViewerItem}
                         onRemoveFile={removeFile}
@@ -363,7 +375,7 @@ function DialogBody({
             ) : (
               <>
                 <span className="flex-1 text-center md:text-left text-[12px] leading-[1.4] hub-tx2">
-                  {total === 1 ? t('dialogo.rodape.um') : t('dialogo.rodape.varios', { n: total })}
+                  {t('dialogo.rodape', { count: total })}
                 </span>
                 {closeError && (
                   <p

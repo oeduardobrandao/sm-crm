@@ -15,7 +15,8 @@ import { HUB_MATERIAL_KEY } from '../../../queries';
 import type { HubMaterialRequest } from '../../../services/materialRequests';
 import { MaterialTab } from '../MaterialTab';
 
-vi.mock('../../../services/materialRequests', () => ({
+vi.mock('../../../services/materialRequests', async (orig) => ({
+  ...(await orig<typeof import('../../../services/materialRequests')>()),
   fetchMaterialRequests: vi.fn(),
   closeMaterialRequest: vi.fn(),
 }));
@@ -58,7 +59,6 @@ function req(over: Partial<HubMaterialRequest> = {}): HubMaterialRequest {
       status: 'aberto',
       closed_by: null,
       closed_at: null,
-      opened_by: null,
       opened_at: '2026-11-01T10:00:00.000Z',
       items: labels.map((label, i) => ({
         id: 10 + i,
@@ -217,6 +217,29 @@ describe('MaterialTab', () => {
     vi.mocked(fetchMaterialRequests).mockResolvedValue([req({ scheduled_at: null })]);
     renderTab();
     expect(await screen.findByText(/· Sem data/)).toBeInTheDocument();
+  });
+
+  it('tile: singular for one item, Post sem título and no type when null', async () => {
+    const base = req({ titulo: null, tipo: null, scheduled_at: null });
+    vi.mocked(fetchMaterialRequests).mockResolvedValue([
+      { ...base, request: { ...base.request, items: [{ ...base.request.items[1] }] } },
+    ]);
+    renderTab();
+    const tile = await screen.findByRole('button', { name: /Post sem título/ });
+    expect(within(tile).getByText('0 de 1 item enviado')).toBeInTheDocument();
+    expect(within(tile).getByRole('progressbar', { name: '0 de 1 item' })).toBeInTheDocument();
+    expect(within(tile).getByText('Sem data')).toBeInTheDocument();
+    expect(within(tile).queryByText(/Carrossel|carrossel|null/)).not.toBeInTheDocument();
+  });
+
+  it('tile: 1 de 1 item enviado', async () => {
+    const base = req();
+    vi.mocked(fetchMaterialRequests).mockResolvedValue([
+      { ...base, request: { ...base.request, items: [{ ...base.request.items[0] }] } },
+    ]);
+    renderTab();
+    const tile = await screen.findByRole('button', { name: /Novembro Azul/ });
+    expect(within(tile).getByText('1 de 1 item enviado')).toBeInTheDocument();
   });
 
   it('en bundle has the same keys as pt', () => {

@@ -158,7 +158,11 @@ serialise per post.
     (`item_required`): on a draft the client can only answer items, never add free-form
     references.
   - When `material_item_id` is given: it must belong to this post's request and the request
-    must be `aberto` (`request_closed` otherwise).
+    must be `aberto` (`request_closed` otherwise). Exception (final-review ruling): a request
+    `concluido` with `closed_by = 'auto'` less than 10 minutes ago, on a post not in
+    `agendado`/`postado`/`falha_publicacao`, still accepts item uploads, so the rest of a
+    multi-file selection whose first file completed the last item is stored. It does not
+    reopen and does not notify again. The Hub handler's draft gate mirrors the same window.
   - After the insert, the **completion check**: if the request is `aberto` and every item has
     ≥1 reference → `status = 'concluido'`, `closed_by = 'auto'`, and the
     `post_material_complete` notification is created in the same transaction. Atomic on

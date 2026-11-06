@@ -62,7 +62,6 @@ CREATE INDEX post_material_items_request_pos_idx
 -- conta_id e post_id: cascatas de workspace e de post
 CREATE INDEX post_material_items_post_idx ON post_material_items (post_id);
 CREATE INDEX post_material_items_conta_idx ON post_material_items (conta_id);
-CREATE INDEX post_material_requests_conta_idx ON post_material_requests (conta_id);
 
 -- updated_at
 CREATE OR REPLACE FUNCTION set_post_material_updated_at()
@@ -167,6 +166,24 @@ alter table notification_inapp_prefs
     'post_discussion',
     'linha_editorial_aprovada','linha_editorial_ajustes',
     'task_comment',
+    'post_material_complete',
+    '__all__'
+  ));
+
+-- notification_push_prefs_type_check: lista copiada da definição mais recente
+-- (20261015000001_push_notifications.sql; nenhuma migration depois a mudou),
+-- só acrescenta 'post_material_complete'. Este arquivo passa a ser a definição
+-- mais recente: a próxima migration copia DAQUI.
+alter table notification_push_prefs
+  drop constraint notification_push_prefs_type_check;
+alter table notification_push_prefs
+  add constraint notification_push_prefs_type_check check (type in (
+    'post_approved','post_publish_failed','post_correction','post_message',
+    'client_message','deadline_approaching','task_assigned','post_assigned',
+    'mention','post_edit_suggestion','post_client_reference',
+    'idea_submitted','briefing_answered',
+    'event_invited','event_updated','event_cancelled','event_reminder',
+    'event_client_rsvp','event_reschedule_requested','event_guest_rsvp',
     'post_material_complete',
     '__all__'
   ));
@@ -479,6 +496,12 @@ GRANT EXECUTE ON FUNCTION post_material_request_save(uuid, bigint, uuid, boolean
 --     dele é o pedido do post), o pedido tem que estar aberto e o post fora de
 --     agendado/postado/falha_publicacao (defesa extra ao gatilho); senão
 --     request_closed (item apagado pela equipe ou pedido encerrado no meio).
+--     Exceção: pedido concluido/auto há menos de 10 minutos ainda aceita item,
+--     para os arquivos seguintes da mesma seleção múltipla (o primeiro que
+--     completa o último item fecha o pedido; os outros já estavam na fila).
+--     Não reabre nem notifica de novo (_post_material_complete_check só age
+--     em pedido aberto). Fechado pelo cliente, cancelado ou auto mais antigo
+--     segue request_closed.
 --   sem item: post fora de enviado_cliente com pedido aberto -> item_required
 --     (no rascunho o cliente só responde itens); sem pedido aberto ->
 --     post_not_pending, como antes.
@@ -521,7 +544,9 @@ BEGIN
   -- 1b. Gate: enviado_cliente ou pedido de material aberto.
   SELECT * INTO v_req FROM post_material_requests q WHERE q.post_id = v_post;
   IF v_item IS NOT NULL THEN
-    IF v_req.status IS DISTINCT FROM 'aberto'
+    IF NOT (v_req.status = 'aberto'
+            OR (v_req.status = 'concluido' AND v_req.closed_by = 'auto'
+                AND v_req.closed_at > now() - interval '10 minutes'))
        OR v_status IN ('agendado', 'postado', 'falha_publicacao')
        OR NOT EXISTS (
          SELECT 1 FROM post_material_items i
@@ -619,7 +644,9 @@ BEGIN
 
   SELECT * INTO v_req FROM post_material_requests q WHERE q.post_id = v_post;
   IF v_item IS NOT NULL THEN
-    IF v_req.status IS DISTINCT FROM 'aberto'
+    IF NOT (v_req.status = 'aberto'
+            OR (v_req.status = 'concluido' AND v_req.closed_by = 'auto'
+                AND v_req.closed_at > now() - interval '10 minutes'))
        OR v_status IN ('agendado', 'postado', 'falha_publicacao')
        OR NOT EXISTS (
          SELECT 1 FROM post_material_items i

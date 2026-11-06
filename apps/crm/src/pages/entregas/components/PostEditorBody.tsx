@@ -185,6 +185,12 @@ export interface PostEditorBodyProps {
    * PostAutomationSection. See its own prop doc for why this replaced a
    * `currentUserRole === 'owner' || 'admin'` check. */
   canManageAutomations: boolean;
+  /**
+   * Phone only: the member may open a material request (`can('entregas','editar')` and full
+   * visibility of the post's client), so "Referências do cliente" shows even with no
+   * references and no request yet. Computed by the caller (the desktop always renders it).
+   */
+  canRequestMaterial?: boolean;
   workspaceUsers: { id: string; nome: string; avatar_url: string }[];
   hasInstagramAccount: boolean;
   igAccountStatus: { revoked: boolean; expired: boolean; canPublish: boolean } | null;
@@ -255,6 +261,7 @@ export function PostEditorBody({
   currentUserId,
   currentUserRole,
   canManageAutomations,
+  canRequestMaterial = false,
   workspaceUsers,
   hasInstagramAccount,
   igAccountStatus,
@@ -614,6 +621,8 @@ export function PostEditorBody({
   );
   const suggestionFieldName = useSuggestionFieldName();
   const [referencesOpen, setReferencesOpen] = useState(false);
+  // Phone: with entregas/editar the cell is the way to open the first material request.
+  const showReferencesCell = references.length > 0 || materialRequest != null || canRequestMaterial;
   const [statusSheetOpen, setStatusSheetOpen] = useState(false);
   // One schedule/publish state per phone editor, shared by the bottom bar and the
   // "Antes de agendar" checklist (desktop keeps its own inside ScheduleButton).
@@ -1047,7 +1056,7 @@ export function PostEditorBody({
             chevron
             onClick={() => (editSuggestion ? setSuggestionOpen(true) : setRoteiroOpen(true))}
           />
-          {(references.length > 0 || materialRequest != null) && (
+          {showReferencesCell && (
             <Cell
               label={t('shared.clientReferences')}
               value={String(references.length)}
@@ -1449,7 +1458,7 @@ export function PostEditorBody({
         />
         {post.id != null && (
           <BottomSheet
-            open={referencesOpen && (references.length > 0 || materialRequest != null)}
+            open={referencesOpen && showReferencesCell}
             onOpenChange={setReferencesOpen}
             title={t('shared.clientReferences')}
             detents={['medium', 'large']}
@@ -1459,6 +1468,7 @@ export function PostEditorBody({
               references={references}
               request={materialRequest}
               onOpen={setViewingReference}
+              clienteId={post.cliente_id}
             />
           </BottomSheet>
         )}
@@ -1677,6 +1687,7 @@ export function PostEditorBody({
           references={references}
           request={materialRequest}
           onOpen={setViewingReference}
+          clienteId={post.cliente_id}
         />
       )}
 

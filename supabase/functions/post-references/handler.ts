@@ -180,6 +180,23 @@ export function createPostReferencesHandler(deps: PostReferencesHandlerDeps) {
         conta_id: contaId, post_id: postId, user_id: user.id, open: b.open, items: norm.items,
       });
       if (!saved.ok) return send(saved.result);
+      // Só ids, status e contagem: nunca rótulos nem detalhes dos itens (texto do post).
+      // Desligar sem pedido não muda nada (request null): sem entrada.
+      if (saved.request) {
+        await insertAuditLog(db, {
+          conta_id: contaId,
+          actor_user_id: user.id,
+          action: "save_post_material_request",
+          resource_type: "post_material_request",
+          resource_id: String(saved.request.id),
+          metadata: {
+            post_id: postId,
+            open: b.open,
+            status: saved.request.status,
+            item_count: saved.request.items.length,
+          },
+        });
+      }
       try {
         return json({ request: await withOpenerName(saved.request) });
       } catch (err) {

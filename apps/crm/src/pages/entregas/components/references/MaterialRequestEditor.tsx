@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/context/AuthContext';
+import { useOutsideClientScope } from '@/hooks/useOutsideClientScope';
 import {
   saveMaterialRequest,
   type CrmMaterialRequest,
@@ -105,19 +106,25 @@ export interface MaterialRequestEditorProps {
   request: CrmMaterialRequest | null;
   /** References the client sent without picking an item (they share the 10-slot cap). */
   freeFormCount: number;
+  /** The post's client: an own-only ("é dele") member sees the request read-only. */
+  clienteId?: number | null;
 }
 
 /** "Pedir material ao cliente": switch + editable item list, explicit Save (no autosave, so
- *  half-typed items never reach the client). Read-only for members without entregas/editar. */
+ *  half-typed items never reach the client). Read-only for members without entregas/editar
+ *  and for a restricted member on their own post in a client outside their scope (the PUT
+ *  needs full visibility and answers 403 there). */
 export function MaterialRequestEditor({
   postId,
   request,
   freeFormCount,
+  clienteId,
 }: MaterialRequestEditorProps) {
   const { t } = useTranslation('postPanels');
   const qc = useQueryClient();
   const { can } = useAuth();
-  const canEdit = can('entregas', 'editar') === true;
+  const outsideScope = useOutsideClientScope(clienteId);
+  const canEdit = can('entregas', 'editar') === true && !outsideScope;
   const headingId = useId();
 
   const baseline = useMemo(() => fromRequest(request), [request]);

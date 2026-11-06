@@ -274,6 +274,18 @@ describe('PostEditorBody, phone layout', () => {
     expect(await within(header).findByText('Aguardando material')).toBeInTheDocument();
   });
 
+  it('Referências do cliente: shown with canRequestMaterial even without references or a request', async () => {
+    renderPhone({ canRequestMaterial: true });
+    expect(await screen.findByText('Referências do cliente')).toBeInTheDocument();
+  });
+
+  it('Referências do cliente: hidden without references, a request or canRequestMaterial', async () => {
+    const mod = await import('@/store/postReferences');
+    renderPhone();
+    await waitFor(() => expect(mod.getPostReferencesData).toHaveBeenCalled());
+    expect(screen.queryByText('Referências do cliente')).not.toBeInTheDocument();
+  });
+
   it('renders the header, the four tabs and every pane mounted, only Conteúdo visible', () => {
     renderPhone();
     expect(screen.getByRole('heading', { level: 1, name: 'Lançamento outubro' })).toBeVisible();

@@ -14,7 +14,9 @@
 -- notificar; (l) post_material_requests_for e post_material_summary;
 -- (m) post agendado/postado/falha_publicacao nunca reabre nem aceita item;
 -- (n) rodada de revisão: arquivo de item trava ao fechar (também em
--- enviado_cliente), salvar não reabre concluido sem item novo, espaço em branco.
+-- enviado_cliente), salvar não reabre concluido sem item novo, espaço em branco;
+-- (p) seleção múltipla no último item (janela de 10 minutos depois do
+-- concluido/auto); (q) reabrir cancelado e item novo em concluido/client.
 --
 -- now() é fixo dentro da transação: para provar que opened_at foi
 -- reescrito, a linha é antes empurrada para o passado.
@@ -523,6 +525,12 @@ begin
   assert v_n.metadata->>'client_name' = 'Cliente' and v_n.metadata->>'post_title' = 'Post', 'nomes no metadata';
   assert v_n.link = '/entregas?drawer=' || e.wf, 'link do drawer';
 
+  -- até 10 minutos depois do fechamento automático o item ainda aceita
+  -- arquivo (resto da mesma seleção); não reabre nem notifica de novo
+  perform pg_temp.pm_file(e.ws, e.cli, v_p, v_i1);
+  assert (pg_temp.pm_req(v_p)).status = 'concluido', 'segue concluido';
+  assert pg_temp.pm_notifs(v_p) = 1, 'ainda uma notificacao';
+  update post_material_requests set closed_at = now() - interval '11 minutes' where post_id = v_p;
   perform pg_temp.pm_expect(format('select pg_temp.pm_file(%L, %s, %s, %s)', e.ws, e.cli, v_p, v_i1), 'request_closed');
   assert pg_temp.pm_notifs(v_p) = 1, 'ainda uma notificacao';
 
@@ -938,6 +946,9 @@ begin
   select * into e from pg_temp.pm_env();
   insert into push_devices (user_id, token, platform, environment)
     values (e.usr, 't-material', 'ios', 'production');
+  -- a CHECK de notification_push_prefs aceita o tipo novo
+  insert into notification_push_prefs (user_id, type, enabled)
+    values (e.usr, 'post_material_complete', true);
   v_p := pg_temp.pm_post_s(e.ws, e.wf, 'rascunho');
   v_r := pg_temp.pm_save(e.ws, v_p, e.usr, true, pg_temp.pm_items(1));
   perform pg_temp.pm_file(e.ws, e.cli, v_p, pg_temp.pm_item_id(v_r, 0));
@@ -950,5 +961,117 @@ begin
   assert (select count(*) from claim_notification_pushes(now() - interval '15 minutes', 100)
            where type = 'post_material_complete') = 0, 'nao reclama duas vezes';
   raise notice 'PASS 99_post_material_requests (o) push';
+end $$;
+rollback;
+
+-- ---- (p) seleção múltipla no último item ----
+begin;
+do $$
+declare
+  e record;
+  v_p bigint; v_r jsonb; v_i1 bigint; v_i2 bigint; v_req post_material_requests;
+begin
+  select * into e from pg_temp.pm_env();
+  v_p := pg_temp.pm_post_s(e.ws, e.wf, 'rascunho');
+  v_r := pg_temp.pm_save(e.ws, v_p, e.usr, true, pg_temp.pm_items(2));
+  v_i1 := pg_temp.pm_item_id(v_r, 0);
+  v_i2 := pg_temp.pm_item_id(v_r, 1);
+  perform pg_temp.pm_file(e.ws, e.cli, v_p, v_i1);
+
+  -- três arquivos seguidos no último item: o primeiro conclui, os outros entram
+  perform pg_temp.pm_file(e.ws, e.cli, v_p, v_i2);
+  perform pg_temp.pm_file(e.ws, e.cli, v_p, v_i2);
+  perform pg_temp.pm_link(e.ws, e.cli, v_p, v_i2);
+  assert (select count(*) from post_references where material_item_id = v_i2) = 3, 'tres guardados no item';
+  v_req := pg_temp.pm_req(v_p);
+  assert v_req.status = 'concluido' and v_req.closed_by = 'auto', 'concluido/auto';
+  assert pg_temp.pm_notifs(v_p) = 1, 'exatamente uma notificacao: ' || pg_temp.pm_notifs(v_p);
+  -- arquivo da fila para um item já completo também entra
+  perform pg_temp.pm_file(e.ws, e.cli, v_p, v_i1);
+  assert (select count(*) from post_references where material_item_id = v_i1) = 2, 'item 1 com dois';
+  -- referência livre em rascunho continua recusada
+  perform pg_temp.pm_expect(format('select pg_temp.pm_file(%L, %s, %s, null)', e.ws, e.cli, v_p), 'post_not_pending');
+
+  -- 11 minutos depois do fechamento: request_closed (arquivo e link)
+  update post_material_requests set closed_at = now() - interval '11 minutes' where post_id = v_p;
+  perform pg_temp.pm_expect(format('select pg_temp.pm_file(%L, %s, %s, %s)', e.ws, e.cli, v_p, v_i2), 'request_closed');
+  perform pg_temp.pm_expect(format('select pg_temp.pm_link(%L, %s, %s, %s)', e.ws, e.cli, v_p, v_i2), 'request_closed');
+  assert pg_temp.pm_notifs(v_p) = 1, 'sem notificacao nova';
+
+  -- concluido/client recente: request_closed (a janela é só do auto)
+  v_p := pg_temp.pm_post_s(e.ws, e.wf, 'rascunho');
+  v_r := pg_temp.pm_save(e.ws, v_p, e.usr, true, pg_temp.pm_items(2));
+  perform pg_temp.pm_file(e.ws, e.cli, v_p, pg_temp.pm_item_id(v_r, 0));
+  assert post_material_client_close(e.ws, e.cli, v_p) = 'ok', 'cliente encerra';
+  perform pg_temp.pm_expect(format('select pg_temp.pm_file(%L, %s, %s, %s)', e.ws, e.cli, v_p,
+    pg_temp.pm_item_id(v_r, 0)), 'request_closed');
+
+  -- concluido/auto recente com post agendado: request_closed
+  v_p := pg_temp.pm_post_s(e.ws, e.wf, 'rascunho');
+  v_r := pg_temp.pm_save(e.ws, v_p, e.usr, true, pg_temp.pm_items(1));
+  perform pg_temp.pm_file(e.ws, e.cli, v_p, pg_temp.pm_item_id(v_r, 0));
+  assert (pg_temp.pm_req(v_p)).status = 'concluido', 'concluido antes de agendar';
+  update workflow_posts set status = 'agendado' where id = v_p;
+  perform pg_temp.pm_expect(format('select pg_temp.pm_file(%L, %s, %s, %s)', e.ws, e.cli, v_p,
+    pg_temp.pm_item_id(v_r, 0)), 'request_closed');
+  raise notice 'PASS 99_post_material_requests (p) selecao multipla no ultimo item';
+end $$;
+rollback;
+
+-- ---- (q) reabrir cancelado; item novo em concluido/client ----
+begin;
+do $$
+declare
+  e record;
+  v_p bigint; v_r jsonb; v_req post_material_requests; v_n int;
+  v_usr2 uuid := gen_random_uuid();
+begin
+  select * into e from pg_temp.pm_env();
+  insert into auth.users (id) values (v_usr2);
+  insert into workspace_members (user_id, workspace_id, role) values (v_usr2, e.ws, 'admin');
+
+  -- cancelado sem arquivo: p_open=true reabre, mantém itens, aceita upload
+  v_p := pg_temp.pm_post_s(e.ws, e.wf, 'rascunho');
+  v_r := pg_temp.pm_save(e.ws, v_p, e.usr, true, pg_temp.pm_items(2));
+  v_r := pg_temp.pm_save(e.ws, v_p, e.usr, false, '[]');
+  assert v_r->>'status' = 'cancelado', 'cancelado';
+  perform pg_temp.pm_expect(format('select pg_temp.pm_file(%L, %s, %s, %s)', e.ws, e.cli, v_p,
+    pg_temp.pm_item_id(v_r, 0)), 'request_closed');
+  update post_material_requests set opened_at = now() - interval '1 day' where post_id = v_p;
+  v_r := pg_temp.pm_save(e.ws, v_p, v_usr2, true, v_r->'items');
+  v_req := pg_temp.pm_req(v_p);
+  assert v_req.status = 'aberto' and v_req.closed_by is null and v_req.closed_at is null, 'cancelado reaberto';
+  assert v_req.opened_by = v_usr2 and v_req.opened_at >= now() - interval '1 minute', 'opened_* reescritos';
+  assert jsonb_array_length(v_r->'items') = 2, 'itens mantidos';
+  perform pg_temp.pm_file(e.ws, e.cli, v_p, pg_temp.pm_item_id(v_r, 0));
+  assert (pg_temp.pm_req(v_p)).status = 'aberto', 'upload aceito, um de dois';
+
+  -- cancelado com todo item já respondido: reabre e conclui na hora, sem notificar
+  v_p := pg_temp.pm_post_s(e.ws, e.wf, 'rascunho');
+  v_r := pg_temp.pm_save(e.ws, v_p, e.usr, true, pg_temp.pm_items(1));
+  perform pg_temp.pm_file(e.ws, e.cli, v_p, pg_temp.pm_item_id(v_r, 0));
+  -- dono + admin: uma notificação por alvo
+  v_n := pg_temp.pm_notifs(v_p);
+  assert v_n = 2, 'notificacao do auto: ' || v_n;
+  v_r := pg_temp.pm_save(e.ws, v_p, e.usr, false, '[]');
+  v_r := pg_temp.pm_save(e.ws, v_p, e.usr, true, v_r->'items');
+  assert v_r->>'status' = 'concluido' and v_r->>'closed_by' = 'auto', 'reaberto e concluido: ' || v_r;
+  assert pg_temp.pm_notifs(v_p) = v_n, 'sem notificacao nova';
+
+  -- concluido/client + item novo: reabre, reescreve opened_*, sem notificação
+  v_p := pg_temp.pm_post_s(e.ws, e.wf, 'rascunho');
+  v_r := pg_temp.pm_save(e.ws, v_p, e.usr, true, pg_temp.pm_items(2));
+  perform pg_temp.pm_file(e.ws, e.cli, v_p, pg_temp.pm_item_id(v_r, 0));
+  assert post_material_client_close(e.ws, e.cli, v_p) = 'ok', 'cliente encerra';
+  assert pg_temp.pm_notifs(v_p) = 2, 'notificacao do cliente';
+  update post_material_requests set opened_at = now() - interval '1 day' where post_id = v_p;
+  v_r := pg_temp.pm_save(e.ws, v_p, v_usr2, true, (v_r->'items') || '[{"label":"Mais"}]'::jsonb);
+  v_req := pg_temp.pm_req(v_p);
+  assert v_req.status = 'aberto' and v_req.closed_by is null and v_req.closed_at is null, 'client reaberto';
+  assert v_req.opened_by = v_usr2 and v_req.opened_at >= now() - interval '1 minute', 'opened_* reescritos (client)';
+  assert jsonb_array_length(v_r->'items') = 3, 'tres itens';
+  assert pg_temp.pm_notifs(v_p) = 2, 'sem notificacao nova ao reabrir';
+  perform pg_temp.pm_file(e.ws, e.cli, v_p, pg_temp.pm_item_id(v_r, 2));
+  raise notice 'PASS 99_post_material_requests (q) reabrir cancelado e concluido/client';
 end $$;
 rollback;

@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/context/AuthContext';
+import { useOutsideClientScope } from '@/hooks/useOutsideClientScope';
 import {
   deletePostReference,
   type CrmMaterialRequest,
@@ -33,6 +34,8 @@ export interface PostClientReferencesProps {
   request?: CrmMaterialRequest | null;
   /** Opens the editor's viewer dialog (images and videos). */
   onOpen: (item: ReferenceItem) => void;
+  /** The post's client: own-only ("é dele") members get no writes here (the edge 403s). */
+  clienteId?: number | null;
 }
 
 /** "Referências do cliente": what the client attached in the Hub. Read-only for the team
@@ -42,6 +45,7 @@ export function PostClientReferences({
   references,
   request = null,
   onOpen,
+  clienteId,
 }: PostClientReferencesProps) {
   const { t } = useTranslation('postPanels');
   const qc = useQueryClient();
@@ -49,7 +53,9 @@ export function PostClientReferences({
   const { can } = useAuth();
   // Same gate as post-references DELETE (hasPermissionFor entregas/editar). 'unknown' while the
   // membership loads hides the trash instead of offering a delete that would 403.
-  const canDelete = can('entregas', 'editar') === true;
+  // Own post in a client outside a restricted member's scope: the DELETE needs full visibility.
+  const outsideScope = useOutsideClientScope(clienteId);
+  const canDelete = can('entregas', 'editar') === true && !outsideScope;
   const [pendingDelete, setPendingDelete] = useState<ReferenceItem | null>(null);
 
   const removal = useMutation({
@@ -76,6 +82,7 @@ export function PostClientReferences({
       postId={postId}
       request={request}
       freeFormCount={references.filter((r) => r.material_item_id == null).length}
+      clienteId={clienteId}
     />
   );
 

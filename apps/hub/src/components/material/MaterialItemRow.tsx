@@ -16,6 +16,8 @@ interface MaterialItemRowProps {
   refs: PostReferencesState;
   /** At the post's 10-reference cap. */
   disabled: boolean;
+  /** The request closed: item files are read-only (no remove, no note). */
+  closed?: boolean;
   onAdded: (item: ReferenceItem) => void;
   /** Image/video viewer for an item file. */
   onOpenFile: (item: ReferenceItem) => void;
@@ -32,6 +34,7 @@ export function MaterialItemRow({
   done,
   refs,
   disabled,
+  closed = false,
   onAdded,
   onOpenFile,
   onRemoveFile,
@@ -90,7 +93,8 @@ export function MaterialItemRow({
           {files.map((file) => (
             <ReferenceRow
               key={file.id}
-              item={file}
+              // Closed: the server locks item files (can_remove false), even before the refetch.
+              item={closed && file.can_remove ? { ...file, can_remove: false } : file}
               fresh={false}
               onOpen={onOpenFile}
               onSaveNote={refs.updateNote}

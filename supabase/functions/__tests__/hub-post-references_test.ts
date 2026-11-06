@@ -652,6 +652,12 @@ Deno.test("hub-post-references: GET /requests returns the exact whitelist, order
       "client_visible", "files_by_item", "platform", "post_id", "request", "scheduled_at", "tipo", "titulo",
     ]);
   }
+  for (const r of body.requests) {
+    assertEquals("opened_by" in r.request, false);
+    assertEquals("opened_by_name" in r.request, false);
+    assertEquals(Object.keys(r.request).sort(), ["closed_at", "closed_by", "id", "items", "opened_at", "post_id", "status"]);
+  }
+  assertEquals(JSON.stringify(body).includes("user-1"), false);
   const first = body.requests.find((r: { post_id: number }) => r.post_id === 1);
   assertEquals(Object.keys(first.files_by_item), ["31"]);
   assertEquals(first.files_by_item["31"].length, 1);
@@ -728,6 +734,8 @@ Deno.test("hub-post-references: GET list adds the open request (or null)", async
   db.queueRpc("post_material_requests_for", { data: [{ post_id: 99, request: request(99) }], error: null });
   const body = await readJson(await makeHandler(db)(getReq("?token=t&post_id=99")));
   assertEquals(body.request.id, 599);
+  assertEquals("opened_by" in body.request, false);
+  assertEquals(JSON.stringify(body).includes("user-1"), false);
   assertEquals(body.items[0].material_item_id, 31);
   assertEquals(body.can_add, false);
 
@@ -824,4 +832,65 @@ Deno.test("hub-post-references: close with a bad post id is 404 before any DB ca
   const res = await makeHandler(db)(jsonReq("POST", "/requests/abc/close"));
   assertEquals(res.status, 404);
   assertEquals(db.calls.length, 0);
+});
+
+// Seleção múltipla no último item: o primeiro arquivo conclui o pedido (concluido/auto); os
+// seguintes da mesma seleção ainda passam o gate do rascunho por 10 minutos (o RPC confere igual).
+function queueRecentRequest(db: Db, fields: Record<string, unknown>) {
+  db.queue("post_material_requests", "select", {
+    data: { status: "concluido", closed_by: "auto", closed_at: "2026-10-08T11:55:00.000Z", ...fields },
+    error: null,
+  });
+}
+
+Deno.test("hub-post-references: rascunho gate lets item uploads through for 10 min after an auto close", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  queuePost(db, { status: "rascunho" });
+  db.queueRpc("post_material_requests_for", { data: [], error: null });
+  queueRecentRequest(db, {});
+  db.queue("files", "select", { data: [], error: null });
+  db.queueRpc("post_reference_file_insert", { data: insertedRow({ material_item_id: 31 }), error: null });
+  const res = await makeHandler(db)(jsonReq("POST", "/files", { ...IMAGE_FINALIZE, material_item_id: 31 }));
+  assert(res.status < 300, `status ${res.status}`);
+  assert(rpcCall(db, "post_reference_file_insert"));
+
+  const db2 = createSupabaseQueryMock();
+  setupToken(db2);
+  queuePost(db2, { status: "rascunho" });
+  db2.queueRpc("post_material_requests_for", { data: [], error: null });
+  queueRecentRequest(db2, {});
+  db2.queue("post_references", "select", { data: null, error: null, count: 3 });
+  db2.queueRpc("effective_plan_limit", { data: null, error: null });
+  const presign = await makeHandler(db2)(jsonReq("POST", "/upload-url", IMAGE_UPLOAD));
+  assert(presign.status < 300, `presign status ${presign.status}`);
+});
+
+Deno.test("hub-post-references: rascunho gate refuses an older auto close, a client close or a cancel", async () => {
+  for (const fields of [
+    { closed_at: "2026-10-08T11:49:00.000Z" },
+    { closed_by: "client" },
+    { status: "cancelado", closed_by: "team" },
+  ]) {
+    const db = createSupabaseQueryMock();
+    setupToken(db);
+    queuePost(db, { status: "rascunho" });
+    db.queueRpc("post_material_requests_for", { data: [], error: null });
+    queueRecentRequest(db, fields);
+    const res = await makeHandler(db)(jsonReq("POST", "/files", { ...IMAGE_FINALIZE, material_item_id: 31 }));
+    assertEquals(res.status, 409, JSON.stringify(fields));
+    assertEquals((await readJson(res)).error, "post_not_pending");
+    assertEquals(rpcCall(db, "post_reference_file_insert"), undefined);
+  }
+});
+
+Deno.test("hub-post-references: rascunho gate request lookup failure is 500 internal", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  queuePost(db, { status: "rascunho" });
+  db.queueRpc("post_material_requests_for", { data: [], error: null });
+  db.queue("post_material_requests", "select", { data: null, error: { message: "boom" } });
+  const res = await makeHandler(db)(jsonReq("POST", "/files", { ...IMAGE_FINALIZE, material_item_id: 31 }));
+  assertEquals(res.status, 500);
+  assertEquals((await readJson(res)).error, "internal");
 });
