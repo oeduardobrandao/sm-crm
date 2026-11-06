@@ -115,6 +115,12 @@ export function formatChargeDate(iso: string): string {
   }).format(new Date(iso));
 }
 
+/** Subject of the trial reminder. Shared with the e-mail classifier. */
+export function trialReminderSubject(planName: string | null, daysLeft: number): string {
+  const name = planName ? sanitizeSubjectValue(planName) : "";
+  return `Seu teste do Mesaas${name ? ` ${name}` : ""} termina em ${daysLeft} dias`;
+}
+
 export function buildTrialReminderEmail(p: {
   firstName: string | null;
   workspaceName: string;
@@ -127,8 +133,7 @@ export function buildTrialReminderEmail(p: {
 }): { subject: string; html: string } {
   const base = p.appBaseUrl.replace(/\/+$/, "");
   const billingUrl = `${base}/configuracao/cobranca`;
-  const planName = p.planName ? sanitizeSubjectValue(p.planName) : "";
-  const subject = `Seu teste do Mesaas${planName ? ` ${planName}` : ""} termina em ${p.daysLeft} dias`;
+  const subject = trialReminderSubject(p.planName, p.daysLeft);
   const trialLead = p.planName?.trim()
     ? `Seu teste grátis do plano ${p.planName.trim()} no workspace`
     : "Seu teste grátis no workspace";
