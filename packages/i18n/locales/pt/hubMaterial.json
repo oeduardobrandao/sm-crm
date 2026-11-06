@@ -1,0 +1,25 @@
+{
+  "cabecalho": {
+    "posts": {
+      "um": "1 post esperando sua aprovação",
+      "varios": "{{n}} posts esperando sua aprovação"
+    },
+    "pedidos": {
+      "um": "1 pedido de material",
+      "varios": "{{n}} pedidos de material"
+    },
+    "juntos": "{{posts}} e {{pedidos}}.",
+    "so": "{{pedidos}}."
+  },
+  "pill": "Aguardando material",
+  "progresso": "{{done}} de {{total}} itens enviados",
+  "progressoRotulo": "{{done}} de {{total}} itens",
+  "enviar": "Enviar",
+  "itemEnviado": "Enviado",
+  "itemPendente": "Pendente",
+  "semData": "Sem data",
+  "carregando": "Carregando pedidos de material.",
+  "erro": "Não foi possível carregar os pedidos de material.",
+  "vazio": "Nenhum pedido de material no momento.",
+  "abrir": "Abrir pedido de material de {{titulo}}"
+}

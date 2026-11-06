@@ -2,7 +2,8 @@
   "abas": {
     "rotulo": "Seções de aprovações",
     "posts": "Posts · {{n}}",
-    "linha": "Linha editorial · {{n}}"
+    "linha": "Linha editorial · {{n}}",
+    "material": "Material · {{n}}"
   },
   "titulo": "Linha editorial de {{mes}}",
   "resumo": {

@@ -1,0 +1,25 @@
+{
+  "cabecalho": {
+    "posts": {
+      "um": "1 post waiting for your approval",
+      "varios": "{{n}} posts waiting for your approval"
+    },
+    "pedidos": {
+      "um": "1 material request",
+      "varios": "{{n}} material requests"
+    },
+    "juntos": "{{posts}} and {{pedidos}}.",
+    "so": "{{pedidos}}."
+  },
+  "pill": "Waiting for material",
+  "progresso": "{{done}} of {{total}} items sent",
+  "progressoRotulo": "{{done}} of {{total}} items",
+  "enviar": "Send",
+  "itemEnviado": "Sent",
+  "itemPendente": "Pending",
+  "semData": "No date",
+  "carregando": "Loading material requests.",
+  "erro": "Could not load the material requests.",
+  "vazio": "No material requests right now.",
+  "abrir": "Open material request for {{titulo}}"
+}

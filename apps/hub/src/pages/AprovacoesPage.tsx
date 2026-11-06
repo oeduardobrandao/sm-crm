@@ -6,7 +6,12 @@ import { useHub } from '../HubContext';
 import { compactHubToken } from '../lib/hubLinks';
 import { useHubLook } from '../hooks/useHubLook';
 import { fetchInstagramFeed } from '../api';
-import { hubLinhasQuery, hubPostsQuery, invalidateHubPosts } from '../queries';
+import {
+  hubLinhasQuery,
+  hubMaterialRequestsQuery,
+  hubPostsQuery,
+  invalidateHubPosts,
+} from '../queries';
 import { FeedPreviewButton } from '../components/FeedPreviewButton';
 import { PageHeader } from '../components/PageHeader';
 import { MediaFilterDropdown, type MediaFilter } from '../components/MediaFilterDropdown';
@@ -24,6 +29,9 @@ import {
 } from '../lib/postView';
 import { PostGridSkeleton } from '../components/Skeleton';
 import { LinhaEditorialTab } from './aprovacoes/LinhaEditorialTab';
+import { MaterialTab } from './aprovacoes/MaterialTab';
+
+type ApprovalTab = 'posts' | 'linha' | 'material';
 
 function SortToggle({
   value,
@@ -62,21 +70,15 @@ function SortToggle({
 
 function ApprovalTabs({
   active,
-  postsCount,
-  linhasCount,
+  tabs,
   onSelect,
 }: {
-  active: 'posts' | 'linha';
-  postsCount: number;
-  linhasCount: number;
-  onSelect: (tab: 'posts' | 'linha') => void;
+  active: ApprovalTab;
+  tabs: { key: ApprovalTab; label: string }[];
+  onSelect: (tab: ApprovalTab) => void;
 }) {
   const { t } = useTranslation('hubLinha');
   const look = useHubLook();
-  const tabs = [
-    { key: 'posts' as const, label: t('abas.posts', { n: postsCount }) },
-    { key: 'linha' as const, label: t('abas.linha', { n: linhasCount }) },
-  ];
   return (
     <div role="tablist" aria-label={t('abas.rotulo')} className="mb-6 flex flex-wrap gap-2">
       {tabs.map((tab) => {
@@ -101,6 +103,8 @@ function ApprovalTabs({
 
 export function AprovacoesPage() {
   const { t } = useTranslation('hubPosts');
+  const { t: tLinha } = useTranslation('hubLinha');
+  const { t: tMaterial } = useTranslation('hubMaterial');
   const pauta = useHubLook() === 'pauta';
   const { token, workspace, bootstrap } = useHub();
   const qc = useQueryClient();
@@ -126,8 +130,17 @@ export function AprovacoesPage() {
   // Same cache entry the tab and the nav badge read. Flag off: never fetched.
   const { data: linhasData } = useQuery({ ...hubLinhasQuery(token), enabled: featureLinha });
   const linhasWaiting = (linhasData?.linhas ?? []).filter((l) => l.status === 'enviada').length;
+  // Same cache entry the nav badge reads. Open requests only; the endpoint has no flag.
+  const { data: materialData, isLoading: materialLoading } = useQuery(
+    hubMaterialRequestsQuery(token),
+  );
+  const materialCount = materialData?.length ?? 0;
   // A post deep link (/aprovacoes/:id) always means the Posts view.
-  const showLinha = featureLinha && searchParams.get('aba') === 'linha' && currentId === null;
+  const aba = searchParams.get('aba');
+  const showLinha = featureLinha && aba === 'linha' && currentId === null;
+  // Stays on Material while the list loads, falls back to Posts once the last request closes.
+  const showMaterial =
+    aba === 'material' && currentId === null && (materialLoading || materialCount > 0);
   const { data: feedData } = useQuery({
     queryKey: ['hub-instagram-feed', token],
     queryFn: () => fetchInstagramFeed(token),
@@ -204,26 +217,56 @@ export function AprovacoesPage() {
     [navigate, base],
   );
 
+  const materialPhrase =
+    materialCount === 1
+      ? tMaterial('cabecalho.pedidos.um')
+      : tMaterial('cabecalho.pedidos.varios', { n: materialCount });
+  const postsPhrase =
+    pending.length === 1
+      ? tMaterial('cabecalho.posts.um')
+      : tMaterial('cabecalho.posts.varios', { n: pending.length });
+  // Only the non-zero parts. Waits for both lists so it never claims "0 posts" mid-load.
+  const materialDescription =
+    materialCount === 0 || isLoading
+      ? undefined
+      : pending.length === 0
+        ? tMaterial('cabecalho.so', { pedidos: materialPhrase })
+        : tMaterial('cabecalho.juntos', { posts: postsPhrase, pedidos: materialPhrase });
+
+  // The bar shows whenever at least two pills would: Posts always, Linha with its flag,
+  // Material only while a request is open.
+  const tabBar: { key: ApprovalTab; label: string }[] = [
+    { key: 'posts', label: tLinha('abas.posts', { n: pending.length }) },
+    ...(featureLinha
+      ? [{ key: 'linha' as const, label: tLinha('abas.linha', { n: linhasWaiting }) }]
+      : []),
+    ...(materialCount > 0
+      ? [{ key: 'material' as const, label: tLinha('abas.material', { n: materialCount }) }]
+      : []),
+  ];
+
   // The count/empty line is only truthful once the fetch has succeeded; while loading or
   // after a failure "Tudo em dia" would claim an empty queue we haven't actually seen.
   const description =
     showLinha || isLoading || fatalError
       ? undefined
-      : mode === 'select'
-        ? t(
-            'aprovacoes.selectHint',
-            'Selecione posts para visualizar como ficarão no feed do Instagram.',
-          )
-        : pending.length === 0
-          ? t('aprovacoes.emptyDescription', 'Tudo em dia. Nenhum post aguardando aprovação.')
-          : t(
-              'aprovacoes.pendingDescription',
-              '{{count}} post{{plural}} aguardando sua aprovação.',
-              {
-                count: pending.length,
-                plural: pending.length > 1 ? 's' : '',
-              },
-            );
+      : showMaterial
+        ? materialDescription
+        : mode === 'select'
+          ? t(
+              'aprovacoes.selectHint',
+              'Selecione posts para visualizar como ficarão no feed do Instagram.',
+            )
+          : pending.length === 0
+            ? t('aprovacoes.emptyDescription', 'Tudo em dia. Nenhum post aguardando aprovação.')
+            : t(
+                'aprovacoes.pendingDescription',
+                '{{count}} post{{plural}} aguardando sua aprovação.',
+                {
+                  count: pending.length,
+                  plural: pending.length > 1 ? 's' : '',
+                },
+              );
 
   return (
     // No `.hub-fade-up` on this wrapper: its lingering transform would trap the filter bar's
@@ -235,6 +278,7 @@ export function AprovacoesPage() {
           description={description}
           action={
             !showLinha &&
+            !showMaterial &&
             instagramProfile &&
             pending.length > 0 && (
               <span className="flex items-center gap-2">
@@ -263,23 +307,22 @@ export function AprovacoesPage() {
         />
       </div>
 
-      {featureLinha && (
+      {tabBar.length >= 2 && (
         <ApprovalTabs
-          active={showLinha ? 'linha' : 'posts'}
-          postsCount={pending.length}
-          linhasCount={linhasWaiting}
+          active={showLinha ? 'linha' : showMaterial ? 'material' : 'posts'}
+          tabs={tabBar}
           onSelect={(tab) => {
-            // On a post deep link the linha view can't show (`showLinha` needs the list
-            // route): leave the post the same way closing it does, landing on the linha tab.
-            if (tab === 'linha' && currentId !== null) {
-              navigate(`${base}?aba=linha`, { replace: true });
+            // On a post deep link the other views can't show (they need the list route):
+            // leave the post the same way closing it does, landing on the chosen tab.
+            if (tab !== 'posts' && currentId !== null) {
+              navigate(`${base}?aba=${tab}`, { replace: true });
               return;
             }
             setSearchParams(
               (prev) => {
                 const next = new URLSearchParams(prev);
-                if (tab === 'linha') next.set('aba', 'linha');
-                else next.delete('aba');
+                if (tab === 'posts') next.delete('aba');
+                else next.set('aba', tab);
                 return next;
               },
               { replace: true },
@@ -291,6 +334,20 @@ export function AprovacoesPage() {
       {showLinha ? (
         // No `.hub-fade-up` here either: the decision bar is `position: fixed`.
         <LinhaEditorialTab />
+      ) : showMaterial ? (
+        // The request dialog opens from `?pedido=` (next task); the tile only sets it.
+        <MaterialTab
+          onOpen={(id) =>
+            setSearchParams(
+              (prev) => {
+                const next = new URLSearchParams(prev);
+                next.set('pedido', String(id));
+                return next;
+              },
+              { replace: true },
+            )
+          }
+        />
       ) : isLoading ? (
         <div className="hub-fade-up">
           <PostGridSkeleton />
