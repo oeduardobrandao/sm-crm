@@ -1,14 +1,20 @@
 import { useTranslation } from 'react-i18next';
 import { Switch } from '@/components/ui/switch';
-import { marketingLabel, transactionalRows, useEmailsAutomaticos } from './useEmailsAutomaticos';
+import {
+  marketingLabel,
+  tipsLabel,
+  transactionalRows,
+  useEmailsAutomaticos,
+} from './useEmailsAutomaticos';
 
 /** "E-mails automáticos": transparency list of the account's transactional
  * emails (always on, no switch) plus the one email that IS opt-in, marketing,
  * wired to the same `profiles.marketing_opt_in` field as PerfilTab. */
 export default function EmailsAutomaticosSection() {
   const { t } = useTranslation('settings');
-  const { marketingOptIn, saveMarketing } = useEmailsAutomaticos();
+  const { marketingOptIn, saveMarketing, tipsEnabled, saveTips } = useEmailsAutomaticos();
   const marketing = marketingLabel();
+  const tips = tipsLabel();
 
   return (
     <div className="card animate-up">
@@ -58,6 +64,21 @@ export default function EmailsAutomaticosSection() {
               checked={marketingOptIn}
               onCheckedChange={(v) => saveMarketing(v)}
             />
+          </span>
+        </div>
+
+        <div className="grid grid-cols-[1fr_96px] items-center gap-2 py-3">
+          <div>
+            <div className="font-medium">{tips}</div>
+            <div className="text-sm text-[color:var(--text-muted)]">
+              {t('notifications.when', { when: t('notifications.tipsWhen') })}
+            </div>
+            <div className="text-sm text-[color:var(--text-muted)]">
+              {t('notifications.recipients', { recipients: t('notifications.tipsRecipients') })}
+            </div>
+          </div>
+          <span className="flex justify-center">
+            <Switch aria-label={tips} checked={tipsEnabled} onCheckedChange={(v) => saveTips(v)} />
           </span>
         </div>
       </div>

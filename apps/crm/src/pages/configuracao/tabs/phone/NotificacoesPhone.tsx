@@ -13,6 +13,7 @@ import { useConfigSubScreen } from '../../phone/useConfigSubScreen';
 import { enabledOf, useSuasNotificacoes } from '../notificacoes/useSuasNotificacoes';
 import {
   marketingLabel,
+  tipsLabel,
   transactionalRows,
   useEmailsAutomaticos,
 } from '../notificacoes/useEmailsAutomaticos';
@@ -178,7 +179,7 @@ export function NotificacoesPhone({ canViewConfig }: NotificacoesPhoneProps) {
 /** "E-mails automáticos": the 3 always-on e-mails plus the marketing opt-in. */
 function EmailsAutomaticosScreen({ onBack }: { onBack: () => void }) {
   const { t } = useTranslation('settings');
-  const { marketingOptIn, saveMarketing } = useEmailsAutomaticos();
+  const { marketingOptIn, saveMarketing, tipsEnabled, saveTips } = useEmailsAutomaticos();
   return (
     <ConfigPhoneScreen
       title={t('notifications.emails.title')}
@@ -208,6 +209,12 @@ function EmailsAutomaticosScreen({ onBack }: { onBack: () => void }) {
             t('notifications.marketingRecipients'),
           )}
           switch={{ checked: marketingOptIn, onCheckedChange: (v) => saveMarketing(v) }}
+        />
+        <Cell
+          className="phone-notif-row"
+          label={tipsLabel()}
+          subtitle={whenWho(t('notifications.tipsWhen'), t('notifications.tipsRecipients'))}
+          switch={{ checked: tipsEnabled, onCheckedChange: (v) => saveTips(v) }}
         />
       </GroupedList>
     </ConfigPhoneScreen>

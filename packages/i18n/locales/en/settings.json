@@ -81,6 +81,9 @@
     "marketingLabel": "Mesaas news and tips",
     "marketingWhen": "occasional marketing",
     "marketingRecipients": "you (opt-in)",
+    "tipsLabel": "Tips by email",
+    "tipsWhen": "a few usage tips while you are not subscribed",
+    "tipsRecipients": "you",
     "when": "When: {{when}}",
     "recipients": "Recipients: {{recipients}}",
     "whenWho": "When: {{when}} · Recipients: {{recipients}}",
@@ -96,7 +99,7 @@
     "noEmailShort": "No email",
     "emails": {
       "title": "Automatic emails",
-      "description": "Emails your account sends on its own, listed for transparency. The first 3 are always sent; only the last one is up to you.",
+      "description": "Emails your account sends on its own, listed for transparency. The first 3 are always sent; the last 2 are up to you.",
       "sameControl": "Same setting as in your Profile.",
       "alwaysSent": "Always sent",
       "dependsOnYou": "Up to you"

@@ -382,6 +382,45 @@ describe('NotificacoesTab', () => {
     });
   });
 
+  describe('Dicas por e-mail', () => {
+    it.each([
+      ['null', null, true],
+      ['a timestamp', '2026-11-01T00:00:00Z', false],
+    ])('tips switch reflects nurture_opt_out_at = %s', async (_n, value, checked) => {
+      mockUseAuth.mockReturnValue({
+        user: { id: 'user-1' },
+        profile: { id: 'user-1', marketing_opt_in: true, nurture_opt_out_at: value },
+        refetchProfile,
+        workspaceRole: 'owner',
+        can: makeCan(fakeMembership({ role: 'owner' })),
+      });
+      renderTab();
+      const sw = (await screen.findByRole('switch', {
+        name: 'Dicas por e-mail',
+      })) as HTMLInputElement;
+      expect(sw.checked).toBe(checked);
+    });
+
+    it('toggling tips off stamps the opt-out, and back on clears it', async () => {
+      renderTab();
+      const sw = await screen.findByRole('switch', { name: 'Dicas por e-mail' });
+      fireEvent.click(sw);
+      await waitFor(() =>
+        expect(mockSupabaseUpdate).toHaveBeenCalledWith({
+          nurture_opt_out_at: expect.any(String),
+        }),
+      );
+      expect(mockSupabaseEq).toHaveBeenCalledWith('id', 'user-1');
+      await waitFor(() => expect(refetchProfile).toHaveBeenCalledTimes(1));
+
+      fireEvent.click(sw);
+      await waitFor(() =>
+        expect(mockSupabaseUpdate).toHaveBeenLastCalledWith({ nurture_opt_out_at: null }),
+      );
+      await waitFor(() => expect(refetchProfile).toHaveBeenCalledTimes(2));
+    });
+  });
+
   describe('SeusClientesSection', () => {
     /**
      * Task 14: `isOwnerOrAdmin = workspaceRole === 'owner' || workspaceRole
