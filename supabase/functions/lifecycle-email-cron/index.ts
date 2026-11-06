@@ -24,10 +24,14 @@ const CRON_SECRET = Deno.env.get("CRON_SECRET") ??
     throw new Error("CRON_SECRET is required");
   })();
 
-const NURTURE_UNSUB_SECRET = Deno.env.get("NURTURE_UNSUB_SECRET") ??
-  (() => {
-    throw new Error("NURTURE_UNSUB_SECRET is required");
-  })();
+// Read lazily, inside the nurture path only: no fallback and it throws, but a
+// missing secret must not take down welcome / thank-you / trial reminder. The
+// throw lands in the nurture candidate (or preview) error and goes to triage.
+function nurtureUnsubSecret(): string {
+  const secret = Deno.env.get("NURTURE_UNSUB_SECRET");
+  if (!secret) throw new Error("NURTURE_UNSUB_SECRET is required");
+  return secret;
+}
 
 const CRON_NAME = "lifecycle-email-cron";
 // Nurture emails reply to the founder's own inbox.
@@ -93,7 +97,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       // Read per run: flipping the secret needs no deploy. Anything but "on" is off.
       nurtureEnabled: Deno.env.get("NURTURE_EMAILS") === "on",
       nurtureUnsubUrl: async (userId) =>
-        nurtureUnsubUrl(SUPABASE_URL, await signNurtureUnsubToken(userId, NURTURE_UNSUB_SECRET)),
+        nurtureUnsubUrl(SUPABASE_URL, await signNurtureUnsubToken(userId, nurtureUnsubSecret())),
       whatsappUrl: whatsAppSupportUrl({ firstName: null }),
       sendNurture: (p) =>
         sendViaResend(

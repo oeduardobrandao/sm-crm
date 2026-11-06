@@ -25,7 +25,7 @@ trilha B (com cliente: `b1`..`b4`). Spec:
 | Variável | O que faz |
 |---|---|
 | `NURTURE_EMAILS` | `on` liga a varredura. Qualquer outro valor (ou ausente) é desligado. Lida a cada execução: mudar não precisa de deploy |
-| `NURTURE_UNSUB_SECRET` | HMAC dos links de descadastro. Obrigatória em `nurture-unsub` e `lifecycle-email-cron` (as duas não sobem sem ela). Trocar invalida todo link já enviado |
+| `NURTURE_UNSUB_SECRET` | HMAC dos links de descadastro. Obrigatória, sem default. `nurture-unsub` não sobe sem ela. No `lifecycle-email-cron` ela é lida só na hora do nurture: ausente, cada candidato (e a prévia) falha com erro no relatório de falhas do cron, sem claim nem envio, e boas-vindas, agradecimento e lembrete de teste seguem normais. Trocar invalida todo link já enviado |
 | `WHATSAPP_SUPPORT_NUMBER` | Opcional. Sem ela, os e-mails saem sem o botão de WhatsApp |
 | `APP_BASE_URL` | Base dos links dos e-mails (a mesma dos outros e-mails do cron) |
 
@@ -40,8 +40,8 @@ temporário>` e apague o arquivo depois.
    migration entrar antes.
 2. Secret `NURTURE_UNSUB_SECRET` e a function `nurture-unsub` (`--no-verify-jwt`).
 3. `lifecycle-email-cron` (`--no-verify-jwt`) com `NURTURE_EMAILS` ainda `off`. Sem
-   `NURTURE_UNSUB_SECRET` a function não sobe e o cron inteiro para (boas-vindas e lembrete
-   de teste inclusive), então o passo 2 vem antes.
+   `NURTURE_UNSUB_SECRET` os outros e-mails do cron seguem, mas a prévia e todo envio de
+   nurture falham, então o passo 2 vem antes.
 4. Merge (frontend: só o switch no Perfil).
 5. Prévia manual para o e-mail do Eduardo (abaixo); revisar os 8 no Gmail e no celular.
 6. `NURTURE_EMAILS=on`.
@@ -50,8 +50,11 @@ temporário>` e apague o arquivo depois.
 
 Manda os 8 e-mails, com dados de exemplo, para um endereço. Não lê `NURTURE_EMAILS` nem
 toca em ledger nenhum, então funciona com a varredura desligada. A Idempotency-Key leva o
-dia (`nurture_preview/<passo>/<AAAA-MM-DD>`): repetir no mesmo dia não duplica; para ver de
-novo depois de mexer no texto, espere o dia seguinte ou use outro endereço.
+dia e um hash do destinatário (`nurture_preview/<passo>/<AAAA-MM-DD>/<12 hex do sha256 do
+e-mail em minúsculas>`). Atenção: repetir para o **mesmo endereço no mesmo dia** não manda
+nada, e mesmo assim a resposta diz `previewSent: 8` (o Resend recusa a chave repetida e o
+envio trata isso como sucesso). Para ver de novo no mesmo dia, depois de mexer no texto,
+use outro endereço (um alias `eduardo+v2@...` serve); outro endereço sempre recebe.
 
 O secret vem de uma variável de ambiente já carregada no shell, nunca colado no comando:
 
@@ -100,9 +103,11 @@ Falhas aparecem no relatório de falhas do cron (`reportCronFailure`, ver
 
 ## Conversão por passo
 
-Por passo, donos cujo workspace ganhou uma linha em `workspace_subscriptions` com status
-`trialing` ou `active` criada em até 14 dias depois do último e-mail de nurture entregue
-para aquele workspace. O crédito vai só para o último passo entregue antes da assinatura.
+Por passo, donos cujo workspace está com status `trialing` ou `active` em
+`workspace_subscriptions` e assinou (ou começou o teste) em até 14 dias depois do último
+e-mail de nurture entregue para aquele workspace. O instante da assinatura é
+`coalesce(ever_subscribed_at, created_at)`. O crédito vai só para o último passo entregue
+antes da assinatura.
 
 ```sql
 with last_delivered as (
@@ -111,7 +116,7 @@ with last_delivered as (
     from nurture_emails ne
     join workspace_subscriptions ws on ws.workspace_id = ne.workspace_id
    where ne.delivered_at is not null
-     and ne.delivered_at <= ws.created_at
+     and ne.delivered_at <= coalesce(ws.ever_subscribed_at, ws.created_at)
    order by ne.workspace_id, ne.delivered_at desc
 ),
 sent as (
@@ -128,11 +133,19 @@ select s.step,
   left join workspace_subscriptions ws
          on ws.workspace_id = ld.workspace_id
         and ws.status in ('trialing', 'active')
-        and ws.created_at <= ld.delivered_at + interval '14 days'
+        and coalesce(ws.ever_subscribed_at, ws.created_at) <= ld.delivered_at + interval '14 days'
  group by s.step, s.entregues
  order by s.step;
 ```
 
-`workspace_subscriptions` tem uma linha por workspace (chave primária `workspace_id`), e
-`created_at` é a data da primeira assinatura daquele workspace. O status é o atual: quem
-começou o teste e cancelou antes desta consulta não conta.
+Limites desta conta:
+
+- `workspace_subscriptions` tem uma linha por workspace (chave primária `workspace_id`), e
+  `created_at` **não** é a data da assinatura: o `billing-checkout` cria a linha quando o
+  checkout abre, só com `stripe_customer_id`. Por isso a consulta prefere
+  `ever_subscribed_at`.
+- `ever_subscribed_at` é gravado pelo checkout do Pagar.me, não pelo `stripe-webhook`.
+  Numa conversão só pela Stripe ele fica nulo e vale o `created_at`: se a pessoa abriu um
+  checkout antes do e-mail, desistiu e assinou depois, a linha já existia antes da entrega e
+  essa conversão não aparece aqui.
+- O status é o atual: quem começou o teste e cancelou antes desta consulta não conta.

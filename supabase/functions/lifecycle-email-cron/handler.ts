@@ -251,10 +251,11 @@ async function markNurtureDelivered(
   deps: LifecycleCronDeps,
   workspaceId: string,
   step: NurtureStep,
+  nowIso: string,
 ): Promise<void> {
   const { error } = await deps.db
     .from("nurture_emails")
-    .update({ delivered_at: deps.now().toISOString() })
+    .update({ delivered_at: nowIso })
     .eq("workspace_id", workspaceId)
     .eq("step", step);
   // Same as markDelivered: the stale claim retries with the same key.
@@ -266,16 +267,30 @@ async function markNurtureDelivered(
   }
 }
 
+/** First 12 hex chars of sha256(lowercased, trimmed address). */
+async function recipientHash(to: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(to.trim().toLowerCase()),
+  );
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, 12);
+}
+
 /**
  * Manual preview: the 8 nurture emails with sample data to one address. Never
  * reads the kill switch nor touches the database, so it works with the sweep
- * off (deploy step 5). The day in the key dedupes a double click.
+ * off (deploy step 5). The day and a recipient hash in the key dedupe a double
+ * click to the same address without blocking a same-day preview to another one
+ * (Resend answers 409 on a reused key and sendViaResend treats it as success).
  */
 export async function runNurturePreview(
   deps: LifecycleCronDeps,
   to: string,
 ): Promise<{ previewSent: number }> {
   const day = deps.now().toISOString().slice(0, 10);
+  const who = await recipientHash(to);
   const unsubUrl = await deps.nurtureUnsubUrl(PREVIEW_USER_ID);
   let previewSent = 0;
   for (const step of NURTURE_STEPS) {
@@ -290,7 +305,7 @@ export async function runNurturePreview(
       to,
       subject,
       html,
-      idempotencyKey: `nurture_preview/${step}/${day}`,
+      idempotencyKey: `nurture_preview/${step}/${day}/${who}`,
       headers: unsubHeaders(unsubUrl),
     });
     previewSent++;
@@ -481,6 +496,9 @@ export async function runLifecycleEmailCron(
           const to = (c.email ?? "").trim();
           if (!to) throw new Error(`nurture_${step}: candidate has no email`);
 
+          // Before the claim: a signing failure (e.g. NURTURE_UNSUB_SECRET
+          // missing) is reported without spending a claim attempt.
+          const unsubUrl = await deps.nurtureUnsubUrl(c.user_id);
           const claimed = await deps.db.rpc("claim_nurture_email", {
             p_workspace_id: c.workspace_id,
             p_step: step,
@@ -492,7 +510,6 @@ export async function runLifecycleEmailCron(
           // spent): not an error, just not ours to send.
           if (claimed.data == null) continue;
 
-          const unsubUrl = await deps.nurtureUnsubUrl(c.user_id);
           const { subject, html } = buildNurtureEmail({
             step,
             firstName: firstNameFrom(c.nome),
@@ -512,7 +529,7 @@ export async function runLifecycleEmailCron(
             idempotencyKey: `nurture_${step}/${c.workspace_id}`,
             headers: unsubHeaders(unsubUrl),
           });
-          await markNurtureDelivered(deps, c.workspace_id, step);
+          await markNurtureDelivered(deps, c.workspace_id, step, nowIso);
           nurtureSent++;
         } catch (e) {
           errors.push({

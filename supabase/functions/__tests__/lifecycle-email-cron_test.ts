@@ -55,6 +55,7 @@ function makeFakeDb(opts: {
   nurtureRpcError?: string;
   /** claim_nurture_email result keyed `${workspace_id}/${step}`; default attempts + 1. */
   claimResults?: Record<string, number | null>;
+  claimError?: string;
 }) {
   type Row = {
     email_type: string;
@@ -106,6 +107,9 @@ function makeFakeDb(opts: {
         });
       }
       if (name === "claim_nurture_email") {
+        if (opts.claimError) {
+          return Promise.resolve({ data: null, error: { message: opts.claimError } });
+        }
         const key = `${args?.p_workspace_id}/${args?.p_step}`;
         const c = (opts.nurtureCandidates ?? []).find(
           (x) => x.workspace_id === args?.p_workspace_id && x.step === args?.p_step,
@@ -782,13 +786,77 @@ Deno.test("nurture preview sends 8 without touching ledgers", async () => {
   assertEquals(nurtureSent.length, 8);
   assert(nurtureSent.every((m) => m.to === "e@x"));
   const day = deps.now().toISOString().slice(0, 10);
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("e@x"));
+  const who = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, 12);
   assertEquals(
     nurtureSent.map((m) => m.idempotencyKey),
-    ["a1", "a2", "a3", "a4", "b1", "b2", "b3", "b4"].map((s) => `nurture_preview/${s}/${day}`),
+    ["a1", "a2", "a3", "a4", "b1", "b2", "b3", "b4"].map((s) =>
+      `nurture_preview/${s}/${day}/${who}`
+    ),
   );
   const previewUrl = "https://unsub.test/00000000-0000-0000-0000-000000000000";
   assert(nurtureSent.every((m) => m.headers["List-Unsubscribe"] === `<${previewUrl}>`));
   assertEquals(nurtureSent[0].subject, "Seu primeiro cliente no Mesaas leva 3 minutos");
   assertEquals(db.rpcCalls.length, 0);
   assertEquals(db.fromCalls.length, 0);
+});
+
+Deno.test("nurture preview key differs per recipient, ignoring case", async () => {
+  const db = makeFakeDb({});
+  const { deps, nurtureSent } = makeDeps(db);
+  await runNurturePreview(deps, "e@x");
+  await runNurturePreview(deps, "E@X");
+  await runNurturePreview(deps, "other@x");
+  assertEquals(nurtureSent[0].idempotencyKey, nurtureSent[8].idempotencyKey);
+  assert(nurtureSent[0].idempotencyKey !== nurtureSent[16].idempotencyKey);
+});
+
+Deno.test("nurture: unsub signing failure is reported, nothing sent, other sweeps intact", async () => {
+  const db = makeFakeDb({
+    welcomeCandidates: [{ user_id: "u1", email: "ana@x.test", nome: "Ana" }],
+    trialCandidates: [{ workspace_id: "w1", first_charge_at: "2026-08-06T12:00:00Z" }],
+    nurtureCandidates: [B1],
+  });
+  let reported: CronReportDetail | null = null;
+  const { deps, nurtureSent } = makeDeps(db, {
+    nurtureEnabled: true,
+    nurtureUnsubUrl: () => Promise.reject(new Error("NURTURE_UNSUB_SECRET is required")),
+    report: (d: CronReportDetail) => {
+      reported = d;
+      return Promise.resolve();
+    },
+  });
+  const result = await runLifecycleEmailCron(deps);
+  assertEquals(result.welcomeSent, 1);
+  assertEquals(result.trialRemindersSent, 1);
+  assertEquals(result.nurtureSent, 0);
+  assertEquals(result.failed, 1);
+  const err = (reported as CronReportDetail | null)?.errors[0];
+  assertEquals(err?.accountId, "ws-b1");
+  assert(err?.error?.includes("NURTURE_UNSUB_SECRET"));
+  assertEquals(nurtureSent.length, 0);
+  assert(!db.rpcCalls.some((c) => c.name === "claim_nurture_email"), "no claim spent");
+  assertEquals(db.nurtureUpdates.length, 0);
+});
+
+Deno.test("nurture: claim rpc error is reported, no send", async () => {
+  const db = makeFakeDb({ nurtureCandidates: [B1], claimError: "permission denied" });
+  let reported: CronReportDetail | null = null;
+  const { deps, nurtureSent } = makeDeps(db, {
+    nurtureEnabled: true,
+    report: (d: CronReportDetail) => {
+      reported = d;
+      return Promise.resolve();
+    },
+  });
+  const result = await runLifecycleEmailCron(deps);
+  assertEquals(result.nurtureSent, 0);
+  assertEquals(result.failed, 1);
+  const err = (reported as CronReportDetail | null)?.errors[0];
+  assertEquals(err?.accountId, "ws-b1");
+  assert(err?.error?.includes("permission denied"));
+  assertEquals(nurtureSent.length, 0);
+  assertEquals(db.nurtureUpdates.length, 0);
 });
