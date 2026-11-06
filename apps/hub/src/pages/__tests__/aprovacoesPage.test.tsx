@@ -593,6 +593,16 @@ describe('AprovacoesPage', () => {
       expect(screen.getByTestId('location')).toHaveTextContent('aba=material');
     });
 
+    it('?pedido=<postId> opens the request dialog; closing it keeps aba and drops pedido', async () => {
+      mockedFetchMaterial.mockResolvedValue([materialReq(7)] as never);
+      renderPage(`${BASE}?aba=material&pedido=7`, twoPosts());
+      expect(await screen.findByRole('dialog', { name: 'Pedido 7' })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Fechar pedido de material' }));
+      await waitFor(() => expect(screen.getByTestId('location')).not.toHaveTextContent('pedido'));
+      expect(screen.getByTestId('location')).toHaveTextContent('aba=material');
+      expect(screen.queryByRole('dialog', { name: 'Pedido 7' })).not.toBeInTheDocument();
+    });
+
     it('an enviado_cliente post with an open request is in both Posts and Material', async () => {
       mockedFetchMaterial.mockResolvedValue([materialReq(1)] as never);
       const { unmount } = renderPage(BASE, response({ posts: [post({ id: 1, titulo: 'Duplo' })] }));

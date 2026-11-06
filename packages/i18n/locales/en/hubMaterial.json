@@ -21,5 +21,38 @@
   "carregando": "Loading material requests.",
   "erro": "Could not load the material requests.",
   "vazio": "No material requests right now.",
-  "abrir": "Open material request for {{titulo}}"
+  "abrir": "Open material request for {{titulo}}",
+  "dialogo": {
+    "precisa": {
+      "um": "The team needs 1 item",
+      "varios": "The team needs {{n}} items"
+    },
+    "enviados": "{{done}} of {{total}} sent",
+    "abaItens": "Requested items",
+    "abaHistorico": "History and comments",
+    "rodape": {
+      "um": "When the item has a file, the team is notified. Don't have it?",
+      "varios": "When all {{n}} items have a file, the team is notified. Missing one?"
+    },
+    "limites": "Photos and PDFs up to 25 MB, videos up to 200 MB.",
+    "limite10": "This post reached the limit of 10 files. Send the rest as a link or tap I sent what I have.",
+    "enviei": "I sent what I have",
+    "confirmarTitulo": "Let the team know with what you sent?",
+    "confirmarDescricao": "{{done}} of {{total}} items have a file. The team will go ahead with what you sent.",
+    "confirmar": "Let the team know",
+    "cancelar": "Cancel",
+    "emProducao": "This post is still in production",
+    "emProducaoTexto": "The artwork and caption show up here when the team sends the post for your approval.",
+    "verPost": "View post",
+    "historicoNoPost": "The history and comments are on the post.",
+    "fechar": "Close material request",
+    "enviarItem": "Send a file for {{label}}",
+    "arquivosDoItem": "Files for {{label}}",
+    "encerrado": "The team closed this request.",
+    "saindoComEnvio": "An upload is still in progress. Leave and cancel the upload?"
+  },
+  "aviso": {
+    "texto": "The team asked for material for this post",
+    "ver": "View items"
+  }
 }

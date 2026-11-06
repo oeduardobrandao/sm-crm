@@ -340,7 +340,7 @@ export function AprovacoesPage() {
         // No `.hub-fade-up` here either: the decision bar is `position: fixed`.
         <LinhaEditorialTab />
       ) : showMaterial ? (
-        // The request dialog opens from `?pedido=` (next task); the tile only sets it.
+        // The tile sets `?pedido=`; MaterialTab opens the request dialog from it.
         <MaterialTab
           onOpen={(id) =>
             setSearchParams(

@@ -15,6 +15,8 @@ vi.mock('../../../api', () => ({
   fetchPostHistory: vi.fn().mockResolvedValue({ events: [], approvals: [] }),
 }));
 const refsState = vi.hoisted(() => ({ current: null as unknown }));
+// No QueryClient in this harness: the material request lookup has its own suite.
+vi.mock('../../../hooks/useOpenMaterialRequest', () => ({ useOpenMaterialRequest: () => null }));
 vi.mock('../../../hooks/usePostReferences', () => ({
   usePostReferences: () => refsState.current,
 }));

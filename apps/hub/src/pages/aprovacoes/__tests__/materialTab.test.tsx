@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import i18n from 'i18next';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import ptHubMaterial from '../../../../../../packages/i18n/locales/pt/hubMaterial.json';
 import enHubMaterial from '../../../../../../packages/i18n/locales/en/hubMaterial.json';
@@ -8,7 +9,18 @@ import { HubContext } from '../../../HubContext';
 import type { HubMaterialRequest } from '../../../services/materialRequests';
 import { MaterialTab } from '../MaterialTab';
 
-vi.mock('../../../services/materialRequests', () => ({ fetchMaterialRequests: vi.fn() }));
+vi.mock('../../../services/materialRequests', () => ({
+  fetchMaterialRequests: vi.fn(),
+  closeMaterialRequest: vi.fn(),
+}));
+vi.mock('../../../hooks/usePostReferences', async (orig) => {
+  const { makePostReferencesStub } = await import('../../../hooks/__tests__/postReferencesStub');
+  const stub = makePostReferencesStub();
+  return {
+    ...(await orig<typeof import('../../../hooks/usePostReferences')>()),
+    usePostReferences: () => stub,
+  };
+});
 import { fetchMaterialRequests } from '../../../services/materialRequests';
 
 function req(over: Partial<HubMaterialRequest> = {}): HubMaterialRequest {
@@ -42,12 +54,14 @@ function req(over: Partial<HubMaterialRequest> = {}): HubMaterialRequest {
   };
 }
 
-function renderTab(onOpen = vi.fn()) {
+function renderTab(onOpen = vi.fn(), url = '/?aba=material') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
       <HubContext.Provider value={{ token: 'tok', workspace: 'ws', bootstrap: {} } as never}>
-        <MaterialTab onOpen={onOpen} />
+        <MemoryRouter initialEntries={[url]}>
+          <MaterialTab onOpen={onOpen} />
+        </MemoryRouter>
       </HubContext.Provider>
     </QueryClientProvider>,
   );
@@ -103,6 +117,22 @@ describe('MaterialTab', () => {
     expect(within(tile).getByText(/Enviado:/)).toBeInTheDocument();
     expect(within(tile).getAllByText(/Pendente:/)).toHaveLength(9);
     expect(tile.querySelector('.overflow-hidden.flex-col')).toBeNull();
+  });
+
+  it('opens the request dialog for ?pedido=<postId> and closes it by dropping the param', async () => {
+    renderTab(vi.fn(), '/?aba=material&pedido=1');
+    expect(await screen.findByRole('dialog', { name: 'Novembro Azul' })).toBeInTheDocument();
+    expect(screen.getByText('A equipe precisa de 3 itens')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar pedido de material' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Novembro Azul' })).not.toBeInTheDocument(),
+    );
+  });
+
+  it('opens nothing for a ?pedido= that is not an open request', async () => {
+    renderTab(vi.fn(), '/?aba=material&pedido=99');
+    await screen.findByRole('button', { name: /Novembro Azul/ });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('shows the error state when the fetch fails', async () => {

@@ -21,5 +21,38 @@
   "carregando": "Carregando pedidos de material.",
   "erro": "Não foi possível carregar os pedidos de material.",
   "vazio": "Nenhum pedido de material no momento.",
-  "abrir": "Abrir pedido de material de {{titulo}}"
+  "abrir": "Abrir pedido de material de {{titulo}}",
+  "dialogo": {
+    "precisa": {
+      "um": "A equipe precisa de 1 item",
+      "varios": "A equipe precisa de {{n}} itens"
+    },
+    "enviados": "{{done}} de {{total}} enviados",
+    "abaItens": "Itens pedidos",
+    "abaHistorico": "Histórico e comentários",
+    "rodape": {
+      "um": "Quando o item tiver arquivo, a equipe é avisada. Não tem?",
+      "varios": "Quando os {{n}} itens tiverem arquivo, a equipe é avisada. Não tem algum?"
+    },
+    "limites": "Fotos e PDFs até 25 MB, vídeos até 200 MB.",
+    "limite10": "Este post chegou ao limite de 10 arquivos. Envie o resto como link ou toque em Enviei o que tenho.",
+    "enviei": "Enviei o que tenho",
+    "confirmarTitulo": "Avisar a equipe com o que você enviou?",
+    "confirmarDescricao": "{{done}} de {{total}} itens têm arquivo. A equipe segue com o que você enviou.",
+    "confirmar": "Avisar a equipe",
+    "cancelar": "Cancelar",
+    "emProducao": "Este post ainda está em produção",
+    "emProducaoTexto": "A arte e a legenda aparecem aqui quando a equipe enviar o post para a sua aprovação.",
+    "verPost": "Ver post",
+    "historicoNoPost": "O histórico e os comentários ficam no post.",
+    "fechar": "Fechar pedido de material",
+    "enviarItem": "Enviar arquivo para {{label}}",
+    "arquivosDoItem": "Arquivos de {{label}}",
+    "encerrado": "Este pedido foi encerrado pela equipe.",
+    "saindoComEnvio": "Um envio ainda está em andamento. Sair e cancelar o envio?"
+  },
+  "aviso": {
+    "texto": "A equipe pediu material para este post",
+    "ver": "Ver itens"
+  }
 }
