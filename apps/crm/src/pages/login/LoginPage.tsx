@@ -8,8 +8,8 @@ import { PasswordInput } from '@/components/ui/password-input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
-import { Sparkles, ChevronRight, Images, Film, Camera } from 'lucide-react';
-import { signIn, signUp, resetPassword } from '../../lib/supabase';
+import { Sparkles, ChevronRight, Images, Film, Camera, MailCheck } from 'lucide-react';
+import { signIn, signUp, resetPassword, resendSignupConfirmation } from '../../lib/supabase';
 import { clearStoredReferral, getStoredReferral } from '../../lib/referral';
 import { captureEvent, identifySignup } from '@/lib/analytics';
 import { trackMetaEvent } from '@/lib/metaPixelLoader';
@@ -19,6 +19,26 @@ import { CookiePreferencesLink } from '@/components/consent/CookiePreferencesLin
 import { parsePlanIntent, buildPlanIntentQuery } from '@/pages/comecar/plan-intent';
 
 type TabKey = 'login' | 'register' | 'forgot';
+
+/** Seconds a resend button stays disabled; Supabase rate-limits resends to about one a minute. */
+const RESEND_COOLDOWN_S = 60;
+
+/**
+ * With email confirmation on, Supabase answers a signup for an address that already has a
+ * confirmed account with an obfuscated user whose `identities` array is empty, and sends no email.
+ * A missing `identities` field is not that case, so only an explicit empty array counts.
+ */
+function isExistingAccountSignup(user: { identities?: unknown[] | null } | null | undefined) {
+  return Array.isArray(user?.identities) && user.identities.length === 0;
+}
+
+function isEmailNotConfirmed(error: { code?: string; message?: string }) {
+  return error.code === 'email_not_confirmed' || error.message === 'Email not confirmed';
+}
+
+function isGmail(email: string) {
+  return /@(gmail|googlemail)\.com$/i.test(email.trim());
+}
 
 export default function LoginPage() {
   const { t } = useTranslation('auth');
@@ -54,6 +74,36 @@ export default function LoginPage() {
   const [regMarketingOptIn, setRegMarketingOptIn] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [registerSuccess, setRegisterSuccess] = useState(false);
+  // The address the confirmation went to. Kept apart from regEmail, which the form clears.
+  const [pendingEmail, setPendingEmail] = useState('');
+  // Signup hit an address that already has an account: no email was sent.
+  const [existingAccount, setExistingAccount] = useState(false);
+  // Login refused because this address is still unconfirmed.
+  const [unconfirmedEmail, setUnconfirmedEmail] = useState('');
+  const [resending, setResending] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const id = window.setTimeout(() => setResendCooldown((s) => s - 1), 1000);
+    return () => window.clearTimeout(id);
+  }, [resendCooldown]);
+
+  const confirmRedirectPath = intentQuery ? `/login?${intentQuery}` : '/login';
+
+  const handleResend = async (email: string) => {
+    if (!email || resending || resendCooldown > 0) return;
+    setResending(true);
+    const { error } = await resendSignupConfirmation(email, confirmRedirectPath);
+    setResending(false);
+    if (error) {
+      toast.error(t('resend.error'));
+      return;
+    }
+    captureEvent('signup_confirmation_resent');
+    setResendCooldown(RESEND_COOLDOWN_S);
+    toast.success(t('resend.success', { email }));
+  };
 
   // A visitor can land here already authenticated: Supabase's email-confirmation
   // link redirects to /login with the session tokens in the URL hash, and
@@ -86,6 +136,14 @@ export default function LoginPage() {
     setLoading(true);
     const { error } = await signIn(loginEmail, loginPassword);
     setLoading(false);
+    if (error && isEmailNotConfirmed(error)) {
+      // A toast here was the raw English "Email not confirmed" with nothing to do next, and new
+      // signups retried it until they gave up. The notice stays put and offers the resend.
+      captureEvent('login_email_not_confirmed');
+      setUnconfirmedEmail(loginEmail.trim());
+      return;
+    }
+    setUnconfirmedEmail('');
     if (error) {
       toast.error(
         error.message === 'Invalid login credentials'
@@ -125,11 +183,21 @@ export default function LoginPage() {
         marketing_opt_in: regMarketingOptIn,
         ...(refCode ? { ref_code: refCode } : {}),
       },
-      intentQuery ? `/login?${intentQuery}` : '/login',
+      confirmRedirectPath,
     );
     setLoading(false);
     if (error) {
       toast.error(error.message);
+      return;
+    }
+    // Existing account: the uuid is fake and no email goes out, so identifying it would mint an
+    // orphan person and "check your email" would leave them waiting for nothing.
+    if (!data?.session && isExistingAccountSignup(data?.user)) {
+      captureEvent('signup_existing_account');
+      setLoginEmail(regEmail.trim());
+      setExistingAccount(true);
+      setRegPassword('');
+      setRegConfirm('');
       return;
     }
     // Identify BEFORE capturing: under `identified_only` an anonymous `signup_completed` is
@@ -147,6 +215,10 @@ export default function LoginPage() {
       navigate(intentQuery ? `/comecar?${intentQuery}` : '/comecar', { replace: true });
       return;
     }
+    setPendingEmail(regEmail.trim());
+    setLoginEmail(regEmail.trim());
+    // Signing up already sent the email; a resend inside the same minute would be refused.
+    setResendCooldown(RESEND_COOLDOWN_S);
     setRegisterSuccess(true);
     setRegNome('');
     setRegEmpresa('');
@@ -199,6 +271,8 @@ export default function LoginPage() {
                   onClick={() => {
                     setActiveTab(tab.key as TabKey);
                     setRegisterSuccess(false);
+                    setExistingAccount(false);
+                    setUnconfirmedEmail('');
                   }}
                 >
                   {tab.label}
@@ -233,6 +307,36 @@ export default function LoginPage() {
                   required
                 />
               </div>
+              {unconfirmedEmail && (
+                <div
+                  role="status"
+                  className="rounded-md border p-3 text-sm"
+                  style={{
+                    borderColor: 'var(--border-color)',
+                    background: 'var(--surface-hover)',
+                  }}
+                >
+                  <p style={{ fontWeight: 600, marginBottom: '0.25rem' }}>
+                    {t('unconfirmed.title')}
+                  </p>
+                  <p style={{ color: 'var(--text-muted)' }}>
+                    {t('unconfirmed.description', { email: unconfirmedEmail })}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-3 mb-0 w-full"
+                    disabled={resending || resendCooldown > 0}
+                    onClick={() => handleResend(unconfirmedEmail)}
+                  >
+                    {resending && <Spinner size="sm" />}
+                    {resendCooldown > 0
+                      ? t('resend.cooldown', { seconds: resendCooldown })
+                      : t('resend.button')}
+                  </Button>
+                </div>
+              )}
               <Button type="submit" disabled={loading} className="btn-primary auth-submit w-full">
                 {loading && <Spinner size="sm" />}
                 {t('login.submit')}
@@ -253,30 +357,92 @@ export default function LoginPage() {
           )}
 
           {activeTab === 'register' &&
-            (registerSuccess ? (
+            (existingAccount ? (
               <div className="auth-form" style={{ textAlign: 'center' }}>
-                <p style={{ fontSize: '2rem', marginBottom: '0.75rem' }}>📧</p>
-                <p style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
-                  {t('registerSuccess.title')}
+                <p style={{ fontWeight: 600, marginBottom: '0.25rem' }}>
+                  {t('existingAccount.title')}
                 </p>
-                <p
-                  style={{
-                    color: 'var(--text-muted)',
-                    fontSize: '0.9rem',
-                    marginBottom: '1.25rem',
-                  }}
-                >
-                  {t('registerSuccess.description')}
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                  {t('existingAccount.description', { email: regEmail.trim() })}
                 </p>
                 <Button
                   className="btn-primary auth-submit w-full"
                   onClick={() => {
-                    setRegisterSuccess(false);
+                    setExistingAccount(false);
                     setActiveTab('login');
                   }}
                 >
-                  {t('registerSuccess.goToLogin')}
+                  {t('existingAccount.goToLogin')}
                 </Button>
+                <p style={{ textAlign: 'center' }}>
+                  <a
+                    href="#"
+                    className="auth-text-link"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setForgotEmail(regEmail.trim());
+                      setExistingAccount(false);
+                      setActiveTab('forgot');
+                    }}
+                  >
+                    {t('login.forgotPassword')}
+                  </a>
+                </p>
+              </div>
+            ) : registerSuccess ? (
+              <div className="auth-form" style={{ textAlign: 'center' }}>
+                <div
+                  aria-hidden="true"
+                  className="mx-auto flex h-12 w-12 items-center justify-center rounded-full"
+                  style={{ background: 'var(--surface-hover)', color: 'var(--text-main)' }}
+                >
+                  <MailCheck className="h-6 w-6" strokeWidth={1.75} />
+                </div>
+                <p style={{ fontWeight: 600, marginBottom: '0.25rem' }}>
+                  {t('registerSuccess.title')}
+                </p>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                  {t('registerSuccess.description', { email: pendingEmail })}
+                </p>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                  {t('registerSuccess.spamHint')}
+                </p>
+                {isGmail(pendingEmail) && (
+                  <Button asChild className="btn-primary auth-submit w-full">
+                    <a
+                      href="https://mail.google.com/mail/u/0/#search/in%3Aanywhere+mesaas"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {t('registerSuccess.openGmail')}
+                    </a>
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  disabled={resending || resendCooldown > 0}
+                  onClick={() => handleResend(pendingEmail)}
+                >
+                  {resending && <Spinner size="sm" />}
+                  {resendCooldown > 0
+                    ? t('resend.cooldown', { seconds: resendCooldown })
+                    : t('resend.button')}
+                </Button>
+                <p style={{ textAlign: 'center' }}>
+                  <a
+                    href="#"
+                    className="auth-text-link"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setRegisterSuccess(false);
+                      setActiveTab('login');
+                    }}
+                  >
+                    {t('registerSuccess.alreadyConfirmed')}
+                  </a>
+                </p>
               </div>
             ) : (
               <form onSubmit={handleRegister} onFocus={markSignupStarted} className="auth-form">

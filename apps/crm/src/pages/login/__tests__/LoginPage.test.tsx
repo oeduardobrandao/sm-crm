@@ -13,6 +13,7 @@ vi.mock('../../../lib/supabase', () => ({
   signIn: vi.fn(),
   signUp: vi.fn(),
   resetPassword: vi.fn(),
+  resendSignupConfirmation: vi.fn(),
 }));
 
 vi.mock('@/context/AuthContext', () => ({
@@ -25,7 +26,7 @@ vi.mock('@/lib/analytics', () => ({
 }));
 
 import { toast } from 'sonner';
-import { resetPassword, signIn, signUp } from '../../../lib/supabase';
+import { resendSignupConfirmation, resetPassword, signIn, signUp } from '../../../lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { captureEvent, identifySignup } from '@/lib/analytics';
 import LoginPage from '../LoginPage';
@@ -33,6 +34,7 @@ import LoginPage from '../LoginPage';
 const mockedSignIn = vi.mocked(signIn);
 const mockedSignUp = vi.mocked(signUp);
 const mockedResetPassword = vi.mocked(resetPassword);
+const mockedResend = vi.mocked(resendSignupConfirmation);
 const mockedToastSuccess = vi.mocked(toast.success);
 const mockedToastError = vi.mocked(toast.error);
 const mockedUseAuth = vi.mocked(useAuth);
@@ -117,6 +119,7 @@ describe('LoginPage', () => {
     mockedSignIn.mockReset();
     mockedSignUp.mockReset();
     mockedResetPassword.mockReset();
+    mockedResend.mockReset();
     mockedToastSuccess.mockReset();
     mockedToastError.mockReset();
     mockedUseAuth.mockReset();
@@ -276,9 +279,18 @@ describe('LoginPage', () => {
     // so the text must be awaited, not asserted synchronously.
     await screen.findByText('Verifique seu e-mail');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Ir para o login' }));
+    expect(
+      screen.getByText(
+        'Enviamos um link de confirmação para ana@mesaas.com. Clique nele para ativar sua conta.',
+      ),
+    ).toBeInTheDocument();
+    // Not a Gmail address: no Gmail shortcut.
+    expect(screen.queryByRole('link', { name: 'Abrir o Gmail' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('link', { name: 'Já confirmei, quero entrar' }));
 
     expect(screen.getByLabelText('Senha')).toBeInTheDocument();
+    expect(screen.getByLabelText('E-mail')).toHaveValue('ana@mesaas.com');
     expect(screen.queryByText('Verifique seu e-mail')).not.toBeInTheDocument();
   });
 
@@ -437,6 +449,127 @@ describe('LoginPage', () => {
 
     expect(screen.getByTestId('probe')).toHaveTextContent('/login');
     expect(screen.getByLabelText('E-mail')).toBeInTheDocument();
+  });
+});
+
+describe('signup confirmation leaks', () => {
+  beforeEach(() => {
+    mockedSignIn.mockReset();
+    mockedSignUp.mockReset();
+    mockedResend.mockReset();
+    mockedToastSuccess.mockReset();
+    mockedToastError.mockReset();
+    mockedCaptureEvent.mockReset();
+    mockedIdentifySignup.mockReset();
+    mockedUseAuth.mockReturnValue({ user: null, loading: false } as never);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function submitLogin(email: string) {
+    fireEvent.change(screen.getByLabelText('E-mail'), { target: { value: email } });
+    fireEvent.change(screen.getByLabelText('Senha'), { target: { value: 'senha-segura' } });
+    fireEvent.submit(screen.getByLabelText('E-mail').closest('form')!);
+  }
+
+  it('explains an unconfirmed email in Portuguese and resends the confirmation, instead of the raw English toast', async () => {
+    mockedSignIn.mockResolvedValue({
+      error: { code: 'email_not_confirmed', message: 'Email not confirmed' },
+    } as never);
+    mockedResend.mockResolvedValue({ error: null } as never);
+
+    renderLoginPage('/login?plan=pro&interval=month');
+    submitLogin(' ana@mesaas.com ');
+
+    await screen.findByText('Confirme seu e-mail para entrar');
+    expect(mockedToastError).not.toHaveBeenCalled();
+    expect(mockedCaptureEvent).toHaveBeenCalledWith('login_email_not_confirmed');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reenviar e-mail de confirmação' }));
+
+    await waitFor(() =>
+      expect(mockedResend).toHaveBeenCalledWith('ana@mesaas.com', '/login?plan=pro&interval=month'),
+    );
+    await waitFor(() =>
+      expect(mockedToastSuccess).toHaveBeenCalledWith('Enviamos um novo link para ana@mesaas.com.'),
+    );
+    expect(mockedCaptureEvent).toHaveBeenCalledWith('signup_confirmation_resent');
+    // Cooldown: Supabase refuses a second resend inside the minute.
+    expect(screen.getByRole('button', { name: /Reenviar em \d+s/ })).toBeDisabled();
+  });
+
+  it('shows a translated error when the resend is refused', async () => {
+    mockedSignIn.mockResolvedValue({
+      error: { code: 'email_not_confirmed', message: 'Email not confirmed' },
+    } as never);
+    mockedResend.mockResolvedValue({ error: { message: 'rate limited' } } as never);
+
+    renderLoginPage();
+    submitLogin('ana@mesaas.com');
+    fireEvent.click(await screen.findByRole('button', { name: 'Reenviar e-mail de confirmação' }));
+
+    await waitFor(() =>
+      expect(mockedToastError).toHaveBeenCalledWith(
+        'Não foi possível reenviar agora. Aguarde um minuto e tente de novo.',
+      ),
+    );
+    expect(screen.getByRole('button', { name: 'Reenviar e-mail de confirmação' })).toBeEnabled();
+  });
+
+  it('tells an existing account apart from a new signup and does not identify the fake user', async () => {
+    mockedSignUp.mockResolvedValue({
+      data: { session: null, user: { id: 'fake-uuid', identities: [] } },
+      error: null,
+    } as never);
+    const { container } = renderRegister('/login?tab=register');
+    fillRegisterForm(container);
+    submitRegister(container);
+
+    await screen.findByText('Você já tem uma conta');
+    expect(screen.queryByText('Verifique seu e-mail')).not.toBeInTheDocument();
+    expect(mockedIdentifySignup).not.toHaveBeenCalled();
+    expect(mockedCaptureEvent).not.toHaveBeenCalledWith('signup_completed');
+    expect(mockedCaptureEvent).toHaveBeenCalledWith('signup_existing_account');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Entrar com minha senha' }));
+    expect(screen.getByLabelText('E-mail')).toHaveValue('ana@example.com');
+  });
+
+  it('sends an existing account to the forgot-password form with the email filled in', async () => {
+    mockedSignUp.mockResolvedValue({
+      data: { session: null, user: { id: 'fake-uuid', identities: [] } },
+      error: null,
+    } as never);
+    const { container } = renderRegister('/login?tab=register');
+    fillRegisterForm(container);
+    submitRegister(container);
+
+    fireEvent.click(await screen.findByRole('link', { name: 'Esqueci minha senha' }));
+    expect(screen.getByRole('button', { name: 'Enviar Link' })).toBeInTheDocument();
+    expect(container.querySelector('input[type="email"]')).toHaveValue('ana@example.com');
+  });
+
+  it('offers a Gmail shortcut and a resend on the check-your-email screen', async () => {
+    mockedSignUp.mockResolvedValue({
+      data: { session: null, user: { id: 'uuid-1', identities: [{ id: 'i' }] } },
+      error: null,
+    } as never);
+    const { container } = renderRegister('/login?tab=register');
+    fillRegisterForm(container);
+    fireEvent.change(container.querySelector('#reg-email')!, {
+      target: { value: 'ana@gmail.com' },
+    });
+    submitRegister(container);
+
+    await screen.findByText('Verifique seu e-mail');
+    expect(mockedIdentifySignup).toHaveBeenCalledWith('uuid-1');
+    const gmail = screen.getByRole('link', { name: 'Abrir o Gmail' });
+    expect(gmail).toHaveAttribute('target', '_blank');
+    expect(gmail.getAttribute('href')).toMatch(/^https:\/\/mail\.google\.com\//);
+    // The signup itself just sent the email, so the resend starts on cooldown.
+    expect(screen.getByRole('button', { name: /Reenviar em \d+s/ })).toBeDisabled();
   });
 });
 

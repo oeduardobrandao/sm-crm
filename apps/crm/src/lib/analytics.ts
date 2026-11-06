@@ -9,6 +9,12 @@ import type { PostHog } from 'posthog-js';
  */
 export type AnalyticsEvent =
   | 'signup_completed'
+  // Signup confirmation leaks (pages/login/LoginPage.tsx): a password login refused because the
+  // email is still unconfirmed, a resend of the confirmation email, and a signup with an email
+  // that already has an account (Supabase sends nothing then, so the user waits forever).
+  | 'login_email_not_confirmed'
+  | 'signup_confirmation_resent'
+  | 'signup_existing_account'
   // Desktop Vidro opt-out/opt-in from the account menu (src/hooks/useVidro.ts).
   | 'vidro_look_toggled'
   // Vidro launch intro (src/components/layout/VidroIntro.tsx); its "back to classic" button
