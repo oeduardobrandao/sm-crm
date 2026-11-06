@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Search } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useQueryClient } from '@tanstack/react-query';
 import { i18n } from '@mesaas/i18n';
 import { GroupedList, Cell } from '@/components/mobile/GroupedList';
 import { SegmentedControl } from '@/components/mobile/SegmentedControl';
@@ -10,7 +11,13 @@ import { MASTER_PAUSE_TYPE } from '@/store/notificationPrefs';
 import type { Cliente } from '@/store';
 import { ConfigPhoneScreen, ConfigPhoneSkeleton } from '../../phone/ConfigPhoneScreen';
 import { useConfigSubScreen } from '../../phone/useConfigSubScreen';
-import { enabledOf, useSuasNotificacoes } from '../notificacoes/useSuasNotificacoes';
+import { isNativeApp } from '@/native/platform';
+import { PushPermissionRow } from '@/native/PushPermissionRow';
+import {
+  enabledOf,
+  PUSH_DEVICE_QUERY_KEY,
+  useSuasNotificacoes,
+} from '../notificacoes/useSuasNotificacoes';
 import {
   marketingLabel,
   tipsLabel,
@@ -62,6 +69,7 @@ export function NotificacoesPhone({ canViewConfig }: NotificacoesPhoneProps) {
   // Kept here, above the sub-screens, so coming back keeps the picked channel.
   const [picked, setChannel] = useState<Channel>('inapp');
   const suas = useSuasNotificacoes();
+  const queryClient = useQueryClient();
   // Celular picked, then the last device went away (another tab, a refetch): fall back.
   const channel: Channel = picked === 'push' && !suas.pushVisible ? 'inapp' : picked;
 
@@ -91,6 +99,14 @@ export function NotificacoesPhone({ canViewConfig }: NotificacoesPhoneProps) {
         <ConfigPhoneSkeleton groups={3} rows={4} />
       ) : (
         <>
+          {isNativeApp() && (
+            <PushPermissionRow
+              variant="phone"
+              onEnabled={() =>
+                void queryClient.invalidateQueries({ queryKey: PUSH_DEVICE_QUERY_KEY })
+              }
+            />
+          )}
           <SegmentedControl
             className="phone-config-segmented"
             aria-label={t('notifications.phone.channelAria')}

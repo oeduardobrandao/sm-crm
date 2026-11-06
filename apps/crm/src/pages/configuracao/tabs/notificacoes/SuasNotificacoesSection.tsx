@@ -1,15 +1,19 @@
 import { useTranslation } from 'react-i18next';
+import { useQueryClient } from '@tanstack/react-query';
 import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SkeletonStatus } from '@/components/ui/skeletons';
 import { categoryLabel, isEmailEligibleType, isPushEligibleType } from '@/lib/notification-catalog';
 import { MASTER_PAUSE_TYPE } from '@/store/notificationPrefs';
-import { enabledOf, useSuasNotificacoes } from './useSuasNotificacoes';
+import { isNativeApp } from '@/native/platform';
+import { PushPermissionRow } from '@/native/PushPermissionRow';
+import { enabledOf, PUSH_DEVICE_QUERY_KEY, useSuasNotificacoes } from './useSuasNotificacoes';
 
 /** "Suas notificações": sino x e-mail (x celular, when pushVisible) matrix for all
  * catalog types, grouped by category, plus a master "Pausar tudo" row per channel. */
 export default function SuasNotificacoesSection() {
   const { t } = useTranslation('settings');
+  const queryClient = useQueryClient();
   const {
     loading,
     inappPrefs,
@@ -63,6 +67,12 @@ export default function SuasNotificacoesSection() {
           {t('notifications.suas.description')}
         </p>
       </div>
+
+      {isNativeApp() && (
+        <PushPermissionRow
+          onEnabled={() => void queryClient.invalidateQueries({ queryKey: PUSH_DEVICE_QUERY_KEY })}
+        />
+      )}
 
       <div className={`grid ${cols} items-center gap-2 pb-2`}>
         <span />
