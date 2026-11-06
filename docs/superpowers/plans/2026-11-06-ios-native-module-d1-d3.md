@@ -67,7 +67,7 @@ The approved mockups (canvas "Mesaas iOS App Screens", boards `PlanLimit` and `N
 | `apps/crm/src/native/push.ts` | permission, register, unregister, tap handling | 7 |
 | `apps/crm/src/native/NativeBridge.tsx` | mounts push listeners + pre-prompt in the signed-in shell | 7 |
 | `apps/crm/src/native/PushPrePromptSheet.tsx`, `PushPermissionRow.tsx` | pre-prompt sheet; prefs row when permission is off | 7 |
-| `supabase/migrations/20261121000001_push_prefs_linha_editorial.sql` | widen `notification_push_prefs_type_check` | 6 |
+| `supabase/migrations/20261122000001_push_prefs_linha_editorial.sql` | widen `notification_push_prefs_type_check` | 6 |
 
 ## Execution order
 
@@ -182,7 +182,7 @@ Rules when native: `UpgradeLockedScreen` shows `native.lockedTitle` + `native.lo
 ### Task 6: Push prefs ("Celular" column) and the linha editorial CHECK
 
 **Files:**
-- Create: `supabase/migrations/20261121000001_push_prefs_linha_editorial.sql`
+- Create: `supabase/migrations/20261122000001_push_prefs_linha_editorial.sql`
 - Modify: `apps/crm/src/lib/notification-catalog.ts` (`pushEligible` per entry + `isPushEligibleType`), `apps/crm/src/store/notificationPrefs.ts`, `pages/configuracao/tabs/notificacoes/useSuasNotificacoes.ts`, `SuasNotificacoesSection.tsx`, `tabs/phone/NotificacoesPhone.tsx`, `packages/i18n/locales/{pt,en}/settings.json`
 - Test: `apps/crm/src/lib/__tests__/notification-catalog.push-parity.test.ts`, existing tests of the two prefs UIs
 
@@ -225,7 +225,7 @@ Rules when native: `UpgradeLockedScreen` shows `native.lockedTitle` + `native.lo
 
 ### Task 7b: Devices follow their session (added after a security review of Task 7)
 
-**Files:** Create `supabase/migrations/20261121000002_push_devices_session.sql`, `supabase/tests/entitlements/105_push_devices_session.sql`.
+**Files:** Create `supabase/migrations/20261122000002_push_devices_session.sql`, `supabase/tests/entitlements/105_push_devices_session.sql`.
 
 `push_devices.session_id` is set by `register_push_device` from `auth.jwt() ->> 'session_id'`; an `AFTER DELETE` trigger on `auth.sessions` disables that session's devices. Covers sign-outs the app could not report (timeout, offline unregister failure, password reset, revoked or expired session). The claim and the cron already skip disabled devices, so neither changes. Fully offline logout stays uncovered (documented in the migration). Gate: CI `entitlement-tests`.
 
@@ -242,4 +242,4 @@ Rules when native: `UpgradeLockedScreen` shows `native.lockedTitle` + `native.lo
   - Logout removes the `push_devices` row.
   - Mobile Safari at the same URL still shows sign-up and billing (web unchanged).
 - [ ] **Step 3: Rebuild** the Simulator against production (`npm run sync -w apps/mobile` without `MESAAS_APP_URL`) so the committed `capacitor.config` state is the release one.
-- [ ] **Step 4: PR** to `main`. The description states push delivery is unverified until the `APNS_*` secrets exist, and gives the deploy order: migrations `20261121000001` and `20261121000002` (staging, then prod) → merge.
+- [ ] **Step 4: PR** to `main`. The description states push delivery is unverified until the `APNS_*` secrets exist, and gives the deploy order: migrations `20261122000001` and `20261122000002` (staging, then prod) → merge.

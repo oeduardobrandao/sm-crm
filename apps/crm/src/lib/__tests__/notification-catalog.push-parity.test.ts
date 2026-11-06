@@ -12,7 +12,7 @@ const quoted = (sqlList: string) => [...sqlList.matchAll(/'([^']+)'/g)].map((m) 
 
 /** Types the push cron claims (claim_notification_pushes, current version). */
 function claimTypes(): string[] {
-  const sql = readMigration('20261120000001_push_acesso_por_cliente.sql');
+  const sql = readMigration('20261121000001_post_material_requests.sql');
   const match = sql.match(/n2\.type\s*=\s*any\s*\(\s*array\[([\s\S]*?)\]\s*\)/i);
   if (!match) throw new Error('claim type array not found');
   return quoted(match[1]);
@@ -20,7 +20,7 @@ function claimTypes(): string[] {
 
 /** Types notification_push_prefs accepts (the widened CHECK). */
 function checkTypes(): string[] {
-  const sql = readMigration('20261121000001_push_prefs_linha_editorial.sql');
+  const sql = readMigration('20261122000001_push_prefs_linha_editorial.sql');
   const match = sql.match(
     /add constraint notification_push_prefs_type_check\s+check\s*\(\s*type\s+in\s*\(([\s\S]*?)\)\s*\)/i,
   );
@@ -49,6 +49,10 @@ describe('notification-catalog: push parity with the database', () => {
     const check = checkTypes();
     expect(check).toContain('linha_editorial_aprovada');
     expect(check).toContain('linha_editorial_ajustes');
+  });
+
+  it('the CHECK keeps post_material_complete (added by the post material requests migration)', () => {
+    expect(checkTypes()).toContain('post_material_complete');
   });
 
   it('isPushEligibleType follows the catalog and rejects unknown strings', () => {
