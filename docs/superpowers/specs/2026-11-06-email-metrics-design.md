@@ -41,8 +41,9 @@ para a estreia do nurture ser medida desde o primeiro envio sem depender do back
 
 ## Anti-objetivos
 
-- Números que não fecham: na tela, enviados = entregues + bounces + reclamações + atrasados +
-  pendentes + não enviados.
+- Números que não fecham: na tela, **Enviados** = entregues + reclamações + bounces +
+  atrasados + pendentes, e **Não enviados** (failed + suppressed + canceled) fica numa coluna à
+  parte, fora de Enviados. Total de tentativas = Enviados + Não enviados.
 - Guardar dado pessoal sem necessidade (LGPD): a métrica não precisa do destinatário.
 - Mexer em `_shared/notify.ts` ou `dunning-email.ts` sem necessidade: `notify.ts` é importado
   por ~30 crons via `triage.ts`, e o remetente desses já identifica o tipo.
@@ -86,7 +87,7 @@ email_id        text primary key          -- id do Resend
 category        text not null             -- notificacoes | ciclo_de_vida | convites | cobranca | relatorios | afiliados | interno | outros
 type            text not null             -- tag type, ou o inferido; 'desconhecido' se nada bate
 sent_at         timestamptz not null      -- data.created_at do Resend (hora do envio)
-last_event      text not null             -- sent | delivered | delivery_delayed | bounced | complained | failed | suppressed
+last_event      text not null             -- sent | delivered | delivery_delayed | bounced | complained | failed | suppressed | canceled (check constraint)
 bounce_type     text null                 -- Permanent | Transient | Undetermined (como vier)
 bounce_subtype  text null
 bounce_message  text null                 -- truncado em 500 chars
@@ -107,6 +108,11 @@ created_at, updated_at timestamptz
   Evento de precedência menor não rebaixa `last_event`. Feito numa função SQL
   `email_sends_apply_event(...)` SECURITY DEFINER, EXECUTE só `service_role`, para a comparação
   ser atômica (`INSERT ... ON CONFLICT DO UPDATE ... WHERE rank(novo) > rank(atual)`).
+- **Normalização de estado** (o `last_event` da listagem do Resend tem mais valores que os
+  sete eventos assinados): `opened`, `clicked` → `delivered`; `queued`, `scheduled` → `sent`
+  (pendente); `canceled` → `canceled` (conta em Não enviados); valor desconhecido → `sent` e
+  log. A normalização vive em `_shared/email-classify.ts` e é usada pelo backfill e pelo
+  webhook; a check constraint só aceita os valores normalizados.
 - `category`/`type`/`sent_at` gravados na primeira vez; eventos seguintes não reclassificam,
   exceto quando a linha veio do backfill e o evento traz tag (webhook ganha).
 - **Dedupe:** tabela `email_webhook_events(svix_id text primary key, received_at)`; `INSERT ...
@@ -128,17 +134,24 @@ backfill:
    `cobranca@` → cobrança/`dunning`, `convites@` → convites (`demo_access` se o assunto bate
    com o do acesso demo, senão `invite`), `afiliados@` → afiliados/`affiliate_link`,
    `notificacoes@` → notificações (tipo pelo assunto quando der, senão `notificacao`).
-3. `eduardo@`: pelo assunto, comparando com constantes exportadas dos builders
-   (`WELCOME_SUBJECT`, assuntos de nurture por step, trial reminder, thank-you, instagram
-   connect, agenda-cliente). Sem match: ciclo de vida/`desconhecido`.
+3. `eduardo@`: pelo assunto, com matchers explícitos por tipo (exato ou regex), mantidos ao
+   lado das constantes dos builders. Os assuntos de hoje não são todos fixos:
+   `WELCOME_SUBJECT` e `THANKYOU_SUBJECT` são exatos; o trial reminder é
+   `Seu teste do Mesaas[ <plano>] termina em <n> dias` (regex); o link de Instagram é
+   `CONNECT_LINK_SUBJECT(agência)` (regex a partir da parte fixa) e o aviso
+   `CONNECTED_NOTICE_SUBJECT` é exato; os assuntos de nurture são literais dentro do `switch`
+   de `buildNurtureEmail` e o `b1` varia com a quantidade de clientes. O builder extrai os
+   assuntos de nurture para constantes (ou funções) exportadas por step e escreve um matcher
+   para cada. `a4` e `b4` têm o mesmo assunto ("Posso parar de te escrever?"): sem tag, viram
+   `nurture_a4_b4`. Sem match: ciclo de vida/`desconhecido`.
 4. `relatorios@` → relatórios/`report`.
 5. Remetente fora de `@mesaas.com.br` → `externo`/`desconhecido` (outro projeto na mesma
    conta Resend, se um dia existir).
 6. Nada bateu → `outros`/`desconhecido`.
 
-Assuntos vêm de constantes importadas, não de strings copiadas; um teste confere que cada
-tipo com assunto fixo é reconhecido pelo fallback, então mudar um assunto sem atualizar a
-classificação quebra o teste. Assuntos dinâmicos usam prefixo.
+Um teste gera o assunto de cada tipo pelo próprio builder (com dados de exemplo, inclusive
+as variantes do trial e do `b1`) e confere que o fallback reconhece; mudar um assunto sem
+atualizar o matcher quebra o teste.
 
 ### Tags nos envios
 
@@ -189,9 +202,9 @@ Entrada `{ start: 'YYYY-MM-DD', end: 'YYYY-MM-DD' }` (datas de São Paulo, inclu
 366 dias; validadas). Agrega numa função SQL `email_metrics(p_start date, p_end date)`
 SECURITY DEFINER, EXECUTE só `service_role`, com `sent_at AT TIME ZONE 'America/Sao_Paulo'`:
 
-- Por categoria e tipo: `total`, `delivered`, `bounced`, `complained`, `delayed`
-  (`delivery_delayed` sem desfecho), `pending` (`sent` sem desfecho), `not_sent`
-  (`failed` + `suppressed`).
+- Por categoria e tipo: `sent` (Enviados: tudo menos não enviados), `delivered`, `bounced`,
+  `complained`, `delayed` (`delivery_delayed` sem desfecho), `pending` (`sent` sem desfecho),
+  `not_sent` (`failed` + `suppressed` + `canceled`).
 - Série diária (total, entregues, bounces, outros) para o gráfico, só das categorias de
   cliente (exclui `interno` e `externo` no SQL).
 - Os 50 bounces/reclamações/falhas mais recentes do período, das categorias de cliente: tipo, `sent_at`, `last_event`,
@@ -199,9 +212,9 @@ SECURITY DEFINER, EXECUTE só `service_role`, com `sent_at AT TIME ZONE 'America
   assunto.
 - `coverage_start`: menor `sent_at` da tabela, para "dados desde ...".
 
-Definições: base = `total − not_sent` (o que o Resend chegou a enviar).
-**Taxa de entrega** = (`delivered` + `complained`) / base (reclamação só existe se chegou).
-**Taxa de bounce** = `bounced` / base. **Taxa de reclamação** = `complained` /
+Definições: **Enviados** (`sent` acima) é a base de todas as taxas e o número que aparece no
+KPI, no gráfico e na coluna "Enviados". **Taxa de entrega** = (`delivered` + `complained`) /
+Enviados (reclamação só existe se chegou). **Taxa de bounce** = `bounced` / Enviados. **Taxa de reclamação** = `complained` /
 (`delivered` + `complained`). Com base zero a taxa aparece como "Sem envios".
 Comentário e teste deixam as fórmulas explícitas.
 
@@ -220,8 +233,11 @@ Gate: o mesmo de todas as ações do `platform-admin` (`platform_admins`).
   Bounces, Taxa de bounce, Reclamações, Não enviados. Interno numa linha separada no fim,
   "Interno (fora do total)", e Externo do mesmo jeito quando tiver linhas.
 - Card "Bounces e reclamações recentes", também sem Interno e Externo.
-- Rodapé: "Dados desde DD/MM/AAAA. E-mails de login, convite e recuperação de senha saem pelo
-  SMTP do Supabase e não aparecem aqui."
+- Rodapé: "Dados desde DD/MM/AAAA. E-mails de login, confirmação de cadastro e recuperação de
+  senha, e os convites enviados pelo sistema de login, saem por outro servidor e não aparecem
+  aqui. Os convites de equipe e de acesso demo estão incluídos." (O builder confere quais
+  fluxos de convite usam `auth.admin.inviteUserByEmail`/`generateLink` com envio do Supabase e
+  quais mandam pelo `invite-email.ts`, e ajusta o texto ao que for verdade.)
 - "Importar histórico do Resend" num menu do cabeçalho, com progresso.
 - Estados: carregando (skeleton), vazio ("Nenhum e-mail no período"), erro (`ErrorState`).
 - Desktop e phone, como as outras páginas do Admin. Copy em português, sem travessão.
