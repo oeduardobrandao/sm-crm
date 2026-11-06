@@ -59,6 +59,7 @@ Deno.test("post-references: GET lists items with a download URL on files only", 
   setupAuth(db);
   db.queue("workflow_posts", "select", { data: { id: 99 }, error: null });
   db.queueRpc("post_reference_list", { data: [FILE_ROW, LINK_ROW], error: null });
+  db.queue("post_material_requests", "select", { data: null, error: null });
   const res = await makeHandler(db)(req("GET", "?post_id=99"));
   assertEquals(res.status, 200);
   const { items } = await readJson(res);
@@ -103,15 +104,15 @@ Deno.test("post-references: DELETE requires entregas/editar", async () => {
 Deno.test("post-references: DELETE removes the row filtered by id and conta_id", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);
-  db.queue("post_references", "delete", { data: [{ id: 7, post_id: 99, kind: "file" }], error: null });
+  db.queue("post_references", "select", { data: { post_id: 99, kind: "file" }, error: null });
+  db.queueRpc("post_reference_team_delete", { data: "ok", error: null });
   const res = await makeHandler(db)(req("DELETE", "/7"));
   assertEquals(res.status, 200);
   assertEquals(await readJson(res), { ok: true });
-  const del = db.calls.find((c) => c.table === "post_references" && c.operation === "delete");
-  assertEquals(del?.modifiers.filter((m) => m.method === "eq"), [
-    { method: "eq", args: ["id", 7] },
-    { method: "eq", args: ["conta_id", "conta-1"] },
-  ]);
+  assertEquals(db.calls.find((c) => c.table === "post_references" && c.operation === "delete"), undefined);
+  assertEquals(db.calls.find((c) => c.table === "rpc:post_reference_team_delete")?.payload, {
+    p_conta: "conta-1", p_ref_id: 7,
+  });
   const audit = db.calls.find((c) => c.table === "audit_log");
   assertEquals((audit?.payload as { action: string }).action, "delete_post_reference");
 });
@@ -119,7 +120,8 @@ Deno.test("post-references: DELETE removes the row filtered by id and conta_id",
 Deno.test("post-references: DELETE of a missing or foreign row is 404", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);
-  db.queue("post_references", "delete", { data: [], error: null });
+  db.queue("post_references", "select", { data: { post_id: 99, kind: "file" }, error: null });
+  db.queueRpc("post_reference_team_delete", { data: "not_found", error: null });
   const res = await makeHandler(db)(req("DELETE", "/7"));
   assertEquals(res.status, 404);
   assertEquals((await readJson(res)).error, "not_found");
@@ -136,7 +138,8 @@ Deno.test("post-references: DELETE with a non-numeric id is 404 without a permis
 Deno.test("post-references: a DB error on delete is a generic 500", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);
-  db.queue("post_references", "delete", { data: null, error: { message: "permission denied for table" } });
+  db.queue("post_references", "select", { data: { post_id: 99, kind: "file" }, error: null });
+  db.queueRpc("post_reference_team_delete", { data: null, error: { message: "permission denied for table" } });
   const res = await makeHandler(db)(req("DELETE", "/7"));
   assertEquals(res.status, 500);
   assertEquals(await readJson(res), { error: "internal" });
@@ -195,4 +198,195 @@ Deno.test("post-references: a scope read error is a generic 500, never data", as
   assertEquals(res.status, 500);
   assertEquals(await readJson(res), { error: "internal" });
   assertEquals(db.calls.find((c) => c.table === "workflow_posts"), undefined);
+});
+
+// ── pedido de material ──────────────────────────────────────────────────────
+
+function putReq(path: string, body: unknown) {
+  return new Request(`https://x.test/post-references${path}`, {
+    method: "PUT",
+    headers: { Authorization: "Bearer jwt", "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+const REQUEST_DTO = {
+  id: 3, post_id: 99, status: "aberto", closed_by: null, closed_at: null,
+  opened_by: "user-1", opened_at: "2026-11-06T10:00:00.000Z",
+  items: [{ id: 1, label: "Logo", detail: null, position: 0, done: false, file_count: 0 }],
+};
+
+Deno.test("post-references: OPTIONS allows PUT", async () => {
+  const db = createSupabaseQueryMock();
+  const res = await makeHandler(db)(req("OPTIONS", ""));
+  assert((res.headers.get("Access-Control-Allow-Methods") ?? "").includes("PUT"));
+});
+
+Deno.test("post-references: GET returns the request with opened_by_name", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("workflow_posts", "select", { data: { id: 99 }, error: null });
+  db.queueRpc("post_reference_list", { data: [], error: null });
+  db.queue("post_material_requests", "select", {
+    data: { id: 3, post_id: 99, status: "concluido", closed_by: "auto", closed_at: "2026-11-06T11:00:00Z",
+      opened_by: "user-1", opened_at: "2026-11-06T10:00:00Z" }, error: null,
+  });
+  db.queue("post_material_items", "select", { data: [{ id: 1, label: "Logo", detail: null, position: 0 }], error: null });
+  db.queue("post_references", "select", { data: [{ material_item_id: 1 }, { material_item_id: 1 }], error: null });
+  db.queue("profiles", "select", { data: { nome: "Ana" }, error: null });
+  const res = await makeHandler(db)(req("GET", "?post_id=99"));
+  assertEquals(res.status, 200);
+  const { request } = await readJson(res);
+  assertEquals(request.status, "concluido");
+  assertEquals(request.opened_by_name, "Ana");
+  assertEquals(request.items[0].file_count, 2);
+  assertEquals(request.items[0].done, true);
+});
+
+Deno.test("post-references: PUT without entregas/editar is 403", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queueRpc("has_permission_for", { data: false, error: null });
+  const res = await makeHandler(db)(putReq("/requests/99", { open: true, items: [{ label: "Logo" }] }));
+  assertEquals(res.status, 403);
+  assertEquals(await readJson(res), { error: "forbidden" });
+  assertEquals(db.calls.find((c) => c.table === "rpc:post_material_request_save"), undefined);
+});
+
+Deno.test("post-references: PUT by an own-only member on their own post is 403", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("workflow_posts", "select", { data: { id: 99, cliente_id: 5, responsavel_id: 1 }, error: null });
+  const res = await makeHandler(db, restricted([4], [1]))(putReq("/requests/99", { open: true, items: [{ label: "Logo" }] }));
+  assertEquals(res.status, 403);
+  assertEquals(await readJson(res), { error: "Seu acesso é limitado aos clientes atribuídos." });
+  assertEquals(db.calls.find((c) => c.table === "rpc:post_material_request_save"), undefined);
+});
+
+Deno.test("post-references: PUT on a hidden or missing post is 404", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("workflow_posts", "select", { data: null, error: null });
+  const res = await makeHandler(db)(putReq("/requests/99", { open: true, items: [{ label: "Logo" }] }));
+  assertEquals(res.status, 404);
+});
+
+Deno.test("post-references: PUT happy path saves and returns request.items", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("workflow_posts", "select", { data: { id: 99, cliente_id: 5, responsavel_id: 1 }, error: null });
+  db.queueRpc("post_material_request_save", { data: REQUEST_DTO, error: null });
+  db.queue("profiles", "select", { data: { nome: "Ana" }, error: null });
+  const res = await makeHandler(db)(putReq("/requests/99", { open: true, items: [{ label: " Logo ", detail: "" }] }));
+  assertEquals(res.status, 200);
+  const { request } = await readJson(res);
+  assertEquals(request.items.length, 1);
+  assertEquals(request.opened_by_name, "Ana");
+  assertEquals(db.calls.find((c) => c.table === "rpc:post_material_request_save")?.payload, {
+    p_conta: "conta-1", p_post: 99, p_user: "user-1", p_open: true, p_items: [{ label: "Logo", detail: null }],
+  });  const audit = db.calls.find((c) => c.table === "audit_log");
+  assertEquals(audit?.operation, "insert");
+  assertEquals(audit?.payload, {
+    conta_id: "conta-1",
+    actor_user_id: "user-1",
+    action: "save_post_material_request",
+    resource_type: "post_material_request",
+    resource_id: "3",
+    metadata: { post_id: 99, open: true, status: "aberto", item_count: 1 },
+  });
+  assert(!JSON.stringify(audit?.payload).includes("Logo"), "no item labels in the audit entry");
+});
+
+Deno.test("post-references: PUT bad body and invalid item are 400; closing with no request is null", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("workflow_posts", "select", { data: { id: 99, cliente_id: 5, responsavel_id: 1 }, error: null });
+  assertEquals((await makeHandler(db)(putReq("/requests/99", { items: [] }))).status, 400);
+
+  const db2 = createSupabaseQueryMock();
+  setupAuth(db2);
+  db2.queue("workflow_posts", "select", { data: { id: 99 }, error: null });
+  const r2 = await makeHandler(db2)(putReq("/requests/99", { open: true, items: [{ label: "" }] }));
+  assertEquals(r2.status, 400);
+  assertEquals((await readJson(r2)).error, "invalid_item");
+
+  const db3 = createSupabaseQueryMock();
+  setupAuth(db3);
+  db3.queue("workflow_posts", "select", { data: { id: 99 }, error: null });
+  db3.queueRpc("post_material_request_save", { data: null, error: null });
+  const r3 = await makeHandler(db3)(putReq("/requests/99", { open: false, items: [] }));
+  assertEquals(r3.status, 200);
+  assertEquals(await readJson(r3), { request: null });
+  assertEquals(db3.calls.find((c) => c.table === "audit_log"), undefined);
+});
+
+Deno.test("post-references: summary rejects 201 ids and drops ids outside the scope", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  const many = Array.from({ length: 201 }, (_, i) => i + 1).join(",");
+  assertEquals((await makeHandler(db)(req("GET", `/requests/summary?post_ids=${many}`))).status, 400);
+
+  const db2 = createSupabaseQueryMock();
+  setupAuth(db2);
+  db2.queue("workflow_posts", "select", {
+    data: [{ id: 1, cliente_id: 4, responsavel_id: 9 }, { id: 2, cliente_id: 5, responsavel_id: 9 }], error: null,
+  });
+  db2.queueRpc("post_material_summary", { data: [{ post_id: 1, status: "aberto", done: 1, total: 2 }], error: null });
+  const res = await makeHandler(db2, restricted([4]))(req("GET", "/requests/summary?post_ids=1,2"));
+  assertEquals(res.status, 200);
+  assertEquals((await readJson(res)).summary, [{ post_id: 1, status: "aberto", done: 1, total: 2 }]);
+  assertEquals(db2.calls.find((c) => c.table === "rpc:post_material_summary")?.payload, {
+    p_conta: "conta-1", p_post_ids: [1],
+  });
+});
+
+Deno.test("post-references: opener name is looked up by profile id only (no conta_id filter)", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("workflow_posts", "select", { data: { id: 99, cliente_id: 5, responsavel_id: 1 }, error: null });
+  db.queueRpc("post_material_request_save", { data: { ...REQUEST_DTO, opened_by: "other-user" }, error: null });
+  db.queue("profiles", "select", { data: { nome: "Bia" }, error: null });
+  const res = await makeHandler(db)(putReq("/requests/99", { open: true, items: [{ label: "Logo" }] }));
+  assertEquals((await readJson(res)).request.opened_by_name, "Bia");
+  const lookups = db.calls.filter((c) => c.table === "profiles");
+  const nameLookup = lookups[lookups.length - 1];
+  assertEquals(nameLookup.modifiers.filter((m) => m.method === "eq"), [{ method: "eq", args: ["id", "other-user"] }]);
+});
+
+Deno.test("post-references: a profile read error keeps the name null and the PUT succeeds", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("workflow_posts", "select", { data: { id: 99 }, error: null });
+  db.queueRpc("post_material_request_save", { data: REQUEST_DTO, error: null });
+  db.queue("profiles", "select", { data: null, error: { message: "boom" } });
+  const res = await makeHandler(db)(putReq("/requests/99", { open: true, items: [{ label: "Logo" }] }));
+  assertEquals(res.status, 200);
+  assertEquals((await readJson(res)).request.opened_by_name, null);
+});
+
+Deno.test("post-references: a DB error on the PUT post lookup or DELETE pre-select is a generic 500", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("workflow_posts", "select", { data: null, error: { message: "db down" } });
+  const res = await makeHandler(db)(putReq("/requests/99", { open: true, items: [{ label: "Logo" }] }));
+  assertEquals(res.status, 500);
+  assertEquals(await readJson(res), { error: "internal" });
+
+  const db2 = createSupabaseQueryMock();
+  setupAuth(db2);
+  db2.queue("post_references", "select", { data: null, error: { message: "db down" } });
+  const res2 = await makeHandler(db2)(req("DELETE", "/7"));
+  assertEquals(res2.status, 500);
+  assertEquals(db2.calls.find((c) => c.table === "rpc:post_reference_team_delete"), undefined);
+});
+
+Deno.test("post-references: a PUT whose RPC raises too_many_items answers 409", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("workflow_posts", "select", { data: { id: 99 }, error: null });
+  db.queueRpc("post_material_request_save", { data: null, error: { message: "too_many_items" } });
+  const res = await makeHandler(db)(putReq("/requests/99", { open: true, items: [{ label: "Logo" }] }));
+  assertEquals(res.status, 409);
+  assertEquals(await readJson(res), { error: "too_many_items" });
+  assertEquals(db.calls.find((c) => c.table === "audit_log"), undefined);
 });

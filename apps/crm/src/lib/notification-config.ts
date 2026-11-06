@@ -19,6 +19,7 @@ import {
   MessageCircle,
   MessageSquare,
   MessagesSquare,
+  PackageCheck,
   Paperclip,
   Play,
   Shield,
@@ -275,6 +276,20 @@ export function getNotificationDisplay(
         title: `${client} enviou referências em ${post}`,
         body: '',
       };
+    case 'post_material_complete': {
+      // Empty body on purpose, like post_client_reference: the sentence says it all.
+      const done = typeof m.done === 'number' ? m.done : 0;
+      const total = typeof m.total === 'number' ? m.total : 0;
+      return {
+        icon: PackageCheck,
+        tone: 'success',
+        title:
+          m.closed_by === 'client'
+            ? `${client} enviou o que tinha (${done} de ${total} itens) em ${post}`
+            : `${client} enviou todos os itens pedidos em ${post}`,
+        body: '',
+      };
+    }
     case 'idea_submitted':
       return {
         icon: Lightbulb,

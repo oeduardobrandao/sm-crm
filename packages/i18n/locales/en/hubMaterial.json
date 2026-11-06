@@ -1,0 +1,62 @@
+{
+  "cabecalho": {
+    "posts": {
+      "um": "1 post waiting for your approval",
+      "varios": "{{n}} posts waiting for your approval"
+    },
+    "pedidos": {
+      "um": "1 material request",
+      "varios": "{{n}} material requests"
+    },
+    "juntos": "{{posts}} and {{pedidos}}.",
+    "so": "{{pedidos}}."
+  },
+  "pill": "Waiting for material",
+  "pillEnviado": "Material sent",
+  "progresso_one": "{{done}} of {{count}} item sent",
+  "progresso_other": "{{done}} of {{count}} items sent",
+  "progressoRotulo_one": "{{done}} of {{count}} item",
+  "progressoRotulo_other": "{{done}} of {{count}} items",
+  "enviar": "Send",
+  "itemEnviado": "Sent",
+  "itemPendente": "Pending",
+  "semData": "No date",
+  "semTitulo": "Untitled post",
+  "carregando": "Loading material requests.",
+  "erro": "Could not load the material requests.",
+  "vazio": "No material requests right now.",
+  "abrir": "Open material request for {{titulo}}",
+  "dialogo": {
+    "precisa_one": "The team needs {{count}} item",
+    "precisa_other": "The team needs {{count}} items",
+    "enviados_one": "{{done}} of {{count}} sent",
+    "enviados_other": "{{done}} of {{count}} sent",
+    "abaItens": "Requested items",
+    "abaHistorico": "History and comments",
+    "rodape_one": "When the item has a file, the team is notified. Don't have it?",
+    "rodape_other": "When all {{count}} items have a file, the team is notified. Missing one?",
+    "limites": "Photos and PDFs up to 25 MB, videos up to 200 MB.",
+    "limite10": "This post reached the limit of 10 files. Send the rest as a link or tap I sent what I have.",
+    "enviei": "I sent what I have",
+    "confirmarTitulo": "Let the team know with what you sent?",
+    "confirmarDescricao": "{{done}} of {{total}} items have a file. The team will go ahead with what you sent.",
+    "confirmar": "Let the team know",
+    "cancelar": "Cancel",
+    "emProducao": "This post is still in production",
+    "emProducaoTexto": "The artwork and caption show up here when the team sends the post for your approval.",
+    "verPost": "View post",
+    "historicoNoPost": "The history and comments are on the post.",
+    "fechar": "Close material request",
+    "enviarItem": "Send a file for {{label}}",
+    "arquivosDoItem": "Files for {{label}}",
+    "encerrado": "The team closed this request.",
+    "saindoComEnvio": "An upload is still in progress. Leave and cancel the upload?",
+    "tudoEnviado": "Everything sent. The team was notified.",
+    "avisada": "Done. The team was notified.",
+    "fecharBotao": "Close"
+  },
+  "aviso": {
+    "texto": "The team asked for material for this post",
+    "ver": "View items"
+  }
+}

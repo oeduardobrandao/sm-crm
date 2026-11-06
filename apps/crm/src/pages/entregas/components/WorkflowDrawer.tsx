@@ -148,12 +148,16 @@ import {
 } from '../postLabels';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
 import { useClienteContexto } from '@/hooks/useClienteContexto';
+import { isOutsideClientScope } from '@/lib/permissions';
 import {
   canonicalOfStatusKey,
   statusChangeNeedsConfirm,
   statusKeyToPatch,
   type StatusKey,
 } from '../statusRegistry';
+import { useMaterialSummary } from '../hooks/useMaterialSummary';
+import { materialBadge, type MaterialBadgeData } from '../materialSummary';
+import { MaterialBadge } from './MaterialBadge';
 import { useSuggestionMoveGuard } from '../hooks/useSuggestionMoveGuard';
 import { PostStatusChip } from './PostStatusChip';
 import { formatPostDate, formatPostDateFull } from '@/utils/postDate';
@@ -518,7 +522,10 @@ export function WorkflowDrawer({
     enabled: postIds.length > 0,
   });
 
-  const { user, role, can } = useAuth();
+  // Material-request summary per post for the collapsed rows' badge (one call for the drawer).
+  const materialByPost = useMaterialSummary(postIds, workflowId, postIds.length > 0);
+
+  const { user, role, can, membership } = useAuth();
   const canDuplicate = can('entregas', 'editar') === true;
   // Was `currentUserRole === 'owner' || 'admin'` inside PostAutomationSection
   // -- AGENT_ROLE_PRESET.automacoes is 'editar' (lib/permissions.ts), so a
@@ -545,6 +552,9 @@ export function WorkflowDrawer({
   // scope, which then is not in the visible clients list behind `card.cliente`.
   const clienteContexto = useClienteContexto(clienteId, !card.cliente);
   const clienteNome = card.cliente?.nome ?? clienteContexto?.nome;
+  // Phone "Referências do cliente": opening a material request needs full visibility.
+  const canRequestMaterial =
+    canDuplicate && !isOutsideClientScope(membership, clienteId, card.cliente?.nome);
 
   // Reuses the same ['clientePosts', clienteId] key as WorkflowCalendarView, so opening the
   // calendar first turns this into a cache hit instead of a new round trip. Feeds the
@@ -1434,6 +1444,7 @@ export function WorkflowDrawer({
                             editSuggestions.find((s) => s.post_id === post.id) ?? null
                           }
                           referenceCount={referenceCounts[post.id!] ?? 0}
+                          material={materialBadge(materialByPost.get(post.id!), post.status)}
                           membros={membros}
                           replyText={replyText[post.id!] || ''}
                           sendingReply={sendingReply === post.id}
@@ -1625,6 +1636,7 @@ export function WorkflowDrawer({
               currentUserId={user?.id}
               currentUserRole={role}
               canManageAutomations={canManageAutomations}
+              canRequestMaterial={canRequestMaterial}
               workspaceUsers={workspaceUsers}
               hasInstagramAccount={hasInstagramAccount}
               igAccountStatus={igAccountStatus}
@@ -1863,6 +1875,7 @@ interface SortablePostItemProps {
   editSuggestion: PostEditSuggestion | null;
   /** Client references on this post (Hub uploads and links), for the collapsed-row badge. */
   referenceCount: number;
+  material: MaterialBadgeData | null;
   membros: Membro[];
   replyText: string;
   sendingReply: boolean;
@@ -1936,6 +1949,7 @@ function SortablePostItem({
   processEvents,
   editSuggestion,
   referenceCount,
+  material,
   membros,
   replyText,
   sendingReply,
@@ -2088,6 +2102,7 @@ function SortablePostItem({
                 {t('workflowDrawer.pendingSuggestion')}
               </span>
             )}
+            {material && <MaterialBadge {...material} />}
             {referenceCount > 0 && (
               <Badge
                 variant="info"

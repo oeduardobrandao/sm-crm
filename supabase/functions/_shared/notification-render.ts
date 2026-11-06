@@ -22,6 +22,11 @@ function s(metadata: Record<string, unknown> | null, key: string): string | unde
   return typeof v === "string" && v.length > 0 ? v : undefined;
 }
 
+function n(metadata: Record<string, unknown> | null, key: string): number {
+  const v = metadata?.[key];
+  return typeof v === "number" && Number.isFinite(v) ? v : 0;
+}
+
 function ctx(a?: string, b?: string): string | undefined {
   return [a, b].filter(Boolean).join(" · ") || undefined;
 }
@@ -167,6 +172,14 @@ export function renderNotification(row: NotificationRow): RenderedNotification {
         heading: `${s(m, "client_name") ?? "Cliente"} enviou referências em ${s(m, "post_title") ?? "um post"}`,
         link,
       };
+    case "post_material_complete": {
+      const client = s(m, "client_name") ?? "Cliente";
+      const post = s(m, "post_title") ?? "um post";
+      const heading = s(m, "closed_by") === "client"
+        ? `${client} enviou o que tinha (${n(m, "done")} de ${n(m, "total")} itens) em ${post}`
+        : `${client} enviou todos os itens pedidos em ${post}`;
+      return { priority: 5, heading, link };
+    }
     case "idea_submitted":
       return {
         priority: 5,

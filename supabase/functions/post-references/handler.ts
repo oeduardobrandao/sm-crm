@@ -13,6 +13,13 @@ import {
   rowVisibility,
 } from "../_shared/client-scope.ts";
 import {
+  loadMaterialRequestForPost,
+  loadMaterialSummary,
+  type MaterialRequestDTO,
+  normalizeMaterialItems,
+  saveMaterialRequest,
+} from "../_shared/material-requests.ts";
+import {
   listPostReferences,
   parsePositiveId,
   referenceError,
@@ -37,9 +44,11 @@ export interface PostReferencesHandlerDeps {
   loadClientScope?: ClientScopeLoader;
 }
 
+const MAX_SUMMARY_IDS = 200;
+
 export function createPostReferencesHandler(deps: PostReferencesHandlerDeps) {
   return async (req: Request): Promise<Response> => {
-    const cors = { ...deps.buildCorsHeaders(req), "Access-Control-Allow-Methods": "GET, DELETE, OPTIONS" };
+    const cors = { ...deps.buildCorsHeaders(req), "Access-Control-Allow-Methods": "GET, PUT, DELETE, OPTIONS" };
     const json = createJsonResponder(cors);
     const send = (r: ReferenceResult) => json(r.body, r.status);
     if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -66,6 +75,19 @@ export function createPostReferencesHandler(deps: PostReferencesHandlerDeps) {
       return send(referenceError("internal"));
     }
 
+    const withOpenerName = async (r: MaterialRequestDTO | null) => {
+      if (!r) return null;
+      let name: string | null = null;
+      if (r.opened_by) {
+        // profiles.conta_id é o workspace ATIVO do usuário (muda no switch), então não filtra por
+        // ele: opened_by vem do RPC, a partir do chamador, e a linha do pedido já é deste workspace.
+        const { data: p, error } = await db.from("profiles").select("nome").eq("id", r.opened_by).maybeSingle();
+        if (error) console.error("[post-references] opener name:", error);
+        name = (p?.nome as string | undefined) ?? null;
+      }
+      return { ...r, opened_by_name: name };
+    };
+
     const url = new URL(req.url);
     const parts = url.pathname.split("/").filter(Boolean);
     const idx = parts.indexOf("post-references");
@@ -84,7 +106,103 @@ export function createPostReferencesHandler(deps: PostReferencesHandlerDeps) {
         db, post_id: postId, conta_id: contaId, signGetUrl: deps.signGetUrl, includeDownload: true,
       });
       if (!listed.ok) return send(listed.result);
-      return json({ items: listed.items });
+      let request: (MaterialRequestDTO & { opened_by_name: string | null }) | null = null;
+      try {
+        request = await withOpenerName(await loadMaterialRequestForPost(db, contaId, postId));
+      } catch (err) {
+        console.error("[post-references] material request:", err);
+        return send(referenceError("internal"));
+      }
+      return json({ items: listed.items, request });
+    }
+
+    // GET /requests/summary?post_ids=1,2 → progresso do pedido por post, só dos posts
+    // visíveis no escopo do chamador (ids fora dele somem, sem sinal de existência).
+    if (req.method === "GET" && seg.length === 2 && seg[0] === "requests" && seg[1] === "summary") {
+      const rawIds = (url.searchParams.get("post_ids") ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+      if (rawIds.length > MAX_SUMMARY_IDS) return json({ error: "too_many_ids" }, 400);
+      const ids: number[] = [];
+      for (const r of rawIds) {
+        const id = parsePositiveId(r);
+        if (id === null) return json({ error: "invalid_ids" }, 400);
+        if (!ids.includes(id)) ids.push(id);
+      }
+      try {
+        let visible = ids;
+        if (!scope.all && ids.length > 0) {
+          const { data: posts, error } = await db.from("workflow_posts")
+            .select("id, cliente_id, responsavel_id").in("id", ids).eq("conta_id", contaId);
+          if (error) throw error;
+          visible = (Array.isArray(posts) ? posts : [])
+            .filter((p: { cliente_id: number; responsavel_id: number | null }) =>
+              rowVisibility(scope, p, user.id) !== "hidden")
+            .map((p: { id: number }) => Number(p.id));
+        }
+        return json({ summary: await loadMaterialSummary(db, contaId, visible) });
+      } catch (err) {
+        console.error("[post-references] material summary:", err);
+        return send(referenceError("internal"));
+      }
+    }
+
+    // PUT /requests/:postId → abre, edita ou cancela o pedido de material. Exige
+    // entregas/editar e visibilidade total do post (o "é dele" não basta, como no DELETE).
+    if (req.method === "PUT" && seg.length === 2 && seg[0] === "requests") {
+      const postId = parsePositiveId(seg[1]);
+      if (postId === null) return send(referenceError("not_found"));
+      const canEdit = await hasPermissionFor(db, user.id, contaId, "entregas", "editar");
+      if (!canEdit) return json({ error: "forbidden" }, 403);
+      const { data: post, error: postErr } = await db.from("workflow_posts")
+        .select("id, cliente_id, responsavel_id").eq("id", postId).eq("conta_id", contaId).maybeSingle();
+      if (postErr) {
+        console.error("[post-references] put post lookup:", postErr);
+        return send(referenceError("internal"));
+      }
+      const vis = post ? rowVisibility(scope, post, user.id) : "hidden";
+      if (vis === "hidden") return send(referenceError("not_found"));
+      if (vis !== "visible") return json({ error: CLIENT_SCOPE_MESSAGE }, 403);
+
+      let body: unknown;
+      try {
+        body = await req.json();
+      } catch {
+        return json({ error: "invalid_body" }, 400);
+      }
+      if (typeof body !== "object" || body === null || Array.isArray(body)) {
+        return json({ error: "invalid_body" }, 400);
+      }
+      const b = body as Record<string, unknown>;
+      if (typeof b.open !== "boolean") return json({ error: "invalid_body" }, 400);
+      const norm = normalizeMaterialItems(b.items ?? []);
+      if (!norm.ok) return send(referenceError(norm.code));
+
+      const saved = await saveMaterialRequest(db, {
+        conta_id: contaId, post_id: postId, user_id: user.id, open: b.open, items: norm.items,
+      });
+      if (!saved.ok) return send(saved.result);
+      // Só ids, status e contagem: nunca rótulos nem detalhes dos itens (texto do post).
+      // Desligar sem pedido não muda nada (request null): sem entrada.
+      if (saved.request) {
+        await insertAuditLog(db, {
+          conta_id: contaId,
+          actor_user_id: user.id,
+          action: "save_post_material_request",
+          resource_type: "post_material_request",
+          resource_id: String(saved.request.id),
+          metadata: {
+            post_id: postId,
+            open: b.open,
+            status: saved.request.status,
+            item_count: saved.request.items.length,
+          },
+        });
+      }
+      try {
+        return json({ request: await withOpenerName(saved.request) });
+      } catch (err) {
+        console.error("[post-references] opener name:", err);
+        return send(referenceError("internal"));
+      }
     }
 
     // DELETE /:id → remoção pela equipe. Exige entregas/editar (espelho do
@@ -97,30 +215,37 @@ export function createPostReferencesHandler(deps: PostReferencesHandlerDeps) {
       const canEdit = await hasPermissionFor(db, user.id, contaId, "entregas", "editar");
       if (!canEdit) return json({ error: "forbidden" }, 403);
 
+      const { data: ref, error: refErr } = await db.from("post_references")
+        .select("post_id, kind").eq("id", refId).eq("conta_id", contaId).maybeSingle();
+      if (refErr) {
+        console.error("[post-references] delete lookup:", refErr);
+        return send(referenceError("internal"));
+      }
+      if (!ref) return send(referenceError("not_found"));
+
       if (!scope.all) {
         // Restricted member: the reference's post must be in scope before anything is deleted.
-        const { data: ref } = await db.from("post_references")
-          .select("post_id").eq("id", refId).eq("conta_id", contaId).maybeSingle();
-        const { data: refPost } = ref?.post_id
-          ? await db.from("workflow_posts").select("cliente_id, responsavel_id")
-            .eq("id", ref.post_id).eq("conta_id", contaId).maybeSingle()
-          : { data: null };
+        const { data: refPost } = await db.from("workflow_posts").select("cliente_id, responsavel_id")
+          .eq("id", ref.post_id).eq("conta_id", contaId).maybeSingle();
         const vis = refPost ? rowVisibility(scope, refPost, user.id) : "hidden";
         if (vis === "hidden") return send(referenceError("not_found"));
         if (vis === "own_only") return json({ error: CLIENT_SCOPE_MESSAGE }, 403);
       }
 
-      const { data: deleted, error } = await db.from("post_references")
-        .delete()
-        .eq("id", refId)
-        .eq("conta_id", contaId)
-        .select("id, post_id, kind");
+      // O banco apaga sob o lock do post e reabre/fecha o pedido de material.
+      const { data: outcome, error } = await db.rpc("post_reference_team_delete", {
+        p_conta: contaId, p_ref_id: refId,
+      });
       if (error) {
         console.error("[post-references] delete failed:", error);
         return send(referenceError("internal"));
       }
-      const row = Array.isArray(deleted) ? deleted[0] as { post_id: number; kind: string } | undefined : undefined;
-      if (!row) return send(referenceError("not_found"));
+      if (outcome === "not_found") return send(referenceError("not_found"));
+      if (outcome !== "ok") {
+        console.error("[post-references] delete unexpected outcome:", outcome);
+        return send(referenceError("internal"));
+      }
+      const row = ref as { post_id: number; kind: string };
 
       await insertAuditLog(db, {
         conta_id: contaId,

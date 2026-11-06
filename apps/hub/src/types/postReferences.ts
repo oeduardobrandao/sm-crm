@@ -28,6 +28,8 @@ export interface ReferenceItem {
   post_approval_id: number | null;
   created_at: string;
   can_remove: boolean;
+  /** Set when the file answers an item of a material request. */
+  material_item_id?: number | null;
 }
 
 export type ReferenceErrorCode =
@@ -43,4 +45,11 @@ export type ReferenceErrorCode =
   | 'locked'
   | 'rate_limited'
   | 'upload_mismatch'
+  | 'item_required'
+  | 'request_closed'
+  | 'nothing_sent'
+  | 'too_many_items'
+  | 'items_required'
+  | 'post_not_requestable'
+  | 'invalid_item'
   | 'internal';

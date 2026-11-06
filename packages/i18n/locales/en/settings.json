@@ -426,6 +426,11 @@
         "when": "the client attaches photos, videos, PDFs or links to a post in the Hub",
         "recipients": "person responsible + owners and admins"
       },
+      "post_material_complete": {
+        "label": "Client material",
+        "when": "the client finishes sending the material requested for a post in the Hub",
+        "recipients": "person responsible + owners and admins"
+      },
       "idea_submitted": {
         "label": "Idea submitted",
         "when": "the client submits an idea or request",

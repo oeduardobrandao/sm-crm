@@ -367,7 +367,8 @@
       "postResponsavel": "Post assignee",
       "etapa": "Stage",
       "template": "Template",
-      "tipo": "Type"
+      "tipo": "Type",
+      "material": "Material"
     },
     "rangeFrom": "from {{date}}",
     "rangeTo": "to {{date}}",
@@ -378,7 +379,11 @@
     "from": "From",
     "to": "To",
     "descriptionPosts": "Filter posts",
-    "descriptionFluxos": "Filter workflows"
+    "descriptionFluxos": "Filter workflows",
+    "material": {
+      "aguardando": "Waiting for material",
+      "recebido": "Material received"
+    }
   },
   "board": {
     "dragToReorder": "Drag to reorder",

@@ -6,6 +6,7 @@ export type NotificationType =
   | 'post_message'
   | 'post_edit_suggestion'
   | 'post_client_reference'
+  | 'post_material_complete'
   | 'idea_submitted'
   | 'briefing_answered'
   | 'step_activated'

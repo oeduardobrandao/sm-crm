@@ -85,6 +85,13 @@ export const NOTIFICATION_CATALOG = {
     emailEligible: false,
     pushEligible: true,
   },
+  post_material_complete: {
+    category: 'aprovacoes_hub',
+    label: 'Material do cliente',
+    when: 'o cliente termina de enviar o material pedido de um post no Hub',
+    recipients: RESP_ADMINS,
+    emailEligible: false,
+  },
   idea_submitted: {
     category: 'aprovacoes_hub',
     label: 'Ideia enviada',
