@@ -116,8 +116,9 @@ Um dono entra/continua se **todas** valem:
   sequência. O `/comecar` age sobre o workspace ativo e não há troca de workspace por link,
   então sem essa regra o CTA abriria o workspace errado. Minha escolha: evita mexer no
   frontend; hoje todos têm um workspace só;
-- o boas-vindas foi entregue há pelo menos 72h (`lifecycle_emails` `welcome`,
-  `delivered_at`; na prática é o próprio cap de frequência abaixo);
+- a conta (`auth.users.created_at`) tem pelo menos 72h. Não exige linha de boas-vindas: 5 dos
+  59 se cadastraram antes de o boas-vindas existir e não têm. Um boas-vindas recente já fica
+  de fora pelo cap de 72h abaixo;
 - o perfil não se descadastrou do nurture (`profiles.nurture_opt_out_at is null`, coluna nova);
 - nenhum e-mail do Mesaas foi entregue a essa pessoa nas últimas 72h, contando nurture
   (pelo destinatário gravado no ledger novo, inclusive claims frescos), `welcome` (por
@@ -125,7 +126,7 @@ Um dono entra/continua se **todas** valem:
   workspace em que ela é dona hoje. O ledger atual não grava o destinatário desses dois,
   então a regra usa o dono atual; minha escolha, aceitável porque só serve para espaçar;
 - o workspace tem no máximo 180 dias. Mais velho que isso não entra (conta abandonada,
-  risco de reputação maior que o ganho). Minha escolha; ajustável. Hoje todos os 59 cabem.
+  risco de reputação maior que o ganho). Minha escolha; ajustável. Hoje 55 dos 59 cabem (medido em 2026-11-06).
 
 Dono com mais de um workspace que nunca assinou: **uma sequência por pessoa**, sobre o
 workspace criado mais recentemente. Quem já tem qualquer linha de nurture (em qualquer
