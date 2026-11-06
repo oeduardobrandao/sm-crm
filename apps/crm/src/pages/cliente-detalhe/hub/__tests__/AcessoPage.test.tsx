@@ -327,6 +327,48 @@ describe('AcessoPage', () => {
     expect(hubStore.createHubToken).not.toHaveBeenCalled();
   });
 
+  describe('inside the native app', () => {
+    beforeEach(() => {
+      (window as unknown as { Capacitor?: unknown }).Capacitor = {
+        isNativePlatform: () => true,
+        getPlatform: () => 'ios',
+      };
+    });
+    afterEach(() => {
+      delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+      desktop.value = true;
+    });
+
+    // The token query settling is what would have rendered the upsell on the web.
+    async function settle() {
+      await waitFor(() => expect(hubStore.getHubToken).toHaveBeenCalled());
+      await new Promise((r) => setTimeout(r, 0));
+    }
+
+    it.each([
+      ['desktop', true],
+      ['phone', false],
+    ])(
+      'hides the portal upsell on %s when feature_hub_portal is off',
+      async (_label, isDesktop) => {
+        desktop.value = isDesktop;
+        mockEntitlements = { hasFeature: (flag) => flag !== 'feature_hub_portal' };
+        vi.mocked(hubStore.getHubToken).mockResolvedValue(null);
+        renderPage();
+        await settle();
+
+        expect(
+          screen.queryByText('O Portal do Cliente faz parte dos planos pagos.'),
+        ).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Ver planos' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /Gerar link/ })).not.toBeInTheDocument();
+        expect(
+          screen.queryByRole('heading', { name: 'Acesso do Cliente' }),
+        ).not.toBeInTheDocument();
+      },
+    );
+  });
+
   it('does not rotate until the confirm dialog is accepted', async () => {
     vi.mocked(hubStore.getHubToken).mockResolvedValue(token(360));
     vi.mocked(hubStore.rotateHubToken).mockResolvedValue({

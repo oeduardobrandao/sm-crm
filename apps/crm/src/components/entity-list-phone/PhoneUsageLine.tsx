@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { computeMeterState, METER_FILL } from '@/components/usage/usage-meter-state';
+import { isNativeApp } from '@/native/platform';
 import './entityListPhone.css';
 
 export interface PhoneUsageLineProps {
@@ -47,7 +48,8 @@ export function PhoneUsageLine({
       <span className={danger ? 'phone-el-usage__text--danger' : undefined}>
         {limit > 0 ? `${used} de ${limit} ${label}` : 'Não incluído no plano'}
       </span>
-      {showUpgradeCta && meter.showCta && (
+      {/* Never inside the iOS app (apps/mobile DECISIONS.md D33). */}
+      {showUpgradeCta && meter.showCta && !isNativeApp() && (
         <>
           <span aria-hidden="true">·</span>
           <Link to="/configuracao/cobranca" className="phone-el-usage__cta">

@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -166,5 +166,32 @@ describe('UpgradeLockedScreen paywall reporting', () => {
     setAuth('owner', 'owner');
     renderScreen('Leads');
     expect(mockedReport).not.toHaveBeenCalled();
+  });
+});
+
+// Inside the iOS app (apps/mobile DECISIONS.md D33) nothing offers a purchase: the
+// screen states the fact for everyone, owner included, and keeps the paywall signal.
+describe('UpgradeLockedScreen inside the native app', () => {
+  beforeEach(() => {
+    (window as unknown as { Capacitor?: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+      getPlatform: () => 'ios',
+    };
+  });
+  afterEach(() => {
+    delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+  });
+
+  it('shows the locked copy and no upgrade button, even for owners', () => {
+    setAuth('owner', 'owner');
+    renderScreen('Relatórios', 'feature_reports');
+
+    expect(screen.getByText('Relatórios não está disponível na sua conta')).toBeInTheDocument();
+    expect(
+      screen.getByText('Fale com o dono do workspace se precisar deste recurso.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.queryByText(/plano|upgrade/i)).not.toBeInTheDocument();
+    expect(mockedReport).toHaveBeenCalledWith({ workspaceId: 'ws-1', feature: 'feature_reports' });
   });
 });

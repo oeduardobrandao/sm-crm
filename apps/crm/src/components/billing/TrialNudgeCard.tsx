@@ -7,6 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { getEffectivePlanWithSource, getWorkspaceSubscription } from '@/services/billing';
 import { captureEvent } from '@/lib/analytics';
 import { isTrialOfferEligible } from '@/pages/configuracao/cobranca/plan-display';
+import { isNativeApp } from '@/native/platform';
 
 const DISMISS_DAYS = 7;
 
@@ -28,6 +29,9 @@ export function TrialNudgeCard() {
   // Follow the ACTIVE workspace role, not the stale profile-level role — a user
   // can be owner in one workspace and agent in another (see DashboardPage).
   const isOwner = (workspaceRole ?? role) === 'owner';
+  // The trial offer is a purchase flow: never inside the iOS app (apps/mobile
+  // DECISIONS.md D33). Hooks stay unconditional; the queries just never run.
+  const native = isNativeApp();
   const storageKey = `trial_nudge_dismissed_${profile?.conta_id ?? 'unknown'}`;
 
   const [dismissed, setDismissed] = useState(() =>
@@ -37,15 +41,15 @@ export function TrialNudgeCard() {
   const { data: effectivePlan } = useQuery({
     queryKey: ['billing', 'effective-plan-with-source'],
     queryFn: getEffectivePlanWithSource,
-    enabled: isOwner && !dismissed,
+    enabled: isOwner && !dismissed && !native,
   });
   const { data: subscription } = useQuery({
     queryKey: ['billing', 'subscription'],
     queryFn: getWorkspaceSubscription,
-    enabled: isOwner && !dismissed,
+    enabled: isOwner && !dismissed && !native,
   });
 
-  if (!isOwner || dismissed) return null;
+  if (native || !isOwner || dismissed) return null;
   // Wait for both answers before deciding: rendering on partial data would flash
   // the card at a paying customer.
   if (effectivePlan === undefined || subscription === undefined) return null;

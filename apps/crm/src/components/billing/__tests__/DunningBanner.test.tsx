@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DunningBanner } from '../DunningBanner';
 
 const { getWorkspaceSubscriptionMock, useAuthMock } = vi.hoisted(() => ({
@@ -86,6 +86,42 @@ describe('DunningBanner', () => {
     useAuthMock.mockReturnValue({ profile: { role: 'agent', conta_id: 'ws-1' } });
     renderBanner();
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    expect(getWorkspaceSubscriptionMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('DunningBanner inside the native app', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useAuthMock.mockReturnValue({ profile: { role: 'owner', conta_id: 'ws-1' } });
+    (window as unknown as { Capacitor?: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+      getPlatform: () => 'ios',
+    };
+  });
+  afterEach(() => {
+    delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+  });
+
+  it('renders nothing and fetches nothing, even with a past_due subscription cached', () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(['workspace-subscription-dunning'], {
+      status: 'past_due',
+      plan_id: 'pro',
+      current_period_end: null,
+      cancel_at_period_end: false,
+      past_due_since: '2026-07-17T10:00:00.000Z',
+      next_payment_attempt: null,
+    });
+    const { container } = render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <DunningBanner />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(container).toBeEmptyDOMElement();
     expect(getWorkspaceSubscriptionMock).not.toHaveBeenCalled();
   });
 });

@@ -24,6 +24,7 @@ import { sanitizeUrl } from '../../../utils/security';
 import { AISection, BestTimesHeatmap } from '../AnalyticsContaPage';
 import { FollowerChart } from '../FollowerChart';
 import { LoadingCard, LockedCard, StateCard } from '../AnalyticsStateCards';
+import { isNativeApp } from '@/native/platform';
 import { TikTokKpiGrid } from './TikTokKpiGrid';
 import { TikTokPeriodBar } from './TikTokPeriodBar';
 import { TikTokRankedVideos } from './TikTokRankedVideos';
@@ -146,6 +147,16 @@ export function TikTokAnalyticsTab({
       );
     }
     if (isTikTokFeatureDisabled(err)) {
+      // Inside the iOS app: the fact, no link to billing (apps/mobile DECISIONS.md D33).
+      if (isNativeApp()) {
+        return (
+          <StateCard
+            title={t('native.lockedTitle', { feature: t('overview.title') })}
+            body={t('native.lockedBody')}
+            action={null}
+          />
+        );
+      }
       return (
         <StateCard
           title={t('states.locked')}

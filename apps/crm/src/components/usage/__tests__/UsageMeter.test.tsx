@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { MeterBar, UsageMeter } from '../UsageMeter';
 
 function renderMeter(ui: React.ReactElement) {
@@ -131,5 +131,25 @@ describe('UsageMeter', () => {
       render(<MeterBar used={20} limit={15} />);
       expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '15');
     });
+  });
+});
+
+describe('UsageMeter inside the native app', () => {
+  beforeEach(() => {
+    (window as unknown as { Capacitor?: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+      getPlatform: () => 'ios',
+    };
+  });
+  afterEach(() => {
+    delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+  });
+
+  it('never renders the upgrade link, full or compact', () => {
+    renderMeter(<UsageMeter label="clientes" used={15} limit={15} showUpgradeCta />);
+    renderMeter(<UsageMeter label="clientes" used={14} limit={15} size="compact" showUpgradeCta />);
+    renderMeter(<UsageMeter label="portais do Hub" used={0} limit={0} showUpgradeCta />);
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(screen.queryByText('Fazer upgrade')).not.toBeInTheDocument();
   });
 });

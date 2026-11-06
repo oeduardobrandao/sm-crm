@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { computeMeterState, METER_FILL } from './usage-meter-state';
+import { isNativeApp } from '@/native/platform';
 
 /** Track + fill only. Callers with bespoke layouts (mobile StorageCard) use this. */
 export function MeterBar({
@@ -74,8 +75,10 @@ export function UsageMeter({
   const { t } = useTranslation();
   const meter = computeMeterState(used, limit);
   const danger = meter.state === 'danger' || meter.state === 'blocked';
+  // Never inside the iOS app (apps/mobile DECISIONS.md D33), decided here rather
+  // than at each call site so a new meter can't reintroduce the link.
   const cta =
-    showUpgradeCta && meter.showCta ? (
+    showUpgradeCta && meter.showCta && !isNativeApp() ? (
       <Link
         to="/configuracao/cobranca"
         style={{

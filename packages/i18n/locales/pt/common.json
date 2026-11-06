@@ -284,5 +284,18 @@
     "uploadError": "Erro ao enviar a foto.",
     "removed": "Foto removida.",
     "removeError": "Erro ao remover a foto."
+  },
+  "native": {
+    "lockedTitle": "{{feature}} não está disponível na sua conta",
+    "lockedBody": "Fale com o dono do workspace se precisar deste recurso.",
+    "limitBody": "Você atingiu o limite da sua conta.",
+    "ok": "Entendi",
+    "pushPromptTitle": "Receber avisos no celular?",
+    "pushPromptBody": "Avisamos quando um cliente aprovar um post, pedir correção ou mandar mensagem, e quando um prazo estiver perto.",
+    "pushPromptAllow": "Ativar notificações",
+    "pushPromptLater": "Agora não",
+    "pushOffTitle": "Notificações desligadas neste iPhone",
+    "pushOffEnable": "Ativar",
+    "pushOffSettings": "Abrir Ajustes"
   }
 }

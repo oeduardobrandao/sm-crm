@@ -1,5 +1,6 @@
 import { useEffect, useMemo, type ReactNode } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { Download, Printer } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -32,6 +33,7 @@ import { OrigemCard } from './sections/OrigemCard';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { FluxosPhone } from './phone/FluxosPhone';
+import { isNativeApp } from '@/native/platform';
 
 const EMPTY_WORKSPACE =
   'Nenhum dado de fluxo encontrado. Crie fluxos de trabalho para começar a ver analytics.';
@@ -49,6 +51,7 @@ function LoadingSkeleton() {
 }
 
 export default function AnalyticsFluxosPage() {
+  const { t: tc } = useTranslation();
   const {
     periodo,
     clienteId,
@@ -189,6 +192,19 @@ export default function AnalyticsFluxosPage() {
       </Button>
     </>
   );
+  // Inside the iOS app the locked state never mentions plans or upgrades
+  // (apps/mobile DECISIONS.md D33).
+  const notEntitledCard = isNativeApp() ? (
+    <QueryErrorCard
+      title={tc('native.lockedTitle', { feature: 'Analytics de Fluxos' })}
+      description={tc('native.lockedBody')}
+    />
+  ) : (
+    <QueryErrorCard
+      title="Analytics de Fluxos não está disponível no seu plano."
+      description="Faça upgrade do plano para liberar relatórios e analytics."
+    />
+  );
   const inToolbar = usePageToolbar({
     title: 'Analytics de Fluxos',
     subtitle,
@@ -201,10 +217,7 @@ export default function AnalyticsFluxosPage() {
     if (isError) {
       status =
         error instanceof NotEntitledError ? (
-          <QueryErrorCard
-            title="Analytics de Fluxos não está disponível no seu plano."
-            description="Faça upgrade do plano para liberar relatórios e analytics."
-          />
+          notEntitledCard
         ) : (
           <QueryErrorCard onRetry={() => refetch()} />
         );
@@ -312,10 +325,7 @@ export default function AnalyticsFluxosPage() {
           // The route gate (ProtectedRoute) normally catches this first; reaching
           // here means the plan changed under an open tab, so say what is wrong
           // instead of offering a retry that cannot fix it.
-          <QueryErrorCard
-            title="Analytics de Fluxos não está disponível no seu plano."
-            description="Faça upgrade do plano para liberar relatórios e analytics."
-          />
+          notEntitledCard
         ) : (
           <QueryErrorCard onRetry={() => refetch()} />
         )

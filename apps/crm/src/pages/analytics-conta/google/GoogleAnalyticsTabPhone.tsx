@@ -9,6 +9,7 @@ import { GbpNotConnectedError } from '../../../services/gbpAnalytics';
 import { Avatar } from '../../analytics/phone/shared';
 import { PeriodSegmented } from '../../analytics/phone/PeriodControl';
 import { BILLING_PATH } from '../AnalyticsStateCards';
+import { isNativeApp } from '@/native/platform';
 import { dimmed } from '../tiktok/tiktokTabFormat';
 import { GbpActionsChart } from './GbpActionsChart';
 import { GbpCard, QueryBody, UnitControl } from './GbpCard';
@@ -70,15 +71,23 @@ export function GoogleAnalyticsTabPhone({
     if (data.locked) {
       return (
         <Frame frame={frame}>
-          <StateBlock
-            title={t('states.lockedTitle')}
-            body={t('states.locked')}
-            action={
-              <Link to={BILLING_PATH} className="phone-an-link-button">
-                {t('states.lockedAction')}
-              </Link>
-            }
-          />
+          {/* Inside the iOS app: the fact, no link to billing (apps/mobile DECISIONS.md D33). */}
+          {isNativeApp() ? (
+            <StateBlock
+              title={t('native.lockedTitle', { feature: t('states.lockedTitle') })}
+              body={t('native.lockedBody')}
+            />
+          ) : (
+            <StateBlock
+              title={t('states.lockedTitle')}
+              body={t('states.locked')}
+              action={
+                <Link to={BILLING_PATH} className="phone-an-link-button">
+                  {t('states.lockedAction')}
+                </Link>
+              }
+            />
+          )}
         </Frame>
       );
     }
