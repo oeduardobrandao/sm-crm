@@ -124,6 +124,8 @@ function DialogBody({
       : null;
   const postHref = `/${workspace}/hub/${compactHubToken(token)}/postagens/${entry.post_id}`;
   const historyPost = postsData?.posts.find((p) => p.id === entry.post_id) ?? null;
+  // Opened from the post itself, a client-visible post has nothing to put on the left.
+  const hasLeftPane = !entry.client_visible || showViewPost;
   const tabs: Tab[] = entry.client_visible ? ['itens', 'historico'] : ['itens'];
   const viewPostLink = showViewPost && entry.client_visible && (
     <Link
@@ -137,25 +139,29 @@ function DialogBody({
 
   return (
     <HubDialog open onRequestClose={requestClose} title={entry.titulo}>
-      <div className="hub-bg-card w-full h-full md:h-[min(720px,calc(100dvh-3rem))] md:w-[min(1040px,calc(100vw-3rem))] md:rounded-[4px] overflow-hidden shadow-2xl flex md:grid md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
-        <div className="hidden md:flex items-center justify-center p-10 hub-bg-soft">
-          {entry.client_visible ? (
-            viewPostLink
-          ) : (
-            <div className="flex max-w-[300px] flex-col items-center gap-3 text-center">
-              <span
-                className="flex h-14 w-14 items-center justify-center rounded-full hub-bg-card hub-tx2"
-                style={{ boxShadow: 'inset 0 0 0 1px var(--hub-bd)' }}
-              >
-                <FolderUp size={24} strokeWidth={1.75} aria-hidden="true" />
-              </span>
-              <span className="font-display text-[17px] hub-txt">{t('dialogo.emProducao')}</span>
-              <span className="text-[13px] leading-[1.5] hub-tx2">
-                {t('dialogo.emProducaoTexto')}
-              </span>
-            </div>
-          )}
-        </div>
+      <div
+        className={`hub-bg-card w-full h-full md:h-[min(720px,calc(100dvh-3rem))] md:rounded-[4px] overflow-hidden shadow-2xl flex ${hasLeftPane ? 'md:w-[min(1040px,calc(100vw-3rem))] md:grid md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]' : 'md:w-[min(560px,calc(100vw-3rem))]'}`}
+      >
+        {hasLeftPane && (
+          <div className="hidden md:flex items-center justify-center p-10 hub-bg-soft">
+            {entry.client_visible ? (
+              viewPostLink
+            ) : (
+              <div className="flex max-w-[300px] flex-col items-center gap-3 text-center">
+                <span
+                  className="flex h-14 w-14 items-center justify-center rounded-full hub-bg-card hub-tx2"
+                  style={{ boxShadow: 'inset 0 0 0 1px var(--hub-bd)' }}
+                >
+                  <FolderUp size={24} strokeWidth={1.75} aria-hidden="true" />
+                </span>
+                <span className="font-display text-[17px] hub-txt">{t('dialogo.emProducao')}</span>
+                <span className="text-[13px] leading-[1.5] hub-tx2">
+                  {t('dialogo.emProducaoTexto')}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="flex-1 min-h-0 overflow-y-auto md:contents">
@@ -242,34 +248,37 @@ function DialogBody({
             </div>
 
             <div className="flex-1 min-h-0 overflow-y-auto p-4">
-              <div hidden={tab !== 'itens'} className="flex flex-col gap-3">
-                <ul className="flex flex-col overflow-hidden rounded-xl border hub-border">
-                  {items.map((item) => (
-                    <MaterialItemRow
-                      key={item.id}
-                      item={item}
-                      files={filesFor(item.id)}
-                      uploads={refs.uploads
-                        .filter((u) => u.materialItemId === item.id)
-                        // On a draft the handler's own gate says post_not_pending once the
-                        // request closes; for an item that only ever means the same thing.
-                        .map((u) =>
-                          u.error === 'post_not_pending' ? { ...u, error: 'request_closed' } : u,
-                        )}
-                      done={isDone(item.id, item.done)}
-                      refs={refs}
-                      disabled={atCap}
-                      onAdded={invalidateRequests}
-                      onOverlayChange={noop}
-                    />
-                  ))}
-                </ul>
-                {atCap && (
-                  <p role="status" className="text-[12.5px] font-medium hub-txt">
-                    {t('dialogo.limite10')}
-                  </p>
-                )}
-                <p className="text-[12px] hub-tx3">{t('dialogo.limites')}</p>
+              {/* `hidden` on a bare div: a display utility next to it would override it. */}
+              <div hidden={tab !== 'itens'}>
+                <div className="flex flex-col gap-3">
+                  <ul className="flex flex-col overflow-hidden rounded-xl border hub-border">
+                    {items.map((item) => (
+                      <MaterialItemRow
+                        key={item.id}
+                        item={item}
+                        files={filesFor(item.id)}
+                        uploads={refs.uploads
+                          .filter((u) => u.materialItemId === item.id)
+                          // On a draft the handler's own gate says post_not_pending once the
+                          // request closes; for an item that only ever means the same thing.
+                          .map((u) =>
+                            u.error === 'post_not_pending' ? { ...u, error: 'request_closed' } : u,
+                          )}
+                        done={isDone(item.id, item.done)}
+                        refs={refs}
+                        disabled={atCap}
+                        onAdded={invalidateRequests}
+                        onOverlayChange={noop}
+                      />
+                    ))}
+                  </ul>
+                  {atCap && (
+                    <p role="status" className="text-[12.5px] font-medium hub-txt">
+                      {t('dialogo.limite10')}
+                    </p>
+                  )}
+                  <p className="text-[12px] hub-tx3">{t('dialogo.limites')}</p>
+                </div>
               </div>
               {entry.client_visible && historyVisited && (
                 <div hidden={tab !== 'historico'}>
