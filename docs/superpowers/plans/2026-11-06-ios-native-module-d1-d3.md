@@ -223,6 +223,12 @@ Rules when native: `UpgradeLockedScreen` shows `native.lockedTitle` + `native.lo
 - [ ] **Step 2: Run** → FAIL. **Step 3: Implement.** The `PushNotifications` import is dynamic inside `push.ts` functions. The pre-prompt is a bottom sheet on the kit's `Dialog` (D28 renders it as a sheet below 768px). `PushPermissionRow` shows `pushOffTitle` with `pushOffEnable` (`'prompt'`) or `pushOffSettings` (`'denied'` → `openSettings()`), and hides when `'granted'`. **Step 4: Run** → PASS.
 - [ ] **Step 5: Commit** `feat(native): registro de push, pré-pergunta e toque na notificação`.
 
+### Task 7b: Devices follow their session (added after a security review of Task 7)
+
+**Files:** Create `supabase/migrations/20261121000002_push_devices_session.sql`, `supabase/tests/entitlements/105_push_devices_session.sql`.
+
+`push_devices.session_id` is set by `register_push_device` from `auth.jwt() ->> 'session_id'`; an `AFTER DELETE` trigger on `auth.sessions` disables that session's devices. Covers sign-outs the app could not report (timeout, offline unregister failure, password reset, revoked or expired session). The claim and the cron already skip disabled devices, so neither changes. Fully offline logout stays uncovered (documented in the migration). Gate: CI `entitlement-tests`.
+
 ### Task 8: End-to-end check in the Simulator, gates, PR
 
 - [ ] **Step 1: Gates.** `npm run lint`, `npm run format:check`, the five `tsc` commands, `npm run test`, `npm run check:functions`, and `npm run build && npm run prerender` (landing still has `data-ssr="landing"`).
@@ -236,4 +242,4 @@ Rules when native: `UpgradeLockedScreen` shows `native.lockedTitle` + `native.lo
   - Logout removes the `push_devices` row.
   - Mobile Safari at the same URL still shows sign-up and billing (web unchanged).
 - [ ] **Step 3: Rebuild** the Simulator against production (`npm run sync -w apps/mobile` without `MESAAS_APP_URL`) so the committed `capacitor.config` state is the release one.
-- [ ] **Step 4: PR** to `main`. The description states push delivery is unverified until the `APNS_*` secrets exist, and gives the deploy order: migration `20261121000001` (staging, then prod) → merge.
+- [ ] **Step 4: PR** to `main`. The description states push delivery is unverified until the `APNS_*` secrets exist, and gives the deploy order: migrations `20261121000001` and `20261121000002` (staging, then prod) → merge.
