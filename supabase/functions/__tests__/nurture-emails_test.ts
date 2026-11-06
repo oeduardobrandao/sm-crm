@@ -24,7 +24,7 @@ Deno.test("every step has subject, utm links and the unsub footer", () => {
     const { subject, html } = mk(s);
     assert(subject.length > 0, s);
     assert(html.includes(`href="${UNSUB.replace(/&/g, "&amp;")}"`), `${s} unsub href`);
-    assert(html.includes("Descadastrar"), s);
+    assert(html.includes("Descadastrar</a>."), s);
     assert(html.includes("Você recebeu este e-mail porque criou uma conta no Mesaas."), s);
     const links = [...html.matchAll(/href="(https:\/\/app\.example\.com[^"]*)"/g)].map((m) => m[1]);
     for (const l of links) assert(l.includes(`utm_campaign=nurture_${s}`), `${s} ${l}`);
@@ -34,7 +34,8 @@ Deno.test("every step has subject, utm links and the unsub footer", () => {
 
 Deno.test("a3 trial line only before trial-first", () => {
   assert(mk("a3", { workspaceCreatedAt: "2026-10-01" }).html.includes("ainda não tinha teste grátis"));
-  assert(!mk("a3", { workspaceCreatedAt: "2026-10-28T10:00:00Z" }).html.includes("ainda não tinha teste grátis"));
+  const tf = mk("a3", { workspaceCreatedAt: "2026-10-28T10:00:00Z" }).html;
+  assert(!tf.includes("ainda não tinha teste grátis") && tf.includes("Dá pra testar o Mesaas inteiro por 30 dias"));
   assert(mk("a3", { firstName: null }).html.includes("Você pode testar tudo por 30 dias."));
 });
 
@@ -50,7 +51,7 @@ Deno.test("b1 free-limit line only from 2 clients", () => {
 
 Deno.test("b2 names first client or falls back", () => {
   const named = mk("b2", { firstClientName: "Studio Bela" });
-  assert(named.html.includes("Studio Bela"));
+  assert(named.html.includes("para o Studio Bela"));
   const generic = mk("b2", { firstClientName: null });
   assert(!generic.html.includes("null") && !generic.html.includes("Studio Bela"));
   assert(generic.html.includes("o seu cliente"));
@@ -83,4 +84,12 @@ Deno.test("ctas", () => {
   const has = (s: NurtureStep, path: string) => mk(s).html.includes(`${BASE}${path}?utm_source=email`);
   assert(has("a1", "/clientes") && has("a1", "/importar") && has("a2", "/clientes"));
   for (const s of ["a3", "b1", "b2", "b3"] as const) assert(has(s, "/comecar"), s);
+});
+
+Deno.test("b2 empty/blank client name falls back; non-finite clientCount is 0", () => {
+  for (const v of ["", "   "]) {
+    const h = mk("b2", { firstClientName: v }).html;
+    assert(!h.includes("para  um") && h.includes("para o seu cliente") && h.includes("Testar o Hub com meu cliente"));
+  }
+  assert(mk("b1", { clientCount: NaN }).subject === "Teste tudo do Mesaas por 30 dias");
 });

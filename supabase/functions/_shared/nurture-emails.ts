@@ -161,7 +161,7 @@ export function buildNurtureEmail(p: NurtureEmailInput): { subject: string; html
       ];
       break;
     case "b1": {
-      const n = Math.max(0, Math.floor(p.clientCount));
+      const n = Number.isFinite(p.clientCount) ? Math.max(0, Math.floor(p.clientCount)) : 0;
       const atLimit = n >= 2;
       subject = n === 0
         ? "Teste tudo do Mesaas por 30 dias"
@@ -182,14 +182,14 @@ export function buildNurtureEmail(p: NurtureEmailInput): { subject: string; html
       break;
     }
     case "b2": {
-      const who = p.firstClientName;
+      const who = p.firstClientName?.trim() || null;
       subject = "Seu cliente aprova o post pelo celular";
       preheader = who ? `O ${who} pode aprovar a semana inteira num link.` : "Seu cliente pode aprovar a semana inteira num link.";
       eyebrow = "Dica";
       sections = [
         greet +
         paragraph(
-          `Imagina mandar para ${who ?? "o seu cliente"} um link só, com os posts da semana. Ele abre no celular, aprova os que estão bons e comenta nos que precisam de ajuste. Sem login, sem print, sem áudio.`,
+          `Imagina mandar para ${who ? `o ${who}` : "o seu cliente"} um link só, com os posts da semana. Ele abre no celular, aprova os que estão bons e comenta nos que precisam de ajuste. Sem login, sem print, sem áudio.`,
         ) +
         paragraph(
           "Esse é o Hub do cliente. Ele vem com a sua marca, e cada aprovação já atualiza o status do post no seu kanban.",
@@ -239,7 +239,7 @@ export function buildNurtureEmail(p: NurtureEmailInput): { subject: string; html
     eyebrow,
     sections,
     footerLines: [],
-    footerHtml: [`${escapeHtml(FOOTER_SENTENCE)} ${link(p.unsubUrl, "Descadastrar", EMAIL.muted)}`],
+    footerHtml: [`${escapeHtml(FOOTER_SENTENCE)} ${link(p.unsubUrl, "Descadastrar", EMAIL.muted)}.`],
   });
   return { subject: sanitizeSubjectValue(subject), html };
 }
