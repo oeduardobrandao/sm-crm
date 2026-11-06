@@ -53,6 +53,7 @@ export interface ReferenceItem {
   link_domain: string | null;
   note: string | null;
   post_approval_id: number | null;
+  material_item_id: number | null;
   created_at: string;
   can_remove: boolean;
 }
@@ -60,7 +61,9 @@ export interface ReferenceItem {
 export type ReferenceErrorCode =
   | "unsupported_type" | "too_large" | "thumbnail_invalid" | "reference_limit"
   | "quota_exceeded" | "post_not_pending" | "invalid_url" | "invalid_note"
-  | "not_found" | "locked" | "rate_limited" | "upload_mismatch" | "internal";
+  | "not_found" | "locked" | "rate_limited" | "upload_mismatch" | "internal"
+  | "post_not_requestable" | "items_required" | "too_many_items" | "invalid_item"
+  | "item_required" | "request_closed" | "nothing_sent";
 
 export const REFERENCE_ERROR_STATUS: Record<ReferenceErrorCode, number> = {
   unsupported_type: 415,
@@ -76,6 +79,13 @@ export const REFERENCE_ERROR_STATUS: Record<ReferenceErrorCode, number> = {
   rate_limited: 429,
   upload_mismatch: 400,
   internal: 500,
+  post_not_requestable: 409,
+  items_required: 400,
+  too_many_items: 409,
+  invalid_item: 400,
+  item_required: 409,
+  request_closed: 409,
+  nothing_sent: 409,
 };
 
 export type ReferenceResult = { status: number; body: Record<string, unknown> };
@@ -204,6 +214,7 @@ export interface ReferenceListRow {
   link_title: string | null;
   note: string | null;
   post_approval_id: number | null;
+  material_item_id?: number | null;
   created_at: string;
   can_remove: boolean;
   name: string | null;
@@ -251,6 +262,7 @@ export async function toReferenceItem(
     id: Number(row.id),
     note: row.note ?? null,
     post_approval_id: numOrNull(row.post_approval_id),
+    material_item_id: numOrNull(row.material_item_id),
     created_at: row.created_at,
     can_remove: row.can_remove === true,
   };
@@ -320,6 +332,11 @@ export async function listPostReferences(a: {
   return { ok: true, items };
 }
 
+const MATERIAL_RPC_CODES: ReferenceErrorCode[] = [
+  "post_not_requestable", "items_required", "too_many_items", "invalid_item",
+  "item_required", "request_closed", "nothing_sent",
+];
+
 /** RAISE conhecidos dos RPCs de insert viram código; o resto loga e vira 500 genérico. */
 export function mapReferenceRpcError(error: unknown, scope: string): ReferenceResult {
   const raw = (error as { message?: unknown } | null)?.message;
@@ -330,6 +347,10 @@ export function mapReferenceRpcError(error: unknown, scope: string): ReferenceRe
   if (msg.includes("quota_exceeded")) return referenceError("quota_exceeded");
   // Recheck de chave já usada por outro files dentro do RPC (ver Contract issues).
   if (msg.includes("upload_mismatch")) return referenceError("upload_mismatch");
+  // Pedido de material (migration 20261121000001). "items_required" não contém "item_required".
+  for (const code of MATERIAL_RPC_CODES) {
+    if (msg.includes(code)) return referenceError(code);
+  }
   console.error(`[${scope}] rpc failed:`, error);
   return referenceError("internal");
 }
@@ -429,6 +450,13 @@ async function keysAlreadyStored(db: ReferencesDb, keys: string[]): Promise<bool
   return false;
 }
 
+/** material_item_id opcional: ausente/null = sem item; presente e inválido = invalid_item. */
+function parseMaterialItemId(v: unknown): { ok: true; value: number | null } | { ok: false } {
+  if (v === undefined || v === null) return { ok: true, value: null };
+  const id = parsePositiveId(v);
+  return id === null ? { ok: false } : { ok: true, value: id };
+}
+
 export async function finalizeReferenceFile(a: {
   db: ReferencesDb;
   conta_id: string;
@@ -473,6 +501,8 @@ export async function finalizeReferenceFile(a: {
 
   const note = normalizeReferenceNote(b.note);
   if (!note.ok) return referenceError("invalid_note");
+  const item = parseMaterialItemId(b.material_item_id);
+  if (!item.ok) return referenceError("invalid_item");
 
   const stored = await keysAlreadyStored(a.db, thumbKey ? [r2Key, thumbKey] : [r2Key]);
   if (stored === null) return referenceError("internal");
@@ -511,6 +541,7 @@ export async function finalizeReferenceFile(a: {
       duration_seconds: duration,
       blur_data_url: blur,
       note: note.value,
+      ...(item.value !== null ? { material_item_id: item.value } : {}),
     },
   }).single();
   if (error) return mapReferenceRpcError(error, "post-references:file-insert");
@@ -521,13 +552,13 @@ export async function finalizeReferenceFile(a: {
   }
 
   // Recém-criada: nenhuma ação da equipe pode ser posterior a ela, então can_remove = true.
-  const item = await toReferenceItem({
+  const created = await toReferenceItem({
     id: ref.id, kind: "file", file_id: ref.file_id, url: null, link_title: null,
-    note: ref.note ?? null, post_approval_id: null, created_at: ref.created_at, can_remove: true,
+    note: ref.note ?? null, post_approval_id: null, material_item_id: item.value, created_at: ref.created_at, can_remove: true,
     name, mime_type: mime, file_kind: spec.kind, size_bytes: size, width, height,
     duration_seconds: duration, r2_key: r2Key, thumbnail_r2_key: thumbKey, blur_data_url: blur,
   }, a.signGetUrl, { includeDownload: false });
-  return { status: 201, body: { item } };
+  return { status: 201, body: { item: created } };
 }
 
 export async function insertReferenceLink(a: {
@@ -545,6 +576,8 @@ export async function insertReferenceLink(a: {
   if (!title.ok) return referenceError("invalid_note");
   const note = normalizeReferenceNote(b.note);
   if (!note.ok) return referenceError("invalid_note");
+  const item = parseMaterialItemId(b.material_item_id);
+  if (!item.ok) return referenceError("invalid_item");
 
   const { data: inserted, error } = await a.db.rpc("post_reference_link_insert", {
     p: {
@@ -554,6 +587,7 @@ export async function insertReferenceLink(a: {
       url,
       link_title: title.value,
       note: note.value,
+      ...(item.value !== null ? { material_item_id: item.value } : {}),
     },
   }).single();
   if (error) return mapReferenceRpcError(error, "post-references:link-insert");
@@ -563,11 +597,11 @@ export async function insertReferenceLink(a: {
     return referenceError("internal");
   }
 
-  const item = await toReferenceItem({
+  const created = await toReferenceItem({
     id: ref.id, kind: "link", file_id: null, url: ref.url ?? url, link_title: ref.link_title ?? title.value,
-    note: ref.note ?? null, post_approval_id: null, created_at: ref.created_at, can_remove: true,
+    note: ref.note ?? null, post_approval_id: null, material_item_id: item.value, created_at: ref.created_at, can_remove: true,
     name: null, mime_type: null, file_kind: null, size_bytes: null, width: null, height: null,
     duration_seconds: null, r2_key: null, thumbnail_r2_key: null, blur_data_url: null,
   }, a.signGetUrl, { includeDownload: false });
-  return { status: 201, body: { item } };
+  return { status: 201, body: { item: created } };
 }
