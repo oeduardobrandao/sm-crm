@@ -12,6 +12,7 @@ import { EmailsBackfill } from './emails/EmailsBackfill';
 import { EmailsDailyChart } from './emails/EmailsDailyChart';
 import { EmailsKpis } from './emails/EmailsKpis';
 import { EmailsRecentBounces } from './emails/EmailsRecentBounces';
+import { EmailsPhoneList } from './emails/EmailsPhoneList';
 import { EmailsTable } from './emails/EmailsTable';
 import {
   buildEmailView,
@@ -42,7 +43,7 @@ const FOOTER_TAIL =
 /** E-mails: transactional sends through Resend, from the `email_log` webhook mirror. */
 export default function EmailsPage() {
   const isPhone = useIsPhone();
-  const [preset, setPreset] = useState<Preset>('30d');
+  const [preset, setPreset] = useState<Preset>('7d');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
   const [message, setMessage] = useState<string | null>(null);
@@ -106,7 +107,11 @@ export default function EmailsPage() {
             <EmailsDailyChart daily={view.daily} compact={isPhone} />
           </GlassPanel>
           <GlassPanel title="Por tipo" flush>
-            <EmailsTable categories={view.categories} excluded={view.excluded} />
+            {isPhone ? (
+              <EmailsPhoneList categories={view.categories} excluded={view.excluded} />
+            ) : (
+              <EmailsTable categories={view.categories} excluded={view.excluded} />
+            )}
           </GlassPanel>
           <EmailsRecentBounces recent={view.recent} />
         </div>

@@ -9,6 +9,7 @@ vi.mock('../../lib/api', () => ({
   runEmailBackfill: vi.fn(),
 }));
 vi.mock('react-chartjs-2', () => ({ Bar: () => null }));
+vi.mock('../../hooks/useIsPhone', () => ({ useIsPhone: vi.fn(() => false) }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 import EmailsPage from '../EmailsPage';
@@ -58,7 +59,9 @@ function renderPage() {
   );
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  const { useIsPhone } = await import('../../hooks/useIsPhone');
+  vi.mocked(useIsPhone).mockReturnValue(false);
   vi.mocked(api.getEmailMetrics).mockResolvedValue(FIXTURE);
 });
 
@@ -97,7 +100,7 @@ describe('EmailsPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Não foi possível carregar');
   });
 
-  it('refetches with a 30 day range when picked, 90 days after switching', async () => {
+  it('starts at 7 days, then refetches with 90 days when picked', async () => {
     renderPage();
     await screen.findByTestId('email-kpi-sent');
     fireEvent.click(screen.getByRole('radio', { name: '90 dias' }));
@@ -105,7 +108,7 @@ describe('EmailsPage', () => {
     const [s, e] = vi.mocked(api.getEmailMetrics).mock.calls[1];
     expect((Date.parse(e) - Date.parse(s)) / 86_400_000).toBe(89);
     const [s0, e0] = vi.mocked(api.getEmailMetrics).mock.calls[0];
-    expect((Date.parse(e0) - Date.parse(s0)) / 86_400_000).toBe(29);
+    expect((Date.parse(e0) - Date.parse(s0)) / 86_400_000).toBe(6);
   });
 
   it('custom range: invalid shows a message and does not fetch', async () => {
@@ -183,5 +186,20 @@ describe('EmailsPage', () => {
       expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('Importados 7 e-mails')),
     );
     expect(api.getEmailMetrics).toHaveBeenCalled();
+  });
+
+  it('phone: compact category list instead of the table, expands types', async () => {
+    const { useIsPhone } = await import('../../hooks/useIsPhone');
+    vi.mocked(useIsPhone).mockReturnValue(true);
+    renderPage();
+    const row = await screen.findByRole('button', { name: /Notificações/ });
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(row).toHaveTextContent('90');
+    expect(row).toHaveTextContent('8,9%');
+    expect(row.querySelector('[data-alert="true"]')).not.toBeNull();
+    expect(screen.getByText('Interno (fora do total)')).toBeInTheDocument();
+    expect(screen.queryByText('Resumo de notificações')).toBeNull();
+    fireEvent.click(row);
+    expect(screen.getByText('Resumo de notificações')).toBeInTheDocument();
   });
 });

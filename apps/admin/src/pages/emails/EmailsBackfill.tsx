@@ -93,14 +93,8 @@ export function EmailsBackfill({ onDone, onMessage, formatSince }: Props) {
             </PhoneIconButton>
           ) : (
             <Button variant="outline" size="sm" disabled={running} aria-label="Mais ações">
-              {running ? (
-                label
-              ) : (
-                <>
-                  <MoreHorizontal />
-                  Mais
-                </>
-              )}
+              <MoreHorizontal />
+              Mais
             </Button>
           )}
         </DropdownMenuTrigger>
