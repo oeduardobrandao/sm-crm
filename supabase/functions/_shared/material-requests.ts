@@ -121,3 +121,52 @@ export async function loadMaterialSummary(
     total: Number(r.total),
   }));
 }
+
+/**
+ * O pedido do post em qualquer status (aberto, concluido, cancelado), para a leitura do CRM.
+ * Lê as tabelas com o service role; file_count/done vêm de post_references.material_item_id.
+ * Falha de leitura propaga (o chamador responde 500).
+ */
+export async function loadMaterialRequestForPost(
+  db: ReferencesDb,
+  conta_id: string,
+  post_id: number,
+): Promise<MaterialRequestDTO | null> {
+  const { data: q, error } = await db.from("post_material_requests")
+    .select("id, post_id, status, closed_by, closed_at, opened_by, opened_at")
+    .eq("conta_id", conta_id).eq("post_id", post_id).maybeSingle();
+  if (error) throw error;
+  if (!q) return null;
+  const { data: itemRows, error: itemsErr } = await db.from("post_material_items")
+    .select("id, label, detail, position")
+    .eq("conta_id", conta_id).eq("request_id", q.id)
+    .order("position", { ascending: true }).order("id", { ascending: true });
+  if (itemsErr) throw itemsErr;
+  const rows = (Array.isArray(itemRows) ? itemRows : []) as {
+    id: number; label: string; detail: string | null; position: number;
+  }[];
+  const counts = new Map<number, number>();
+  if (rows.length > 0) {
+    const { data: refs, error: refsErr } = await db.from("post_references")
+      .select("material_item_id")
+      .eq("conta_id", conta_id).in("material_item_id", rows.map((r) => r.id));
+    if (refsErr) throw refsErr;
+    for (const r of Array.isArray(refs) ? refs : []) {
+      const k = Number((r as { material_item_id: number }).material_item_id);
+      counts.set(k, (counts.get(k) ?? 0) + 1);
+    }
+  }
+  return {
+    id: Number(q.id),
+    post_id: Number(q.post_id),
+    status: q.status,
+    closed_by: q.closed_by ?? null,
+    closed_at: q.closed_at ?? null,
+    opened_by: q.opened_by ?? null,
+    opened_at: q.opened_at,
+    items: rows.map((i) => {
+      const n = counts.get(Number(i.id)) ?? 0;
+      return { id: Number(i.id), label: i.label, detail: i.detail ?? null, position: Number(i.position), done: n > 0, file_count: n };
+    }),
+  };
+}
