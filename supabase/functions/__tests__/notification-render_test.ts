@@ -36,3 +36,10 @@ Deno.test("a null link falls back to the app root and unknown types stay generic
   assertEquals(r("post_approved", null, null).link, "/");
   assertEquals(r("constructor", null).heading, "Nova notificação no Mesaas");
 });
+
+Deno.test("linha editorial renders the same text for push as for the e-mail digest", () => {
+  assertEquals(r("linha_editorial_aprovada", { cliente_nome: "Sol", periodo: "2026-12-01", comentarios: 2 }), {
+    priority: 4, heading: "Sol aprovou a linha editorial de dezembro", body: "2 comentários", link: "/x",
+  });
+  assertEquals(r("linha_editorial_ajustes", { titulo: " Verão " }).heading, "Cliente pediu ajustes na linha editorial “Verão”");
+});
