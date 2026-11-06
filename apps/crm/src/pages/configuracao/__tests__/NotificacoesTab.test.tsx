@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { NOTIFICATION_CATALOG, CATEGORY_ORDER, CATEGORY_LABELS } from '@/lib/notification-catalog';
+import { toast } from 'sonner';
 import { makeCan, fakeMembership } from '@/test/makeCan';
 
 // The tab branches on the viewport; this suite asserts the desktop markup.
@@ -418,6 +419,29 @@ describe('NotificacoesTab', () => {
         expect(mockSupabaseUpdate).toHaveBeenLastCalledWith({ nurture_opt_out_at: null }),
       );
       await waitFor(() => expect(refetchProfile).toHaveBeenCalledTimes(2));
+    });
+  });
+
+  describe('Dicas por e-mail rollback', () => {
+    it('flips the tips switch optimistically and rolls back with an error toast if the save fails', async () => {
+      let rejectSave: (err: Error) => void = () => {};
+      mockSupabaseEq.mockReturnValue(
+        new Promise((_resolve, reject) => {
+          rejectSave = reject;
+        }),
+      );
+      renderTab();
+      const sw = (await screen.findByRole('switch', {
+        name: 'Dicas por e-mail',
+      })) as HTMLInputElement;
+      expect(sw.checked).toBe(true);
+
+      fireEvent.click(sw);
+      await waitFor(() => expect(sw.checked).toBe(false));
+
+      rejectSave(new Error('save failed'));
+      await waitFor(() => expect(sw.checked).toBe(true));
+      expect(toast.error).toHaveBeenCalled();
     });
   });
 

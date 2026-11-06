@@ -221,6 +221,20 @@ describe('NotificacoesTab (phone)', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Notificações' })).toBeInTheDocument();
   });
 
+  it('E-mails automáticos: the tips switch writes nurture_opt_out_at', async () => {
+    renderTab();
+    fireEvent.click(await screen.findByRole('button', { name: /E-mails automáticos/ }));
+    const tips = sw('Dicas por e-mail');
+    expect(tips).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(tips);
+    await waitFor(() =>
+      expect(mockSupabaseUpdate).toHaveBeenCalledWith({ nurture_opt_out_at: expect.any(String) }),
+    );
+    expect(mockSupabaseEq).toHaveBeenCalledWith('id', 'user-1');
+    // The Perfil footer belongs to the marketing group only.
+    expect(screen.getAllByText('Mesmo controle que está no seu Perfil.')).toHaveLength(1);
+  });
+
   it('Seus clientes: master and per-client switches save through the same mutations', async () => {
     renderTab();
     fireEvent.click(await screen.findByRole('button', { name: /Seus clientes/ }));

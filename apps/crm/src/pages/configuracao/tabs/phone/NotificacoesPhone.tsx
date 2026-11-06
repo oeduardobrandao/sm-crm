@@ -210,6 +210,8 @@ function EmailsAutomaticosScreen({ onBack }: { onBack: () => void }) {
           )}
           switch={{ checked: marketingOptIn, onCheckedChange: (v) => saveMarketing(v) }}
         />
+      </GroupedList>
+      <GroupedList>
         <Cell
           className="phone-notif-row"
           label={tipsLabel()}
