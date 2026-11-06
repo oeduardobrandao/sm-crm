@@ -210,7 +210,7 @@ começou teste ou assinou; descadastrou; workspace apagado.
   Token = HMAC do `user_id` com secret novo, sem expiração.
 - Headers `List-Unsubscribe: <mesma URL>` e `List-Unsubscribe-Post: List-Unsubscribe=One-Click`
   (exigidos pelo Gmail/Yahoo para remetente em volume).
-- Em `Configurações > Perfil`, um switch "Dicas por e-mail" que liga/desliga
+- Em `Configurações > Notificações > E-mails automáticos`, um switch "Dicas por e-mail" que liga/desliga
   `nurture_opt_out_at`. Minha escolha: um lugar visível além do link. `profiles` tem
   `UPDATE` só numa lista fechada de colunas (`20260729000002_profiles_write_lockdown.sql`,
   com asserção): a migration precisa somar `nurture_opt_out_at` ao `GRANT UPDATE (...)` e
@@ -272,7 +272,7 @@ pg_cron (lifecycle-email-cron, 15 min)
    claim. Aditiva, segura antes de tudo.
 2. Secret `NURTURE_UNSUB_SECRET` + function `nurture-unsub` (`--no-verify-jwt`).
 3. `lifecycle-email-cron` com `NURTURE_EMAILS` ainda `off`.
-4. Merge (frontend: só o switch no Perfil).
+4. Merge (frontend: só o switch em Configurações > Notificações).
 5. Preview manual para o e-mail do Eduardo; revisar os 8 no Gmail e no celular.
 6. `NURTURE_EMAILS=on`.
 

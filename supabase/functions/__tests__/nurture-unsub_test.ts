@@ -88,6 +88,7 @@ Deno.test("POST valid token stamps opt-out", async () => {
   assertEquals(res.status, 200);
   const body = await res.text();
   assert(!body.includes("—"));
+  assert(body.includes("<h1>Pronto.</h1>") && body.split("Pronto.").length === 2, "Pronto. once");
   assertEquals(calls.length, 1);
   assertEquals(calls[0].patch, { nurture_opt_out_at: NOW.toISOString() });
   assertEquals(calls[0].col, "id");

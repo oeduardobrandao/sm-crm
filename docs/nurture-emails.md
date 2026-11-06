@@ -16,9 +16,14 @@ trilha B (com cliente: `b1`..`b4`). Spec:
   → monta o e-mail → envia pelo Resend com Idempotency-Key `nurture_<passo>/<workspace_id>`
   e cabeçalhos `List-Unsubscribe` / `List-Unsubscribe-Post` → grava `delivered_at`.
 - Falha no envio deixa o claim sem `delivered_at`; depois de 1h ele fica velho e é tentado de
-  novo com a mesma chave (o Resend deduplica por 24h).
+  novo com a mesma chave. O Resend só deduplica a chave por 24h, então a retentativa vale só
+  até 20h depois do **primeiro** claim do passo (`first_claimed_at`, que a retentativa não
+  move). Passou disso (uma falha na sexta às 11h só voltaria na segunda às 9h), o passo é
+  abandonado: nem o RPC nem o claim o devolvem, e a sequência daquela pessoa para ali. Perder
+  a sequência é aceitável; um e-mail duplicado não.
 - Descadastro em um clique pela function `nurture-unsub` (link no rodapé e no cabeçalho),
-  que grava `profiles.nurture_opt_out_at`. O switch no Perfil faz o mesmo.
+  que grava `profiles.nurture_opt_out_at`. O switch em Configurações > Notificações > E-mails
+  automáticos faz o mesmo. O claim confere o descadastro de novo antes de cada envio.
 
 ## Variáveis de ambiente (secrets das edge functions)
 
@@ -37,14 +42,33 @@ temporário>` e apague o arquivo depois.
 1. Migration `20261119000001_nurture_emails.sql` (`npx supabase db push --linked`): coluna
    `nurture_opt_out_at` + GRANT UPDATE, tabela `nurture_emails`, RPCs de candidatos e de
    claim. Aditiva, segura antes de tudo. Renumere acima do maior prefixo de `main` se outra
-   migration entrar antes.
+   migration entrar antes. **Antes do `db push` em prod**, rode a mesma consulta do bloco DO
+   da migration:
+
+   ```sql
+   select array_agg(column_name::text order by column_name)
+     from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'profiles'
+      and grantee = 'authenticated' and privilege_type = 'UPDATE';
+   ```
+
+   O esperado são as 6 colunas que já existem:
+   `{empresa,marketing_opt_in,nome,onboarding_complete,telefone,whatsapp}`. Se vier
+   diferente (coluna a mais, a menos, ou todas por um GRANT de tabela), pare e reconcilie
+   antes: o bloco DO falha fechado e o `db push` aborta.
 2. Secret `NURTURE_UNSUB_SECRET` e a function `nurture-unsub` (`--no-verify-jwt`).
 3. `lifecycle-email-cron` (`--no-verify-jwt`) com `NURTURE_EMAILS` ainda `off`. Sem
    `NURTURE_UNSUB_SECRET` os outros e-mails do cron seguem, mas a prévia e todo envio de
    nurture falham, então o passo 2 vem antes.
-4. Merge (frontend: só o switch no Perfil).
+4. Merge (frontend: só o switch em Configurações > Notificações > E-mails automáticos).
 5. Prévia manual para o e-mail do Eduardo (abaixo); revisar os 8 no Gmail e no celular.
-6. `NURTURE_EMAILS=on`.
+6. **Trava antes de ligar:** num dos e-mails da prévia, abra o link "Descadastrar" num
+   navegador, contra a `nurture-unsub` já deployada. Confira que a página aparece como HTML
+   (não como texto cru com as tags à mostra) e que o botão "Parar de receber" leva à página
+   "Pronto.". O link da prévia usa um id que não existe, então nada é gravado. Se o gateway
+   servir a página como `text/plain`, **não ligue a varredura**: o One-Click do cabeçalho
+   (POST do Gmail) continua funcionando, mas quem clica no rodapé não consegue se descadastrar.
+7. `NURTURE_EMAILS=on`.
 
 ## Prévia manual
 

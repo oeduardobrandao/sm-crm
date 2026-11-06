@@ -68,7 +68,7 @@ const donePage = () =>
   page(
     "Pronto",
     "Pronto.",
-    `<p>Pronto. Você não vai mais receber as dicas por e-mail. Dá pra religar em Configurações &gt; Notificações.</p>`,
+    `<p>Você não vai mais receber as dicas por e-mail. Dá pra religar em Configurações &gt; Notificações.</p>`,
   );
 
 const invalidPage = () => page("Link inválido", "Link inválido", `<p>Este link não é válido.</p>`);
