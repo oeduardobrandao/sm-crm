@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { computeMeterState, METER_FILL } from './usage-meter-state';
 
 /** Track + fill only. Callers with bespoke layouts (mobile StorageCard) use this. */
@@ -70,6 +71,7 @@ export function UsageMeter({
   subText,
   unlimitedBadge = true,
 }: UsageMeterProps) {
+  const { t } = useTranslation();
   const meter = computeMeterState(used, limit);
   const danger = meter.state === 'danger' || meter.state === 'blocked';
   const cta =
@@ -83,7 +85,7 @@ export function UsageMeter({
           textUnderlineOffset: 2,
         }}
       >
-        Fazer upgrade
+        {t('usage.upgrade')}
       </Link>
     ) : null;
 
@@ -105,7 +107,9 @@ export function UsageMeter({
           </span>
         )}
         <span>
-          {limit > 0 ? `${format(used)} de ${format(limit)} ${label}` : 'Não incluído no plano'}
+          {limit > 0
+            ? t('usage.ofLabel', { used: format(used), limit: format(limit), label })
+            : t('usage.notIncluded')}
         </span>
         {cta}
       </div>
@@ -147,7 +151,7 @@ export function UsageMeter({
                     color: 'var(--text-muted)',
                   }}
                 >
-                  Ilimitado
+                  {t('usage.unlimited')}
                 </span>
               )}
             </>
@@ -156,7 +160,10 @@ export function UsageMeter({
             // plano usadas" would contradict the "Não incluído no plano" sub row.
             format(used)
           ) : (
-            (valueText ?? (limit! > 0 ? `${format(used)} de ${format(limit!)}` : format(used)))
+            (valueText ??
+            (limit! > 0
+              ? t('usage.of', { used: format(used), limit: format(limit!) })
+              : format(used)))
           )}
         </span>
       </div>
@@ -174,7 +181,7 @@ export function UsageMeter({
             flexWrap: 'wrap',
           }}
         >
-          {meter.state === 'blocked' ? <span>Não incluído no plano</span> : null}
+          {meter.state === 'blocked' ? <span>{t('usage.notIncluded')}</span> : null}
           {/* Blocked wins over a caller's subText override too -- otherwise "Não
               incluído no plano" would run alongside a stale "N restantes" string. */}
           {meter.state !== 'blocked' && subText ? <span>{subText}</span> : null}

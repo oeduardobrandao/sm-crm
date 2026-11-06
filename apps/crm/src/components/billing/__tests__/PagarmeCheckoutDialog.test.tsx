@@ -24,6 +24,8 @@ vi.mock('@/services/billing', async (importOriginal) => {
 });
 
 vi.mock('@/lib/analytics', () => ({ captureEvent: captureEventMock }));
+// jsdom's matchMedia reports false (phone); this suite asserts the desktop markup.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
@@ -115,6 +117,15 @@ beforeEach(() => {
   startPagarmeCheckoutMock.mockResolvedValue(CHECKOUT_RESULT);
   updatePagarmeCardMock.mockResolvedValue(undefined);
 });
+
+/** The dialog's built-in X (its label is screen-reader-only), not the footer's own Fechar. */
+function dialogX(): HTMLElement {
+  const x = screen
+    .getAllByRole('button', { name: 'Fechar' })
+    .find((b) => b.querySelector('.sr-only'));
+  if (!x) throw new Error('dialog X button not found');
+  return x;
+}
 
 describe('PagarmeCheckoutDialog', () => {
   it("renders the 12x summary (the parcela's OWN price, not price_brl_annual / 12) and the trial note when trialEligible is true", () => {
@@ -241,7 +252,10 @@ describe('PagarmeCheckoutDialog', () => {
     expect(screen.getByText(/12\/09\/2026/)).toBeInTheDocument();
     // source 'billing' fecha na própria página; 'Ir para o painel' é exclusivo do onboarding,
     // cujo onSuccess de fato navega para o dashboard.
-    expect(screen.getByRole('button', { name: 'Fechar' })).toBeInTheDocument();
+    // The success CTA, besides the dialog's own X (same accessible name).
+    expect(
+      screen.getAllByRole('button', { name: 'Fechar' }).filter((b) => !b.querySelector('.sr-only')),
+    ).toHaveLength(1);
   });
 
   it('labels the success CTA "Ir para o painel" only for the onboarding source', async () => {
@@ -257,7 +271,13 @@ describe('PagarmeCheckoutDialog', () => {
     render(<PagarmeCheckoutDialog {...baseProps({ onSuccess, onClose })} />);
     fillForm();
     fireEvent.click(screen.getByRole('button', { name: 'Começar 30 dias grátis' }));
-    const cta = await screen.findByRole('button', { name: 'Fechar' });
+    // The dialog's own X is also "Fechar" and exists from the form step on, so a bare
+    // findByRole could hand back the X while the checkout is still in flight (and closing
+    // then is refused). Wait for the success step and take the CTA, not the X.
+    await screen.findByText('Assinatura confirmada!');
+    const [cta] = screen
+      .getAllByRole('button', { name: 'Fechar' })
+      .filter((b) => !b.querySelector('.sr-only'));
     fireEvent.click(cta);
     expect(onSuccess).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -325,7 +345,7 @@ describe('PagarmeCheckoutDialog', () => {
 
     // X button: routes through the same Dialog onOpenChange as Escape/outside-click (Radix's
     // DialogClose composes onClick with context.onOpenChange(false)).
-    fireEvent.click(screen.getByRole('button', { name: /close/i }));
+    fireEvent.click(dialogX());
     // Escape.
     fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
     // Outside pointerdown (overlay click). Radix's DismissableLayer wires its outside-pointerdown
@@ -358,7 +378,7 @@ describe('PagarmeCheckoutDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Salvar novo cartão' }));
     await screen.findByRole('button', { name: 'Processando...' });
 
-    fireEvent.click(screen.getByRole('button', { name: /close/i }));
+    fireEvent.click(dialogX());
     fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
     await new Promise((resolve) => setTimeout(resolve, 0));
     fireEvent.pointerDown(document.body);
@@ -399,7 +419,7 @@ describe('PagarmeCheckoutDialog', () => {
     fireEvent.change(screen.getByLabelText('Número do cartão'), {
       target: { value: '4242' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /close/i }));
+    fireEvent.click(dialogX());
     expect(captureEventMock).toHaveBeenCalledWith('card_form_abandoned', { mode: 'checkout' });
     expect(captureEventMock).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -408,7 +428,7 @@ describe('PagarmeCheckoutDialog', () => {
   it('does not fire card_form_abandoned when the form was never touched', () => {
     const onClose = vi.fn();
     render(<PagarmeCheckoutDialog {...baseProps({ onClose })} />);
-    fireEvent.click(screen.getByRole('button', { name: /close/i }));
+    fireEvent.click(dialogX());
     expect(captureEventMock).not.toHaveBeenCalledWith('card_form_abandoned', expect.anything());
     expect(onClose).toHaveBeenCalledTimes(1);
   });

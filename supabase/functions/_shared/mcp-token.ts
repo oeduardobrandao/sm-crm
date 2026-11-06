@@ -1,5 +1,6 @@
 import { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { effectivePlanFeature } from "./entitlements-rpc.ts";
+import { hasPermissionFor } from "./permissions.ts";
 
 export const MCP_TOKEN_PREFIX = "mesaas_sk_";
 
@@ -10,8 +11,34 @@ export const MCP_TOKEN_PREFIX = "mesaas_sk_";
 export const MCP_ALLOWED_SCOPES = [
   "clientes:read", "posts:read", "workflows:read", "ideias:read", "tarefas:read", "membros:read",
   "posts:write", "templates:write", "tarefas:write", "clientes:write", "membros:write",
+  // Owner-only (OWNER_ONLY_SCOPES): never in MCP_AGENT_PRESET.
+  "financeiro:read", "financeiro:write",
 ] as const;
 export type McpScope = (typeof MCP_ALLOWED_SCOPES)[number];
+
+/**
+ * CRM permission each MCP scope needs from the user behind an OAuth grant. The MCP tools run
+ * service-role (scoped only by conta_id + scopes), so this map is what keeps a member from
+ * granting Claude more than their own role allows. Enforced at consent and on every request
+ * (permittedMcpScopes in mcp-oauth.ts). Workspace API keys don't go through it: creating a key
+ * already requires configuracoes:editar. Financial fields are capped for both (can_write_financials).
+ */
+export const MCP_SCOPE_PERMISSION: Record<McpScope, { module: string; action: "ver" | "editar" }> = {
+  "clientes:read": { module: "clientes", action: "ver" },
+  "clientes:write": { module: "clientes", action: "editar" },
+  "posts:read": { module: "entregas", action: "ver" },
+  "posts:write": { module: "entregas", action: "editar" },
+  "workflows:read": { module: "entregas", action: "ver" },
+  "templates:write": { module: "entregas", action: "editar" },
+  "ideias:read": { module: "ideias", action: "ver" },
+  "tarefas:read": { module: "tarefas", action: "ver" },
+  "tarefas:write": { module: "tarefas", action: "editar" },
+  "membros:read": { module: "equipe", action: "ver" },
+  "membros:write": { module: "equipe", action: "editar" },
+  // Also owner-only (OWNER_ONLY_SCOPES): the role check runs on top of this permission.
+  "financeiro:read": { module: "financeiro", action: "ver" },
+  "financeiro:write": { module: "financeiro", action: "editar" },
+};
 
 /** Least-privilege preset for a content-writing agent (read-only). */
 export const MCP_AGENT_PRESET: McpScope[] = [
@@ -38,6 +65,30 @@ export interface McpKeyContext {
   scopes: string[];
   key_id: string;
   created_by: string;
+  /** Papel do principal (`created_by`) em workspace_members do `conta_id`, lido a cada requisição.
+   * Ausente ou null conta como não-dono. Opcional para os contextos montados à mão nos testes. */
+  role?: string | null;
+  /**
+   * Whether write tools may set financial fields (valor_mensal, custo_mensal, data_pagamento).
+   * The financeiro:editar of the user behind the context (the OAuth user, or the API key's
+   * creator), resolved on every request by both resolvers. Unset counts as false.
+   */
+  can_write_financials?: boolean;
+}
+
+/** Throws McpInputError when the call sets a financial field the context may not write. */
+export function requireFinancialWrite(
+  ctx: McpKeyContext,
+  args: Record<string, unknown>,
+  fields: readonly string[],
+): void {
+  if (ctx.can_write_financials === true) return;
+  const set = fields.filter((f) => args[f] != null);
+  if (set.length > 0) {
+    throw new McpInputError(
+      `Seu papel não permite editar valores financeiros (${set.join(", ")}). Remova esses campos ou peça acesso ao Financeiro.`,
+    );
+  }
 }
 
 /** SHA-256 hex digest of the raw token. Deterministic — safe to store/compare. */
@@ -91,6 +142,46 @@ export class McpScopeError extends Error {
  */
 export class McpInputError extends Error {}
 
+/** Refusal for a non-owner calling an owner-only (Financeiro) tool. */
+export class McpOwnerError extends Error {
+  constructor() {
+    super("owner_only");
+  }
+}
+
+/** Scopes that only the workspace owner may hold (checked at issue time and on every call). */
+export const OWNER_ONLY_SCOPES = ["financeiro:read", "financeiro:write"] as const;
+
+/** True if `scopes` carries an owner-only scope and `role` is not 'owner'. */
+export function ownerOnlyScopeViolation(scopes: string[], role?: string | null): boolean {
+  if (role === "owner") return false;
+  return scopes.some((s) => (OWNER_ONLY_SCOPES as readonly string[]).includes(s));
+}
+
+/** Throws McpOwnerError unless the principal is the workspace owner. */
+export function requireOwner(ctx: McpKeyContext): void {
+  if (ctx.role !== "owner") throw new McpOwnerError();
+}
+
+/** The user's role in the workspace (workspace_members.role), or null when not a member.
+ * A failed read throws (fail loud): it must never be mistaken for "not a member" or open a gate. */
+export async function memberRole(
+  db: SupabaseClient,
+  userId: string,
+  contaId: string,
+): Promise<string | null> {
+  const { data, error } = await db
+    .from("workspace_members")
+    .select("role")
+    .eq("user_id", userId)
+    .eq("workspace_id", contaId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const role = (data as { role?: unknown }).role;
+  return typeof role === "string" ? role : null;
+}
+
 /** Throws McpScopeError if `ctx` lacks `scope`. */
 export function requireScope(ctx: McpKeyContext, scope: string): void {
   if (!hasScope(ctx.scopes, scope)) throw new McpScopeError(scope);
@@ -124,10 +215,19 @@ export async function resolveMcpKey(
     // ignore
   }
 
+  // Role and financeiro:editar are read on every request: a creator who is demoted (from owner, or
+  // out of the Financeiro) loses that access at once. has_permission_for fails closed.
+  const [role, canWriteFinancials] = await Promise.all([
+    memberRole(db, data.created_by as string, data.conta_id as string),
+    hasPermissionFor(db, data.created_by as string, data.conta_id as string, "financeiro", "editar"),
+  ]);
+
   return {
     conta_id: data.conta_id as string,
     scopes: (data.scopes as string[]) ?? [],
     key_id: data.id as string,
     created_by: data.created_by as string,
+    role,
+    can_write_financials: canWriteFinancials,
   };
 }

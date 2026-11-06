@@ -3,12 +3,13 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { fetchOlderPosts } from '../api';
 import { HISTORY_OPTS, hubPostsHistoryKey, hubPostsQuery } from '../queries';
 import { mergeById } from '../lib/mergeById';
-import type { HubPost, HubPostsResponse, PostApproval } from '../types';
+import type { HubMediaNote, HubPost, HubPostsResponse, PostApproval } from '../types';
 
 export interface UseHubPostsResult {
   data: HubPostsResponse | undefined;
   posts: HubPost[];
   postApprovals: PostApproval[];
+  mediaNotes: HubMediaNote[];
   isLoading: boolean;
   isError: boolean;
   loadOlder: () => void;
@@ -76,11 +77,16 @@ export function useHubPosts(
     () => mergeById(shell.data?.postApprovals ?? [], pages?.flatMap((p) => p.postApprovals) ?? []),
     [shell.data?.postApprovals, pages],
   );
+  const mediaNotes = useMemo(
+    () => mergeById(shell.data?.mediaNotes ?? [], pages?.flatMap((p) => p.mediaNotes ?? []) ?? []),
+    [shell.data?.mediaNotes, pages],
+  );
 
   return {
     data: shell.data,
     posts,
     postApprovals,
+    mediaNotes,
     isLoading: shell.isLoading,
     isError: shell.isError,
     loadOlder,

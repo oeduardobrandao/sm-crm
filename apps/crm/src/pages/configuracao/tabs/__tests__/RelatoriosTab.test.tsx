@@ -32,6 +32,8 @@ vi.mock('../../../../hooks/useWorkspaceLimits', () => ({
 }));
 
 vi.mock('../../../../store', () => storeMock);
+// jsdom has no matchMedia match: keep this suite on the desktop layout (phone has its own suite).
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 
 vi.mock('../../../../lib/supabase', () => ({
   supabase: {

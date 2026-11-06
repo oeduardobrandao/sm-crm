@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { supabase } from '../../lib/supabase';
 import {
   listEligibleWorkspaces,
+  prepareOAuthAuthorization,
   recordOAuthGrant,
   type EligibleWorkspace,
 } from '@/services/mcp-oauth';
@@ -12,6 +13,9 @@ import {
   AGENT_PRESET,
   ADMIN_SCOPE_OPTIONS,
   ADMIN_READ_PRESET,
+  OWNER_ONLY_HELP,
+  OWNER_ONLY_SCOPE_ERROR,
+  isOwnerOnlyScope,
 } from '@/lib/mcp-scopes';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -57,6 +61,11 @@ export default function ConsentPage() {
       return;
     }
     (async () => {
+      // Must run first: getAuthorizationDetails auto-approves an existing consent, and a consent
+      // left over from a revoked connection would loop the client on a token `mcp` refuses.
+      // Best effort: if it fails, the page behaves exactly as before.
+      await prepareOAuthAuthorization(authorizationId).catch(() => undefined);
+      if (cancelled) return;
       const { data, error } = await supabase.auth.oauth.getAuthorizationDetails(authorizationId);
       if (cancelled) return;
       if (error || !data) {
@@ -120,9 +129,18 @@ export default function ConsentPage() {
   const scopeOptions = isPlatform ? ADMIN_SCOPE_OPTIONS : SCOPE_OPTIONS;
 
   const selectedWs = workspaces.find((w) => w.id === selected) ?? null;
+  // A workspace grant can only carry scopes the user's own role there allows (the edge function
+  // refuses the rest), and owner-only scopes (financeiro:*) only when they own that workspace.
+  // `scopes` keeps what the user picked; this is what actually gets submitted.
+  const isOwnerOfSelected = isPlatform || selectedWs?.role === 'owner';
+  const allowedScopes = isPlatform ? null : (selectedWs?.allowed_scopes ?? []);
+  const ownerLocked = (value: string) => isOwnerOnlyScope(value) && !isOwnerOfSelected;
+  const scopeAllowed = (value: string) =>
+    !ownerLocked(value) && (!allowedScopes || allowedScopes.includes(value));
+  const grantScopes = scopes.filter(scopeAllowed);
   const canApprove =
     phase === 'consent' &&
-    scopes.length > 0 &&
+    grantScopes.length > 0 &&
     (isPlatform || (!!selectedWs && selectedWs.feature_mcp));
 
   const approve = async () => {
@@ -131,15 +149,19 @@ export default function ConsentPage() {
     try {
       await recordOAuthGrant(
         isPlatform
-          ? { authorization_id: authorizationId, target: 'platform', scopes }
-          : { authorization_id: authorizationId, conta_id: selectedWs!.id, scopes },
+          ? { authorization_id: authorizationId, target: 'platform', scopes: grantScopes }
+          : { authorization_id: authorizationId, conta_id: selectedWs!.id, scopes: grantScopes },
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : '';
       toast.error(
         msg.includes('feature_disabled')
           ? 'O plano deste workspace não inclui a integração MCP.'
-          : 'Não foi possível registrar a autorização.',
+          : msg.includes('owner_only_scope')
+            ? OWNER_ONLY_SCOPE_ERROR
+            : msg.includes('Insufficient permissions')
+              ? 'Uma das permissões escolhidas não faz parte do seu papel neste workspace.'
+              : 'Não foi possível registrar a autorização.',
       );
       setPhase('consent');
       return;
@@ -225,8 +247,8 @@ export default function ConsentPage() {
 
         {noEligible ? (
           <p className="mb-5 rounded-lg bg-[hsl(var(--muted))] p-3 text-sm text-muted-foreground">
-            Você precisa ser <strong>dono</strong> ou <strong>administrador</strong> de um workspace
-            para conectar o Claude.
+            Seu papel não dá acesso a nenhum dado que o Claude possa usar. Peça ao dono do workspace
+            para ajustar suas permissões.
           </p>
         ) : (
           <>
@@ -296,16 +318,36 @@ export default function ConsentPage() {
                 Permissões
               </p>
               <div className="space-y-2">
-                {scopeOptions.map((s) => (
-                  <label key={s.value} className="flex items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={scopes.includes(s.value)}
-                      onCheckedChange={(c) => toggleScope(s.value, c === true)}
-                    />
-                    {s.label}
-                  </label>
-                ))}
+                {scopeOptions.map((s) => {
+                  const locked = ownerLocked(s.value);
+                  const allowed = scopeAllowed(s.value);
+                  return (
+                    <div key={s.value}>
+                      <label
+                        className={`flex items-center gap-2 text-sm ${allowed ? '' : 'text-muted-foreground'}`}
+                      >
+                        <Checkbox
+                          checked={allowed && scopes.includes(s.value)}
+                          disabled={!allowed}
+                          onCheckedChange={(c) => toggleScope(s.value, c === true)}
+                        />
+                        {s.label}
+                      </label>
+                      {locked && (
+                        <p className="ml-6 text-xs text-muted-foreground">{OWNER_ONLY_HELP}</p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
+              {allowedScopes &&
+                scopeOptions.some(
+                  (o) => !isOwnerOnlyScope(o.value) && !allowedScopes.includes(o.value),
+                ) && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    As permissões desabilitadas não fazem parte do seu papel neste workspace.
+                  </p>
+                )}
             </div>
           </>
         )}

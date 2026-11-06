@@ -1,3 +1,4 @@
+import { i18n } from '@mesaas/i18n';
 import type { WorkflowTemplate } from '../../store';
 import type { BoardCard } from './hooks/useEntregasData';
 import {
@@ -22,7 +23,10 @@ export interface BoardColumn {
 
 export interface BoardRow {
   key: string;
+  /** Uppercase, as the classic tab strip shows it. */
   label: string;
+  /** The same name as typed (the Vidro tab strip, which does not shout). */
+  name: string;
   /** Template da linha, para o botão "Novo fluxo" da primeira coluna. */
   templateId: number | null;
   /** Ordenadas por `ordem` ascendente. */
@@ -41,9 +45,10 @@ export interface BuildBoardRowsOptions {
    *  norma e não a exceção: `update_workflow_template` só atualiza etapas
    *  `pendente`/`ativo` (e só campos que o fluxo herdou do template), então
    *  editar um template forka para sempre a
-   *  assinatura de todo fluxo que já tenha uma etapa concluída. As colunas já
-   *  fazem união por `ordem` e `isValidDropTarget` já valida contra as etapas
-   *  do próprio card, então a linha por template comporta os divergentes.
+   *  assinatura de todo fluxo que já tenha uma etapa concluída. As colunas
+   *  fazem união das etapas (pelo nome, ver workflowColumnOrdens) e
+   *  workflowDropDirection valida contra as etapas do próprio card, então a
+   *  linha por template comporta os divergentes.
    *
    *  Ligado pela feature_post_processes; desligado, a chave sem template é a
    *  de sempre (nomes unidos), byte a byte. */
@@ -74,7 +79,7 @@ export function rowKeyFor(entity: BoardEntity, signatureRows: boolean): string {
     : entity.steps.map((s) => s.nome).join(' → ');
 }
 
-function rowLabelFor(
+function rowNameFor(
   entity: BoardEntity,
   key: string,
   templates: WorkflowTemplate[],
@@ -82,12 +87,12 @@ function rowLabelFor(
 ): string {
   const t =
     entity.templateId != null ? templates.find((t) => t.id === entity.templateId) : undefined;
-  if (t) return t.nome.toUpperCase();
-  if (!signatureRows) return key.toUpperCase();
+  if (t) return t.nome;
+  if (!signatureRows) return key;
   if (entity.kind === 'post' && entity.process.template_nome) {
-    return entity.process.template_nome.toUpperCase();
+    return entity.process.template_nome;
   }
-  return 'ETAPAS PERSONALIZADAS';
+  return i18n.t('entregas:boardRows.customEtapas');
 }
 
 export function buildBoardRows(
@@ -98,7 +103,14 @@ export function buildBoardRows(
   const signatureRows = opts.signatureRows === true;
   const rowMap = new Map<
     string,
-    { key: string; label: string; templateId: number | null; columns: Map<number, BoardColumn> }
+    {
+      key: string;
+      label: string;
+      name: string;
+      templateId: number | null;
+      tplEtapas: readonly { nome: string }[] | undefined;
+      columns: Map<number, BoardColumn>;
+    }
   >();
   for (const entity of entities) {
     const key = rowKeyFor(entity, signatureRows);
@@ -109,10 +121,13 @@ export function buildBoardRows(
       // template. Etapas que só o card tem entram depois, pelo laço abaixo.
       const tpl =
         entity.templateId != null ? templates.find((t) => t.id === entity.templateId) : undefined;
+      const name = rowNameFor(entity, key, templates, signatureRows);
       rowMap.set(key, {
         key,
-        label: rowLabelFor(entity, key, templates, signatureRows),
+        label: name.toUpperCase(),
+        name,
         templateId: entity.templateId,
+        tplEtapas: tpl?.etapas,
         columns: new Map(
           (tpl?.etapas ?? []).map((e, i) => [
             i,
@@ -122,13 +137,27 @@ export function buildBoardRows(
       });
     }
     const row = rowMap.get(key)!;
+    // Fluxo: coluna pelo nome da etapa (workflowColumnOrdens). Post: pela ordem.
+    const colOf =
+      entity.kind === 'workflow' ? workflowColumnOrdens(row.tplEtapas, entity.steps) : undefined;
     // Garante a coluna de cada etapa desta entidade (templates evoluem; um card
     // pode ter uma etapa a mais). O nome e o tipo vêm da primeira entidade que
     // trouxe a ordem.
     for (const s of entity.steps) {
-      if (!row.columns.has(s.ordem)) {
-        row.columns.set(s.ordem, {
-          ordem: s.ordem,
+      const ordem = colOf?.get(s.ordem) ?? s.ordem;
+      // A coluna própria (ordem + 0,5) de uma etapa que saiu do template só
+      // aparece enquanto a etapa não está feita: concluída, seria uma coluna
+      // vazia que sobra no quadro depois de o usuário tirar a etapa.
+      if (
+        entity.kind === 'workflow' &&
+        !Number.isInteger(ordem) &&
+        entity.card.allEtapas.find((e) => e.ordem === s.ordem)?.status === 'concluido'
+      ) {
+        continue;
+      }
+      if (!row.columns.has(ordem)) {
+        row.columns.set(ordem, {
+          ordem,
           nome: s.nome,
           tipo: s.tipo,
           cards: [],
@@ -136,7 +165,7 @@ export function buildBoardRows(
         });
       }
     }
-    const col = row.columns.get(entity.etapaOrdem);
+    const col = row.columns.get(colOf?.get(entity.etapaOrdem) ?? entity.etapaOrdem);
     if (!col) continue;
     if (entity.kind === 'workflow') col.cards.push(entity.card);
     else col.posts.push(entity);
@@ -149,7 +178,7 @@ export function buildBoardRows(
       col.posts.sort((a, b) => a.posicao - b.posicao || entityNumericId(a) - entityNumericId(b));
     }
     if (columns.some((c) => c.cards.length > 0 || c.posts.length > 0))
-      rows.push({ key: r.key, label: r.label, templateId: r.templateId, columns });
+      rows.push({ key: r.key, label: r.label, name: r.name, templateId: r.templateId, columns });
   }
   // Every template gets a tab, even one with zero active fluxos right now (e.g. a
   // freshly created template, or the "Padrão" template seeded on signup) — otherwise
@@ -167,6 +196,7 @@ export function buildBoardRows(
     rows.push({
       key: `template:${t.id}`,
       label: t.nome.toUpperCase(),
+      name: t.nome,
       templateId: t.id,
       columns: steps.map((s) => ({
         ordem: s.ordem,
@@ -178,6 +208,67 @@ export function buildBoardRows(
     });
   }
   return rows;
+}
+
+/** Coluna de cada etapa de um fluxo numa linha (step.ordem -> ordem da coluna).
+ *  update_workflow_template casa as etapas pelo nome, então um fluxo pode guardar
+ *  uma etapa que o template perdeu (feita, ativa ou com histórico) e ficar com as
+ *  seguintes uma ordem à frente do template. Cada etapa vai para a coluna do
+ *  template com o mesmo nome (aparado), quando só uma coluna tem esse nome. Sem
+ *  par, fica na própria ordem (nome customizado no fluxo, nome repetido no
+ *  template); se essa coluna já é de outra etapa do fluxo, ganha uma coluna
+ *  própria logo depois da etapa anterior (ordem + 0,5). Sem template, é a ordem. */
+export function workflowColumnOrdens(
+  templateEtapas: readonly { nome: string }[] | undefined,
+  steps: readonly { ordem: number; nome: string }[],
+): Map<number, number> {
+  const sorted = [...steps].sort((a, b) => a.ordem - b.ordem);
+  const out = new Map<number, number>();
+  if (!templateEtapas?.length) {
+    for (const s of sorted) out.set(s.ordem, s.ordem);
+    return out;
+  }
+  const indexByNome = new Map<string, number | null>();
+  templateEtapas.forEach((e, i) => {
+    const nome = (e.nome ?? '').trim();
+    indexByNome.set(nome, indexByNome.has(nome) ? null : i);
+  });
+  const matched = new Map<number, number>();
+  const taken = new Set<number>();
+  for (const s of sorted) {
+    const i = indexByNome.get(s.nome.trim());
+    if (i != null && !taken.has(i)) {
+      matched.set(s.ordem, i);
+      taken.add(i);
+    }
+  }
+  let prev = -1;
+  for (const s of sorted) {
+    const col = matched.get(s.ordem) ?? (taken.has(s.ordem) ? prev + 0.5 : s.ordem);
+    out.set(s.ordem, col);
+    prev = col;
+  }
+  return out;
+}
+
+/** Arrastar um fluxo: a coluna da etapa seguinte do PRÓPRIO fluxo avança, a da
+ *  anterior volta (as ações andam pela sequência do fluxo), nas colunas de
+ *  workflowColumnOrdens. Qualquer outra coluna não é alvo. */
+export function workflowDropDirection(
+  templateEtapas: readonly { nome: string }[] | undefined,
+  steps: readonly { ordem: number; nome: string }[],
+  activeOrdem: number,
+  targetColumnOrdem: number,
+): 'forward' | 'back' | null {
+  const sorted = [...steps].sort((a, b) => a.ordem - b.ordem);
+  const idx = sorted.findIndex((s) => s.ordem === activeOrdem);
+  if (idx < 0) return null;
+  const colOf = workflowColumnOrdens(templateEtapas, sorted);
+  const next = sorted[idx + 1];
+  const prev = sorted[idx - 1];
+  if (next && colOf.get(next.ordem) === targetColumnOrdem) return 'forward';
+  if (prev && colOf.get(prev.ordem) === targetColumnOrdem) return 'back';
+  return null;
 }
 
 /** Um card só pode ser solto numa coluna adjacente que exista na SUA própria

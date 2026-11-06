@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import NotificationPopover from '../NotificationPopover';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 import type { Notification } from '../../../store';
 
 const sampleNotif: Notification = {
@@ -95,5 +96,41 @@ describe('NotificationPopover', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: /Marcar todas como lidas/ }));
     expect(onMarkAllAsRead).toHaveBeenCalled();
+  });
+});
+
+describe('NotificationPopover under the Vidro look', () => {
+  const popover = (
+    <NotificationPopover
+      notifications={[]}
+      isLoading={false}
+      onMarkAsRead={vi.fn()}
+      onMarkAllAsRead={vi.fn()}
+      onDismiss={vi.fn()}
+      onNavigate={vi.fn()}
+      onClose={vi.fn()}
+    />
+  );
+
+  it('keeps its own card inline styles without the Vidro shell', () => {
+    render(popover);
+    const card = screen.getByRole('dialog', { name: 'Notificações' });
+    expect(card.getAttribute('style')).toMatchInlineSnapshot(
+      `"width: min(380px * , * calc(100vw - 2rem)); max-height: 480px; background: var(--surface-main); border: 1px solid var(--border-color); border-radius: 16px; box-shadow: var(--shadow); overflow: hidden; display: flex; flex-direction: column;"`,
+    );
+  });
+
+  it('drops the card background, border and shadow and inherits the radius under the Vidro shell', () => {
+    // The bell's PopoverContent carries the menu glass (overlays.css); a second frame would nest.
+    render(<VidroToolbarHarness>{popover}</VidroToolbarHarness>);
+    const card = screen.getByRole('dialog', { name: 'Notificações' });
+    expect(card.style.background).toBe('');
+    expect(card.style.border).toBe('');
+    // inherit, so overflow: hidden clips row hovers to the glass's 14px corners.
+    expect(card.style.borderRadius).toBe('inherit');
+    expect(card.style.boxShadow).toBe('');
+    expect(card.style.overflow).toBe('hidden');
+    expect(card.style.maxHeight).toBe('480px');
+    expect(card.style.display).toBe('flex');
   });
 });

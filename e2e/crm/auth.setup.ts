@@ -8,6 +8,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const authDir = path.join(__dirname, '..', '.auth');
 const authFile = path.join(authDir, 'crm-user.json');
 
+// Without the E2E secrets there is nobody to log in as: skip (the dependent crm and
+// crm-phone specs skip on the same condition) instead of failing on fill(undefined).
+setup.skip(!process.env.E2E_CRM_EMAIL || !process.env.E2E_CRM_PASSWORD, 'E2E_CRM_* not set');
+
 setup('authenticate crm user', async ({ page }) => {
   mkdirSync(authDir, { recursive: true });
 
@@ -18,7 +22,11 @@ setup('authenticate crm user', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem(
       'consent_v1',
-      JSON.stringify({ analytics: false, support: false, decidedAt: '2026-09-19T00:00:00.000Z' }),
+      JSON.stringify({
+        analytics: false,
+        support: false,
+        marketing: false,
+        decidedAt: '2026-09-19T00:00:00.000Z' }),
     );
   });
 
@@ -32,6 +40,14 @@ setup('authenticate crm user', async ({ page }) => {
   await page.waitForURL(/\/dashboard/, { timeout: 15_000 });
   await expect(page).not.toHaveURL(/workspace-setup/);
   await expect(page.locator('nav#sidebar')).toBeVisible();
+
+  // Mark the Vidro launch intro as seen (VidroIntro, per user per browser): at the Desktop
+  // Chrome viewport it would otherwise open over the first page of every spec.
+  await page.evaluate(() => {
+    const key = Object.keys(localStorage).find((k) => /^sb-.+-auth-token$/.test(k));
+    const userId = key ? JSON.parse(localStorage.getItem(key) ?? '{}').user?.id : null;
+    if (userId) localStorage.setItem(`vidro-intro:${userId}`, '1');
+  });
 
   await page.context().storageState({ path: authFile });
 });

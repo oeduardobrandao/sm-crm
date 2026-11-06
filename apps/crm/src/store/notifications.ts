@@ -12,6 +12,7 @@ export type NotificationType =
   | 'step_completed'
   | 'post_assigned'
   | 'task_assigned'
+  | 'task_comment'
   | 'workflow_completed'
   | 'deadline_approaching'
   | 'invite_accepted'
@@ -31,7 +32,11 @@ export type NotificationType =
   | 'event_client_rsvp'
   | 'event_guest_rsvp'
   | 'event_reschedule_requested'
-  | 'event_reminder';
+  | 'event_reminder'
+  | 'team_message'
+  | 'post_discussion'
+  | 'linha_editorial_aprovada'
+  | 'linha_editorial_ajustes';
 
 export interface Notification {
   id: string;

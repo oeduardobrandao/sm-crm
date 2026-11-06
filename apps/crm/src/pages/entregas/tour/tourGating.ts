@@ -9,6 +9,10 @@ export function shouldAutoStartTour(i: {
   tourDone: boolean;
   showExample: boolean;
   wizardOpen: boolean;
+  /** Below 768px: the tour anchors desktop columns, so it never starts there. */
+  isPhone?: boolean;
 }): boolean {
-  return !i.isLoading && !i.alreadyStarted && !i.tourDone && i.showExample && !i.wizardOpen;
+  return (
+    !i.isPhone && !i.isLoading && !i.alreadyStarted && !i.tourDone && i.showExample && !i.wizardOpen
+  );
 }

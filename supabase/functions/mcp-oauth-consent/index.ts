@@ -3,7 +3,7 @@
 // scopes) that the MCP resource server later resolves. The browser drives Supabase's OAuth
 // approve/deny (it owns the session + redirect); this function only records OUR grant binding.
 //
-// JWT-authed (the CRM user); does its own owner/admin + feature check; writes via service role
+// JWT-authed (the CRM user); does its own permission + feature check; writes via service role
 // (mcp_oauth_grants writes are service-role-only by RLS). Deploy WITHOUT --no-verify-jwt is NOT
 // used here — keep gateway JWT verification on, like mcp-keys.
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2";
@@ -14,9 +14,12 @@ import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 import {
   boundGrantScopes,
   mcpScopesFromClaim,
+  permittedMcpScopes,
+  prepareOAuthAuthorization,
   validateConsentPayload,
 } from "../_shared/mcp-oauth.ts";
 import { adminScopesFromClaim } from "../_shared/mcp-admin-scopes.ts";
+import { memberRole, ownerOnlyScopeViolation } from "../_shared/mcp-token.ts";
 import { hasPermissionFor } from "../_shared/permissions.ts";
 import { listAdminMcpGrants, revokeAdminMcpGrant } from "../_shared/admin-mcp-grants.ts";
 
@@ -85,9 +88,19 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const action = body.action as string;
 
-    // Workspaces the user may connect: those where they hold 'configuracoes':'editar'
-    // (owner/admin legados, ou papel custom com a permissão), anotadas com se o plano da
-    // workspace habilita MCP (a UI de consentimento desabilita o resto).
+    // Called by the consent page BEFORE it asks Supabase for the authorization details: a consent
+    // whose Mesaas grant was revoked would otherwise be auto-approved into a token `mcp` refuses.
+    // Only ever acts on the caller's own pending authorization (the RPC matches user_id).
+    if (action === "prepare-authorization") {
+      const outcome = await prepareOAuthAuthorization(svc, body.authorization_id, user.id);
+      if (outcome === "repaired") console.info("[mcp-oauth-consent] cleared a stale OAuth consent");
+      return json({ outcome });
+    }
+
+    // Workspaces the user may connect: any membership whose role allows at least one MCP scope,
+    // annotated with whether the plan enables MCP and WHICH scopes the role allows (the consent
+    // page disables the rest). Connecting no longer needs 'configuracoes': the grant is capped by
+    // the user's own permissions here, on approve, and on every MCP request.
     if (action === "eligible-workspaces") {
       const { data: memberships } = await svc
         .from("workspace_members")
@@ -96,14 +109,18 @@ Deno.serve(async (req) => {
       const rows = (memberships ?? []) as any[];
       const workspaces = [];
       for (const m of rows) {
-        const canManage = await hasPermissionFor(svc, user.id, m.workspace_id as string, "configuracoes", "editar");
-        if (!canManage) continue;
+        // financeiro:* also needs the owner role (approve refuses it otherwise), so the consent page
+        // only offers it to owners.
+        const allowed_scopes = (await permittedMcpScopes(svc, user.id, m.workspace_id as string))
+          .filter((s) => !ownerOnlyScopeViolation([s], m.role as string));
+        if (allowed_scopes.length === 0) continue;
         const feature_mcp = await effectivePlanFeature(svc, m.workspace_id as string, "feature_mcp");
         workspaces.push({
           id: m.workspace_id as string,
           name: (m.workspaces?.name as string) ?? "Workspace",
           role: m.role as string,
           feature_mcp,
+          allowed_scopes,
         });
       }
       return json({ workspaces, platform_admin: await isPlatformAdmin(svc, user.id) });
@@ -146,11 +163,11 @@ Deno.serve(async (req) => {
       }
       const contaId = conta_id as string; // target workspace: validateConsentPayload garante não-nulo
 
-      // Authorize against the CHOSEN workspace (not the active one): 'configuracoes':'editar'
-      // there. has_permission_for fails closed on a missing membership (no separate lookup
-      // needed -- a non-member resolves to false).
-      const canManage = await hasPermissionFor(svc, user.id, contaId, "configuracoes", "editar");
-      if (!canManage) {
+      // Authorize against the CHOSEN workspace (not the active one): every approved scope must be
+      // one the user's own role there allows (MCP_SCOPE_PERMISSION). has_permission_for fails
+      // closed on a missing membership, so a non-member gets no scope and is refused here.
+      const permitted = await permittedMcpScopes(svc, user.id, contaId, scopes);
+      if (permitted.length !== scopes.length) {
         return json({ error: "Insufficient permissions" }, 403);
       }
 
@@ -184,6 +201,11 @@ Deno.serve(async (req) => {
       // The grant can't exceed what the request asked for (when it named MCP scopes).
       const grantScopes = boundGrantScopes(scopes, requestedMcp);
       if (grantScopes.length === 0) return json({ error: "no_scopes_granted" }, 400);
+      // financeiro:* is owner-only: checked against the membership role in the CHOSEN workspace
+      // (workspace_members.role), before anything is persisted. The mcp function re-checks per call.
+      if (ownerOnlyScopeViolation(grantScopes, await memberRole(svc, user.id, contaId))) {
+        return json({ error: "owner_only_scope" }, 400);
+      }
 
       const now = new Date().toISOString();
       const { error } = await svc
@@ -213,9 +235,10 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
-    // List / revoke the workspace's Claude OAuth connections — 'configuracoes':'editar' on the
-    // ACTIVE workspace. active_workspace_id, not profiles.conta_id: the latter is global and
-    // goes stale on a workspace switch (same rule as invite-user/manage-workspace-user).
+    // List / revoke the ACTIVE workspace's Claude OAuth connections. active_workspace_id, not
+    // profiles.conta_id: the latter is global and goes stale on a workspace switch (same rule as
+    // invite-user/manage-workspace-user). 'configuracoes' sees and revokes every connection; any
+    // other member sees and revokes only their own (they can create one, so they can undo it).
     if (action === "list-grants" || action === "revoke-grant") {
       const { data: profile } = await svc
         .from("profiles")
@@ -231,16 +254,14 @@ Deno.serve(async (req) => {
       // lista de conexões; 'revoke-grant' é mutação e segue exigindo 'editar'.
       const requiredAction = action === "list-grants" ? "ver" : "editar";
       const canManage = await hasPermissionFor(svc, user.id, contaId, "configuracoes", requiredAction);
-      if (!canManage) {
-        return json({ error: "Insufficient permissions" }, 403);
-      }
 
       if (action === "list-grants") {
-        const { data: grants } = await svc
+        let query = svc
           .from("mcp_oauth_grants")
           .select("id, client_id, scopes, created_at, revoked_at, user_id")
-          .eq("conta_id", contaId)
-          .order("created_at", { ascending: false });
+          .eq("conta_id", contaId);
+        if (!canManage) query = query.eq("user_id", user.id);
+        const { data: grants } = await query.order("created_at", { ascending: false });
         const rows = (grants ?? []) as any[];
         const userIds = [...new Set(rows.map((g) => g.user_id as string))];
         const { data: profs } = userIds.length
@@ -254,6 +275,7 @@ Deno.serve(async (req) => {
           created_at: g.created_at,
           revoked_at: g.revoked_at,
           connected_by: nameById.get(g.user_id) ?? null,
+          mine: g.user_id === user.id,
         }));
         return json({ grants: out });
       }
@@ -261,14 +283,16 @@ Deno.serve(async (req) => {
       // revoke-grant
       const grantId = typeof body.grant_id === "string" ? body.grant_id : "";
       if (!grantId) return json({ error: "grant_id required" }, 400);
-      const { data, error } = await svc
+      let revoke = svc
         .from("mcp_oauth_grants")
         .update({ revoked_at: new Date().toISOString(), revoked_by: user.id })
         .eq("id", grantId)
         .eq("conta_id", contaId)
-        .is("revoked_at", null)
-        .select("id, client_id")
-        .maybeSingle();
+        .is("revoked_at", null);
+      // Without 'configuracoes':'editar' only the caller's own connection matches; someone
+      // else's grant id resolves to the same 404 as a missing one.
+      if (!canManage) revoke = revoke.eq("user_id", user.id);
+      const { data, error } = await revoke.select("id, client_id").maybeSingle();
       if (error) throw error;
       if (!data) return json({ error: "not found" }, 404);
       await insertAuditLog(svc, {

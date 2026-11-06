@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Editor de popup</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/mesaas/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; box-sizing: border-box; padding-top: 54px; background: #0a0c0f; color: #e8eaf0; font-family: var(--font-apple); overflow: hidden;">
+<header style="display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; height: 44px; padding: 0 16px;">
+<button type="button" style="justify-self: start; border: 0; background: transparent; color: #facc15; font-size: 17px; font-family: inherit; padding: 8px 0;">Cancelar</button>
+<h1 style="margin: 0; font-size: 17px; font-weight: 600;">Editar popup</h1>
+<button type="button" style="justify-self: end; height: 34px; padding: 0 16px; border-radius: 999px; border: 0; background: #facc15; color: #12151a; font-size: 15px; font-weight: 600; font-family: inherit;">Salvar</button>
+</header>
+<div role="tablist" aria-label="Editor" style="margin: 8px 16px 14px; padding: 2px; border-radius: 9px; background: rgba(118,118,128,0.24); display: flex;"><button type="button" role="tab" aria-selected="true" style="flex: 1; height: 30px; border: 0; border-radius: 7px; background: #3a404d; color: #e8eaf0; font-size: 13px; font-weight: 600; font-family: inherit;">Páginas</button><button type="button" role="tab" aria-selected="false" style="flex: 1; height: 30px; border: 0; background: transparent; color: #e8eaf0; font-size: 13px; font-family: inherit;">Configurações</button><button type="button" role="tab" aria-selected="false" style="flex: 1; height: 30px; border: 0; background: transparent; color: #e8eaf0; font-size: 13px; font-family: inherit;">Prévia</button></div>
+<div role="tablist" aria-label="Páginas do popup" style="display: flex; gap: 8px; padding: 0 16px 14px; overflow: hidden;">
+<button type="button" role="tab" aria-selected="true" style="flex-shrink: 0; height: 34px; padding: 0 14px; border-radius: 999px; border: 0; background: #e8eaf0; color: #12151a; font-size: 15px; font-weight: 600; font-family: inherit;">1 · Conheça</button>
+<button type="button" role="tab" aria-selected="false" style="flex-shrink: 0; height: 34px; padding: 0 14px; border-radius: 999px; border: 0; background: rgba(118,118,128,0.24); color: #e8eaf0; font-size: 15px; font-family: inherit;">2 · Eventos</button>
+<button type="button" role="tab" aria-selected="false" style="flex-shrink: 0; height: 34px; padding: 0 14px; border-radius: 999px; border: 0; background: rgba(118,118,128,0.24); color: #e8eaf0; font-size: 15px; font-family: inherit;">3 · Convites</button>
+<button type="button" aria-label="Nova página" style="flex-shrink: 0; width: 34px; height: 34px; border-radius: 999px; border: 0; background: rgba(118,118,128,0.24); color: #e8eaf0; display: flex; align-items: center; justify-content: center;"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></button>
+</div>
+<ul style="list-style: none; margin: 0 16px 18px; padding: 0; border-radius: 16px; overflow: hidden; background: #1a1e26;">
+<li><label style="display: block; padding: 8px 16px; border-bottom: 1px solid rgba(235,235,245,0.12);"><span style="display: block; font-size: 13px; color: #9ca3af;">Título</span><input value="Conheça a Agenda" style="width: 100%; border: 0; background: transparent; color: #e8eaf0; font-size: 17px; font-family: inherit; padding: 2px 0 0;"></label></li>
+<li><label style="display: block; padding: 8px 16px;"><span style="display: block; font-size: 13px; color: #9ca3af;">Sobretítulo (opcional)</span><input value="Novidade" style="width: 100%; border: 0; background: transparent; color: #e8eaf0; font-size: 17px; font-family: inherit; padding: 2px 0 0;"></label></li>
+</ul>
+<h2 style="margin: 0 0 8px 32px; font-size: 13px; font-weight: 600; color: #9ca3af;">IMAGEM (16:9, ATÉ 10 MB)</h2>
+<div style="display: flex; align-items: center; gap: 12px; margin: 0 16px 18px; padding: 10px; border-radius: 16px; background: #1a1e26;"><span aria-hidden="true" style="width: 112px; height: 63px; border-radius: 10px; background: #1e3a5f; display: flex; align-items: center; justify-content: center; color: #93c5fd;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path></svg></span><div style="display: flex; flex-direction: column; gap: 6px;"><button type="button" style="height: 32px; padding: 0 12px; border-radius: 8px; border: 0; background: rgba(118,118,128,0.24); color: #e8eaf0; font-size: 15px; font-family: inherit;">Substituir</button><button type="button" style="height: 32px; padding: 0 12px; border-radius: 8px; border: 0; background: transparent; color: #ff6b5e; font-size: 15px; font-family: inherit; text-align: left;">Remover</button></div></div>
+<h2 style="margin: 0 0 8px 32px; font-size: 13px; font-weight: 600; color: #9ca3af;">CORPO (MARKDOWN)</h2>
+<label style="display: block; margin: 0 16px 18px;"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);">Corpo</span><textarea style="box-sizing: border-box; width: 100%; height: 96px; padding: 12px 16px; border-radius: 16px; border: 0; background: #1a1e26; color: #e8eaf0; font-size: 17px; line-height: 1.35; font-family: inherit; resize: none;">Organize reuniões, gravações e entregas num só calendário, com convite por e-mail para o cliente.</textarea></label>
+<h2 style="margin: 0 0 8px 32px; font-size: 13px; font-weight: 600; color: #9ca3af;">CTA DESTA PÁGINA</h2>
+<ul style="list-style: none; margin: 0 16px 6px; padding: 0; border-radius: 16px; overflow: hidden; background: #1a1e26;">
+<li><label style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 16px; border-bottom: 1px solid rgba(235,235,245,0.12);"><span style="width: 64px; font-size: 17px;">Rótulo</span><input value="Abrir a Agenda" style="flex-grow: 1; min-width: 0; border: 0; background: transparent; color: #e8eaf0; font-size: 17px; font-family: inherit;"></label></li>
+<li><label style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 16px;"><span style="width: 64px; font-size: 17px;">URL</span><input value="/calendario" style="flex-grow: 1; min-width: 0; border: 0; background: transparent; color: #e8eaf0; font-size: 17px; font-family: inherit;"></label></li>
+</ul>
+<p style="margin: 0 32px; font-size: 13px; color: #9ca3af;">Sobrescreve o CTA do popup nesta página.</p>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

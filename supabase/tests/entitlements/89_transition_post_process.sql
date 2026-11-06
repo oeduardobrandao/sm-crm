@@ -6,13 +6,16 @@
 -- 89.0 avancar/voltar em etapa padrao: ponteiro, estados, prazo e revisao
 -- 89.1 revisao velha -> process_changed sem efeito
 -- 89.2 aprovacao com pendencia: aprovar_interno x sem_alterar, status esperado
--- 89.3 re-arm: post liberado com outra aprovacao adiante volta a rascunho
+-- 89.3 sem re-arm automatico: post liberado continua aprovado_cliente; voltar_rascunho
+--      e a escolha explicita (20261023000002)
 -- 89.4 concluir e reabrir preservam prazo vencido e nao tocam o post
 -- 89.5 processo de outra conta -> process_not_found; reabrir de ativo -> process_not_concluded
 -- 89.6 concluir na ultima etapa aprovacao_cliente: mesmo dialogo do avancar
 -- 89.7 erros de argumento e de estado, agrupados num bloco so
 -- 89.8 concluir com etapa pendente adiante -> pending_steps_remaining
 -- 89.9 flag do plano desligada nao bloqueia avancar num processo existente (criterio 12.18)
+-- 89.10 voltar_rascunho: concluir -> invalid_approval_choice; agendado/postado/
+--       falha_publicacao -> post_locked; enviado_cliente -> rascunho; sem_alterar liberado
 
 create or replace function pg_temp.et_tr_env(
   out ws uuid, out usr uuid, out cli bigint, out post bigint, out proc bigint)
@@ -166,8 +169,10 @@ rollback;
 -- 89.3
 begin;
 do $$
-declare e record; v_status text;
+declare e record; f record; v_res jsonb; v_status text;
 begin
+  -- Sem escolha, post liberado com aprovacao pendente adiante NAO volta mais a
+  -- rascunho sozinho (o re-arm saiu em 20261023000002).
   select * into e from pg_temp.et_tr_env();
   update post_process_steps set estado = 'concluido', concluido_em = now() where process_id = e.proc and ordem = 0;
   update post_process_steps set estado = 'ativo', iniciado_em = now() where process_id = e.proc and ordem = 1;
@@ -176,30 +181,28 @@ begin
 
   perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
   execute 'set local role authenticated';
-  perform transition_post_process(e.proc, 2, 'avancar', null, 'aprovado_cliente', timestamptz '2026-09-09 02:59:59+00');
+  v_res := transition_post_process(e.proc, 2, 'avancar', null, 'aprovado_cliente', timestamptz '2026-09-09 02:59:59+00');
   execute 'reset role';
   select status into v_status from workflow_posts where id = e.post;
-  assert v_status = 'rascunho', format('com outra aprovacao adiante o post volta a rascunho, obtido %s', v_status);
+  assert v_status = 'aprovado_cliente', format('sem escolha o post continua aprovado_cliente, obtido %s', v_status);
+  assert (v_res ->> 'post_status_changed')::boolean = false, format('post_status_changed: %s', v_res);
+  assert (v_res ->> 'etapa_atual')::int = 2, format('avancou: %s', v_res);
 
-  -- agendado nunca e reiniciado. A etapa adiante precisa ser
-  -- aprovacao_cliente: e ela que faz v_tem_adiante ficar true na migration e
-  -- exercitar de fato o guard "AND v_status = 'aprovado_cliente'" (fix round
-  -- 1, I1 do task-5-review.md). Com tipo 'padrao' v_tem_adiante ficaria false
-  -- e o ramo do re-arm nem seria alcancado -- o assert abaixo passaria sem
-  -- provar nada sobre o guard.
-  update workflow_posts set status = 'agendado' where id = e.post;
-  update post_process_steps set estado = 'concluido', concluido_em = now() where process_id = e.proc and ordem = 1;
-  update post_process_steps set estado = 'ativo', iniciado_em = now() where process_id = e.proc and ordem = 2;
-  update post_processes set etapa_atual = 2, revisao = 3 where id = e.proc;
-  insert into post_process_steps (conta_id, process_id, ordem, nome, tipo, estado)
-    values (e.ws, e.proc, 3, 'Publicacao', 'aprovacao_cliente', 'pendente');
-  perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+  -- Mesmo cenario com voltar_rascunho: a escolha explicita volta o post.
+  select * into f from pg_temp.et_tr_env();
+  update post_process_steps set estado = 'concluido', concluido_em = now() where process_id = f.proc and ordem = 0;
+  update post_process_steps set estado = 'ativo', iniciado_em = now() where process_id = f.proc and ordem = 1;
+  update post_processes set etapa_atual = 1, revisao = 2 where id = f.proc;
+  update workflow_posts set status = 'aprovado_cliente' where id = f.post;
+  perform set_config('request.jwt.claims', json_build_object('sub', f.usr, 'role', 'authenticated')::text, true);
   execute 'set local role authenticated';
-  perform transition_post_process(e.proc, 3, 'avancar', null, 'agendado', timestamptz '2026-09-12 02:59:59+00');
+  v_res := transition_post_process(f.proc, 2, 'avancar', 'voltar_rascunho', 'aprovado_cliente', timestamptz '2026-09-09 02:59:59+00');
   execute 'reset role';
-  select status into v_status from workflow_posts where id = e.post;
-  assert v_status = 'agendado', 'agendado nunca e reiniciado nem alterado';
-  raise notice 'PASS 89.3 re-arm do proximo ciclo';
+  select status into v_status from workflow_posts where id = f.post;
+  assert v_status = 'rascunho', format('voltar_rascunho grava rascunho, obtido %s', v_status);
+  assert (v_res ->> 'post_status_changed')::boolean = true, format('post_status_changed: %s', v_res);
+  assert v_res ->> 'post_status' = 'rascunho', format('post_status: %s', v_res);
+  raise notice 'PASS 89.3 sem re-arm automatico, voltar_rascunho explicito';
 end $$;
 rollback;
 
@@ -334,10 +337,9 @@ begin
   perform 1 from post_process_steps where process_id = e.proc and ordem = 2 and estado = 'concluido';
   assert found, 'a etapa de aprovacao ficou concluida';
 
-  -- concluir NAO re-arma. Depois da pre-checagem de pending_steps_remaining
-  -- nao existe aprovacao PENDENTE adiante num concluir, entao o re-arm e
-  -- provado impossivel: a ultima etapa, com o post ja liberado, sai concluida
-  -- e o post fica exatamente como estava (avancar o teria voltado a rascunho).
+  -- concluir sem escolha nao toca o post: a ultima etapa, com o post ja
+  -- liberado, sai concluida e o post fica exatamente como estava. Desde
+  -- 20261023000002 nem avancar re-arma sozinho (ver 89.3).
   select * into f from pg_temp.et_tr_env();
   update post_process_steps set estado = 'concluido', concluido_em = now() where process_id = f.proc and ordem in (0, 1);
   update post_process_steps set estado = 'ativo', iniciado_em = now() where process_id = f.proc and ordem = 2;
@@ -486,5 +488,87 @@ begin
   assert (v_res ->> 'ok')::boolean, 'avancar continua funcionando com a flag do plano desligada';
   assert (v_res ->> 'etapa_atual')::int = 1, 'o ponteiro avanca normalmente';
   raise notice 'PASS 89.9 flag do plano desligada nao bloqueia transicao';
+end $$;
+rollback;
+
+-- 89.10 voltar_rascunho
+begin;
+do $$
+declare e record; v_res jsonb; v_status text; v_raised boolean; v_rev int; v_locked text;
+begin
+  -- (a) concluir na ultima etapa aprovacao_cliente nao aceita voltar_rascunho
+  select * into e from pg_temp.et_tr_env();
+  update post_process_steps set estado = 'concluido', concluido_em = now() where process_id = e.proc and ordem in (0, 1);
+  update post_process_steps set estado = 'ativo', iniciado_em = now() where process_id = e.proc and ordem = 2;
+  update post_processes set etapa_atual = 2, revisao = 3 where id = e.proc;
+  update workflow_posts set status = 'enviado_cliente' where id = e.post;
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  v_raised := false;
+  begin
+    perform transition_post_process(e.proc, 3, 'concluir', 'voltar_rascunho', 'enviado_cliente');
+  exception when sqlstate 'P0001' then
+    assert sqlerrm = 'invalid_approval_choice', format('concluir + voltar_rascunho: %s', sqlerrm);
+    v_raised := true;
+  end;
+  execute 'reset role';
+  assert v_raised, 'concluir + voltar_rascunho deve levantar invalid_approval_choice';
+  assert (select status from workflow_posts where id = e.post) = 'enviado_cliente', 'post intacto';
+  assert (select estado from post_processes where id = e.proc) = 'ativo', 'processo nao concluiu';
+
+  -- (b) post travado: agendado, postado, falha_publicacao -> post_locked sem escrita
+  update post_process_steps set estado = 'pendente', iniciado_em = null where process_id = e.proc and ordem = 2;
+  update post_process_steps set estado = 'ativo', concluido_em = null where process_id = e.proc and ordem = 1;
+  update post_processes set etapa_atual = 1, revisao = 2 where id = e.proc;
+  foreach v_locked in array array['agendado', 'postado', 'falha_publicacao'] loop
+    update workflow_posts set status = v_locked where id = e.post;
+    perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+    execute 'set local role authenticated';
+    v_raised := false;
+    begin
+      perform transition_post_process(e.proc, 2, 'avancar', 'voltar_rascunho', v_locked, timestamptz '2026-09-09 02:59:59+00');
+    exception when sqlstate 'P0001' then
+      assert sqlerrm = 'post_locked', format('%s + voltar_rascunho: %s', v_locked, sqlerrm);
+      v_raised := true;
+    end;
+    execute 'reset role';
+    assert v_raised, format('%s deve levantar post_locked', v_locked);
+    assert (select status from workflow_posts where id = e.post) = v_locked, format('%s intacto', v_locked);
+    select revisao into v_rev from post_processes where id = e.proc;
+    assert v_rev = 2, format('revisao intacta apos post_locked (%s)', v_locked);
+    perform 1 from post_process_steps where process_id = e.proc and ordem = 1 and estado = 'ativo';
+    assert found, format('etapa 1 continua ativa (%s)', v_locked);
+  end loop;
+
+  -- (c) enviado_cliente + voltar_rascunho -> rascunho
+  update workflow_posts set status = 'enviado_cliente' where id = e.post;
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  v_res := transition_post_process(e.proc, 2, 'avancar', 'voltar_rascunho', 'enviado_cliente', timestamptz '2026-09-09 02:59:59+00');
+  execute 'reset role';
+  assert (select status from workflow_posts where id = e.post) = 'rascunho', 'enviado_cliente -> rascunho';
+  assert (v_res ->> 'post_status_changed')::boolean, format('post_status_changed: %s', v_res);
+  assert (v_res ->> 'etapa_atual')::int = 2, format('avancou: %s', v_res);
+  raise notice 'PASS 89.10a voltar_rascunho';
+end $$;
+rollback;
+
+begin;
+do $$
+declare e record; v_res jsonb;
+begin
+  -- (d) sem_alterar num post liberado nao mexe
+  select * into e from pg_temp.et_tr_env();
+  update post_process_steps set estado = 'concluido', concluido_em = now() where process_id = e.proc and ordem = 0;
+  update post_process_steps set estado = 'ativo', iniciado_em = now() where process_id = e.proc and ordem = 1;
+  update post_processes set etapa_atual = 1, revisao = 2 where id = e.proc;
+  update workflow_posts set status = 'aprovado_cliente' where id = e.post;
+  perform set_config('request.jwt.claims', json_build_object('sub', e.usr, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  v_res := transition_post_process(e.proc, 2, 'avancar', 'sem_alterar', 'aprovado_cliente', timestamptz '2026-09-09 02:59:59+00');
+  execute 'reset role';
+  assert (select status from workflow_posts where id = e.post) = 'aprovado_cliente', 'sem_alterar liberado intacto';
+  assert (v_res ->> 'post_status_changed')::boolean = false, format('post_status_changed: %s', v_res);
+  raise notice 'PASS 89.10b sem_alterar liberado';
 end $$;
 rollback;

@@ -186,9 +186,12 @@ Deno.test("hub-posts takes tiktok_post_url from the TikTok destination's permali
         platform: "both",
         workflow_id: 7,
         workflows: { titulo: "Calendário Abril" },
+        ig_caption: "Legenda IG",
+        tiktok_caption: "Legenda TikTok",
         targets_state: [
-          { platform: "instagram", permalink: "https://instagram.com/p/x" },
-          { platform: "tiktok", permalink: "https://www.tiktok.com/@marca/video/123" },
+          { platform: "tiktok", permalink: "https://www.tiktok.com/@marca/video/123", caption: "nunca exposta" },
+          { platform: "geral", permalink: null, caption: "Legenda Geral" },
+          { platform: "instagram", permalink: "https://instagram.com/p/x", caption: null },
         ],
       },
       {
@@ -226,13 +229,70 @@ Deno.test("hub-posts takes tiktok_post_url from the TikTok destination's permali
   assertEquals(byId.get(99)?.tiktok_post_url, "https://www.tiktok.com/@marca/video/123");
   assertEquals(byId.get(100)?.tiktok_post_url, null);
   assert(!("targets_state" in byId.get(99)!), "the embed must not leak into the response");
+  // Destinations come back in PLATFORM_IDS order, and only the Geral row's caption is exposed.
+  assertEquals(byId.get(99)?.targets, ["instagram", "tiktok", "geral"]);
+  assertEquals(byId.get(99)?.tiktok_caption, "Legenda TikTok");
+  assertEquals(byId.get(99)?.geral_caption, "Legenda Geral");
+  assert(!JSON.stringify(body).includes("nunca exposta"), "other rows' caption must not leak");
+  assertEquals(byId.get(100)?.targets, ["instagram"]);
+  assertEquals(byId.get(100)?.geral_caption, null);
 
   const postsSelect = db.calls.find((c) =>
     c.table === "workflow_posts" && c.operation === "select" && String(c.selectArgs[0]?.[0]).includes("titulo")
   )!;
   const select = String(postsSelect.selectArgs[0][0]);
-  assert(select.includes("targets_state:post_targets(platform, permalink)"), select);
+  assert(select.includes("targets_state:post_targets(platform, permalink, caption)"), select);
+  assert(select.includes("tiktok_caption"), select);
   assert(!/(^|[ ,])tiktok_post_url/.test(select), "the frozen column is no longer selected");
+});
+
+Deno.test("hub-posts selects ig_collaborators but never the refused list", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflow_posts", "select", {
+    data: [
+      {
+        id: 99,
+        titulo: "Post",
+        tipo: "feed",
+        status: "enviado_cliente",
+        ordem: 0,
+        scheduled_at: "2026-04-20T10:00:00.000Z",
+        platform: "instagram",
+        workflow_id: 7,
+        ig_collaborators: ["dra.julia", "clinicaviva"],
+        workflows: { titulo: "Calendário Abril" },
+      },
+    ],
+    error: null,
+  });
+  db.queue("post_approvals", "select", { data: [], error: null });
+  db.queue("post_file_links", "select", { data: [], error: null });
+  db.queue("instagram_accounts", "select", { data: null, error: null });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: false }, error: null });
+
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async () => "https://signed.example",
+    rateLimit: async () => true,
+  });
+  const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+  assertEquals(response.status, 200);
+
+  const postsSelect = db.calls.find((c) =>
+    c.table === "workflow_posts" && c.operation === "select" && String(c.selectArgs[0]?.[0]).includes("titulo")
+  )!;
+  const select = String(postsSelect.selectArgs[0][0]);
+  assert(/(^|[ ,])ig_collaborators(,|$)/.test(select), select);
+  assert(!select.includes("ig_collaborators_refused"), select);
+  const first = (body.posts as Array<Record<string, unknown>>)[0];
+  assertEquals(first.ig_collaborators, ["dra.julia", "clinicaviva"]);
 });
 
 Deno.test("hub-posts cover_media is the first slide by sort_order, not a stale is_cover flag", async () => {
@@ -342,6 +402,78 @@ Deno.test("hub-posts never ships team-authored mensagem rows in postApprovals", 
     !body.postApprovals.some((a: { action: string; is_workspace_user: boolean }) => a.action === "mensagem" && a.is_workspace_user),
     "team mensagem rows must not leave hub-posts",
   );
+});
+
+function hubPostsNotesDb(noteRows: Record<string, unknown>[]) {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, conta_id: "conta-1", is_active: true }, error: null });
+  db.queue("workflow_posts", "select", {
+    data: [
+      { id: 99, titulo: "Visível", tipo: "feed", status: "enviado_cliente", ordem: 0, conteudo_plain: "x", scheduled_at: "2026-04-20T10:00:00.000Z", platform: "instagram", workflow_id: 7, workflows: { titulo: "Calendário Abril" } },
+      { id: 100, titulo: "Rascunho", tipo: "feed", status: "rascunho", ordem: 1, conteudo_plain: "y", scheduled_at: "2026-04-21T10:00:00.000Z", platform: "instagram", workflow_id: 7, workflows: { titulo: "Calendário Abril" } },
+    ],
+    error: null,
+  });
+  db.queue("post_approvals", "select", { data: [], error: null });
+  db.queue("post_property_values", "select", { data: [], error: null });
+  db.queue("workflow_select_options", "select", { data: [], error: null });
+  db.queue("post_file_links", "select", { data: [], error: null });
+  db.queue("instagram_accounts", "select", { data: null, error: null });
+  db.queue("post_media_notes_v", "select", { data: noteRows, error: null });
+  return db;
+}
+
+const hubNoteRow = (over: Record<string, unknown> = {}) => ({
+  id: 1, post_id: 99, media_kind: "image", slide_index_at_creation: 0, t_seconds: null, x: 0.2, y: 0.4,
+  visibility: "client", author_kind: "client", author_user_id: null, body: "Trocar a cor", status: "open",
+  resolved_at: null, created_at: "2026-04-11T10:00:00.000Z", current_link_id: 41, current_slide_index: 0,
+  is_previous_version: false, ...over,
+});
+
+Deno.test("hub-posts mediaNotes only for visible posts and only client visibility", async () => {
+  const db = hubPostsNotesDb([hubNoteRow({ id: 1, post_id: 99 }), hubNoteRow({ id: 2, post_id: 100 })]);
+  const response = await hubPostsHandlerFor(db)(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+  assertEquals(response.status, 200);
+  assertEquals(body.mediaNotes.map((n: { id: number }) => n.id), [1]);
+  const view = db.calls.find((c) => c.table === "post_media_notes_v")!;
+  assert(view.modifiers.some((m) => m.method === "eq" && m.args[0] === "visibility" && m.args[1] === "client"));
+  assert(view.modifiers.some((m) => m.method === "eq" && m.args[0] === "conta_id" && m.args[1] === "conta-1"));
+});
+
+Deno.test("hub-posts payload never contains internal notes", async () => {
+  const db = hubPostsNotesDb([
+    hubNoteRow({ id: 1 }),
+    hubNoteRow({ id: 2, visibility: "internal", body: "so equipe" }),
+  ]);
+  const response = await hubPostsHandlerFor(db)(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+  assertEquals(body.mediaNotes.map((n: { id: number }) => n.id), [1]);
+  assert(!JSON.stringify(body).includes("so equipe"), "internal note body leaked");
+});
+
+Deno.test("hub-posts still answers with empty mediaNotes when the notes lookup fails", async () => {
+  const db = hubPostsNotesDb([]);
+  db.reset();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, conta_id: "conta-1", is_active: true }, error: null });
+  db.queue("workflow_posts", "select", {
+    data: [
+      { id: 99, titulo: "Visível", tipo: "feed", status: "enviado_cliente", ordem: 0, conteudo_plain: "x", scheduled_at: "2026-04-20T10:00:00.000Z", platform: "instagram", workflow_id: 7, workflows: { titulo: "Calendário Abril" } },
+    ],
+    error: null,
+  });
+  db.queue("post_media_notes_v", "select", { data: null, error: { message: "boom" } });
+  const original = console.error;
+  console.error = () => {};
+  try {
+    const response = await hubPostsHandlerFor(db)(new Request("https://example.test/hub-posts?token=hub-123"));
+    const body = await readJson(response);
+    assertEquals(response.status, 200);
+    assertEquals(body.mediaNotes, []);
+    assertEquals(body.posts.length, 1);
+  } finally {
+    console.error = original;
+  }
 });
 
 Deno.test("hub-posts omits signed URLs and returns media_lost_at for a permanently lost file", async () => {
@@ -1369,8 +1501,8 @@ Deno.test("hub-approve calls notification RPC with comentario for corrections", 
   const rpcCall = db.calls.find((c: { table: string }) => c.table === "rpc:create_post_approval_notification");
   assert(rpcCall, "notification RPC should be called for corrections");
   assertEquals(rpcCall.payload, { p_post_id: 99, p_action: "correcao", p_comentario: "Trocar imagem" });
-  const approvalRpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval");
-  assert(approvalRpc, "record_client_approval should be called");
+  const approvalRpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval_with_notes");
+  assert(approvalRpc, "record_client_approval_with_notes should be called");
   assertEquals((approvalRpc.payload as { p_motivo: unknown }).p_motivo, "midia");
 });
 
@@ -1453,8 +1585,8 @@ Deno.test("hub-approve accepts a correcao without motivo and sends p_motivo: nul
     body: JSON.stringify({ token: "hub-123", post_id: 99, action: "correcao", comentario: "Trocar imagem" }),
   }));
   assertEquals(response.status, 200);
-  const approvalRpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval");
-  assert(approvalRpc, "record_client_approval should be called");
+  const approvalRpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval_with_notes");
+  assert(approvalRpc, "record_client_approval_with_notes should be called");
   assertEquals((approvalRpc.payload as { p_motivo: unknown }).p_motivo, null);
 });
 
@@ -1466,8 +1598,8 @@ Deno.test("hub-approve accepts a correcao with no comentario and sends p_comenta
     body: JSON.stringify({ token: "hub-123", post_id: 99, action: "correcao", motivo: "midia" }),
   }));
   assertEquals(response.status, 200);
-  const approvalRpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval");
-  assert(approvalRpc, "record_client_approval should be called");
+  const approvalRpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval_with_notes");
+  assert(approvalRpc, "record_client_approval_with_notes should be called");
   assertEquals((approvalRpc.payload as { p_comentario: unknown }).p_comentario, null);
   const notif = db.calls.find((c: { table: string }) => c.table === "rpc:create_post_approval_notification");
   assert(notif);
@@ -1491,7 +1623,7 @@ Deno.test("hub-approve rejects a correcao comentario longer than 4000 characters
   }));
   assertEquals(response.status, 400);
   assertEquals((await readJson(response)).error, "Comentário muito longo.");
-  assert(!db.calls.some((c: { table: string }) => c.table === "rpc:record_client_approval"));
+  assert(!db.calls.some((c: { table: string }) => c.table === "rpc:record_client_approval_with_notes"));
 });
 
 Deno.test("hub-approve rejects an aprovado comentario longer than 4000 characters", async () => {
@@ -1502,7 +1634,7 @@ Deno.test("hub-approve rejects an aprovado comentario longer than 4000 character
   }));
   assertEquals(response.status, 400);
   assertEquals((await readJson(response)).error, "Comentário muito longo.");
-  assert(!db.calls.some((c: { table: string }) => c.table === "rpc:record_client_approval"));
+  assert(!db.calls.some((c: { table: string }) => c.table === "rpc:record_client_approval_with_notes"));
 });
 
 Deno.test("hub-approve trims an aprovado comentario and nulls a blank one", async () => {
@@ -1514,7 +1646,7 @@ Deno.test("hub-approve trims an aprovado comentario and nulls a blank one", asyn
       body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado", comentario: input }),
     }));
     assertEquals(response.status, 200);
-    const rpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval");
+    const rpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval_with_notes");
     assert(rpc);
     assertEquals((rpc.payload as { p_comentario: unknown }).p_comentario, expected);
   }
@@ -1528,7 +1660,7 @@ Deno.test("hub-approve sends p_motivo: null for an approval", async () => {
     body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado", motivo: "legenda" }),
   }));
   assertEquals(response.status, 200);
-  const approvalRpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval");
+  const approvalRpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval_with_notes");
   assert(approvalRpc);
   assertEquals((approvalRpc.payload as { p_motivo: unknown }).p_motivo, null);
 });
@@ -2470,9 +2602,9 @@ Deno.test("hub-approve returns 500 when recording the approval fails", async () 
     data: { id: 99, workflow_id: 7, status: "enviado_cliente", cliente_id: 14, conta_id: "conta-1" },
     error: null,
   });
-  // aprovado/correcao now go through the record_client_approval RPC (atomic
+  // aprovado/correcao now go through the record_client_approval_with_notes RPC (atomic
   // insert + status). A failure there must surface as a 500.
-  db.queueRpc("record_client_approval", { data: null, error: { message: "constraint violation" } });
+  db.queueRpc("record_client_approval_with_notes", { data: null, error: { message: "constraint violation" } });
 
   const handler = createHubApproveHandler({
     buildCorsHeaders,
@@ -3534,10 +3666,554 @@ Deno.test("hub-edit-suggestion still returns a generic 500 for other RPC errors"
   assertEquals((await readJson(response)).error, "Erro ao salvar sugestão.");
 });
 
+function inlineImageDoc(r2Key: string, src?: string) {
+  return {
+    type: "doc",
+    content: [
+      { type: "paragraph", content: [{ type: "text", text: "Oi" }] },
+      { type: "inlineImage", attrs: src ? { r2Key, src } : { r2Key } },
+    ],
+  };
+}
+
+function touchedFieldsRequest(extra: Record<string, unknown>) {
+  return new Request("https://example.test/hub-edit-suggestion", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, ...extra }),
+  });
+}
+
+function upsertCall(db: ReturnType<typeof createSupabaseQueryMock>) {
+  return db.calls.find((c: { table: string }) => c.table === "rpc:upsert_edit_suggestion");
+}
+
+Deno.test("hub-edit-suggestion forwards touched_fields and bases to the RPC", async () => {
+  const db = hubEditSuggestionDb();
+  db.queueRpc("upsert_edit_suggestion", {
+    data: { action: "upserted", is_new: true, suggestion: { id: 5, post_id: 99 } },
+    error: null,
+  });
+  const bases = { conteudo: null, conteudo_plain: "Base", ig_caption: "Legenda base" };
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_conteudo_plain: "Novo corpo",
+    touched_fields: ["texto"],
+    bases,
+  }));
+  assertEquals(response.status, 200);
+  const call = upsertCall(db);
+  assert(call);
+  assertEquals(call.payload.p_touched_fields, ["texto"]);
+  assertEquals(call.payload.p_bases, bases);
+});
+
+Deno.test("hub-edit-suggestion omits p_touched_fields and p_bases when the body has none (old Hub)", async () => {
+  const db = hubEditSuggestionDb();
+  db.queueRpc("upsert_edit_suggestion", {
+    data: { action: "upserted", is_new: true, suggestion: { id: 5, post_id: 99 } },
+    error: null,
+  });
+  const response = await hubEditSuggestionHandlerFor(db)(editSuggestionRequest());
+  assertEquals(response.status, 200);
+  const call = upsertCall(db);
+  assert(call);
+  assertEquals("p_touched_fields" in call.payload, false);
+  assertEquals("p_bases" in call.payload, false);
+});
+
+Deno.test("hub-edit-suggestion rejects a touched_fields value outside texto/legenda with 400", async () => {
+  const db = hubEditSuggestionDb();
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_conteudo_plain: "Corpo",
+    touched_fields: ["outro"],
+    bases: { conteudo_plain: "Base" },
+  }));
+  assertEquals(response.status, 400);
+  assertEquals((await readJson(response)).error, "Campos inválidos.");
+  assertEquals(upsertCall(db), undefined);
+});
+
+Deno.test("hub-edit-suggestion rejects a touched_fields that is not an array with 400", async () => {
+  const db = hubEditSuggestionDb();
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_conteudo_plain: "Corpo",
+    touched_fields: "texto",
+  }));
+  assertEquals(response.status, 400);
+  assertEquals((await readJson(response)).error, "Campos inválidos.");
+  assertEquals(upsertCall(db), undefined);
+});
+
+Deno.test("hub-edit-suggestion skips the new-image check for a legenda-only save", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  // The team removed the image from the live conteudo after the Hub loaded it.
+  db.queue("workflow_posts", "select", {
+    data: { id: 99, workflow_id: 7, status: "enviado_cliente", conteudo: null, conta_id: "conta-1", cliente_id: 14 },
+    error: null,
+  });
+  db.queueRpc("upsert_edit_suggestion", {
+    data: { action: "upserted", is_new: true, suggestion: { id: 5, post_id: 99 } },
+    error: null,
+  });
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_conteudo: inlineImageDoc("contas/conta-1/img.png"),
+    suggested_conteudo_plain: "Corpo",
+    suggested_ig_caption: "Legenda nova",
+    touched_fields: ["legenda"],
+    bases: { ig_caption: "Legenda base" },
+  }));
+  assertEquals(response.status, 200);
+  const call = upsertCall(db);
+  assert(call);
+  assertEquals(call.payload.p_touched_fields, ["legenda"]);
+});
+
+Deno.test("hub-edit-suggestion still rejects new inline images when texto is touched", async () => {
+  const db = hubEditSuggestionDb();
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_conteudo: inlineImageDoc("contas/conta-1/img.png"),
+    suggested_conteudo_plain: "Corpo",
+    touched_fields: ["texto"],
+    bases: { conteudo: null, conteudo_plain: "Base" },
+  }));
+  assertEquals(response.status, 400);
+  assertEquals((await readJson(response)).error, "Não é permitido adicionar imagens.");
+  assertEquals(upsertCall(db), undefined);
+});
+
+Deno.test("hub-edit-suggestion still checks the conta prefix of suggested_conteudo on a legenda-only save", async () => {
+  const db = hubEditSuggestionDb();
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_conteudo: inlineImageDoc("contas/outra-conta/img.png"),
+    suggested_ig_caption: "Legenda nova",
+    touched_fields: ["legenda"],
+    bases: { ig_caption: "Legenda base" },
+  }));
+  assertEquals(response.status, 400);
+  assertEquals((await readJson(response)).error, "Referência de mídia inválida.");
+  assertEquals(upsertCall(db), undefined);
+});
+
+Deno.test("hub-edit-suggestion strips signed src from bases.conteudo before forwarding", async () => {
+  const db = hubEditSuggestionDb();
+  db.queueRpc("upsert_edit_suggestion", {
+    data: { action: "upserted", is_new: true, suggestion: { id: 5, post_id: 99 } },
+    error: null,
+  });
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_conteudo_plain: "Corpo",
+    touched_fields: ["texto"],
+    bases: {
+      conteudo: inlineImageDoc("contas/conta-1/img.png", "https://signed.example/img.png?sig=abc"),
+      conteudo_plain: "Base",
+    },
+  }));
+  // The suggestion itself carries no image, so nothing new is added; the base has one.
+  assertEquals(response.status, 200);
+  const call = upsertCall(db);
+  assert(call);
+  assertEquals(call.payload.p_bases.conteudo, inlineImageDoc("contas/conta-1/img.png"));
+  assertEquals(call.payload.p_bases.conteudo_plain, "Base");
+});
+
+Deno.test("hub-edit-suggestion rejects a bases.conteudo image from another conta with 400", async () => {
+  const db = hubEditSuggestionDb();
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_conteudo_plain: "Corpo",
+    touched_fields: ["texto"],
+    bases: { conteudo: inlineImageDoc("contas/outra-conta/img.png") },
+  }));
+  assertEquals(response.status, 400);
+  assertEquals((await readJson(response)).error, "Referência de mídia inválida.");
+  assertEquals(upsertCall(db), undefined);
+});
+
+Deno.test("hub-edit-suggestion rejects a bases that is not an object with 400", async () => {
+  const db = hubEditSuggestionDb();
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_conteudo_plain: "Corpo",
+    touched_fields: ["texto"],
+    bases: "base",
+  }));
+  assertEquals(response.status, 400);
+  assertEquals((await readJson(response)).error, "Campos inválidos.");
+  assertEquals(upsertCall(db), undefined);
+});
+
+Deno.test("hub-edit-suggestion maps base_required from the RPC to 400 and does not notify", async () => {
+  const db = hubEditSuggestionDb();
+  db.queueRpc("upsert_edit_suggestion", { data: null, error: { message: "base_required" } });
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_conteudo_plain: "Corpo",
+    touched_fields: ["texto"],
+    bases: {},
+  }));
+  assertEquals(response.status, 400);
+  assertEquals((await readJson(response)).error, "Erro ao salvar sugestão.");
+  assertEquals(
+    db.calls.some((c: { table: string }) => c.table === "rpc:create_edit_suggestion_notification"),
+    false,
+  );
+});
+
+// --- legendas por plataforma (PR 2: legenda_tiktok / legenda_geral) ---
+
+function captionsDb(tipo = "reels", targets: string[] = ["instagram", "tiktok", "geral"]) {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflow_posts", "select", {
+    data: { id: 99, workflow_id: 7, status: "enviado_cliente", tipo, conteudo: null, conta_id: "conta-1", cliente_id: 14 },
+    error: null,
+  });
+  db.queue("post_targets", "select", {
+    data: targets.map((platform) => ({ platform })),
+    error: null,
+  });
+  return db;
+}
+
+Deno.test("hub-edit-suggestion forwards the TikTok and Geral captions, touched fields and bases", async () => {
+  const db = captionsDb();
+  db.queueRpc("upsert_edit_suggestion", {
+    data: {
+      action: "upserted",
+      is_new: true,
+      suggestion: { id: 5, post_id: 99, suggested_tiktok_caption: "TT novo", suggested_geral_caption: "G novo" },
+    },
+    error: null,
+  });
+  const bases = { tiktok_caption: null, geral_caption: "G base" };
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_tiktok_caption: "TT novo",
+    suggested_geral_caption: "G novo",
+    touched_fields: ["legenda_tiktok", "legenda_geral"],
+    bases,
+  }));
+  assertEquals(response.status, 200);
+  const body = await readJson(response);
+  assertEquals(body.pending_suggestion.suggested_tiktok_caption, "TT novo");
+  assertEquals(body.pending_suggestion.suggested_geral_caption, "G novo");
+  const call = upsertCall(db);
+  assert(call);
+  assertEquals(call.payload.p_touched_fields, ["legenda_tiktok", "legenda_geral"]);
+  assertEquals(call.payload.p_bases, bases);
+  assertEquals(call.payload.p_suggested_captions, { tiktok_caption: "TT novo", geral_caption: "G novo" });
+  // The destination check reads only the touched destinations of this post.
+  const targetsCall = db.calls.find((c: { table: string }) => c.table === "post_targets");
+  assert(targetsCall);
+  assertEquals(
+    targetsCall.modifiers.find((m: { method: string }) => m.method === "in")?.args,
+    ["platform", ["tiktok", "geral"]],
+  );
+  assertEquals(
+    targetsCall.modifiers.find((m: { method: string }) => m.method === "eq")?.args,
+    ["post_id", 99],
+  );
+});
+
+Deno.test("hub-edit-suggestion sends p_suggested_captions with null for the caption the body omits", async () => {
+  const db = captionsDb();
+  db.queueRpc("upsert_edit_suggestion", {
+    data: { action: "upserted", is_new: true, suggestion: { id: 5, post_id: 99 } },
+    error: null,
+  });
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_geral_caption: "G novo",
+    touched_fields: ["legenda_geral"],
+    bases: { geral_caption: "G" },
+  }));
+  assertEquals(response.status, 200);
+  assertEquals(upsertCall(db)?.payload.p_suggested_captions, { tiktok_caption: null, geral_caption: "G novo" });
+});
+
+Deno.test("hub-edit-suggestion accepts a save that only carries a per-platform caption", async () => {
+  const db = captionsDb();
+  db.queueRpc("upsert_edit_suggestion", {
+    data: { action: "upserted", is_new: true, suggestion: { id: 5, post_id: 99 } },
+    error: null,
+  });
+  // No conteudo_plain / ig_caption at all: the "No content provided" check looks at every field.
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_tiktok_caption: "Só TikTok",
+    touched_fields: ["legenda_tiktok"],
+    bases: { tiktok_caption: "TT" },
+  }));
+  assertEquals(response.status, 200);
+});
+
+Deno.test("hub-edit-suggestion still answers 400 No content provided when every caption is absent", async () => {
+  const db = captionsDb();
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_tiktok_caption: null,
+    suggested_geral_caption: null,
+  }));
+  assertEquals(response.status, 400);
+  assertEquals((await readJson(response)).error, "No content provided");
+  assertEquals(upsertCall(db), undefined);
+});
+
+Deno.test("hub-edit-suggestion does not read post_targets nor send p_suggested_captions for texto/legenda saves", async () => {
+  const db = hubEditSuggestionDb();
+  db.queueRpc("upsert_edit_suggestion", {
+    data: { action: "upserted", is_new: true, suggestion: { id: 5, post_id: 99 } },
+    error: null,
+  });
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_ig_caption: "Legenda nova",
+    touched_fields: ["legenda"],
+    bases: { ig_caption: "Legenda base" },
+  }));
+  assertEquals(response.status, 200);
+  assertEquals(db.calls.some((c: { table: string }) => c.table === "post_targets"), false);
+  assertEquals("p_suggested_captions" in (upsertCall(db)?.payload ?? {}), false);
+});
+
+Deno.test("hub-edit-suggestion returns 409 target_gone when a touched destination is not on the post", async () => {
+  for (const [field, targets] of [
+    ["legenda_tiktok", ["instagram", "geral"]],
+    ["legenda_geral", ["instagram", "tiktok"]],
+  ] as const) {
+    const db = captionsDb("feed", [...targets]);
+    const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+      suggested_tiktok_caption: "TT",
+      suggested_geral_caption: "G",
+      touched_fields: [field],
+      bases: { tiktok_caption: null, geral_caption: null },
+    }));
+    assertEquals(response.status, 409, field);
+    const body = await readJson(response);
+    assertEquals(body.code, "target_gone", field);
+    assertEquals(typeof body.error, "string");
+    assertEquals(upsertCall(db), undefined, field);
+  }
+});
+
+Deno.test("hub-edit-suggestion rejects a TikTok caption over captionMaxFor with 400 caption_too_long", async () => {
+  // reels -> Vídeo TikTok, 2200; feed -> Foto, 4000 (platform-registry).
+  for (const [tipo, max] of [["reels", 2200], ["feed", 4000]] as const) {
+    const over = captionsDb(tipo);
+    const tooLong = await hubEditSuggestionHandlerFor(over)(touchedFieldsRequest({
+      suggested_tiktok_caption: "a".repeat(max + 1),
+      touched_fields: ["legenda_tiktok"],
+      bases: { tiktok_caption: null },
+    }));
+    assertEquals(tooLong.status, 400, tipo);
+    assertEquals((await readJson(tooLong)).code, "caption_too_long", tipo);
+    assertEquals(upsertCall(over), undefined, tipo);
+
+    const atLimit = captionsDb(tipo);
+    atLimit.queueRpc("upsert_edit_suggestion", {
+      data: { action: "upserted", is_new: true, suggestion: { id: 5, post_id: 99 } },
+      error: null,
+    });
+    const ok = await hubEditSuggestionHandlerFor(atLimit)(touchedFieldsRequest({
+      suggested_tiktok_caption: "a".repeat(max),
+      touched_fields: ["legenda_tiktok"],
+      bases: { tiktok_caption: null },
+    }));
+    assertEquals(ok.status, 200, `${tipo} at the limit`);
+  }
+});
+
+Deno.test("hub-edit-suggestion does not limit the Geral caption, an untouched TikTok caption, or Instagram", async () => {
+  const db = captionsDb("reels");
+  db.queueRpc("upsert_edit_suggestion", {
+    data: { action: "upserted", is_new: true, suggestion: { id: 5, post_id: 99 } },
+    error: null,
+  });
+  const long = "a".repeat(5000);
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_ig_caption: long,
+    suggested_tiktok_caption: long, // carried along, not touched
+    suggested_geral_caption: long,
+    touched_fields: ["legenda", "legenda_geral"],
+    bases: { ig_caption: "L", geral_caption: "G" },
+  }));
+  assertEquals(response.status, 200);
+});
+
+Deno.test("hub-edit-suggestion rejects touched_fields outside the four logical fields and non-string captions", async () => {
+  const badField = hubEditSuggestionDb();
+  const r1 = await hubEditSuggestionHandlerFor(badField)(touchedFieldsRequest({
+    suggested_tiktok_caption: "TT",
+    touched_fields: ["legenda_youtube"],
+  }));
+  assertEquals(r1.status, 400);
+  assertEquals((await readJson(r1)).error, "Campos inválidos.");
+
+  const badCaption = hubEditSuggestionDb();
+  const r2 = await hubEditSuggestionHandlerFor(badCaption)(touchedFieldsRequest({
+    suggested_conteudo_plain: "Corpo",
+    suggested_geral_caption: 42,
+  }));
+  assertEquals(r2.status, 400);
+  assertEquals((await readJson(r2)).error, "Campos inválidos.");
+
+  const badBase = hubEditSuggestionDb();
+  const r3 = await hubEditSuggestionHandlerFor(badBase)(touchedFieldsRequest({
+    suggested_tiktok_caption: "TT",
+    touched_fields: ["legenda_tiktok"],
+    bases: { tiktok_caption: 7 },
+  }));
+  assertEquals(r3.status, 400);
+  assertEquals((await readJson(r3)).error, "Campos inválidos.");
+  for (const db of [badField, badCaption, badBase]) assertEquals(upsertCall(db), undefined);
+});
+
+Deno.test("hub-edit-suggestion maps target_gone from the RPC to 409 and does not notify", async () => {
+  const db = captionsDb();
+  db.queueRpc("upsert_edit_suggestion", { data: null, error: { message: "target_gone", code: "P0001" } });
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_geral_caption: "G novo",
+    touched_fields: ["legenda_geral"],
+    bases: { geral_caption: "G" },
+  }));
+  assertEquals(response.status, 409);
+  assertEquals((await readJson(response)).code, "target_gone");
+  assertEquals(
+    db.calls.some((c: { table: string }) => c.table === "rpc:create_edit_suggestion_notification"),
+    false,
+  );
+});
+
+Deno.test("hub-edit-suggestion maps a deadlock (40P01) to 409 retry instead of a 500", async () => {
+  const db = captionsDb();
+  db.queueRpc("upsert_edit_suggestion", { data: null, error: { message: "deadlock detected", code: "40P01" } });
+  const response = await hubEditSuggestionHandlerFor(db)(touchedFieldsRequest({
+    suggested_geral_caption: "G novo",
+    touched_fields: ["legenda_geral"],
+    bases: { geral_caption: "G" },
+  }));
+  assertEquals(response.status, 409);
+  const body = await readJson(response);
+  assertEquals(body.code, "retry");
+  assertEquals(body.error, "Não deu para salvar agora. Tente de novo.");
+});
+
+Deno.test("hub-posts selects suggested_tiktok_caption and suggested_geral_caption for the pending suggestion", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflow_posts", "select", {
+    data: [
+      {
+        id: 1,
+        titulo: "Post",
+        tipo: "reels",
+        status: "enviado_cliente",
+        ordem: 0,
+        conteudo: null,
+        conteudo_plain: "",
+        scheduled_at: null,
+        workflow_id: 7,
+        workflows: { titulo: "Cal", created_at: "2026-04-01" },
+      },
+    ],
+    error: null,
+  });
+  db.queue("post_edit_suggestions", "select", {
+    data: [
+      {
+        id: 5,
+        post_id: 1,
+        suggested_conteudo: null,
+        suggested_conteudo_plain: "",
+        suggested_ig_caption: "L",
+        suggested_tiktok_caption: "TT novo",
+        suggested_geral_caption: "G novo",
+        changed_fields: ["tiktok_caption", "geral_caption"],
+        updated_at: "2026-04-10T10:00:00.000Z",
+      },
+    ],
+    error: null,
+  });
+  db.queue("post_edit_suggestions", "select", { data: [], error: null });
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: false }, error: null });
+
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async (key) => `https://signed/${key}`,
+    rateLimit: async () => true,
+  });
+  const res = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(res);
+  assertEquals(res.status, 200);
+  const pendingSelect = db.calls.find((c: { table: string; operation: string; modifiers: Array<{ method: string; args: unknown[] }> }) =>
+    c.table === "post_edit_suggestions" && c.operation === "select" &&
+    c.modifiers.some((m) => m.method === "eq" && m.args[1] === "pending")
+  );
+  assert(pendingSelect, "pending suggestions select");
+  const select = String(pendingSelect.selectArgs[0][0]);
+  assert(select.includes("suggested_tiktok_caption"), select);
+  assert(select.includes("suggested_geral_caption"), select);
+  assertEquals(body.posts[0].pending_suggestion.suggested_tiktok_caption, "TT novo");
+  assertEquals(body.posts[0].pending_suggestion.suggested_geral_caption, "G novo");
+});
+
+Deno.test("hub-approve aprovado uses record_client_approval_with_notes with the token's conta and cliente", async () => {
+  const db = hubApproveDbForPost();
+  db.queue("workflow_posts", "update", { data: null, error: null });
+  db.queueRpc("record_client_approval_with_notes", { data: [{ approval_id: 7, open_note_count: 2 }], error: null });
+  const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado", comentario: "Ok" }),
+  }));
+  assertEquals(response.status, 200);
+  assert(!db.calls.some((c: { table: string }) => c.table === "rpc:record_client_approval"));
+  const rpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval_with_notes");
+  assert(rpc);
+  assertEquals(rpc.payload, {
+    p_post_id: 99,
+    p_conta_id: "conta-1",
+    p_cliente_id: 14,
+    p_token: "hub-123",
+    p_action: "aprovado",
+    p_comentario: "Ok",
+    p_new_status: "aprovado_cliente",
+    p_motivo: null,
+  });
+});
+
+Deno.test("hub-approve maps post_not_found from the approval RPC to 404", async () => {
+  const db = hubApproveDbForPost();
+  db.queueRpc("record_client_approval_with_notes", { data: null, error: { message: "post_not_found" } });
+  const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "correcao", comentario: "x" }),
+  }));
+  assertEquals(response.status, 404);
+  assertEquals((await readJson(response)).error, "Post não encontrado.");
+});
+
+Deno.test("hub-approve maps post_not_pending to 409", async () => {
+  const db = hubApproveDbForPost();
+  db.queueRpc("record_client_approval_with_notes", { data: null, error: { message: "post_not_pending" } });
+  const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado" }),
+  }));
+  assertEquals(response.status, 409);
+  assertEquals((await readJson(response)).error, "Post não está mais aguardando aprovação.");
+  assertEquals(
+    db.calls.some((c: { table: string }) => c.table === "rpc:create_post_approval_notification"),
+    false,
+  );
+});
+
 for (const action of ["aprovado", "correcao"] as const) {
   Deno.test(`hub-approve maps pending_suggestion to 409 for ${action}`, async () => {
     const db = hubApproveDbForPost();
-    db.queueRpc("record_client_approval", { data: null, error: { message: "pending_suggestion" } });
+    db.queueRpc("record_client_approval_with_notes", { data: null, error: { message: "pending_suggestion" } });
     const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
       method: "POST",
       body: JSON.stringify({ token: "hub-123", post_id: 99, action }),
@@ -3660,7 +4336,7 @@ function correcaoRequest(extra: Record<string, unknown>) {
 
 Deno.test("hub-approve links deduped reference_ids to the new correction", async () => {
   const db = hubApproveDbForPost();
-  db.queueRpc("record_client_approval", { data: 501, error: null });
+  db.queueRpc("record_client_approval_with_notes", { data: [{ approval_id: 501, open_note_count: 0 }], error: null });
   const response = await hubApproveHandlerFor(db)(correcaoRequest({ reference_ids: [5, 6, 5] }));
   assertEquals(response.status, 200);
   const update = db.calls.find((c: { table: string; operation: string }) =>
@@ -3692,7 +4368,7 @@ Deno.test("hub-approve rejects malformed reference_ids before any DB call", asyn
 Deno.test("hub-approve ignores reference_ids on aprovado and mensagem", async () => {
   for (const action of ["aprovado", "mensagem"]) {
     const db = hubApproveDbForPost();
-    db.queueRpc("record_client_approval", { data: 501, error: null });
+    db.queueRpc("record_client_approval_with_notes", { data: [{ approval_id: 501, open_note_count: 0 }], error: null });
     const response = await hubApproveHandlerFor(db)(new Request("https://example.test/hub-approve", {
       method: "POST",
       body: JSON.stringify({ token: "hub-123", post_id: 99, action, comentario: "ok", reference_ids: "junk" }),
@@ -3708,7 +4384,7 @@ Deno.test("hub-approve ignores reference_ids on aprovado and mensagem", async ()
 
 Deno.test("hub-approve keeps the correction when linking references fails", async () => {
   const db = hubApproveDbForPost();
-  db.queueRpc("record_client_approval", { data: 501, error: null });
+  db.queueRpc("record_client_approval_with_notes", { data: [{ approval_id: 501, open_note_count: 0 }], error: null });
   db.queue("post_references", "update", { data: null, error: { message: "boom" } });
   const response = await hubApproveHandlerFor(db)(correcaoRequest({ reference_ids: [5] }));
   assertEquals(response.status, 200);
@@ -3716,10 +4392,10 @@ Deno.test("hub-approve keeps the correction when linking references fails", asyn
   assert(db.calls.find((c: { table: string }) => c.table === "rpc:create_post_approval_notification"));
 });
 
-Deno.test("hub-approve skips linking references when record_client_approval returns no id", async () => {
-  for (const data of [true, null, "abc", 0]) {
+Deno.test("hub-approve skips linking references when record_client_approval_with_notes returns no id", async () => {
+  for (const data of [true, null, "abc", 0, [], [{ approval_id: 0, open_note_count: 0 }], 501]) {
     const db = hubApproveDbForPost();
-    db.queueRpc("record_client_approval", { data, error: null });
+    db.queueRpc("record_client_approval_with_notes", { data, error: null });
     const response = await hubApproveHandlerFor(db)(correcaoRequest({ reference_ids: [5] }));
     assertEquals(response.status, 200, JSON.stringify(data));
     assertEquals(
@@ -3732,7 +4408,7 @@ Deno.test("hub-approve skips linking references when record_client_approval retu
 
 Deno.test("hub-approve with an empty reference_ids list does not touch post_references", async () => {
   const db = hubApproveDbForPost();
-  db.queueRpc("record_client_approval", { data: 501, error: null });
+  db.queueRpc("record_client_approval_with_notes", { data: [{ approval_id: 501, open_note_count: 0 }], error: null });
   const response = await hubApproveHandlerFor(db)(correcaoRequest({ reference_ids: [] }));
   assertEquals(response.status, 200);
   assertEquals(db.calls.find((c: { table: string }) => c.table === "post_references"), undefined);

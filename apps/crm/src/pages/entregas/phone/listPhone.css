@@ -1,0 +1,275 @@
+/* ===== ENTREGAS LISTA ON PHONES (PLAN C3.6, mockup EntregasLista) =======================
+   Grouped rows with swipe actions in place of the Lista / Publicações tables, plus the
+   list toolbar chips. Rendered only by the phone branches of ListView, PostsListView
+   and ListToolbar. Every class is `phone-ent-l-*` and reads the kit's `--phone-*`
+   tokens; nothing here redefines a shared token or styles a bare element. */
+
+/* ---- Toolbar ---- */
+.phone-ent-l-toolbar {
+  width: 100%;
+  min-width: 0;
+}
+.phone-ent-l-toolbar__value {
+  font-weight: 600;
+}
+.phone-ent-l-toolbar__chevron {
+  width: 12px;
+  height: 12px;
+  margin-left: -2px;
+}
+.phone-ent-l-toolbar__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--phone-ink);
+  color: var(--phone-on-ink);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+.phone-ent-l-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.phone-ent-l-pick__check {
+  width: 18px;
+  height: 18px;
+  color: var(--phone-label);
+}
+
+/* ---- Sections ---- */
+.phone-ent-l {
+  color: var(--phone-label);
+  font-family: var(--font-main);
+}
+.phone-ent-l-section {
+  margin: 0 0 18px;
+}
+.phone-ent-l-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 4px 4px 8px;
+}
+.phone-ent-l-head__title {
+  min-width: 0;
+  margin: 0;
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+}
+.phone-ent-l-head__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  min-height: 32px;
+  padding: 0 8px 0 0;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label-secondary);
+  font: inherit;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.phone-ent-l-head__toggle[data-danger] {
+  color: var(--danger-text, #b91c1c);
+}
+.phone-ent-l-head__toggle svg {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+}
+.phone-ent-l-head__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-ent-l-head__sub {
+  font-weight: 500;
+  text-transform: none;
+  opacity: 0.8;
+  white-space: nowrap;
+}
+.phone-ent-l-head__all {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+  cursor: pointer;
+}
+.phone-ent-l-head__all svg {
+  width: 14px;
+  height: 14px;
+}
+.phone-ent-l-head__toggle:focus-visible,
+.phone-ent-l-head__all:focus-visible,
+.phone-ent-l-row__main:focus-visible,
+.phone-ent-l-row__more:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+
+/* ---- List card + rows ---- */
+.phone-ent-l-list {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+}
+/* On the <li>, so the separator stays put while the content slides. */
+.phone-ent-l-row:not(:last-child) {
+  border-bottom: 1px solid var(--phone-separator);
+}
+.phone-ent-l-row__inner {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+.phone-ent-l-row__main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: var(--phone-row-min);
+  padding: 10px 16px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+button.phone-ent-l-row__main {
+  cursor: pointer;
+}
+button.phone-ent-l-row__main:active {
+  background: var(--phone-cell-pressed);
+}
+.phone-ent-l-row__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.phone-ent-l-row__title {
+  overflow: hidden;
+  font-size: var(--phone-text-body);
+  font-weight: 600;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-ent-l-row__subtitle,
+.phone-ent-l-row__meta {
+  overflow: hidden;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-ent-l-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--phone-fill);
+  color: var(--phone-label-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: 1px;
+}
+.phone-ent-l-tag svg {
+  width: 11px;
+  height: 11px;
+}
+/* The menu trigger stays reachable by keyboard and screen readers without taking room
+   in the row: the swipe "Mais" and the long-press open the same menu by touch. */
+.phone-ent-l-row__more {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-fill);
+  color: var(--phone-label);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+.phone-ent-l-row__more:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.phone-ent-l-row__more svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* ---- Right side: status + deadline ---- */
+.phone-ent-l-aside {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  max-width: 45%;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  line-height: 1.3;
+  text-align: right;
+}
+.phone-ent-l-aside__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.phone-ent-l-aside__dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+}
+.phone-ent-l-aside__deadline {
+  white-space: nowrap;
+}
+.phone-ent-l-aside__deadline[data-overdue] {
+  color: var(--danger-text, #b91c1c);
+}
+
+/* ---- Lifted preview in the post menu ---- */
+.phone-ent-l-preview {
+  overflow: hidden;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+  color: var(--phone-label);
+}

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { holdUnsavedWork } from '@mesaas/app-lifecycle';
 import {
   Palette,
@@ -8,8 +9,6 @@ import {
   Type as TypeIcon,
   LayoutGrid,
   IdCard,
-  Sun,
-  Moon,
   Upload,
   ChevronDown,
   type LucideIcon,
@@ -43,6 +42,7 @@ import {
   ColorPickerFormat,
 } from '@/components/ui/color-picker-advanced';
 import { FeatureGate } from '@/components/paywall/FeatureGate';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { useAuth } from '../../../context/AuthContext';
 import { useEntitlements } from '../../../hooks/useEntitlements';
 import { supabase } from '../../../lib/supabase';
@@ -57,20 +57,30 @@ import { HubPreview, HUB_DISPLAY_FONTS, HUB_BODY_FONTS, type HubPreviewDraft } f
 // need the resolver's REAL palette/accent math so they never drift from what the
 // Hub actually renders.
 import {
-  PALETTES,
   HUB_FONT_PAIRINGS,
   PAUTA_FONTS,
   hubFontOptions,
-  resolveHubTheme,
-  relativeLuminance,
   type HubSurface,
   type HubRadius,
   type HubCardStyle,
   type HubFontOption,
 } from '../../../../../hub/src/theme';
+import {
+  BRAND_PRESET_COLORS,
+  SURFACE_OPTIONS,
+  RADIUS_OPTIONS,
+  CARD_STYLE_OPTIONS,
+  LOGO_STYLE_OPTIONS,
+  APPEARANCE_OPTIONS,
+  SurfaceGlyph,
+  RadiusGlyph,
+  CardStyleGlyph,
+  LogoGlyph,
+  AccentChips,
+} from './phone/hubBrandingParts';
+import { HubPhone } from './phone/HubPhone';
 
 const MAX_LOGO_BYTES = 2 * 1024 * 1024;
-const HEX_6_RE = /^#[0-9a-fA-F]{6}$/;
 
 const HINT: CSSProperties = {
   fontSize: '0.8rem',
@@ -81,42 +91,6 @@ const HINT: CSSProperties = {
 };
 const FIELD: CSSProperties = { marginBottom: '1.5rem' };
 const FIELD_LABEL: CSSProperties = { display: 'block', marginBottom: '0.5rem' };
-
-// The CRM's own tipo palette (postLabels.ts) -- already the canonical
-// "Mesaas brand-adjacent" colours per PRODUCT.md, so they double as sensible
-// one-click presets here instead of an arbitrary swatch set.
-const BRAND_PRESET_COLORS = ['#eab308', '#E1306C', '#42c8f5', '#3ecf8e'];
-
-const SURFACE_OPTIONS: { value: HubSurface; label: string }[] = [
-  { value: 'neutral', label: 'Neutro' },
-  { value: 'warm', label: 'Quente' },
-  { value: 'cool', label: 'Frio' },
-];
-// Suave leads: it's hub_radius's default (migration 20260731000001), so it's what
-// most workspaces already have — putting it first matches what they'll see.
-const RADIUS_OPTIONS: { value: HubRadius; label: string }[] = [
-  { value: 'soft', label: 'Suave' },
-  { value: 'square', label: 'Reto' },
-  { value: 'pill', label: 'Pílula' },
-];
-const CARD_STYLE_OPTIONS: { value: HubCardStyle; label: string }[] = [
-  { value: 'filled', label: 'Preenchido' },
-  { value: 'outline', label: 'Contorno' },
-  { value: 'tonal', label: 'Tonal' },
-];
-const LOGO_STYLE_OPTIONS: { value: string; label: string; sublabel: string }[] = [
-  { value: 'round', label: 'Redondo', sublabel: 'avatar circular' },
-  { value: 'wordmark', label: 'Horizontal', sublabel: 'wordmark' },
-];
-const APPEARANCE_OPTIONS: { value: string; label: string; icon: LucideIcon }[] = [
-  { value: 'light', label: 'Claro', icon: Sun },
-  { value: 'dark', label: 'Escuro', icon: Moon },
-];
-
-// Radius values a small (~32px) glyph actually renders at. Mirrors theme.ts's
-// RADIUS_CARD/RADIUS_CTL (not exported -- these are display-only, unlike the
-// resolver's own live values, which the preview reads through resolveHubTheme).
-const RADIUS_GLYPH_PX: Record<HubRadius, number> = { square: 0, soft: 12, pill: 999 };
 
 /** Titled control card: icon + 13-14px title + one-line muted description, then
  * content. Every "Personalizar Hub" section uses this so the tab reads as five
@@ -269,160 +243,6 @@ function OptionCardGroup<V extends string>({
   );
 }
 
-/** Mini-page swatch: a tiny "page" tinted with the surface palette, holding a card
- * rect and two text-stroke bars, so a theme reads as a miniature screen instead of
- * a colour dot. */
-function SurfaceGlyph({ surface }: { surface: HubSurface }) {
-  const palette = PALETTES[surface].light;
-  return (
-    <span
-      aria-hidden="true"
-      style={{
-        display: 'block',
-        width: '100%',
-        minWidth: 64,
-        height: 48,
-        borderRadius: 8,
-        background: palette.bg,
-        border: `1px solid ${palette.bd}`,
-        position: 'relative',
-        overflow: 'hidden',
-      }}
-    >
-      <span
-        style={{
-          position: 'absolute',
-          inset: '6px 6px auto 6px',
-          height: 18,
-          borderRadius: 4,
-          background: palette.card,
-          border: `1px solid ${palette.bd}`,
-        }}
-      />
-      <span
-        style={{
-          position: 'absolute',
-          left: 9,
-          bottom: 6,
-          width: '42%',
-          height: 2,
-          borderRadius: 1,
-          background: palette.txt,
-          opacity: 0.5,
-        }}
-      />
-      <span
-        style={{
-          position: 'absolute',
-          left: 9,
-          bottom: 11,
-          width: '28%',
-          height: 2,
-          borderRadius: 1,
-          background: palette.txt,
-          opacity: 0.3,
-        }}
-      />
-    </span>
-  );
-}
-
-function RadiusGlyph({ radius }: { radius: HubRadius }) {
-  return (
-    <span
-      aria-hidden="true"
-      style={{
-        display: 'block',
-        width: 32,
-        height: 32,
-        border: '1.5px solid var(--text-muted)',
-        borderRadius: RADIUS_GLYPH_PX[radius],
-      }}
-    />
-  );
-}
-
-const CARD_STYLE_GLYPH: Record<HubCardStyle, CSSProperties> = {
-  filled: { background: 'var(--card-bg)', border: '1px solid var(--border-color)' },
-  outline: { background: 'transparent', border: '1.5px solid var(--text-muted)' },
-  tonal: { background: 'var(--surface-1)', border: 'none' },
-};
-
-function CardStyleGlyph({ cardStyle }: { cardStyle: HubCardStyle }) {
-  return (
-    <span
-      aria-hidden="true"
-      style={{
-        display: 'block',
-        width: 44,
-        height: 32,
-        borderRadius: 6,
-        ...CARD_STYLE_GLYPH[cardStyle],
-      }}
-    />
-  );
-}
-
-/** The round option renders the actual accent-on-avatar fallback (WorkspaceMark's
- * monogram); the wordmark option renders the workspace name in the CURRENTLY
- * picked display font, so Identidade stays honest about the Tipografia choice. */
-function LogoGlyph({
-  kind,
-  brandColor,
-  initial,
-  workspaceName,
-  fontDisplayCss,
-}: {
-  kind: 'round' | 'wordmark';
-  brandColor: string;
-  initial: string;
-  workspaceName: string;
-  fontDisplayCss: string;
-}) {
-  if (kind === 'round') {
-    const fg =
-      HEX_6_RE.test(brandColor) && relativeLuminance(brandColor) > 0.55 ? '#171717' : '#ffffff';
-    return (
-      <span
-        aria-hidden="true"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          width: 32,
-          height: 32,
-          borderRadius: '50%',
-          background: HEX_6_RE.test(brandColor) ? brandColor : '#171717',
-          color: fg,
-          fontSize: 12,
-          fontWeight: 600,
-        }}
-      >
-        {initial}
-      </span>
-    );
-  }
-  return (
-    <span
-      aria-hidden="true"
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        height: 32,
-        fontFamily: fontDisplayCss,
-        fontSize: 13,
-        color: 'var(--text-main)',
-        maxWidth: 92,
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace: 'nowrap',
-      }}
-    >
-      {workspaceName || 'Workspace'}
-    </span>
-  );
-}
-
 function FontPairingCards({
   fontDisplay,
   fontBody,
@@ -438,10 +258,11 @@ function FontPairingCards({
   onPick: (display: string, body: string) => void;
   disabled?: boolean;
 }) {
+  const { t } = useTranslation('settingsHub');
   return (
     <div
       role="group"
-      aria-label="Combinações de fontes sugeridas"
+      aria-label={t('hubTab.fontPairingsAria')}
       style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))',
@@ -471,7 +292,8 @@ function FontPairingCards({
                 color: 'var(--text-main)',
               }}
             >
-              Ag
+              {/* Font specimen glyphs, not copy. */}
+              {'Ag'}
             </span>
             <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)' }}>
               {pairing.label}
@@ -507,6 +329,7 @@ function FontSelectsDisclosure({
   bodyOptions: [string, HubFontOption][];
   disabled?: boolean;
 }) {
+  const { t } = useTranslation('settingsHub');
   const [open, setOpen] = useState(false);
   return (
     <div>
@@ -535,7 +358,7 @@ function FontSelectsDisclosure({
             transition: 'transform 150ms cubic-bezier(0.4, 0, 0.2, 1)',
           }}
         />
-        Escolher fontes separadamente
+        {t('hubTab.pickFontsSeparately')}
       </button>
       {open && (
         <div
@@ -544,7 +367,7 @@ function FontSelectsDisclosure({
         >
           <div style={{ flex: '1 1 160px' }}>
             <Label htmlFor="hub-font-display" style={FIELD_LABEL}>
-              Fonte de títulos
+              {t('shared.displayFont')}
             </Label>
             <Select value={fontDisplay} onValueChange={setFontDisplay} disabled={disabled}>
               <SelectTrigger id="hub-font-display">
@@ -561,7 +384,7 @@ function FontSelectsDisclosure({
           </div>
           <div style={{ flex: '1 1 160px' }}>
             <Label htmlFor="hub-font-body" style={FIELD_LABEL}>
-              Fonte de texto
+              {t('shared.bodyFont')}
             </Label>
             <Select value={fontBody} onValueChange={setFontBody} disabled={disabled}>
               <SelectTrigger id="hub-font-body">
@@ -582,23 +405,6 @@ function FontSelectsDisclosure({
   );
 }
 
-function accentChipStyle(kind: 'filled' | 'outline'): CSSProperties {
-  const base: CSSProperties = {
-    fontSize: '0.7rem',
-    fontWeight: 600,
-    padding: '0.3rem 0.65rem',
-    borderRadius: 999,
-  };
-  if (kind === 'filled')
-    return { ...base, background: 'var(--hub-primary)', color: 'var(--hub-primary-fg)' };
-  return {
-    ...base,
-    border: '1px solid var(--hub-acc)',
-    color: 'var(--hub-acc)',
-    background: 'transparent',
-  };
-}
-
 /** One-click brand-adjacent presets, standing in for the shared ColorPicker's
  * `brandColors` swatch row (unused by this tab before this change -- HubTab never
  * passed it any presets). */
@@ -611,10 +417,11 @@ function PresetSwatches({
   onPick: (hex: string) => void;
   disabled?: boolean;
 }) {
+  const { t } = useTranslation('settingsHub');
   return (
     <div
       role="group"
-      aria-label="Cores sugeridas"
+      aria-label={t('shared.suggestedColors')}
       style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.75rem' }}
     >
       {BRAND_PRESET_COLORS.map((hex) => {
@@ -644,37 +451,10 @@ function PresetSwatches({
   );
 }
 
-/** Shows where the accent actually lands (button, active nav, calendar), resolved
- * through the real theme resolver -- never a hand-picked shade of the hex the user
- * just typed. Surface/font/radius/card style are fixed neutrals here on purpose:
- * this chip row is about the ACCENT, not a full preview (HubPreview already covers
- * that), so it stays correct regardless of what the other sections are set to. */
-function AccentChips({ brandColor }: { brandColor: string }) {
-  const vars = resolveHubTheme(
-    {
-      accent: brandColor,
-      surface: 'neutral',
-      fontDisplay: 'fraunces',
-      fontBody: 'instrument-sans',
-      radius: 'soft',
-      cardStyle: 'filled',
-      customized: true,
-    },
-    false,
-  ).vars as CSSProperties;
-  return (
-    <div
-      style={{ ...vars, display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.85rem' }}
-    >
-      <span style={accentChipStyle('filled')}>Botão</span>
-      <span style={accentChipStyle('outline')}>Nav ativa</span>
-      <span style={accentChipStyle('outline')}>Calendário</span>
-    </div>
-  );
-}
-
 /** Branding for the client-facing Hub (Configurações → Hub), with a live preview. */
 export default function HubTab() {
+  const { t } = useTranslation('settingsHub');
+  const isPhone = !useIsDesktop(768);
   const { can } = useAuth();
   const queryClient = useQueryClient();
   // The `configuracoes` tab itself is already gated on `configuracoes:ver`
@@ -784,7 +564,7 @@ export default function HubTab() {
   const handleLogoDarkUpload = async (file: File) => {
     if (!workspace) return;
     if (file.size > MAX_LOGO_BYTES) {
-      toast.error('Arquivo deve ser menor que 2MB.');
+      toast.error(t('hubTab.toast.fileTooLarge'));
       return;
     }
     setLogoUploading(true);
@@ -822,10 +602,10 @@ export default function HubTab() {
       queryClient.setQueryData(['workspace-hub-branding'], (old: HubBranding | undefined) =>
         old ? { ...old, hub_logo_dark_url: publicUrl } : old,
       );
-      toast.success('Logo para modo escuro atualizada.');
+      toast.success(t('hubTab.toast.darkLogoUpdated'));
     } catch (err: unknown) {
       console.error('hub dark logo upload failed', err);
-      toast.error('Não foi possível enviar a logo. Tente novamente.');
+      toast.error(t('hubTab.toast.darkLogoUploadError'));
     } finally {
       release();
       setLogoUploading(false);
@@ -841,10 +621,10 @@ export default function HubTab() {
       queryClient.setQueryData(['workspace-hub-branding'], (old: HubBranding | undefined) =>
         old ? { ...old, hub_logo_dark_url: null } : old,
       );
-      toast.success('Logo para modo escuro removida.');
+      toast.success(t('hubTab.toast.darkLogoRemoved'));
     } catch (err: unknown) {
       console.error('hub dark logo removal failed', err);
-      toast.error('Não foi possível remover a logo. Tente novamente.');
+      toast.error(t('hubTab.toast.darkLogoRemoveError'));
     } finally {
       setLogoUploading(false);
       setRemoveLogoOpen(false);
@@ -870,11 +650,11 @@ export default function HubTab() {
       // caches need to move together or the report tab shows a stale swatch.
       queryClient.invalidateQueries({ queryKey: ['workspace-hub-branding'] });
       queryClient.invalidateQueries({ queryKey: ['workspace-branding'] });
-      toast.success('Hub atualizado!');
+      toast.success(t('hubTab.toast.saved'));
     },
     onError: (err: unknown) => {
       console.error('hub branding save failed', err);
-      toast.error('Não foi possível salvar. Tente novamente.');
+      toast.error(t('storage.toast.saveError'));
     },
   });
 
@@ -894,13 +674,49 @@ export default function HubTab() {
   const workspaceInitial = (workspace?.name || '?').trim().charAt(0).toUpperCase() || '?';
   const fontDisplayCss = HUB_DISPLAY_FONTS[fontDisplay]?.css ?? HUB_DISPLAY_FONTS.fraunces.css;
 
+  if (isPhone) {
+    // Same draft, handlers and save as the desktop form below; the phone view only
+    // lays them out as an iOS settings screen (and never mounts the AlertDialog).
+    return (
+      <HubPhone
+        loading={canViewConfig && brandingPending}
+        canEdit={canEditConfig}
+        controlsDisabled={controlsDisabled}
+        brandingFailed={brandingFailed}
+        customized={customized}
+        look={pauta ? 'pauta' : 'classic'}
+        pauta={pauta}
+        workspaceName={workspace?.name ?? ''}
+        workspaceLogoUrl={workspace?.logo_url ?? null}
+        workspaceInitial={workspaceInitial}
+        fontDisplayCss={fontDisplayCss}
+        previewDraft={previewDraft}
+        fontOptions={fontOptions}
+        setBrandColor={setBrandColor}
+        setSurface={setSurface}
+        setRadius={setRadius}
+        setCardStyle={setCardStyle}
+        setFontDisplay={setFontDisplay}
+        setFontBody={setFontBody}
+        setLogoStyle={setLogoStyle}
+        setDefaultAppearance={setDefaultAppearance}
+        setHideBranding={setHideBranding}
+        logoUploading={logoUploading}
+        onLogoDarkUpload={handleLogoDarkUpload}
+        removeLogoOpen={removeLogoOpen}
+        setRemoveLogoOpen={setRemoveLogoOpen}
+        onRemoveLogoDark={handleRemoveLogoDark}
+        saving={saveMutation.isPending}
+        onSave={() => saveMutation.mutate()}
+      />
+    );
+  }
+
   return (
     <div>
       <div style={{ marginBottom: '1.5rem' }}>
-        <h3 className="config-title">Personalizar Hub</h3>
-        <p style={{ ...HINT, marginTop: 0 }}>
-          A aparência do portal que seus clientes usam para aprovar posts e acompanhar entregas.
-        </p>
+        <h3 className="config-title">{t('hubTab.title')}</h3>
+        <p style={{ ...HINT, marginTop: 0 }}>{t('hubTab.subtitle')}</p>
       </div>
 
       {/* Live preview: a large full-width block, shown first so the user sees the
@@ -912,7 +728,7 @@ export default function HubTab() {
           client's actual link. HubPreview owns its own "Pré-visualização ao vivo"
           caption + toggles header. */}
       {!canEditConfig && (
-        <p style={{ ...HINT, marginTop: 0, marginBottom: '1rem' }}>Somente leitura</p>
+        <p style={{ ...HINT, marginTop: 0, marginBottom: '1rem' }}>{t('reports.readOnly')}</p>
       )}
 
       <div style={{ marginBottom: '2rem' }}>
@@ -930,16 +746,16 @@ export default function HubTab() {
           auto-fit — see .config-hub-sections-grid. Identidade spans the full row
           below (gridColumn: '1 / -1' on its SectionCard). */}
       <div className="config-hub-sections-grid">
-        <FeatureGate flag="feature_brand_customization" label="Personalização do Hub">
+        <FeatureGate flag="feature_brand_customization" label={t('shared.gateLabel')}>
           <SectionCard
             icon={Palette}
-            title="Aparência"
-            description="O clima geral do hub. O cliente ainda pode alternar claro e escuro."
+            title={t('shared.appearance')}
+            description={t('hubTab.appearanceDescription')}
           >
             <div style={FIELD}>
-              <Label style={FIELD_LABEL}>Tema de superfície</Label>
+              <Label style={FIELD_LABEL}>{t('shared.surfaceTheme')}</Label>
               <OptionCardGroup
-                groupLabel="Tema de superfície"
+                groupLabel={t('shared.surfaceTheme')}
                 value={surface}
                 onChange={setSurface}
                 disabled={controlsDisabled}
@@ -951,15 +767,15 @@ export default function HubTab() {
               />
             </div>
             <div>
-              <Label style={FIELD_LABEL}>Aparência padrão</Label>
+              <Label style={FIELD_LABEL}>{t('shared.defaultAppearance')}</Label>
               <SegmentedControl
                 value={defaultAppearance}
                 onChange={setDefaultAppearance}
                 options={APPEARANCE_OPTIONS}
-                ariaLabel="Aparência padrão"
+                ariaLabel={t('shared.defaultAppearance')}
                 disabled={controlsDisabled}
               />
-              <p style={HINT}>O cliente ainda pode alternar no hub.</p>
+              <p style={HINT}>{t('hubTab.defaultAppearanceHint')}</p>
             </div>
           </SectionCard>
         </FeatureGate>
@@ -968,8 +784,8 @@ export default function HubTab() {
             regardless of plan. */}
         <SectionCard
           icon={Droplet}
-          title="Cor da marca"
-          description="Aplicada a botões, navegação ativa e calendário. Contraste garantido."
+          title={t('shared.brandColor')}
+          description={t('hubTab.brandColorDescription')}
         >
           <PresetSwatches value={brandColor} onPick={setBrandColor} disabled={controlsDisabled} />
           {/* workspaces.brand_color is CHECK'd to 6-digit hex, and resolveHubTheme
@@ -990,7 +806,7 @@ export default function HubTab() {
                   color you picked" signal. */}
               <div
                 role="img"
-                aria-label={`Cor selecionada: ${brandColor}`}
+                aria-label={t('hubTab.selectedColor', { color: brandColor })}
                 title={brandColor}
                 style={{
                   width: 36,
@@ -1006,22 +822,20 @@ export default function HubTab() {
             </div>
           </FigmaColorPicker>
           <AccentChips brandColor={brandColor} />
-          <p style={HINT}>
-            A mesma cor do relatório mensal. Marca o calendário do Hub e os destaques do relatório.
-          </p>
+          <p style={HINT}>{t('shared.brandColorHint')}</p>
         </SectionCard>
 
-        <FeatureGate flag="feature_brand_customization" label="Personalização do Hub">
+        <FeatureGate flag="feature_brand_customization" label={t('shared.gateLabel')}>
           <SectionCard
             icon={TypeIcon}
-            title="Tipografia"
-            description="Comece por uma combinação pronta. Ajuste fino abaixo, se quiser."
+            title={t('shared.typography')}
+            description={t('hubTab.typographyDescription')}
           >
             <FontPairingCards
               fontDisplay={fontDisplay}
               fontBody={fontBody}
               pairings={fontOptions.pairings}
-              defaultLabel={pauta ? 'Padrão' : undefined}
+              defaultLabel={pauta ? t('shared.defaultFont') : undefined}
               disabled={controlsDisabled}
               onPick={(display, body) => {
                 setFontDisplay(display);
@@ -1041,13 +855,13 @@ export default function HubTab() {
 
           <SectionCard
             icon={LayoutGrid}
-            title="Componentes"
-            description="A forma dos cards e controles do hub."
+            title={t('shared.components')}
+            description={t('shared.componentsDescription')}
           >
             <div style={FIELD}>
-              <Label style={FIELD_LABEL}>Cantos</Label>
+              <Label style={FIELD_LABEL}>{t('shared.corners')}</Label>
               <OptionCardGroup
-                groupLabel="Cantos"
+                groupLabel={t('shared.corners')}
                 value={radius}
                 onChange={setRadius}
                 disabled={controlsDisabled}
@@ -1059,9 +873,9 @@ export default function HubTab() {
               />
             </div>
             <div>
-              <Label style={FIELD_LABEL}>Estilo de cards</Label>
+              <Label style={FIELD_LABEL}>{t('shared.cardStyle')}</Label>
               <OptionCardGroup
-                groupLabel="Estilo de cards"
+                groupLabel={t('shared.cardStyle')}
                 value={cardStyle}
                 onChange={setCardStyle}
                 disabled={controlsDisabled}
@@ -1076,14 +890,14 @@ export default function HubTab() {
 
           <SectionCard
             icon={IdCard}
-            title="Identidade"
-            description="Como a marca da agência aparece dentro do hub."
+            title={t('shared.identity')}
+            description={t('shared.identityDescription')}
             style={{ gridColumn: '1 / -1' }}
           >
             <div style={FIELD}>
-              <Label style={FIELD_LABEL}>Logo no hub</Label>
+              <Label style={FIELD_LABEL}>{t('shared.hubLogo')}</Label>
               <OptionCardGroup
-                groupLabel="Logo no hub"
+                groupLabel={t('shared.hubLogo')}
                 value={logoStyle}
                 onChange={setLogoStyle}
                 disabled={controlsDisabled}
@@ -1105,12 +919,12 @@ export default function HubTab() {
             </div>
 
             <div style={FIELD}>
-              <Label style={FIELD_LABEL}>Logo para modo escuro</Label>
+              <Label style={FIELD_LABEL}>{t('shared.darkLogo')}</Label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                 {logoDarkUrl && (
                   <img
                     src={logoDarkUrl}
-                    alt="Logo para modo escuro"
+                    alt={t('shared.darkLogo')}
                     style={{
                       width: 56,
                       height: 56,
@@ -1148,10 +962,10 @@ export default function HubTab() {
                   )}
                   <span style={{ fontSize: '0.8rem', color: 'var(--text-main)' }}>
                     {logoUploading
-                      ? 'Enviando…'
+                      ? t('reports.uploading')
                       : logoDarkUrl
-                        ? 'Trocar logo'
-                        : 'Enviar variante clara do logo'}
+                        ? t('shared.changeLogo')
+                        : t('hubTab.uploadLightLogo')}
                   </span>
                 </button>
                 {logoDarkUrl && (
@@ -1162,11 +976,11 @@ export default function HubTab() {
                     disabled={logoUploading || !canEditConfig}
                     style={{ alignSelf: 'flex-start' }}
                   >
-                    Remover
+                    {t('actions.delete')}
                   </Button>
                 )}
               </div>
-              <p style={HINT}>PNG · até 2MB. Usada quando o cliente está no modo escuro.</p>
+              <p style={HINT}>{t('hubTab.darkLogoHint')}</p>
               <input
                 ref={logoInputRef}
                 type="file"
@@ -1191,7 +1005,7 @@ export default function HubTab() {
               />
               <div>
                 <Label htmlFor="hub-hide-branding" style={{ fontWeight: 500, cursor: 'pointer' }}>
-                  Ocultar &quot;powered by mesaas&quot;
+                  {t('shared.hidePoweredBy')}
                 </Label>
               </div>
             </div>
@@ -1209,8 +1023,7 @@ export default function HubTab() {
             marginBottom: 0,
           }}
         >
-          Não foi possível carregar as configurações do Hub. Recarregue a página. Salvar agora
-          sobrescreveria a sua personalização com os valores padrão.
+          {t('shared.loadError')}
         </p>
       )}
 
@@ -1219,22 +1032,22 @@ export default function HubTab() {
         disabled={saveMutation.isPending || controlsDisabled}
         style={{ marginTop: brandingFailed ? '0.75rem' : '1.25rem' }}
       >
-        {saveMutation.isPending && <Spinner size="sm" />} Salvar
+        {saveMutation.isPending && <Spinner size="sm" />} {t('actions.save')}
       </Button>
 
       {/* Remove Dark Logo Confirm */}
       <AlertDialog open={removeLogoOpen} onOpenChange={setRemoveLogoOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remover a logo para modo escuro?</AlertDialogTitle>
+            <AlertDialogTitle>{t('shared.removeDarkLogoTitle')}</AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleRemoveLogoDark}
               disabled={logoUploading || !canEditConfig}
             >
-              Remover
+              {t('actions.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

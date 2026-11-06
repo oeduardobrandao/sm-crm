@@ -7,7 +7,8 @@ export interface Membro {
   cargo: string;
   tipo: 'clt' | 'freelancer_mensal' | 'freelancer_demanda';
   custo_mensal: number | null;
-  avatar_url: string;
+  /** Public URL or NULL (never ''). Written only by `set_member_photo`. */
+  avatar_url: string | null;
   conta_id?: string;
   data_pagamento?: number;
   crm_user_id?: string | null;
@@ -28,7 +29,7 @@ export async function getMembros(): Promise<Membro[]> {
 }
 
 export async function addMembro(
-  m: Omit<Membro, 'id' | 'user_id' | 'conta_id'>,
+  m: Omit<Membro, 'id' | 'user_id' | 'conta_id' | 'avatar_url'> & { avatar_url?: string | null },
 ): Promise<Omit<Membro, 'custo_mensal'>> {
   const user_id = await getUserId();
   const conta_id = await getContaId();
@@ -67,4 +68,22 @@ export async function setMembroCrmUser(membroId: number, crmUserId: string | nul
     p_crm_user_id: crmUserId,
   });
   if (error) throw error;
+}
+
+/** Whose photo: the caller's own (Perfil) or a team record (Equipe, needs equipe:editar). */
+export type FotoAlvo = { kind: 'self'; userId: string } | { kind: 'membro'; membroId: number };
+
+/**
+ * Sets (or with `path = null`, removes) a person's photo. `path` is the object already
+ * uploaded to the `avatars` bucket; the RPC checks it and builds the public URL itself.
+ * Returns the stored URL, or null after a removal.
+ */
+export async function setMemberPhoto(alvo: FotoAlvo, path: string | null): Promise<string | null> {
+  const { data, error } = await supabase.rpc('set_member_photo', {
+    p_membro_id: alvo.kind === 'membro' ? alvo.membroId : null,
+    p_user_id: alvo.kind === 'self' ? alvo.userId : null,
+    p_path: path,
+  });
+  if (error) throw error;
+  return (data as string | null) ?? null;
 }

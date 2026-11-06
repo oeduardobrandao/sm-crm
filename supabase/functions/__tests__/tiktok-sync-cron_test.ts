@@ -155,6 +155,41 @@ Deno.test("tiktok-sync-cron: account in a workspace without feature_auto_sync_cr
   assertEquals(updateCalls.length, 0);
 });
 
+Deno.test("tiktok-sync-cron: skips accounts whose workspace lacks feature_tiktok", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("tiktok_accounts", "select", {
+    data: [
+      {
+        id: "acct-1",
+        client_id: 101,
+        follower_count: 10,
+        following_count: 1,
+        likes_count: 100,
+        video_count: 5,
+        clientes: { conta_id: "ws-no-tiktok" },
+      },
+    ],
+  });
+  queueDefaultWebhookPurge(db);
+
+  const checked: string[] = [];
+  const deps = baseDeps(db);
+  deps.effectivePlanFeature = async (_svc, _ws, feature) => {
+    checked.push(feature);
+    return feature !== "feature_tiktok";
+  };
+
+  const response = await runTikTokSyncCron(deps);
+  const body = await response.json();
+
+  assertEquals(response.status, 200);
+  assertEquals(body.synced, 0);
+  assertEquals(body.failed, 0);
+  assert(checked.includes("feature_auto_sync_cron"), "must still check feature_auto_sync_cron");
+  assert(checked.includes("feature_tiktok"), "must check feature_tiktok");
+  assertEquals(db.calls.filter((c) => c.table === "tiktok_accounts" && c.operation === "update").length, 0);
+});
+
 // ── (d) happy path: profile stats, snapshot, follower history, envelope nesting ─
 
 function happyPathDeps(
@@ -264,6 +299,41 @@ Deno.test("tiktok-sync-cron: writes the daily snapshot row exactly once with the
     (snapshotCalls[0].options as { onConflict?: string })?.onConflict,
     "tiktok_account_id,snapshot_date",
   );
+});
+
+Deno.test("tiktok-sync-cron: uses the São Paulo date for follower history and the daily snapshot", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("tiktok_accounts", "select", {
+    data: [
+      {
+        id: "acct-1",
+        client_id: 101,
+        follower_count: 1,
+        following_count: 1,
+        likes_count: 1,
+        video_count: 1,
+        clientes: { conta_id: "ws-1" },
+      },
+    ],
+  });
+  db.queue("tiktok_follower_history", "select", { data: null });
+  db.queue("tiktok_accounts", "update", { data: null });
+  db.queue("tiktok_follower_history", "upsert", { data: null });
+  db.queue("tiktok_account_metrics_daily", "upsert", { data: null });
+  queueDefaultWebhookPurge(db);
+
+  // 01:30Z on the 29th is 22:30 on the 28th in São Paulo: UTC would say 2026-10-29.
+  const response = await runTikTokSyncCron(
+    happyPathDeps(db, { now: () => new Date("2026-10-29T01:30:00Z") }),
+  );
+  assertEquals(response.status, 200);
+
+  const snapshot = db.calls.find((c) => c.table === "tiktok_account_metrics_daily" && c.operation === "upsert");
+  assertEquals((snapshot!.payload as Record<string, unknown>).snapshot_date, "2026-10-28");
+  const history = db.calls.find((c) => c.table === "tiktok_follower_history" && c.operation === "upsert");
+  assertEquals((history!.payload as Record<string, unknown>).date, "2026-10-28");
+  const lookup = db.calls.find((c) => c.table === "tiktok_follower_history" && c.operation === "select");
+  assert(lookup!.modifiers.some((m) => m.method === "eq" && m.args[0] === "date" && m.args[1] === "2026-10-28"));
 });
 
 // ── (e) follower history: manual row protected, api row absent triggers insert ──

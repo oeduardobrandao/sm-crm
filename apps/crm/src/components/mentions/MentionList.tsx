@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { User, FileText, Building2, CheckSquare } from 'lucide-react';
-import { avatarColorClass } from '@/lib/avatarColor';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import type { MentionSection, MentionSuggestionItem } from './useMentionSearch';
 
 const MENTION_ICONS = {
@@ -16,7 +16,7 @@ const DROPDOWN_MAX_HEIGHT = 320;
 const VIEWPORT_MARGIN = 8;
 
 /** A `getBoundingClientRect()`-shaped anchor. Callers (mentionSuggestion.ts for the
- * TipTap editor, MentionTextarea for plain-text fields -- Task 5) supply their own,
+ * TipTap editors: PostEditor and MentionEditor) supply their own,
  * so this component never touches TipTap directly. */
 export interface MentionListAnchorRect {
   top: number;
@@ -43,28 +43,19 @@ function MentionAvatar({ item }: { item: MentionSuggestionItem }) {
     const Icon = MENTION_ICONS[item.entityType];
     return <Icon aria-hidden="true" className="mention-suggestion-item__icon" />;
   }
-  const initials = item.label
-    .split(' ')
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join('')
-    .toUpperCase();
-  if (item.avatarUrl) {
-    return <img src={item.avatarUrl} alt="" className="comment-avatar mention-suggestion-avatar" />;
-  }
   return (
-    <span
-      className={`comment-avatar comment-avatar--initials mention-suggestion-avatar ${avatarColorClass(item.id)}`}
-    >
-      {initials}
-    </span>
+    <PessoaAvatar
+      nome={item.label}
+      fotoUrl={item.avatarUrl}
+      seed={item.id}
+      className="comment-avatar comment-avatar--initials mention-suggestion-avatar"
+    />
   );
 }
 
 /**
  * Portal-rendered @-mention dropdown. Deliberately decoupled from TipTap -- it is
- * mounted by mentionSuggestion.ts for PostEditor, and reused as-is by MentionTextarea
- * (Task 5) for plain-text fields (comments, tarefa descriptions).
+ * mounted by mentionSuggestion.ts, for PostEditor and for MentionEditor (comment inputs).
  */
 export const MentionList = forwardRef<MentionListHandle, MentionListProps>(function MentionList(
   { sections, onSelect, referenceRect },

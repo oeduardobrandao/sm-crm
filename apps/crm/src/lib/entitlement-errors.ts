@@ -39,6 +39,12 @@ const FEATURE_LABELS: Record<string, string> = {
   feature_post_processes: 'Processos individuais de produção',
   feature_agenda: 'Agenda',
   feature_multiplatform: 'Plataformas por fluxo',
+  feature_financeiro_v2: 'Financeiro v2 (rentabilidade)',
+  feature_linha_editorial: 'Linha editorial',
+  feature_youtube: 'YouTube',
+  feature_google_business: 'Google Meu Negócio',
+  feature_instagram_comments_ai: 'Comentários com IA',
+  feature_acesso_por_cliente: 'Acesso por cliente',
 };
 
 /** Normalizes a DB-raised message or an edge-function JSON error into an EntitlementError, or null. */
@@ -54,14 +60,14 @@ export function mapEntitlementError(err: unknown): EntitlementError | null {
 
   // DB-raised PostgREST message: "plan_limit_exceeded:max_clients"
   const msg = typeof e.message === 'string' ? e.message : '';
-  const limitMatch = msg.match(/plan_limit_exceeded:([a-z_]+)/);
+  const limitMatch = msg.match(/plan_limit_exceeded:([a-z0-9_]+)/);
   if (limitMatch || e.error === 'plan_limit_exceeded') {
     const key = limitMatch?.[1] ?? 'max_team_members';
     return { kind: 'limit', key, label: LIMIT_LABELS[key] ?? key };
   }
   // Two shapes: the DB trigger raises "feature_disabled:feature_hub_portal" as a
   // PostgREST message; edge functions return { error, feature } as JSON.
-  const featureMatch = msg.match(/feature_disabled:([a-z_]+)/);
+  const featureMatch = msg.match(/feature_disabled:([a-z0-9_]+)/);
   const featureKey = featureMatch?.[1] ?? (e.error === 'feature_disabled' ? e.feature : undefined);
   if (featureKey) {
     return { kind: 'feature', key: featureKey, label: FEATURE_LABELS[featureKey] ?? featureKey };

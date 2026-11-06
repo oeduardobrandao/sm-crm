@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { Trans, useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import {
   Plus,
@@ -12,15 +13,7 @@ import {
   Search,
   UsersRound,
   Wallet,
-  SlidersHorizontal,
 } from 'lucide-react';
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
 import { StatCard } from '@/components/StatCard';
 import { StatCardGrid } from '@/components/StatCardGrid';
 import { openCSVSelector } from '../../lib/csv';
@@ -29,7 +22,7 @@ import { HelpTooltip } from '@/components/help/HelpTooltip';
 import { RoleRestrictionNotice } from '@/components/help/RoleRestrictionNotice';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { CardListSkeleton, TableSkeleton } from '@/components/ui/skeletons';
+import { TableSkeleton } from '@/components/ui/skeletons';
 import {
   Table,
   TableBody,
@@ -39,6 +32,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import {
   Select,
   SelectContent,
@@ -63,33 +57,37 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { ChevronDown } from 'lucide-react';
-import { addMembro, getMembros, removeMembro, getInitials, type Membro } from '../../store';
+import { addMembro, getMembros, removeMembro, type Membro } from '../../store';
 import { useAuth } from '../../context/AuthContext';
-import { avatarColorClass } from '@/lib/avatarColor';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import {
   assertNoFinancialColumns,
   formatFinancialBRL,
   stripFinancialFields,
+  type FinancialAccess,
 } from '@/lib/financialAccess';
+import { isClientScoped } from '@/lib/permissions';
 import { derivePendingInvites } from './inviteSupport';
 import { useOpenParam } from '../../hooks/useOpenParam';
+import { useWorkspaceMemberEmails } from '@/hooks/useWorkspaceMemberEmails';
 import { supabase } from '../../lib/supabase';
 import { MembroFormDialog } from './MembroFormDialog';
-
-type FilterTipo = 'todos' | 'clt' | 'freelancer_mensal' | 'freelancer_demanda';
-type SortKey = 'nome' | 'custo_maior' | 'custo_menor';
-
-const TIPO_LABEL: Record<string, string> = {
-  clt: 'CLT',
-  freelancer_mensal: 'Freelancer Mensal',
-  freelancer_demanda: 'Freelancer Demanda',
-};
+import {
+  EquipePhone,
+  tipoLabel,
+  type EquipeFilter as FilterTipo,
+  type EquipeSort as SortKey,
+} from './phone/EquipePhone';
 
 export default function EquipePage() {
+  const { t } = useTranslation('team');
   const qc = useQueryClient();
   const isDesktop = useIsDesktop();
   const navigate = useNavigate();
-  const { canSeeFinancials, can, profile } = useAuth();
+  const { canSeeFinancials: financialAccess, can, profile, membership } = useAuth();
+  // A member restricted to assigned clients reads membros_v.custo_mensal as NULL and cannot
+  // write it: member costs are masked (never a believable R$ 0) and left out of writes.
+  const canSeeFinancials: FinancialAccess = isClientScoped(membership) ? false : financialAccess;
   // Legacy chassis-role checks (agent-vs-not, owner-or-admin) both collapsed
   // onto the real authorization boundary: `manage-workspace-user`/
   // `invite-user` already enforce `equipe:editar` server-side (Task 11). A
@@ -102,7 +100,6 @@ export default function EquipePage() {
   const [filter, setFilter] = useState<FilterTipo>('todos');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<SortKey>('nome');
-  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Membro | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -132,6 +129,8 @@ export default function EquipePage() {
     pendingInvites.filter((i) => i.membro_id != null).map((i) => [i.membro_id as number, i]),
   );
   const totalCost = membros.reduce((s, m) => s + (m.custo_mensal ?? 0), 0);
+  const memberEmails = useWorkspaceMemberEmails();
+  const emailOf = (m: Membro) => (m.crm_user_id ? memberEmails.get(m.crm_user_id) : undefined);
 
   const filtered = membros
     .filter((m) => filter === 'todos' || m.tipo === filter)
@@ -139,7 +138,8 @@ export default function EquipePage() {
       (m) =>
         !search ||
         m.nome.toLowerCase().includes(search.toLowerCase()) ||
-        m.cargo?.toLowerCase().includes(search.toLowerCase()),
+        m.cargo?.toLowerCase().includes(search.toLowerCase()) ||
+        emailOf(m)?.toLowerCase().includes(search.toLowerCase()),
     )
     .sort((a, b) => {
       if (sort === 'nome') return a.nome.localeCompare(b.nome);
@@ -163,10 +163,10 @@ export default function EquipePage() {
     if (deleteId == null) return;
     try {
       await removeMembro(deleteId);
-      toast.success('Membro removido');
+      toast.success(t('equipePage.removed'));
       qc.invalidateQueries({ queryKey: ['membros'] });
     } catch {
-      toast.error('Erro ao remover');
+      toast.error(t('equipePage.removeError'));
     }
     setDeleteId(null);
   };
@@ -194,13 +194,12 @@ export default function EquipePage() {
               cargo: row.cargo,
               tipo,
               custo_mensal: row.custo_mensal ? Number(row.custo_mensal) : null,
-              avatar_url: '',
               data_pagamento: row.data_pagamento ? Number(row.data_pagamento) : undefined,
             };
             await addMembro(
               stripFinancialFields(rowPayload, canSeeFinancials, ['custo_mensal']) as Omit<
                 Membro,
-                'id' | 'user_id' | 'conta_id'
+                'id' | 'user_id' | 'conta_id' | 'avatar_url'
               >,
             );
             count++;
@@ -208,98 +207,164 @@ export default function EquipePage() {
             /* skip row */
           }
         }
-        toast.success(
-          `${count} membro${count !== 1 ? 's' : ''} importado${count !== 1 ? 's' : ''} com sucesso!`,
-        );
+        toast.success(t('equipePage.imported', { count }));
         qc.invalidateQueries({ queryKey: ['membros'] });
       },
       (err) => toast.error(err.message),
     );
   };
 
+  const dialogs = (
+    <>
+      <MembroFormDialog
+        open={modalOpen}
+        membro={editing}
+        membros={membros}
+        onOpenChange={setModalOpen}
+      />
+
+      <AlertDialog
+        open={deleteId != null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteId(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('equipePage.deleteTitle')}</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('actions.no')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete}>{t('actions.yes')}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+
+  const infoTooltip = (
+    <HelpTooltip
+      content={
+        <div className="space-y-2">
+          <p>
+            <Trans t={t} i18nKey="equipePage.helpMembers" components={{ b: <strong /> }} />
+          </p>
+          <p>
+            <Trans t={t} i18nKey="equipePage.helpUsers" components={{ b: <strong /> }} />
+          </p>
+          <p>{t('equipePage.helpLink')}</p>
+        </div>
+      }
+    >
+      <span style={{ display: 'flex' }}>
+        <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
+      </span>
+    </HelpTooltip>
+  );
+  const headerActions = canEditTeam ? (
+    <>
+      <HelpTooltip content={t('shared.csvHelp')}>
+        <span style={{ display: 'flex' }}>
+          <HelpCircle
+            className="h-4 w-4"
+            style={{ color: 'var(--text-muted)', cursor: 'pointer' }}
+          />
+        </span>
+      </HelpTooltip>
+      <Button
+        variant="outline"
+        size="icon"
+        onClick={handleCSVImport}
+        className="header-actions-icon-only"
+      >
+        <Upload className="h-4 w-4" />
+      </Button>
+      <Button variant="outline" onClick={handleCSVImport} className="header-actions-full-only">
+        <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('shared.importCsv')}
+      </Button>
+    </>
+  ) : null;
+  const primaryAction = canEditTeam ? (
+    <Button onClick={openAdd}>
+      <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('shared.addMember')}
+    </Button>
+  ) : null;
+
+  const inToolbar = usePageToolbar({
+    title: t('shared.title'),
+    titleAccessory: infoTooltip,
+    actions: headerActions,
+    primary: primaryAction,
+  });
+
+  // Below 768px: the phone list (PLAN F2d). It replaces the old team-grid cards and the
+  // shadcn filter sheet; 768px and up keep the table with Tipo and Ordenar inline.
+  if (!isDesktop) {
+    return (
+      <>
+        <EquipePhone
+          isLoading={isLoading}
+          membros={filtered}
+          totalMembros={membros.length}
+          totalCost={totalCost}
+          canSeeFinancials={canSeeFinancials}
+          canEditTeam={canEditTeam}
+          pendingInviteIds={new Set(pendingByMembroId.keys())}
+          filter={filter}
+          onFilterChange={setFilter}
+          sort={sort}
+          onSortChange={setSort}
+          search={search}
+          onSearchChange={setSearch}
+          onAdd={openAdd}
+          onImport={handleCSVImport}
+          onOpen={(m) => m.id && navigate(`/equipe/${m.id}`)}
+          onEdit={openEdit}
+          onDelete={setDeleteId}
+        />
+        {dialogs}
+      </>
+    );
+  }
+
   return (
-    <div style={{ padding: '1.5rem' }}>
-      <div className="header">
-        <div
-          className="header-title"
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-        >
-          <h1>Equipe</h1>
-          <HelpTooltip
-            content={
-              <div className="space-y-2">
-                <p>
-                  <strong>Membros</strong> = pessoas da equipe (designers, redatores, etc). Servem
-                  para custos e atribuição de tarefas em fluxos.
-                </p>
-                <p>
-                  <strong>Usuários do workspace</strong> = contas com acesso ao CRM. Gerencie em
-                  Configurações → Workspace.
-                </p>
-                <p>
-                  Para que um membro acesse o CRM, vincule-o a um usuário do workspace no formulário
-                  de edição.
-                </p>
-              </div>
-            }
+    // Under Vidro the panel already pads the content.
+    <div style={inToolbar ? undefined : { padding: '1.5rem' }}>
+      {!inToolbar && (
+        <div className="header">
+          <div
+            className="header-title"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
           >
-            <span style={{ display: 'flex' }}>
-              <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
-            </span>
-          </HelpTooltip>
+            <h1>{t('shared.title')}</h1>
+            {infoTooltip}
+          </div>
+          <div className="header-actions">
+            {headerActions}
+            {primaryAction}
+          </div>
         </div>
-        <div className="header-actions">
-          {canEditTeam && (
-            <HelpTooltip content="Colunas CSV: nome*, cargo*, tipo (clt|freelancer_mensal|freelancer_demanda), custo_mensal, data_pagamento">
-              <span style={{ display: 'flex' }}>
-                <HelpCircle
-                  className="h-4 w-4"
-                  style={{ color: 'var(--text-muted)', cursor: 'pointer' }}
-                />
-              </span>
-            </HelpTooltip>
-          )}
-          {canEditTeam && (
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={handleCSVImport}
-              className="header-actions-icon-only"
-            >
-              <Upload className="h-4 w-4" />
-            </Button>
-          )}
-          {canEditTeam && (
-            <Button
-              variant="outline"
-              onClick={handleCSVImport}
-              className="header-actions-full-only"
-            >
-              <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Importar CSV
-            </Button>
-          )}
-          {canEditTeam && (
-            <Button onClick={openAdd}>
-              <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Adicionar Membro
-            </Button>
-          )}
-        </div>
-      </div>
+      )}
 
       {!canEditTeam && (
         <div style={{ marginBottom: '1rem' }}>
           <RoleRestrictionNotice
-            title="Visualização limitada"
-            description="Apenas administradores e proprietários podem adicionar, editar ou remover membros da equipe."
+            title={t('shared.restrictedTitle')}
+            description={t('shared.restrictedDescription')}
           />
         </div>
       )}
 
       <StatCardGrid style={{ marginBottom: '1.5rem' }}>
-        <StatCard label="Total de membros" value={membros.length} icon={UsersRound} tone="blue" />
+        <StatCard
+          label={t('shared.totalMembers')}
+          value={membros.length}
+          icon={UsersRound}
+          tone="blue"
+        />
         {canSeeFinancials === true && (
           <StatCard
-            label="Custo mensal total"
+            label={t('shared.totalCost')}
             value={formatFinancialBRL(totalCost, canSeeFinancials)}
             icon={Wallet}
             tone="violet"
@@ -322,23 +387,20 @@ export default function EquipePage() {
             }}
           />
           <Input
-            placeholder="Buscar por nome ou cargo..."
+            placeholder={canEditTeam ? t('shared.searchEditor') : t('shared.searchViewer')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ paddingLeft: '2rem' }}
           />
         </div>
-        {/* Desktop: tipo + ordenar inline. Below 901px they collapse into a
-            single "Filtros" button/sheet -- otherwise they wrap below the
-            search box and eat the first fold on a phone. */}
-        <div className="hidden min-[901px]:contents">
+        <div className="contents">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"
                 className="h-9 rounded-full px-4 text-xs gap-1.5 font-normal shadow-sm mb-0"
               >
-                {filter === 'todos' ? 'Tipo' : TIPO_LABEL[filter]}
+                {filter === 'todos' ? t('shared.filterType') : tipoLabel(filter)}
                 <ChevronDown className="h-3.5 w-3.5 opacity-60" />
               </Button>
             </DropdownMenuTrigger>
@@ -350,7 +412,7 @@ export default function EquipePage() {
                 {(['todos', 'clt', 'freelancer_mensal', 'freelancer_demanda'] as FilterTipo[]).map(
                   (f) => (
                     <DropdownMenuRadioItem key={f} value={f}>
-                      {f === 'todos' ? 'Todos' : TIPO_LABEL[f]}
+                      {f === 'todos' ? t('shared.filterAll') : tipoLabel(f)}
                     </DropdownMenuRadioItem>
                   ),
                 )}
@@ -362,118 +424,34 @@ export default function EquipePage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="nome">Nome</SelectItem>
+              <SelectItem value="nome">{t('shared.sortName')}</SelectItem>
               {canSeeFinancials === true && (
                 <>
-                  <SelectItem value="custo_maior">Custo (maior)</SelectItem>
-                  <SelectItem value="custo_menor">Custo (menor)</SelectItem>
+                  <SelectItem value="custo_maior">{t('shared.sortCostDesc')}</SelectItem>
+                  <SelectItem value="custo_menor">{t('shared.sortCostAsc')}</SelectItem>
                 </>
               )}
             </SelectContent>
           </Select>
         </div>
-
-        <Button
-          variant="outline"
-          className="flex min-[901px]:hidden h-9 rounded-full px-3 text-xs gap-1.5 font-normal shadow-sm mb-0 shrink-0"
-          onClick={() => setFilterSheetOpen(true)}
-        >
-          <SlidersHorizontal className="h-3.5 w-3.5" />
-          Filtros
-          {filter !== 'todos' && (
-            <span
-              className="inline-flex items-center justify-center rounded-full text-[0.6rem] font-semibold leading-none"
-              style={{
-                background: 'var(--primary-color)',
-                color: '#000',
-                width: '1.1rem',
-                height: '1.1rem',
-              }}
-            >
-              1
-            </span>
-          )}
-        </Button>
       </div>
 
-      <Sheet open={filterSheetOpen} onOpenChange={setFilterSheetOpen}>
-        <SheetContent side="bottom" className="rounded-t-[24px] max-h-[85vh] overflow-y-auto pb-24">
-          <SheetHeader className="mb-4">
-            <SheetTitle className="text-base">Filtros</SheetTitle>
-            <SheetDescription className="sr-only">Filtre e ordene a equipe</SheetDescription>
-          </SheetHeader>
-          <div className="flex flex-col gap-3">
-            <label className="flex flex-col gap-1 text-xs" style={{ color: 'var(--text-muted)' }}>
-              Tipo
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="h-9 w-full justify-between text-xs font-normal"
-                  >
-                    {filter === 'todos' ? 'Todos' : TIPO_LABEL[filter]}
-                    <ChevronDown className="h-3.5 w-3.5 opacity-60" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-[calc(100vw-3rem)]">
-                  <DropdownMenuRadioGroup
-                    value={filter}
-                    onValueChange={(v) => setFilter(v as FilterTipo)}
-                  >
-                    {(
-                      ['todos', 'clt', 'freelancer_mensal', 'freelancer_demanda'] as FilterTipo[]
-                    ).map((f) => (
-                      <DropdownMenuRadioItem key={f} value={f}>
-                        {f === 'todos' ? 'Todos' : TIPO_LABEL[f]}
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </label>
-
-            <label className="flex flex-col gap-1 text-xs" style={{ color: 'var(--text-muted)' }}>
-              Ordenar por
-              <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
-                <SelectTrigger className="!text-xs h-9 w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="nome">Nome</SelectItem>
-                  {canSeeFinancials === true && (
-                    <>
-                      <SelectItem value="custo_maior">Custo (maior)</SelectItem>
-                      <SelectItem value="custo_menor">Custo (menor)</SelectItem>
-                    </>
-                  )}
-                </SelectContent>
-              </Select>
-            </label>
-          </div>
-        </SheetContent>
-      </Sheet>
-
       {isLoading ? (
-        isDesktop ? (
-          <TableSkeleton columns={4} />
-        ) : (
-          <CardListSkeleton />
-        )
-      ) : isDesktop ? (
+        <TableSkeleton columns={4} />
+      ) : (
         <div className="card animate-up" style={{ padding: '0.25rem 0', overflowX: 'auto' }}>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead style={{ paddingLeft: '1rem' }}>Membro</TableHead>
-                <TableHead>Cargo</TableHead>
-                <TableHead>Tipo</TableHead>
-                <TableHead>Vínculo</TableHead>
+                <TableHead style={{ paddingLeft: '1rem' }}>{t('equipePage.colMember')}</TableHead>
+                <TableHead>{t('equipePage.colRole')}</TableHead>
+                <TableHead>{t('equipePage.colType')}</TableHead>
+                <TableHead>{t('equipePage.colLink')}</TableHead>
                 {canEditTeam && <TableHead style={{ width: 88 }} />}
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.map((m) => {
-                const avatarClass = avatarColorClass(m.id ?? m.nome);
                 return (
                   <TableRow
                     key={m.id}
@@ -482,12 +460,13 @@ export default function EquipePage() {
                   >
                     <TableCell style={{ paddingLeft: '1rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                        <div
-                          className={`avatar ${avatarClass}`}
-                          style={{ width: 28, height: 28, fontSize: '0.7rem', fontWeight: 700 }}
-                        >
-                          {getInitials(m.nome)}
-                        </div>
+                        <PessoaAvatar
+                          nome={m.nome}
+                          fotoUrl={m.avatar_url}
+                          seed={m.id}
+                          size={28}
+                          className="font-bold"
+                        />
                         <button
                           className="client-link"
                           onClick={(e) => {
@@ -503,19 +482,32 @@ export default function EquipePage() {
                     <TableCell>{m.cargo || '—'}</TableCell>
                     <TableCell>
                       <Badge variant="neutral" size="sm" style={{ pointerEvents: 'none' }}>
-                        {TIPO_LABEL[m.tipo]}
+                        {tipoLabel(m.tipo)}
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      {m.crm_user_id || !canEditTeam ? (
+                      {emailOf(m) ? (
+                        <span
+                          style={{
+                            display: 'block',
+                            maxWidth: 260,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                          title={emailOf(m)}
+                        >
+                          {emailOf(m)}
+                        </span>
+                      ) : m.crm_user_id || !canEditTeam ? (
                         <span style={{ color: 'var(--text-muted)' }}>—</span>
                       ) : pendingByMembroId.has(m.id!) ? (
                         <Badge variant="warning" size="sm">
-                          convite pendente
+                          {t('shared.pendingInvite')}
                         </Badge>
                       ) : (
                         <Badge variant="outline" size="sm">
-                          sem conta vinculada
+                          {t('shared.noLinkedAccount')}
                         </Badge>
                       )}
                     </TableCell>
@@ -555,127 +547,16 @@ export default function EquipePage() {
                     colSpan={!canEditTeam ? 4 : 5}
                     style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}
                   >
-                    Nenhum membro encontrado.
+                    {t('shared.noMembers')}
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
         </div>
-      ) : (
-        <div className="team-grid">
-          {filtered.map((m) => {
-            const avatarClass = avatarColorClass(m.id ?? m.nome);
-            return (
-              <div
-                key={m.id}
-                className="team-card card animate-up"
-                style={{ padding: '1.25rem 1rem' }}
-              >
-                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                  <div
-                    className={`avatar ${avatarClass}`}
-                    style={{ fontWeight: 700, width: 44, height: 44, fontSize: '1rem' }}
-                  >
-                    {getInitials(m.nome)}
-                  </div>
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '0.15rem',
-                      flex: 1,
-                      minWidth: 0,
-                    }}
-                  >
-                    <button
-                      className="client-link"
-                      onClick={() => navigate(`/equipe/${m.id}`)}
-                      style={{ fontWeight: 600, textAlign: 'left', lineHeight: 1.2 }}
-                    >
-                      {m.nome}
-                    </button>
-                    <div style={{ fontSize: '0.75rem', color: '#888' }}>{m.cargo}</div>
-                    <div
-                      style={{
-                        marginTop: 2,
-                        display: 'flex',
-                        flexWrap: 'wrap',
-                        gap: '0.25rem',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <Badge variant="neutral" size="sm" style={{ pointerEvents: 'none' }}>
-                        {TIPO_LABEL[m.tipo]}
-                      </Badge>
-                      {canEditTeam &&
-                        !m.crm_user_id &&
-                        (pendingByMembroId.has(m.id!) ? (
-                          <Badge variant="warning" size="sm">
-                            convite pendente
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" size="sm">
-                            sem conta vinculada
-                          </Badge>
-                        ))}
-                    </div>
-                  </div>
-
-                  <div className="flex gap-1" style={{ marginLeft: 'auto' }}>
-                    {canEditTeam && (
-                      <>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-8 w-8"
-                          onClick={() => openEdit(m)}
-                        >
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </Button>
-                        {m.id && (
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8 text-destructive"
-                            onClick={() => setDeleteId(m.id!)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
       )}
 
-      <MembroFormDialog
-        open={modalOpen}
-        membro={editing}
-        membros={membros}
-        onOpenChange={setModalOpen}
-      />
-
-      <AlertDialog
-        open={deleteId != null}
-        onOpenChange={(open) => {
-          if (!open) setDeleteId(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remover este membro?</AlertDialogTitle>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Não</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>Sim</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {dialogs}
     </div>
   );
 }

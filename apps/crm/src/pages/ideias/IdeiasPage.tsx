@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { useIntlLocale } from '@mesaas/i18n';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { DateRange } from 'react-day-picker';
 import { getIdeias, getClientes, type Ideia } from '@/store';
@@ -42,7 +44,10 @@ import {
 } from '@/components/ui/table';
 import { TableSkeleton } from '@/components/ui/skeletons';
 import { useAuth } from '@/context/AuthContext';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { IDEIA_STATUS_LABELS } from './ideiaLabels';
+import { IdeiasPhoneView } from './IdeiasPhoneView';
 
 const ALL_STATUSES = [
   'nova',
@@ -67,7 +72,10 @@ function endOfDayIso(d: Date): string {
 }
 
 export default function IdeiasPage() {
+  const { t } = useTranslation('ideas');
+  const intlLocale = useIntlLocale();
   const { can } = useAuth();
+  const isPhone = !useIsDesktop(768);
   const qc = useQueryClient();
   const canEdit = can('ideias', 'editar') === true;
   const queryKey = ['hub-ideias-all'];
@@ -128,301 +136,17 @@ export default function IdeiasPage() {
     return true;
   });
 
-  return (
-    <div style={{ padding: '1.5rem' }}>
-      <div className="header">
-        <div
-          className="header-title"
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-        >
-          <h1>Ideias</h1>
-          <span
-            data-tooltip="Ideias enviadas pelos clientes no portal ou criadas pela equipe."
-            data-tooltip-dir="right"
-            style={{ display: 'flex' }}
-          >
-            <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
-          </span>
-        </div>
-        {canEdit && (
-          <Button
-            onClick={() => {
-              setEditingIdeia(null);
-              setFormOpen(true);
-            }}
-          >
-            <Plus size={15} className="mr-1.5" />
-            Nova ideia
-          </Button>
-        )}
-      </div>
+  const clearFilters = () => {
+    setClienteFilter('all');
+    setTipoFilter('all');
+    setStatusFilters([]);
+    setDateRange(undefined);
+  };
 
-      {/* Filters. Desktop keeps every control inline; below 901px it's just
-          search + a single "Filtros" button opening a sheet, same pattern as
-          Tarefas/Entregas -- otherwise cliente/tipo/status/período wrap across
-          the whole first fold on a phone before any ideia is visible. */}
-      <div className="flex flex-wrap items-center gap-3 mb-6">
-        <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: '320px' }}>
-          <Search
-            className="h-4 w-4"
-            style={{
-              position: 'absolute',
-              left: '0.625rem',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              color: 'var(--text-muted)',
-              pointerEvents: 'none',
-            }}
-          />
-          <Input
-            placeholder="Buscar por título ou cliente..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{ paddingLeft: '2rem' }}
-          />
-        </div>
-
-        <div className="hidden min-[901px]:contents">
-          <Select value={clienteFilter} onValueChange={setClienteFilter}>
-            <SelectTrigger className="!rounded-full !text-xs h-9 px-4 w-auto min-w-[160px] mb-0">
-              <SelectValue placeholder="Todos os clientes" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos os clientes</SelectItem>
-              {[...clientes]
-                .sort((a: any, b: any) => a.nome.localeCompare(b.nome, 'pt-BR'))
-                .map((c: any) => (
-                  <SelectItem key={c.id} value={String(c.id)}>
-                    {c.nome}
-                  </SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={tipoFilter} onValueChange={setTipoFilter}>
-            <SelectTrigger className="!rounded-full !text-xs h-9 px-4 w-auto min-w-[130px] mb-0">
-              <SelectValue placeholder="Tipo" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos os tipos</SelectItem>
-              <SelectItem value="ideia">Ideia</SelectItem>
-              <SelectItem value="solicitacao">Solicitação</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                className="h-9 rounded-full px-4 text-xs gap-1.5 font-normal shadow-sm mb-0"
-              >
-                {statusFilters.length === 0
-                  ? 'Status'
-                  : statusFilters.length === 1
-                    ? STATUS_LABELS[statusFilters[0]]
-                    : `Status (${statusFilters.length})`}
-                <ChevronDown className="h-3.5 w-3.5 opacity-60" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-44">
-              {ALL_STATUSES.map((s) => (
-                <DropdownMenuCheckboxItem
-                  key={s}
-                  checked={statusFilters.includes(s)}
-                  onCheckedChange={(checked) => {
-                    setStatusFilters((prev) =>
-                      checked ? [...prev, s] : prev.filter((x) => x !== s),
-                    );
-                  }}
-                  onSelect={(e) => e.preventDefault()}
-                >
-                  {STATUS_LABELS[s]}
-                </DropdownMenuCheckboxItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <DateRangePicker
-            value={dateRange}
-            onChange={setDateRange}
-            className="rounded-full text-xs px-4 mb-0"
-          />
-        </div>
-
-        <Button
-          variant="outline"
-          className="flex min-[901px]:hidden h-9 rounded-full px-3 text-xs gap-1.5 font-normal shadow-sm mb-0 shrink-0"
-          onClick={() => setFilterSheetOpen(true)}
-        >
-          <SlidersHorizontal className="h-3.5 w-3.5" />
-          Filtros
-          {ideiasActiveFilterCount > 0 && (
-            <span
-              className="inline-flex items-center justify-center rounded-full text-[0.6rem] font-semibold leading-none"
-              style={{
-                background: 'var(--primary-color)',
-                color: '#000',
-                width: '1.1rem',
-                height: '1.1rem',
-              }}
-            >
-              {ideiasActiveFilterCount}
-            </span>
-          )}
-        </Button>
-      </div>
-
-      <Sheet open={filterSheetOpen} onOpenChange={setFilterSheetOpen}>
-        <SheetContent side="bottom" className="rounded-t-[24px] max-h-[85vh] overflow-y-auto pb-24">
-          <SheetHeader className="mb-4">
-            <SheetTitle className="text-base">Filtros</SheetTitle>
-            <SheetDescription className="sr-only">Filtre as ideias</SheetDescription>
-          </SheetHeader>
-          <div className="flex flex-col gap-3">
-            <Select value={clienteFilter} onValueChange={setClienteFilter}>
-              <SelectTrigger className="!text-xs h-9 w-full mb-0">
-                <SelectValue placeholder="Todos os clientes" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos os clientes</SelectItem>
-                {[...clientes]
-                  .sort((a: any, b: any) => a.nome.localeCompare(b.nome, 'pt-BR'))
-                  .map((c: any) => (
-                    <SelectItem key={c.id} value={String(c.id)}>
-                      {c.nome}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-
-            <Select value={tipoFilter} onValueChange={setTipoFilter}>
-              <SelectTrigger className="!text-xs h-9 w-full mb-0">
-                <SelectValue placeholder="Tipo" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos os tipos</SelectItem>
-                <SelectItem value="ideia">Ideia</SelectItem>
-                <SelectItem value="solicitacao">Solicitação</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="h-9 w-full justify-between text-xs font-normal"
-                >
-                  {statusFilters.length === 0
-                    ? 'Status'
-                    : statusFilters.length === 1
-                      ? STATUS_LABELS[statusFilters[0]]
-                      : `Status (${statusFilters.length})`}
-                  <ChevronDown className="h-3.5 w-3.5 opacity-60" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-[calc(100vw-3rem)]">
-                {ALL_STATUSES.map((s) => (
-                  <DropdownMenuCheckboxItem
-                    key={s}
-                    checked={statusFilters.includes(s)}
-                    onCheckedChange={(checked) => {
-                      setStatusFilters((prev) =>
-                        checked ? [...prev, s] : prev.filter((x) => x !== s),
-                      );
-                    }}
-                    onSelect={(e) => e.preventDefault()}
-                  >
-                    {STATUS_LABELS[s]}
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            <DateRangePicker value={dateRange} onChange={setDateRange} className="text-xs w-full" />
-          </div>
-          {ideiasActiveFilterCount > 0 && (
-            <Button
-              variant="ghost"
-              className="w-full mt-4 text-xs"
-              onClick={() => {
-                setClienteFilter('all');
-                setTipoFilter('all');
-                setStatusFilters([]);
-                setDateRange(undefined);
-              }}
-            >
-              Limpar filtros
-            </Button>
-          )}
-        </SheetContent>
-      </Sheet>
-
-      {isLoading ? (
-        <TableSkeleton columns={6} />
-      ) : filtered.length === 0 ? (
-        <div className="card" style={{ padding: '2.5rem', textAlign: 'center' }}>
-          <Lightbulb
-            className="h-6 w-6"
-            style={{ margin: '0 auto 0.5rem', color: 'var(--text-light)' }}
-          />
-          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-            Nenhuma ideia encontrada.
-          </p>
-        </div>
-      ) : (
-        <div className="border rounded-xl bg-card overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Tipo</TableHead>
-                <TableHead>Origem</TableHead>
-                <TableHead>Título</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Reações</TableHead>
-                <TableHead>Resposta</TableHead>
-                <TableHead>Data</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((ideia) => (
-                <TableRow
-                  key={ideia.id}
-                  onClick={() => setSelectedIdeia(ideia)}
-                  className="cursor-pointer"
-                >
-                  <TableCell className="text-muted-foreground">{ideia.clientes.nome}</TableCell>
-                  <TableCell>
-                    <IdeiaTipoBadge tipo={ideia.tipo} />
-                  </TableCell>
-                  <TableCell>
-                    <IdeiaOrigemBadge
-                      origem={ideia.origem}
-                      hidden={ideia.origem === 'agencia' && !ideia.visivel_no_hub}
-                    />
-                  </TableCell>
-                  <TableCell className="font-medium max-w-[200px] truncate">
-                    {ideia.titulo}
-                  </TableCell>
-                  <TableCell>
-                    <IdeiaStatusBadge status={ideia.status} />
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {ideia.ideia_reactions.length || '—'}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {ideia.comentario_agencia ? '✓' : '—'}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {new Date(ideia.created_at).toLocaleDateString('pt-BR')}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
-
+  // The dialog and the drawer are shared by both layouts (on phones the drawer is a
+  // pushed screen of its own).
+  const overlays = (
+    <>
       <NovaIdeiaDialog
         open={formOpen}
         onClose={() => setFormOpen(false)}
@@ -459,6 +183,341 @@ export default function IdeiasPage() {
             />
           );
         })()}
+    </>
+  );
+
+  const infoTooltip = (
+    <span data-tooltip={t('shared.helpText')} data-tooltip-dir="right" style={{ display: 'flex' }}>
+      <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
+    </span>
+  );
+  const primaryAction = canEdit ? (
+    <Button
+      onClick={() => {
+        setEditingIdeia(null);
+        setFormOpen(true);
+      }}
+    >
+      <Plus size={15} className="mr-1.5" />
+      {t('shared.newIdea')}
+    </Button>
+  ) : null;
+  const inToolbar = usePageToolbar({
+    title: t('shared.title'),
+    titleAccessory: infoTooltip,
+    primary: primaryAction,
+  });
+
+  if (isPhone) {
+    return (
+      <>
+        <IdeiasPhoneView
+          ideias={filtered}
+          isLoading={isLoading}
+          canEdit={canEdit}
+          onNew={() => {
+            setEditingIdeia(null);
+            setFormOpen(true);
+          }}
+          onOpen={setSelectedIdeia}
+          search={search}
+          onSearchChange={setSearch}
+          clientes={clientes
+            .filter((c: any) => typeof c.id === 'number')
+            .map((c: any) => ({ id: c.id as number, nome: c.nome as string }))}
+          statuses={ALL_STATUSES}
+          clienteFilter={clienteFilter}
+          onClienteFilterChange={setClienteFilter}
+          tipoFilter={tipoFilter}
+          onTipoFilterChange={setTipoFilter}
+          statusFilters={statusFilters}
+          onStatusFiltersChange={setStatusFilters}
+          dateRange={dateRange}
+          onDateRangeChange={setDateRange}
+          activeFilterCount={ideiasActiveFilterCount}
+          onClearFilters={clearFilters}
+        />
+        {overlays}
+      </>
+    );
+  }
+
+  return (
+    // Under Vidro the panel already pads the content.
+    <div style={inToolbar ? undefined : { padding: '1.5rem' }}>
+      {!inToolbar && (
+        <div className="header">
+          <div
+            className="header-title"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+          >
+            <h1>{t('shared.title')}</h1>
+            {infoTooltip}
+          </div>
+          {primaryAction}
+        </div>
+      )}
+
+      {/* Filters. Desktop keeps every control inline; below 901px it's just
+          search + a single "Filtros" button opening a sheet, same pattern as
+          Tarefas/Entregas -- otherwise cliente/tipo/status/período wrap across
+          the whole first fold on a phone before any ideia is visible. */}
+      <div className="flex flex-wrap items-center gap-3 mb-6">
+        <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: '320px' }}>
+          <Search
+            className="h-4 w-4"
+            style={{
+              position: 'absolute',
+              left: '0.625rem',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              color: 'var(--text-muted)',
+              pointerEvents: 'none',
+            }}
+          />
+          <Input
+            placeholder={t('shared.searchPlaceholder')}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ paddingLeft: '2rem' }}
+          />
+        </div>
+
+        <div className="hidden min-[901px]:contents">
+          <Select value={clienteFilter} onValueChange={setClienteFilter}>
+            <SelectTrigger className="!rounded-full !text-xs h-9 px-4 w-auto min-w-[160px] mb-0">
+              <SelectValue placeholder={t('shared.allClients')} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t('shared.allClients')}</SelectItem>
+              {[...clientes]
+                .sort((a: any, b: any) => a.nome.localeCompare(b.nome, 'pt-BR'))
+                .map((c: any) => (
+                  <SelectItem key={c.id} value={String(c.id)}>
+                    {c.nome}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={tipoFilter} onValueChange={setTipoFilter}>
+            <SelectTrigger className="!rounded-full !text-xs h-9 px-4 w-auto min-w-[130px] mb-0">
+              <SelectValue placeholder={t('page.typePlaceholder')} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t('page.allTypes')}</SelectItem>
+              <SelectItem value="ideia">{t('tipo.ideia')}</SelectItem>
+              <SelectItem value="solicitacao">{t('tipo.solicitacao')}</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                className="h-9 rounded-full px-4 text-xs gap-1.5 font-normal shadow-sm mb-0"
+              >
+                {statusFilters.length === 0
+                  ? t('shared.status')
+                  : statusFilters.length === 1
+                    ? STATUS_LABELS[statusFilters[0]]
+                    : t('page.statusCount', { count: statusFilters.length })}
+                <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-44">
+              {ALL_STATUSES.map((s) => (
+                <DropdownMenuCheckboxItem
+                  key={s}
+                  checked={statusFilters.includes(s)}
+                  onCheckedChange={(checked) => {
+                    setStatusFilters((prev) =>
+                      checked ? [...prev, s] : prev.filter((x) => x !== s),
+                    );
+                  }}
+                  onSelect={(e) => e.preventDefault()}
+                >
+                  {STATUS_LABELS[s]}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DateRangePicker
+            value={dateRange}
+            onChange={setDateRange}
+            className="rounded-full text-xs px-4 mb-0"
+          />
+        </div>
+
+        <Button
+          variant="outline"
+          className="flex min-[901px]:hidden h-9 rounded-full px-3 text-xs gap-1.5 font-normal shadow-sm mb-0 shrink-0"
+          onClick={() => setFilterSheetOpen(true)}
+        >
+          <SlidersHorizontal className="h-3.5 w-3.5" />
+          {t('shared.filters')}
+          {ideiasActiveFilterCount > 0 && (
+            <span
+              className="inline-flex items-center justify-center rounded-full text-[0.6rem] font-semibold leading-none"
+              style={{
+                background: 'var(--primary-color)',
+                color: '#000',
+                width: '1.1rem',
+                height: '1.1rem',
+              }}
+            >
+              {ideiasActiveFilterCount}
+            </span>
+          )}
+        </Button>
+      </div>
+
+      <Sheet open={filterSheetOpen} onOpenChange={setFilterSheetOpen}>
+        <SheetContent side="bottom" className="rounded-t-[24px] max-h-[85vh] overflow-y-auto pb-24">
+          <SheetHeader className="mb-4">
+            <SheetTitle className="text-base">{t('shared.filters')}</SheetTitle>
+            <SheetDescription className="sr-only">
+              {t('shared.filtersDescription')}
+            </SheetDescription>
+          </SheetHeader>
+          <div className="flex flex-col gap-3">
+            <Select value={clienteFilter} onValueChange={setClienteFilter}>
+              <SelectTrigger className="!text-xs h-9 w-full mb-0">
+                <SelectValue placeholder={t('shared.allClients')} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t('shared.allClients')}</SelectItem>
+                {[...clientes]
+                  .sort((a: any, b: any) => a.nome.localeCompare(b.nome, 'pt-BR'))
+                  .map((c: any) => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      {c.nome}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={tipoFilter} onValueChange={setTipoFilter}>
+              <SelectTrigger className="!text-xs h-9 w-full mb-0">
+                <SelectValue placeholder={t('page.typePlaceholder')} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t('page.allTypes')}</SelectItem>
+                <SelectItem value="ideia">{t('tipo.ideia')}</SelectItem>
+                <SelectItem value="solicitacao">{t('tipo.solicitacao')}</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="h-9 w-full justify-between text-xs font-normal"
+                >
+                  {statusFilters.length === 0
+                    ? t('shared.status')
+                    : statusFilters.length === 1
+                      ? STATUS_LABELS[statusFilters[0]]
+                      : t('page.statusCount', { count: statusFilters.length })}
+                  <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-[calc(100vw-3rem)]">
+                {ALL_STATUSES.map((s) => (
+                  <DropdownMenuCheckboxItem
+                    key={s}
+                    checked={statusFilters.includes(s)}
+                    onCheckedChange={(checked) => {
+                      setStatusFilters((prev) =>
+                        checked ? [...prev, s] : prev.filter((x) => x !== s),
+                      );
+                    }}
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    {STATUS_LABELS[s]}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <DateRangePicker value={dateRange} onChange={setDateRange} className="text-xs w-full" />
+          </div>
+          {ideiasActiveFilterCount > 0 && (
+            <Button variant="ghost" className="w-full mt-4 text-xs" onClick={clearFilters}>
+              {t('page.clearFilters')}
+            </Button>
+          )}
+        </SheetContent>
+      </Sheet>
+
+      {isLoading ? (
+        <TableSkeleton columns={6} />
+      ) : filtered.length === 0 ? (
+        <div className="card" style={{ padding: '2.5rem', textAlign: 'center' }}>
+          <Lightbulb
+            className="h-6 w-6"
+            style={{ margin: '0 auto 0.5rem', color: 'var(--text-light)' }}
+          />
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+            {t('shared.empty')}
+          </p>
+        </div>
+      ) : (
+        <div data-slot="card" className="border rounded-xl bg-card overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t('page.columns.client')}</TableHead>
+                <TableHead>{t('page.columns.type')}</TableHead>
+                <TableHead>{t('page.columns.source')}</TableHead>
+                <TableHead>{t('page.columns.title')}</TableHead>
+                <TableHead>{t('page.columns.status')}</TableHead>
+                <TableHead>{t('page.columns.reactions')}</TableHead>
+                <TableHead>{t('page.columns.reply')}</TableHead>
+                <TableHead>{t('page.columns.date')}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.map((ideia) => (
+                <TableRow
+                  key={ideia.id}
+                  onClick={() => setSelectedIdeia(ideia)}
+                  className="cursor-pointer"
+                >
+                  <TableCell className="text-muted-foreground">{ideia.clientes.nome}</TableCell>
+                  <TableCell>
+                    <IdeiaTipoBadge tipo={ideia.tipo} />
+                  </TableCell>
+                  <TableCell>
+                    <IdeiaOrigemBadge
+                      origem={ideia.origem}
+                      hidden={ideia.origem === 'agencia' && !ideia.visivel_no_hub}
+                    />
+                  </TableCell>
+                  <TableCell className="font-medium max-w-[200px] truncate">
+                    {ideia.titulo}
+                  </TableCell>
+                  <TableCell>
+                    <IdeiaStatusBadge status={ideia.status} />
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {ideia.ideia_reactions.length || '—'}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {ideia.comentario_agencia ? '✓' : '—'}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {new Date(ideia.created_at).toLocaleDateString(intlLocale)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      {overlays}
     </div>
   );
 }

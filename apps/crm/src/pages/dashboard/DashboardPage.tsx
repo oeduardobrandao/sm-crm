@@ -1,10 +1,14 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { format } from 'date-fns';
+import { useDateFnsLocale } from '@mesaas/i18n';
 import { toast } from 'sonner';
 import { getDashboardStats, getClientes, type Cliente } from '../../store';
 import { useAuth } from '../../context/AuthContext';
 import { ImportBanner } from '../../components/import/ImportBanner';
+import { isClientScoped } from '@/lib/permissions';
 import { TrialNudgeCard } from '../../components/billing/TrialNudgeCard';
 import { WhatsAppSupportCard } from '@/components/support/WhatsAppSupportCard';
 import { ClientHealthMonitor } from './components/ClientHealthMonitor';
@@ -12,13 +16,21 @@ import { AgentPendingSection } from './components/AgentPendingSection';
 import { TodayCard } from './components/TodayCard';
 import { MinhaFilaCard } from './components/MinhaFilaCard';
 import { FinanceKpiStrip } from './components/FinanceKpiStrip';
+import { InicioPrazos } from './components/InicioPrazos';
+import { InicioHealthTable } from './components/InicioHealthTable';
+import { DashboardPhone } from './phone/DashboardPhone';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
+import { reportPurchaseConversion } from '@/lib/googleAdsLoader';
 
 export default function DashboardPage() {
-  const { role, workspaceRole, canSeeFinancials } = useAuth();
+  const { role, workspaceRole, canSeeFinancials, membership } = useAuth();
+  const clientScoped = isClientScoped(membership);
   // workspaceRole reflects the ACTIVE workspace; profile-level `role` goes
   // stale across workspace switches (a user can be owner in one workspace and
   // agent in another). Fall back to `role` only while membership resolves.
   const isAgent = (workspaceRole ?? role) === 'agent';
+  const isPhone = !useIsDesktop(768);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
@@ -31,6 +43,7 @@ export default function DashboardPage() {
     if (!trial) return;
     if (trial === 'started') {
       toast.success('Teste de 30 dias ativado! Atualizando seu plano…');
+      reportPurchaseConversion();
       let tries = 0;
       const id = window.setInterval(() => {
         tries += 1;
@@ -54,8 +67,8 @@ export default function DashboardPage() {
   const results = useQueries({
     queries: [
       {
-        queryKey: ['dashboardStats', canSeeFinancials],
-        queryFn: () => getDashboardStats(canSeeFinancials),
+        queryKey: ['dashboardStats', canSeeFinancials, clientScoped],
+        queryFn: () => getDashboardStats(canSeeFinancials, clientScoped),
         retry: 1,
       },
       { queryKey: ['clientes'], queryFn: getClientes, retry: 1 },
@@ -74,6 +87,87 @@ export default function DashboardPage() {
     .filter((tx) => tx.tipo === 'saida' && tx.status === 'agendado')
     .reduce((s, tx) => s + Number(tx.valor), 0);
 
+  const importBanner = clientesRes.data && (
+    <ImportBanner clienteCount={clientes.length} clientScoped={clientScoped} />
+  );
+  const financeStrip = canSeeFinancials === true && stats && (
+    <FinanceKpiStrip
+      aReceber={aReceber}
+      aPagar={aPagar}
+      saldoProjetado={stats.saldo}
+      receitaMensal={stats.receitaMensal}
+      canSeeFinancials={canSeeFinancials}
+    />
+  );
+
+  // The Vidro toolbar carries the page title; the desktop dashboard has no in-page header to hide.
+  const { t } = useTranslation('dashboard');
+  const dateLocale = useDateFnsLocale();
+  const today = format(new Date(), t('dateFormat.weekdayDayMonth'), { locale: dateLocale });
+  // Vidro "Agência / Só meus": narrows the Prazos list to the user's own items. Agents only
+  // ever see their own, so they get no toggle.
+  const [onlyMine, setOnlyMine] = useState(false);
+  const inToolbar = usePageToolbar({
+    title: 'Início',
+    subtitle: today.charAt(0).toUpperCase() + today.slice(1),
+    actions: !isAgent && (
+      <div data-slot="toggle-group" role="group" aria-label={t('inicio.scope.label')}>
+        {([false, true] as const).map((mine) => (
+          <button
+            key={String(mine)}
+            type="button"
+            data-slot="toggle-group-item"
+            data-state={onlyMine === mine ? 'on' : 'off'}
+            aria-pressed={onlyMine === mine}
+            onClick={() => setOnlyMine(mine)}
+          >
+            {mine ? t('inicio.scope.meus') : t('inicio.scope.agencia')}
+          </button>
+        ))}
+      </div>
+    ),
+  });
+
+  if (isPhone) {
+    return (
+      <DashboardPhone
+        isAgent={isAgent}
+        cards={
+          !isAgent && (
+            <>
+              <TrialNudgeCard />
+              <WhatsAppSupportCard />
+            </>
+          )
+        }
+        footer={
+          <>
+            {importBanner}
+            {financeStrip}
+          </>
+        }
+      />
+    );
+  }
+
+  if (inToolbar) {
+    return (
+      <div className="inicio-vidro">
+        <div className="inicio-vidro__top">
+          <InicioPrazos onlyMine={onlyMine} />
+          <div className="inicio-vidro__side">
+            <MinhaFilaCard />
+            {!isAgent && <TrialNudgeCard />}
+            {!isAgent && <WhatsAppSupportCard />}
+          </div>
+        </div>
+        {isAgent ? <AgentPendingSection /> : <InicioHealthTable />}
+        {importBanner}
+        {financeStrip}
+      </div>
+    );
+  }
+
   return (
     <div>
       <TodayCard />
@@ -85,17 +179,9 @@ export default function DashboardPage() {
       {/* Agents see their own pending work where managers see client health. */}
       {isAgent ? <AgentPendingSection /> : <ClientHealthMonitor />}
 
-      {clientesRes.data && <ImportBanner clienteCount={clientes.length} />}
+      {importBanner}
 
-      {canSeeFinancials === true && stats && (
-        <FinanceKpiStrip
-          aReceber={aReceber}
-          aPagar={aPagar}
-          saldoProjetado={stats.saldo}
-          receitaMensal={stats.receitaMensal}
-          canSeeFinancials={canSeeFinancials}
-        />
-      )}
+      {financeStrip}
     </div>
   );
 }

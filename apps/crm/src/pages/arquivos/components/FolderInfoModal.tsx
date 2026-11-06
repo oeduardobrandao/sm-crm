@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale/pt-BR';
+import { useTranslation } from 'react-i18next';
+import { i18n, useDateFnsLocale } from '@mesaas/i18n';
 import { Folder as FolderIcon, FileImage, FileVideo, FileText } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -23,9 +24,9 @@ function FileKindIcon({ kind, className }: { kind: FileRecord['kind']; className
 }
 
 function kindLabel(kind: FileRecord['kind']): string {
-  if (kind === 'image') return 'Imagem';
-  if (kind === 'video') return 'Vídeo';
-  return 'Documento';
+  if (kind === 'image') return i18n.t('files:shared.kind.image');
+  if (kind === 'video') return i18n.t('files:shared.kind.video');
+  return i18n.t('files:shared.kind.document');
 }
 
 function formatDuration(seconds: number): string {
@@ -46,6 +47,8 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
 }
 
 function FolderInfoContent({ folder }: { folder: Folder }) {
+  const { t } = useTranslation('files');
+  const dateLocale = useDateFnsLocale();
   const { data: info, isLoading } = useQuery({
     queryKey: ['folder-info', folder.id],
     queryFn: () => getFolderInfo(folder.id),
@@ -73,11 +76,11 @@ function FolderInfoContent({ folder }: { folder: Folder }) {
 
   const sourceLabel =
     folder.source_type === 'client'
-      ? 'Cliente'
+      ? t('folderInfoModal.source.client')
       : folder.source_type === 'workflow'
-        ? 'Workflow'
+        ? t('folderInfoModal.source.workflow')
         : folder.source_type === 'post'
-          ? 'Postagem'
+          ? t('folderInfoModal.source.post')
           : null;
 
   return (
@@ -94,28 +97,39 @@ function FolderInfoContent({ folder }: { folder: Folder }) {
           <div className="flex items-center gap-2 mt-0.5">
             {folder.source === 'system' && (
               <span className="text-[0.6rem] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded bg-[var(--surface-hover)] text-[var(--text-muted)]">
-                AUTO
+                {t('shared.autoBadge')}
               </span>
             )}
             {folder.source === 'system' && sourceLabel && (
-              <span className="text-xs text-[var(--text-muted)]">Vinculado a: {sourceLabel}</span>
+              <span className="text-xs text-[var(--text-muted)]">
+                {t('folderInfoModal.linkedTo', { source: sourceLabel })}
+              </span>
             )}
           </div>
         </div>
       </div>
 
       <InfoRow
-        label="Criada em"
-        value={format(new Date(folder.created_at), "dd 'de' MMM 'de' yyyy, HH:mm", {
-          locale: ptBR,
+        label={t('folderInfoModal.createdAt')}
+        value={format(new Date(folder.created_at), t('shared.dateTimeFormat'), {
+          locale: dateLocale,
         })}
       />
       {info && (
         <>
-          <InfoRow label="Tamanho total" value={formatBytes(info.total_size_bytes)} />
-          <InfoRow label="Arquivos (total)" value={String(info.total_file_count)} />
-          <InfoRow label="Subpastas diretas" value={String(info.direct_subfolder_count)} />
-          <InfoRow label="Arquivos diretos" value={String(info.direct_file_count)} />
+          <InfoRow
+            label={t('folderInfoModal.totalSize')}
+            value={formatBytes(info.total_size_bytes)}
+          />
+          <InfoRow label={t('folderInfoModal.totalFiles')} value={String(info.total_file_count)} />
+          <InfoRow
+            label={t('folderInfoModal.directSubfolders')}
+            value={String(info.direct_subfolder_count)}
+          />
+          <InfoRow
+            label={t('folderInfoModal.directFiles')}
+            value={String(info.direct_file_count)}
+          />
         </>
       )}
     </div>
@@ -123,6 +137,8 @@ function FolderInfoContent({ folder }: { folder: Folder }) {
 }
 
 function FileInfoContent({ file }: { file: FileRecord }) {
+  const { t } = useTranslation('files');
+  const dateLocale = useDateFnsLocale();
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-3 mb-4">
@@ -135,30 +151,36 @@ function FileInfoContent({ file }: { file: FileRecord }) {
         </h3>
       </div>
 
-      <InfoRow label="Tipo" value={kindLabel(file.kind)} />
-      <InfoRow label="MIME" value={file.mime_type} />
-      <InfoRow label="Tamanho" value={formatBytes(file.size_bytes)} />
+      <InfoRow label={t('folderInfoModal.type')} value={kindLabel(file.kind)} />
+      <InfoRow label={t('folderInfoModal.mime')} value={file.mime_type} />
+      <InfoRow label={t('folderInfoModal.size')} value={formatBytes(file.size_bytes)} />
       {file.width != null && file.height != null && (
-        <InfoRow label="Dimensões" value={`${file.width} × ${file.height}`} />
+        <InfoRow label={t('folderInfoModal.dimensions')} value={`${file.width} × ${file.height}`} />
       )}
       {file.duration_seconds != null && (
-        <InfoRow label="Duração" value={formatDuration(file.duration_seconds)} />
+        <InfoRow
+          label={t('folderInfoModal.duration')}
+          value={formatDuration(file.duration_seconds)}
+        />
       )}
       <InfoRow
-        label="Enviado em"
-        value={format(new Date(file.created_at), "dd 'de' MMM 'de' yyyy, HH:mm", { locale: ptBR })}
+        label={t('folderInfoModal.uploadedAt')}
+        value={format(new Date(file.created_at), t('shared.dateTimeFormat'), {
+          locale: dateLocale,
+        })}
       />
-      <InfoRow label="Em uso" value={String(file.reference_count)} />
+      <InfoRow label={t('folderInfoModal.inUse')} value={String(file.reference_count)} />
     </div>
   );
 }
 
 export function FolderInfoModal({ open, onOpenChange, item, type }: FolderInfoModalProps) {
+  const { t } = useTranslation('files');
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>Informações</DialogTitle>
+          <DialogTitle>{t('folderInfoModal.title')}</DialogTitle>
         </DialogHeader>
         {type === 'folder' ? (
           <FolderInfoContent folder={item as Folder} />

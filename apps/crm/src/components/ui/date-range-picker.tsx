@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { useTranslation } from 'react-i18next';
+import { useDateFnsLocale } from '@mesaas/i18n';
 import { Calendar as CalendarIcon, X } from 'lucide-react';
 import type { DateRange } from 'react-day-picker';
 
@@ -22,17 +23,19 @@ export interface DateRangePickerProps {
 export function DateRangePicker({
   value,
   onChange,
-  placeholder = 'Selecionar período',
+  placeholder,
   className,
   disabled,
   clearable = true,
   numberOfMonths = 2,
 }: DateRangePickerProps) {
+  const { t } = useTranslation();
+  const dateLocale = useDateFnsLocale();
   const label = React.useMemo(() => {
     if (!value?.from) return null;
-    const fromLabel = format(value.from, 'dd/MM/yyyy', { locale: ptBR });
+    const fromLabel = format(value.from, 'dd/MM/yyyy', { locale: dateLocale });
     if (!value.to) return fromLabel;
-    return `${fromLabel} – ${format(value.to, 'dd/MM/yyyy', { locale: ptBR })}`;
+    return `${fromLabel} – ${format(value.to, 'dd/MM/yyyy', { locale: dateLocale })}`;
   }, [value]);
 
   return (
@@ -49,12 +52,12 @@ export function DateRangePicker({
           )}
         >
           <CalendarIcon className="mr-2 h-4 w-4" />
-          {label ?? <span>{placeholder}</span>}
+          {label ?? <span>{placeholder ?? t('ui.selectPeriod')}</span>}
           {clearable && value?.from && (
             <span
               role="button"
               tabIndex={0}
-              aria-label="Limpar"
+              aria-label={t('ui.clear')}
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -77,7 +80,7 @@ export function DateRangePicker({
       <PopoverContent className="w-auto p-0" align="start" style={{ zIndex: 9999 }}>
         <Calendar
           mode="range"
-          locale={ptBR}
+          locale={dateLocale}
           selected={value}
           onSelect={onChange}
           numberOfMonths={numberOfMonths}

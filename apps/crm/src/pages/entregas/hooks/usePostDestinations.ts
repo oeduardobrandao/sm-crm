@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { i18n } from '@mesaas/i18n';
 import { trackUnsavedWork } from '@mesaas/app-lifecycle';
 import type { PlatformId } from '@mesaas/platforms';
 import {
@@ -61,8 +62,8 @@ export function usePostDestinations(post: WorkflowPost, enabled: boolean, onRefr
     onError: (err) =>
       toast.error(
         err instanceof Error && err.name === 'TargetNotRemovableError'
-          ? 'Este destino já está publicando ou foi publicado e não pode ser removido.'
-          : 'Não foi possível atualizar os destinos.',
+          ? i18n.t('entregasPhone:postDestinations.notRemovable')
+          : i18n.t('entregasPhone:postDestinations.updateError'),
       ),
     // Também em erro: o INSERT pode ter passado e só a cópia da legenda falhado.
     // Retorna a promise: o TanStack espera por ela, então toggle.isPending só cai
@@ -89,7 +90,7 @@ export function usePostDestinations(post: WorkflowPost, enabled: boolean, onRefr
         await qc.invalidateQueries({ queryKey: ['post-targets', postId] });
         return;
       }
-      toast.error('Não foi possível salvar a legenda.');
+      toast.error(i18n.t('entregasPhone:postDestinations.captionError'));
       throw err;
     }
     // useCaptionDraft só larga o rascunho quando o valor das props alcança o salvo.

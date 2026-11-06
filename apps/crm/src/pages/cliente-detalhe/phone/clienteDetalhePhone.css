@@ -1,0 +1,725 @@
+/* ===== CLIENTE DETALHE ON PHONES (PLAN F3, mockups FCliente*) ===========================
+   Rendered only by the phone branches (below 768px) of /clientes/:id/*. Every class is
+   `phone-cli-*` and reads the kit's `--phone-*` tokens; nothing here redefines a shared
+   token or styles a bare element, since the Hub imports the CRM stylesheet tree. */
+
+.phone-cli-page,
+.phone-cli-section,
+.phone-cli-index {
+  color: var(--phone-label);
+  font-family: var(--font-main);
+}
+
+/* ---- Shell: nav bar actions + section title ---- */
+.phone-cli-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.phone-cli-inline-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.phone-cli-title {
+  margin: 4px 0 4px;
+}
+.phone-cli-title .phone-large-title__subtitle {
+  margin-bottom: 16px;
+}
+
+/* ---- Index: hero, quick facts, groups ---- */
+.phone-cli-hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 0 16px;
+}
+.phone-cli-hero__photo {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 60px;
+  height: 60px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  -webkit-tap-highlight-color: transparent;
+}
+button.phone-cli-hero__photo {
+  cursor: pointer;
+}
+button.phone-cli-hero__photo:disabled {
+  opacity: 0.6;
+}
+button.phone-cli-hero__photo:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: 2px;
+}
+.phone-cli-hero__avatar {
+  width: 60px;
+  height: 60px;
+  border-radius: 999px;
+  object-fit: cover;
+}
+.phone-cli-hero__avatar--initials {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 22px;
+  font-weight: 700;
+}
+.phone-cli-hero__camera {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--phone-cell);
+  color: var(--phone-label);
+  box-shadow: var(--phone-shadow-thumb);
+}
+.phone-cli-hero__camera svg {
+  width: 12px;
+  height: 12px;
+}
+.phone-cli-hero__text {
+  min-width: 0;
+}
+.phone-cli-hero__name {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  font-family: var(--font-heading);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--phone-label);
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.phone-cli-hero__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 0;
+  font-size: var(--phone-text-subhead);
+  color: var(--phone-label-secondary);
+}
+.phone-cli-hero__plan {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.phone-cli-chip {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--phone-fill);
+  color: var(--phone-label);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.phone-cli-chip[data-tone='success'] {
+  background: rgba(21, 128, 61, 0.14);
+  color: var(--phone-success);
+}
+.phone-cli-chip[data-tone='warning'] {
+  background: rgba(245, 163, 66, 0.18);
+  color: #b45309;
+}
+.phone-cli-chip[data-tone='danger'] {
+  background: rgba(215, 0, 21, 0.12);
+  color: var(--phone-destructive);
+}
+.phone-cli-facts {
+  display: flex;
+  margin: 0 0 20px;
+  overflow: hidden;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+}
+.phone-cli-facts__item {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+}
+.phone-cli-facts__item + .phone-cli-facts__item {
+  border-left: 1px solid var(--phone-separator);
+}
+.phone-cli-facts__label {
+  display: block;
+  font-size: 12px;
+  color: var(--phone-label-secondary);
+}
+.phone-cli-facts__value {
+  display: block;
+  margin-top: 1px;
+  overflow: hidden;
+  font-size: var(--phone-text-subhead);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Grey icon tiles with dark glyphs (the mockup), not the kit's white-on-colour tile. */
+.phone-cli-index__group .phone-cell__icon--tile {
+  color: var(--phone-label);
+}
+
+/* ---- Grouped section with a "+" header (PhoneSectionList) ---- */
+.phone-cli-list__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+  margin: 0 0 4px;
+}
+.phone-cli-list__title {
+  margin-bottom: 0;
+}
+.phone-cli-list__add {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-right: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-fill);
+  color: var(--phone-label);
+  cursor: pointer;
+}
+/* 44px hit area around the 28px disc. */
+.phone-cli-list__add::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+}
+.phone-cli-list__add svg {
+  width: 16px;
+  height: 16px;
+}
+.phone-cli-list__add:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: 2px;
+}
+.phone-cli-empty {
+  padding: 16px;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+  text-align: center;
+}
+.phone-cli-empty__title {
+  margin: 0;
+  font-size: var(--phone-text-subhead);
+  color: var(--phone-label);
+}
+.phone-cli-empty__hint {
+  margin: 2px 0 0;
+  font-size: var(--phone-text-footnote);
+  color: var(--phone-label-secondary);
+}
+
+/* ---- Row with swipe + long-press actions (PhoneRow) ---- */
+.phone-cli-row {
+  list-style: none;
+}
+.phone-cli-row--plain {
+  background: var(--phone-cell);
+}
+.phone-cli-row__main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: var(--phone-row-min);
+  padding: 0 0 0 16px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  font-size: var(--phone-text-body);
+  text-align: left;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.phone-cli-row__main:is(button, a) {
+  cursor: pointer;
+}
+.phone-cli-row__main:is(button, a):active {
+  background: var(--phone-cell-pressed);
+}
+.phone-cli-row__main:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: -2px;
+}
+.phone-cli-row__leading {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  color: var(--phone-label-secondary);
+}
+.phone-cli-row__leading svg {
+  width: 20px;
+  height: 20px;
+}
+.phone-cli-row__body {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: var(--phone-row-min);
+  padding: 10px 16px 10px 0;
+  box-sizing: border-box;
+}
+/* Separators start at the text, as in the kit's cells. */
+.phone-cli-row + .phone-cli-row .phone-cli-row__body {
+  border-top: 1px solid var(--phone-separator);
+}
+.phone-cli-row__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.phone-cli-row__title {
+  overflow-wrap: anywhere;
+}
+.phone-cli-row__subtitle,
+.phone-cli-row__meta {
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-subhead);
+  overflow-wrap: anywhere;
+}
+.phone-cli-row__meta {
+  font-size: var(--phone-text-footnote);
+}
+.phone-cli-row__mark {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--phone-label-secondary);
+  opacity: 0.7;
+}
+
+/* Long subtitles (switch descriptions, file names) wrap instead of truncating. */
+.phone-cli-wrap .phone-cell__label,
+.phone-cli-wrap .phone-cell__subtitle {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* ---- White card for content that isn't a list (Acesso status, Marca preview) ---- */
+.phone-cli-card {
+  margin: 0 0 20px;
+  padding: 14px 16px;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+  color: var(--phone-label);
+}
+.phone-cli-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-ink);
+  color: var(--phone-on-ink);
+  font: inherit;
+  font-size: var(--phone-text-subhead);
+  font-weight: 600;
+  cursor: pointer;
+}
+.phone-cli-button:disabled {
+  opacity: 0.5;
+}
+.phone-cli-button--secondary {
+  background: var(--phone-fill);
+  color: var(--phone-label);
+}
+
+/* ---- Acesso ---- */
+.phone-cli-acesso__status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+.phone-cli-acesso__expiry {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--phone-text-footnote);
+  color: var(--phone-label-secondary);
+}
+.phone-cli-acesso__expiry[data-tone='warning'] {
+  color: #b45309;
+}
+.phone-cli-acesso__expiry[data-tone='danger'] {
+  color: var(--phone-destructive);
+}
+.phone-cli-acesso__expiry svg {
+  width: 13px;
+  height: 13px;
+}
+.phone-cli-acesso__url {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--phone-bg);
+  font-size: var(--phone-text-footnote);
+  overflow-wrap: anywhere;
+}
+.phone-cli-acesso__error {
+  margin: 0;
+  font-size: var(--phone-text-footnote);
+  font-weight: 500;
+  color: var(--phone-destructive);
+}
+.phone-cli-acesso__upgrade {
+  text-align: center;
+}
+.phone-cli-acesso__upgrade > svg {
+  width: 20px;
+  height: 20px;
+  color: var(--phone-label-secondary);
+}
+.phone-cli-acesso__upgrade-title {
+  margin: 6px 0 0;
+  font-size: var(--phone-text-subhead);
+  font-weight: 600;
+}
+.phone-cli-acesso__upgrade-text {
+  margin: 4px 0 12px;
+  font-size: var(--phone-text-footnote);
+  color: var(--phone-label-secondary);
+}
+
+/* ---- Marca ---- */
+.phone-cli-button--block {
+  width: 100%;
+  margin: 0 0 20px;
+}
+.phone-cli-button svg {
+  width: 16px;
+  height: 16px;
+}
+.phone-cli-link-button {
+  min-height: 32px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label-secondary);
+  font: inherit;
+  font-size: var(--phone-text-subhead);
+  cursor: pointer;
+}
+.phone-cli-marca__color {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.phone-cli-marca__logo {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  object-fit: contain;
+}
+
+/* ---- Financeiro ---- */
+.phone-cli-finance-empty {
+  margin: 0 0 20px;
+}
+.phone-cli-amount {
+  font-weight: 600;
+}
+.phone-cli-amount[data-tone='in'] {
+  color: var(--phone-success);
+}
+.phone-cli-amount[data-tone='out'] {
+  color: var(--phone-destructive);
+}
+
+/* ---- Entregas: post calendar steps, sections ---- */
+.phone-cli-cal__actions {
+  padding-left: 40px;
+}
+.phone-cli-chip__icon {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  margin-right: 3px;
+  vertical-align: -1px;
+}
+.phone-cli-cal__step {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-ink);
+  color: var(--phone-on-ink);
+  font: inherit;
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+  cursor: pointer;
+}
+.phone-cli-cal__step:disabled {
+  opacity: 0.5;
+}
+.phone-cli-ent__section {
+  margin: 0 0 20px;
+}
+.phone-cli-ent__cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ---- Redes sociais: kit spacing around the imperative IG/TikTok cards ---- */
+.phone-cli-social {
+  display: flex;
+  flex-direction: column;
+  margin: 0 0 8px;
+}
+.phone-cli-social .card {
+  margin-bottom: 20px;
+  border: 0;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+  box-shadow: none;
+}
+.phone-cli-social__syncing {
+  text-align: center;
+}
+.phone-cli-social__syncing p {
+  margin: 8px 0 0;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-subhead);
+}
+
+/* ---- Filter chips above a list (Ideias, Briefing) ---- */
+.phone-cli-chips {
+  margin: 0 0 14px;
+}
+.phone-cli-row__meta {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* ---- Inline edit row and Reordenar rows (Briefing, Páginas) ---- */
+.phone-cli-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 16px;
+  list-style: none;
+  background: var(--phone-cell);
+}
+div.phone-cli-edit {
+  margin: 0 0 16px;
+  border-radius: var(--phone-radius-group);
+}
+.phone-cli-edit__input {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--phone-separator);
+  border-radius: 10px;
+  background: var(--phone-bg);
+  color: var(--phone-label);
+  font: inherit;
+  font-size: 16px;
+}
+.phone-cli-edit__input:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: 0;
+}
+.phone-cli-edit__actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+.phone-cli-sort {
+  display: flex;
+  align-items: center;
+  min-height: var(--phone-row-min);
+  padding: 0 0 0 16px;
+  background: var(--phone-cell);
+  list-style: none;
+  touch-action: manipulation;
+}
+.phone-cli-sort--dragging {
+  position: relative;
+  z-index: 1;
+  box-shadow: var(--phone-shadow-thumb);
+}
+.phone-cli-sort__body {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 0;
+  overflow-wrap: anywhere;
+}
+.phone-cli-sort__handle {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label-secondary);
+  cursor: grab;
+  touch-action: none;
+}
+.phone-cli-sort__handle svg {
+  width: 18px;
+  height: 18px;
+}
+.phone-cli-reorder-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+  font-size: var(--phone-text-footnote);
+  color: var(--phone-label-secondary);
+}
+
+/* ---- Briefing ---- */
+.phone-cli-brief__title {
+  margin: 4px 0 12px;
+}
+.phone-cli-brief__picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.phone-cli-brief__picker svg {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  color: var(--phone-label-secondary);
+}
+.phone-cli-brief__filters {
+  margin: 0 0 10px;
+}
+.phone-cli-brief__progress {
+  height: 6px;
+  margin: 0 0 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--phone-fill);
+}
+.phone-cli-brief__progress-bar {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--phone-success);
+}
+.phone-cli-brief__progress-label {
+  margin: 0 0 16px;
+  font-size: var(--phone-text-footnote);
+  color: var(--phone-label-secondary);
+}
+.phone-cli-brief__section-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 0 6px;
+}
+.phone-cli-brief__toggle {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 0 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  font-size: var(--phone-text-subhead);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.phone-cli-brief__toggle svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--phone-label-secondary);
+}
+.phone-cli-brief__toggle-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-cli-brief__toggle-count {
+  flex-shrink: 0;
+  font-weight: 400;
+  color: var(--phone-label-secondary);
+}
+.phone-cli-brief__section {
+  margin: 0 0 16px;
+}
+.phone-cli-brief__answer {
+  white-space: pre-wrap;
+}
+.phone-cli-brief__answer--empty {
+  font-style: italic;
+}
+.phone-cli-brief__expand {
+  display: flex;
+  justify-content: flex-end;
+  margin: -6px 0 6px;
+}
+
+/* ---- Páginas editor screen ---- */
+.phone-cli-pagina__editor {
+  min-height: 160px;
+  margin: 0 0 20px;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+}
+.phone-cli-pagina__danger {
+  margin-top: 4px;
+}

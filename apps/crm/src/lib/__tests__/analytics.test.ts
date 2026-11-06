@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { posthogMock } = vi.hoisted(() => ({
+const { posthogMock, sdkImport } = vi.hoisted(() => ({
+  // Counts reads of the SDK's default export, i.e. how many times analytics.ts actually imported
+  // it. A factory-run counter would not work: Vitest caches the factory result across resetModules.
+  sdkImport: { count: 0 },
   posthogMock: {
     init: vi.fn(),
     identify: vi.fn(),
@@ -13,7 +16,17 @@ const { posthogMock } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('posthog-js', () => ({ default: posthogMock }));
+// Hoisted too: vi.mock is lifted above plain consts. Reused by the failed-download test to restore.
+const { sdkModule } = vi.hoisted(() => ({
+  sdkModule: () => ({
+    get default() {
+      sdkImport.count += 1;
+      return posthogMock;
+    },
+  }),
+}));
+
+vi.mock('posthog-js', sdkModule);
 
 describe('analytics', () => {
   beforeEach(() => {
@@ -22,6 +35,7 @@ describe('analytics', () => {
     vi.unstubAllEnvs();
     posthogMock.has_opted_out_capturing.mockReset();
     posthogMock.has_opted_out_capturing.mockReturnValue(false);
+    sdkImport.count = 0;
   });
 
   it('no-ops entirely when no key is configured', async () => {
@@ -29,6 +43,7 @@ describe('analytics', () => {
     vi.stubEnv('VITE_POSTHOG_KEY', '');
     const { initAnalytics, captureEvent } = await import('../analytics');
     initAnalytics();
+    await vi.dynamicImportSettled();
     captureEvent('client_created');
     expect(posthogMock.init).not.toHaveBeenCalled();
     expect(posthogMock.capture).not.toHaveBeenCalled();
@@ -38,6 +53,7 @@ describe('analytics', () => {
     vi.stubEnv('VITE_POSTHOG_KEY', 'phc_test');
     const { initAnalytics } = await import('../analytics');
     initAnalytics();
+    await vi.dynamicImportSettled();
     expect(posthogMock.init).toHaveBeenCalledWith(
       'phc_test',
       expect.objectContaining({
@@ -52,6 +68,7 @@ describe('analytics', () => {
     vi.stubEnv('VITE_POSTHOG_KEY', 'phc_test');
     const { initAnalytics, captureEvent } = await import('../analytics');
     initAnalytics();
+    await vi.dynamicImportSettled();
     captureEvent('hub_link_copied', { cliente_id: 7 });
     expect(posthogMock.capture).toHaveBeenCalledWith('hub_link_copied', { cliente_id: 7 });
   });
@@ -60,6 +77,7 @@ describe('analytics', () => {
     vi.stubEnv('VITE_POSTHOG_KEY', 'phc_test');
     const { initAnalytics, captureEvent } = await import('../analytics');
     initAnalytics();
+    await vi.dynamicImportSettled();
 
     // Default path stays two-arg: posthog-js batches, which is what we want everywhere else.
     captureEvent('client_created');
@@ -79,6 +97,7 @@ describe('analytics', () => {
     vi.stubEnv('VITE_POSTHOG_KEY', 'phc_test');
     const { initAnalytics, identifySignup } = await import('../analytics');
     initAnalytics();
+    await vi.dynamicImportSettled();
     identifySignup('user-1');
     expect(posthogMock.identify).toHaveBeenCalledWith('user-1');
   });
@@ -94,6 +113,7 @@ describe('analytics', () => {
     vi.stubEnv('VITE_POSTHOG_KEY', 'phc_test');
     const { initAnalytics, identifyWorkspaceUser } = await import('../analytics');
     initAnalytics();
+    await vi.dynamicImportSettled();
     identifyWorkspaceUser('user-1', { workspace_id: 'ws-1', plan_id: 'pro', role: 'owner' });
     expect(posthogMock.identify).toHaveBeenCalledWith('user-1', {
       workspace_id: 'ws-1',
@@ -107,6 +127,7 @@ describe('analytics', () => {
     vi.stubEnv('VITE_POSTHOG_KEY', 'phc_test');
     const { initAnalytics } = await import('../analytics');
     initAnalytics();
+    await vi.dynamicImportSettled();
     expect(posthogMock.init).toHaveBeenCalledWith(
       'phc_test',
       expect.objectContaining({ opt_out_persistence_by_default: true }),
@@ -119,6 +140,7 @@ describe('analytics', () => {
     vi.stubEnv('VITE_POSTHOG_KEY', 'phc_test');
     const { initAnalytics } = await import('../analytics');
     initAnalytics();
+    await vi.dynamicImportSettled();
     const config = posthogMock.init.mock.calls[0][1];
     expect(config).toEqual(expect.objectContaining({ advanced_disable_feature_flags: true }));
     expect(config).not.toHaveProperty('advanced_disable_flags');
@@ -128,6 +150,7 @@ describe('analytics', () => {
     vi.stubEnv('VITE_POSTHOG_KEY', 'phc_test');
     const { initAnalytics, disableAnalytics } = await import('../analytics');
     initAnalytics();
+    await vi.dynamicImportSettled();
     disableAnalytics();
     expect(posthogMock.reset).toHaveBeenCalledTimes(1);
     expect(posthogMock.opt_out_capturing).toHaveBeenCalledTimes(1);
@@ -141,6 +164,7 @@ describe('analytics', () => {
     const { initAnalytics, disableAnalytics, captureEvent, identifySignup, identifyWorkspaceUser } =
       await import('../analytics');
     initAnalytics();
+    await vi.dynamicImportSettled();
     disableAnalytics();
     posthogMock.reset.mockClear();
     captureEvent('client_created');
@@ -155,9 +179,11 @@ describe('analytics', () => {
     vi.stubEnv('VITE_POSTHOG_KEY', 'phc_test');
     const { initAnalytics, disableAnalytics } = await import('../analytics');
     initAnalytics();
+    await vi.dynamicImportSettled();
     disableAnalytics();
     posthogMock.has_opted_out_capturing.mockReturnValue(true);
     initAnalytics();
+    await vi.dynamicImportSettled();
     expect(posthogMock.init).toHaveBeenCalledTimes(1);
     expect(posthogMock.opt_in_capturing).toHaveBeenCalledWith({ captureEventName: false });
   });
@@ -167,6 +193,7 @@ describe('analytics', () => {
     posthogMock.has_opted_out_capturing.mockReturnValue(true);
     const { initAnalytics } = await import('../analytics');
     initAnalytics();
+    await vi.dynamicImportSettled();
     expect(posthogMock.init).toHaveBeenCalledTimes(1);
     expect(posthogMock.opt_in_capturing).toHaveBeenCalledWith({ captureEventName: false });
   });
@@ -175,6 +202,7 @@ describe('analytics', () => {
     vi.stubEnv('VITE_POSTHOG_KEY', 'phc_test');
     const { initAnalytics } = await import('../analytics');
     initAnalytics();
+    await vi.dynamicImportSettled();
     expect(posthogMock.opt_in_capturing).not.toHaveBeenCalled();
   });
 
@@ -187,6 +215,7 @@ describe('analytics', () => {
     identifyWorkspaceUser('user-1', { workspace_id: 'ws-1', plan_id: null, role: 'owner' });
     expect(posthogMock.identify).not.toHaveBeenCalled();
     initAnalytics();
+    await vi.dynamicImportSettled();
     expect(posthogMock.identify).toHaveBeenCalledWith('user-1', {
       workspace_id: 'ws-1',
       plan_id: null,
@@ -201,6 +230,7 @@ describe('analytics', () => {
     identifyWorkspaceUser('user-1', { workspace_id: 'ws-1', plan_id: null, role: 'owner' });
     resetAnalytics();
     initAnalytics();
+    await vi.dynamicImportSettled();
     expect(posthogMock.identify).not.toHaveBeenCalled();
   });
 
@@ -210,5 +240,124 @@ describe('analytics', () => {
     disableAnalytics();
     expect(posthogMock.reset).not.toHaveBeenCalled();
     expect(posthogMock.opt_out_capturing).not.toHaveBeenCalled();
+  });
+
+  it('never downloads posthog-js when no key is configured', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', '');
+    const { initAnalytics, captureEvent, identifySignup } = await import('../analytics');
+    initAnalytics();
+    captureEvent('client_created');
+    identifySignup('user-1');
+    await vi.dynamicImportSettled();
+    expect(sdkImport.count).toBe(0);
+  });
+
+  it('does not download posthog-js until analytics is started', async () => {
+    // The whole point of the dynamic import: the landing page must not pay for the SDK pre-consent.
+    vi.stubEnv('VITE_POSTHOG_KEY', 'phc_test');
+    const { captureEvent } = await import('../analytics');
+    captureEvent('client_created');
+    await vi.dynamicImportSettled();
+    expect(sdkImport.count).toBe(0);
+  });
+
+  it('flushes calls made while the SDK was downloading, in order, right after init', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', 'phc_test');
+    const { initAnalytics, captureEvent, identifySignup } = await import('../analytics');
+    initAnalytics();
+    identifySignup('user-1');
+    captureEvent('signup_completed', { plan: 'pro' });
+    captureEvent('checkout_started', undefined, { sendInstantly: true });
+    expect(posthogMock.init).not.toHaveBeenCalled();
+    expect(posthogMock.capture).not.toHaveBeenCalled();
+    await vi.dynamicImportSettled();
+    expect(posthogMock.init).toHaveBeenCalledTimes(1);
+    expect(posthogMock.identify).toHaveBeenCalledWith('user-1');
+    expect(posthogMock.capture.mock.calls).toEqual([
+      ['signup_completed', { plan: 'pro' }],
+      ['checkout_started', undefined, { send_instantly: true }],
+    ]);
+    // init precedes the flush, and identify (needed for identified_only) precedes the capture.
+    expect(posthogMock.init.mock.invocationCallOrder[0]).toBeLessThan(
+      posthogMock.identify.mock.invocationCallOrder[0],
+    );
+    expect(posthogMock.identify.mock.invocationCallOrder[0]).toBeLessThan(
+      posthogMock.capture.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('replays a known identity before events queued during the download', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', 'phc_test');
+    const { initAnalytics, identifyWorkspaceUser, captureEvent } = await import('../analytics');
+    identifyWorkspaceUser('user-1', { workspace_id: 'ws-1', plan_id: null, role: 'owner' });
+    initAnalytics();
+    captureEvent('client_created');
+    await vi.dynamicImportSettled();
+    expect(posthogMock.identify).toHaveBeenCalledTimes(1);
+    expect(posthogMock.identify.mock.invocationCallOrder[0]).toBeLessThan(
+      posthogMock.capture.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('a revoke before the SDK finishes downloading prevents init and drops the queue', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', 'phc_test');
+    const { initAnalytics, disableAnalytics, captureEvent } = await import('../analytics');
+    initAnalytics();
+    captureEvent('client_created');
+    disableAnalytics();
+    await vi.dynamicImportSettled();
+    expect(posthogMock.init).not.toHaveBeenCalled();
+    expect(posthogMock.capture).not.toHaveBeenCalled();
+    // Never initialised, so there is nothing to reset or opt out of.
+    expect(posthogMock.reset).not.toHaveBeenCalled();
+    expect(posthogMock.opt_out_capturing).not.toHaveBeenCalled();
+
+    // A later re-grant still starts analytics normally.
+    initAnalytics();
+    captureEvent('lead_created');
+    expect(posthogMock.init).toHaveBeenCalledTimes(1);
+    expect(posthogMock.capture.mock.calls).toEqual([['lead_created', undefined]]);
+  });
+
+  it('a revoke and re-grant during the download initialises once', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', 'phc_test');
+    const { initAnalytics, disableAnalytics, captureEvent } = await import('../analytics');
+    initAnalytics();
+    captureEvent('client_created');
+    disableAnalytics();
+    initAnalytics();
+    captureEvent('lead_created');
+    await vi.dynamicImportSettled();
+    expect(sdkImport.count).toBe(1);
+    expect(posthogMock.init).toHaveBeenCalledTimes(1);
+    // The pre-revoke event was dropped with the queue.
+    expect(posthogMock.capture.mock.calls).toEqual([['lead_created', undefined]]);
+  });
+
+  it('swallows a failed SDK download and retries on the next initAnalytics', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', 'phc_test');
+    // A chunk download that dies the way a dropped mobile connection would.
+    vi.doMock('posthog-js', () => {
+      throw new Error('Failed to fetch dynamically imported module');
+    });
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    const { initAnalytics, captureEvent } = await import('../analytics');
+    initAnalytics();
+    captureEvent('client_created');
+    await vi.dynamicImportSettled();
+    await new Promise((r) => setTimeout(r, 0));
+    process.off('unhandledRejection', unhandled);
+    expect(unhandled).not.toHaveBeenCalled();
+    expect(posthogMock.init).not.toHaveBeenCalled();
+    // Back to "not started": helpers no-op instead of queueing against a dead download.
+    captureEvent('lead_created');
+
+    vi.doMock('posthog-js', sdkModule);
+    initAnalytics();
+    await vi.dynamicImportSettled();
+    expect(posthogMock.init).toHaveBeenCalledTimes(1);
+    captureEvent('task_created');
+    expect(posthogMock.capture.mock.calls).toEqual([['task_created', undefined]]);
   });
 });

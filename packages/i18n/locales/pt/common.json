@@ -19,6 +19,9 @@
     "equipe": "Equipe",
     "analytics": "Analytics",
     "instagram": "Instagram",
+    "tiktok": "TikTok",
+    "youtube": "YouTube",
+    "googleBusiness": "Google Meu Negócio",
     "fluxos": "Fluxos",
     "configuracoes": "Configurações",
     "privacidade": "Privacidade",
@@ -37,7 +40,20 @@
     "suporte": "Suporte",
     "novidades": "Novidades",
     "openMenuPending_one": "Abrir menu, 1 pendência",
-    "openMenuPending_other": "Abrir menu, {{count}} pendências"
+    "openMenuPending_other": "Abrir menu, {{count}} pendências",
+    "openMenu": "Abrir menu",
+    "menu": "Menu"
+  },
+  "vidroIntro": {
+    "eyebrow": "Novidade",
+    "title": "O Mesaas está de visual novo",
+    "body": "Barra lateral mais leve, as ações de cada página reunidas no topo e telas mais limpas para você achar o que importa mais rápido.\n\nPrefere o visual anterior? Volte a ele agora ou quando quiser, em **Visual clássico** no menu do seu perfil, no fim da barra lateral.",
+    "continue": "Continuar no novo",
+    "classic": "Voltar ao clássico",
+    "classicToast": {
+      "title": "Visual clássico ativado",
+      "description": "Para usar o visual novo, escolha Visual novo no menu do seu perfil."
+    }
   },
   "sidebar": {
     "accountOptions": "Opções da Conta",
@@ -48,7 +64,9 @@
     "logout": "Sair",
     "myAccount": "Minha Conta",
     "comingSoon": "Em breve",
-    "upgradeToUnlock": "Disponível nos planos Pro e Max"
+    "upgradeToUnlock": "Disponível nos planos Pro e Max",
+    "lookClassic": "Visual clássico",
+    "lookNew": "Visual novo"
   },
   "language": {
     "pt": "Português",
@@ -85,7 +103,8 @@
   },
   "toast": {
     "saveError": "Erro ao salvar",
-    "deleteError": "Erro ao remover"
+    "deleteError": "Erro ao remover",
+    "clientScopeRestricted": "Seu acesso é limitado aos clientes atribuídos."
   },
   "months": {
     "0": "Janeiro",
@@ -139,12 +158,13 @@
     "somethingWentWrong": "Algo deu errado",
     "reloadToRetry": "Recarregue a página para tentar novamente.",
     "reloadPage": "Recarregar página",
-    "loading": "Carregando…"
+    "loading": "Carregando…",
+    "clientPortal": "Hub do cliente"
   },
   "cookies": {
     "banner": {
       "title": "Cookies e privacidade",
-      "body": "Usamos armazenamento essencial para o Mesaas funcionar. Com a sua permissão, também usamos análise de uso (incluindo gravação de sessão e mapas de calor) e o chat de suporte.",
+      "body": "Usamos armazenamento essencial para o Mesaas funcionar. Com a sua permissão, também usamos análise de uso (incluindo gravação de sessão e mapas de calor), o chat de suporte e a medição dos nossos anúncios.",
       "learnMore": "Ver detalhes na página de LGPD",
       "acceptAll": "Aceitar todos",
       "rejectAll": "Rejeitar todos",
@@ -160,10 +180,109 @@
       "supportTitle": "Chat de suporte",
       "supportDescription": "Crisp: chat com a nossa equipe. Sem isto o chat não carrega.",
       "supportNeeded": "Para abrir o chat de suporte, mantenha o Chat de suporte ativado e salve.",
+      "marketingTitle": "Publicidade",
+      "marketingDescription": "Google Ads e Meta (Instagram e Facebook): medem quais anúncios trouxeram você até o Mesaas e permitem mostrar nossos anúncios de novo a quem já visitou o site.",
       "revokeNote": "Ao desativar uma ferramenta, o efeito é aplicado por completo ao recarregar a página.",
       "save": "Salvar preferências",
       "cancel": "Cancelar"
     },
     "link": "Preferências de cookies"
+  },
+  "topbar": {
+    "search": "Buscar...",
+    "searchPlaceholder": "Buscar...",
+    "noResults": "Nenhum resultado.",
+    "supportChat": "Chat de suporte"
+  },
+  "ui": {
+    "close": "Fechar",
+    "clear": "Limpar",
+    "previousMonth": "Mês anterior",
+    "nextMonth": "Próximo mês",
+    "previousYear": "Ano anterior",
+    "nextYear": "Próximo ano",
+    "selectDate": "Selecionar data",
+    "selectDateTime": "Selecionar data e hora",
+    "selectPeriod": "Selecionar período",
+    "selectMonth": "Selecionar mês",
+    "time": "Horário:",
+    "minScheduleAhead": "Mínimo {{minutes}} min no futuro",
+    "confirmClose": {
+      "title": "Fechar sem salvar?",
+      "message": "Você tem alterações não salvas. Deseja fechar mesmo assim?",
+      "keepEditing": "Continuar editando",
+      "discard": "Fechar mesmo assim"
+    },
+    "showPassword": "Mostrar senha",
+    "hidePassword": "Ocultar senha"
+  },
+  "dateFormat": {
+    "monthYear": "MMMM 'de' yyyy",
+    "weekdayDayMonth": "EEEE, d 'de' MMMM"
+  },
+  "search": {
+    "types": {
+      "all": "Tudo",
+      "cliente": "Clientes",
+      "contrato": "Contratos",
+      "membro": "Equipe",
+      "transacao": "Financeiro",
+      "fluxo": "Fluxos",
+      "post": "Postagens",
+      "tarefa": "Tarefas",
+      "ideia": "Ideias",
+      "pagina": "Páginas",
+      "ajuda": "Ajuda"
+    },
+    "hint": "Digite para buscar clientes, posts, tarefas, fluxos, artigos de ajuda…",
+    "cancel": "Cancelar",
+    "seeAllIn": "Ver todos em {{type}}",
+    "createdAt": "Criado em {{date}}",
+    "scheduledAt": "Publicação {{date}}",
+    "dueAt": "Prazo {{date}}",
+    "standalonePost": "Avulso",
+    "sentByClient": "Enviada pelo cliente",
+    "byAuthor": "Por {{name}}",
+    "request": "Solicitação",
+    "fluxoStatus": {
+      "ativo": "Ativo",
+      "concluido": "Concluído",
+      "arquivado": "Arquivado"
+    }
+  },
+  "plan": {
+    "limitReached": "Limite do plano atingido.",
+    "csvLocked": "Importação CSV não está disponível no seu plano."
+  },
+  "optional": "(opcional)",
+  "usage": {
+    "of": "{{used}} de {{limit}}",
+    "ofLabel": "{{used}} de {{limit}} {{label}}",
+    "notIncluded": "Não incluído no plano",
+    "unlimited": "Ilimitado",
+    "upgrade": "Fazer upgrade"
+  },
+  "paywall": {
+    "notAvailable": "{{label}} não está disponível no seu plano.",
+    "thisFeature": "Este recurso"
+  },
+  "photo": {
+    "add": "Adicionar foto",
+    "change": "Alterar foto",
+    "addFor": "Adicionar foto de {{nome}}",
+    "changeFor": "Alterar foto de {{nome}}",
+    "gallery": "Escolher da galeria",
+    "camera": "Tirar foto",
+    "remove": "Remover foto",
+    "removeConfirm": "Remover",
+    "sheetTitle": "Foto de perfil",
+    "removeTitle": "Remover a foto?",
+    "removeDescription": "Volta a aparecer as iniciais.",
+    "help": "JPG, PNG ou HEIC até 10 MB. A foto é recortada em quadrado.",
+    "tooLarge": "A foto deve ter até 10 MB.",
+    "updated": "Foto atualizada.",
+    "uploadError": "Erro ao enviar a foto.",
+    "removed": "Foto removida.",
+    "removeError": "Erro ao remover a foto."
   }
 }

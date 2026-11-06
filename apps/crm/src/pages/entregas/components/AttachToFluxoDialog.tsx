@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import { i18n } from '@mesaas/i18n';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -45,15 +47,15 @@ function getErrorIdentifier(err: unknown): string {
 function getAttachErrorToast(err: unknown): string {
   const identifier = getErrorIdentifier(err);
   if (identifier === 'workflow_not_active') {
-    return 'Este fluxo não está mais ativo. Escolha outro fluxo.';
+    return i18n.t('workflows:attachToFluxo.notActive');
   }
   if (identifier === 'post_belongs_to_another_client') {
-    return 'Este post pertence a outro cliente.';
+    return i18n.t('workflows:attachToFluxo.otherClient');
   }
   if (identifier === 'plan_limit_exceeded:max_posts_per_workflow') {
-    return 'Limite de posts por fluxo do plano atual atingido.';
+    return i18n.t('workflows:attachToFluxo.planLimit');
   }
-  return getPostProcessErrorToast(err, 'Erro ao vincular post ao fluxo');
+  return getPostProcessErrorToast(err, i18n.t('workflows:attachToFluxo.genericError'));
 }
 
 /** Attaches a post avulso to one of the client's own active fluxos. The fluxo
@@ -69,6 +71,7 @@ export function AttachToFluxoDialog({
   onAttached,
   process,
 }: AttachToFluxoDialogProps) {
+  const { t } = useTranslation('workflows');
   const qc = useQueryClient();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
@@ -104,7 +107,7 @@ export function AttachToFluxoDialog({
       await (process && confirming
         ? attachPostClosingProcess(postId, selectedId, process.revisao)
         : attachPostToWorkflow(postId, selectedId));
-      toast.success(`Post vinculado a "${workflow.titulo}"`);
+      toast.success(t('attachToFluxo.attached', { title: workflow.titulo }));
       qc.invalidateQueries({ queryKey: ['active-posts'] });
       qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', selectedId] });
       // Also refreshes the board's per-workflow status counts (kanban column
@@ -130,24 +133,21 @@ export function AttachToFluxoDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-[420px]">
         <DialogHeader>
-          <DialogTitle>Vincular a um fluxo</DialogTitle>
-          <DialogDescription className="sr-only">
-            Escolha um fluxo ativo deste cliente para anexar o post
-          </DialogDescription>
+          <DialogTitle>{t('attachToFluxo.title')}</DialogTitle>
+          <DialogDescription className="sr-only">{t('attachToFluxo.srDesc')}</DialogDescription>
         </DialogHeader>
         {confirming ? (
           <div className="flex flex-col gap-2 text-sm">
-            <p className="font-medium">Encerrar o processo individual?</p>
+            <p className="font-medium">{t('attachToFluxo.closeProcessTitle')}</p>
             <p style={{ color: 'var(--text-muted)' }}>
-              O post passará a seguir as etapas de "
-              {activeFluxos.find((w) => w.id === selectedId)?.titulo}". O processo individual será
-              encerrado: etapas, responsáveis e prazos individuais não são transferidos. O histórico
-              fica guardado.
+              {t('attachToFluxo.closeProcessDesc', {
+                title: activeFluxos.find((w) => w.id === selectedId)?.titulo,
+              })}
             </p>
           </div>
         ) : activeFluxos.length === 0 ? (
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-            Nenhum fluxo ativo para este cliente
+            {t('attachToFluxo.noActive')}
           </p>
         ) : (
           <div className="flex flex-col gap-2 max-h-72 overflow-y-auto">
@@ -177,19 +177,19 @@ export function AttachToFluxoDialog({
                 onClick={() => setConfirming(false)}
                 disabled={saving}
               >
-                Voltar
+                {t('actions.back')}
               </Button>
               <Button type="button" onClick={handleConfirm} disabled={saving}>
-                {saving ? 'Vinculando...' : 'Encerrar processo e vincular'}
+                {saving ? t('attachToFluxo.attaching') : t('attachToFluxo.closeAndAttach')}
               </Button>
             </>
           ) : (
             <>
               <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
-                Cancelar
+                {t('actions.cancel')}
               </Button>
               <Button type="button" onClick={handleConfirm} disabled={saving || selectedId == null}>
-                {saving ? 'Vinculando...' : 'Vincular'}
+                {saving ? t('attachToFluxo.attaching') : t('attachToFluxo.attach')}
               </Button>
             </>
           )}

@@ -1,6 +1,6 @@
 import { supabase } from './core';
 
-export type MentionHostType = 'post_comment' | 'tarefa' | 'workflow_post';
+export type MentionHostType = 'post_comment' | 'tarefa' | 'workflow_post' | 'tarefa_comentario';
 
 /**
  * Syncs the `mencoes` ledger for one host row (a comment, tarefa, or

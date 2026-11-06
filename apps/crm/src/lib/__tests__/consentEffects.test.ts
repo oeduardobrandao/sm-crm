@@ -8,7 +8,14 @@ const m = vi.hoisted(() => ({
   loadCrispWhenIdle: vi.fn(),
   purgeAnalyticsStorage: vi.fn(),
   purgeSupportStorage: vi.fn(),
+  purgeMarketingStorage: vi.fn(),
   resumePendingSupportChat: vi.fn(),
+  loadGoogleAds: vi.fn(),
+  loadGoogleAdsWhenIdle: vi.fn(),
+  disableGoogleAds: vi.fn(),
+  loadMetaPixel: vi.fn(),
+  loadMetaPixelWhenIdle: vi.fn(),
+  disableMetaPixel: vi.fn(),
 }));
 vi.mock('../analytics', () => ({
   initAnalytics: m.initAnalytics,
@@ -18,9 +25,20 @@ vi.mock('../crispLoader', () => ({
   loadCrisp: m.loadCrisp,
   loadCrispWhenIdle: m.loadCrispWhenIdle,
 }));
+vi.mock('../googleAdsLoader', () => ({
+  loadGoogleAds: m.loadGoogleAds,
+  loadGoogleAdsWhenIdle: m.loadGoogleAdsWhenIdle,
+  disableGoogleAds: m.disableGoogleAds,
+}));
+vi.mock('../metaPixelLoader', () => ({
+  loadMetaPixel: m.loadMetaPixel,
+  loadMetaPixelWhenIdle: m.loadMetaPixelWhenIdle,
+  disableMetaPixel: m.disableMetaPixel,
+}));
 vi.mock('../legacyStorage', () => ({
   purgeAnalyticsStorage: m.purgeAnalyticsStorage,
   purgeSupportStorage: m.purgeSupportStorage,
+  purgeMarketingStorage: m.purgeMarketingStorage,
 }));
 vi.mock('../supportChat', () => ({ resumePendingSupportChat: m.resumePendingSupportChat }));
 
@@ -108,5 +126,44 @@ describe('installConsentEffects', () => {
     m.purgeAnalyticsStorage.mockClear();
     setConsent({ analytics: false, support: true });
     expect(m.purgeAnalyticsStorage).not.toHaveBeenCalled();
+  });
+
+  it('keeps Google Ads off and purges its cookies when marketing was never granted', async () => {
+    seedConsent({ analytics: true, support: true });
+    await boot();
+    vi.advanceTimersByTime(5000);
+    expect(m.loadGoogleAds).not.toHaveBeenCalled();
+    expect(m.loadGoogleAdsWhenIdle).not.toHaveBeenCalled();
+    expect(m.loadMetaPixelWhenIdle).not.toHaveBeenCalled();
+    expect(m.purgeMarketingStorage).toHaveBeenCalledTimes(1);
+  });
+
+  it('defers Google Ads to idle at boot when marketing consent is stored', async () => {
+    seedConsent({ marketing: true });
+    await boot();
+    expect(m.loadGoogleAdsWhenIdle).toHaveBeenCalledTimes(1);
+    expect(m.loadMetaPixelWhenIdle).toHaveBeenCalledTimes(1);
+    expect(m.loadGoogleAds).not.toHaveBeenCalled();
+    expect(m.loadMetaPixel).not.toHaveBeenCalled();
+    expect(m.purgeMarketingStorage).not.toHaveBeenCalled();
+  });
+
+  it('loads Google Ads immediately on a later grant and disables it on revoke', async () => {
+    const { setConsent } = await boot();
+    setConsent({ analytics: false, support: false, marketing: true });
+    expect(m.loadGoogleAds).toHaveBeenCalledTimes(1);
+    expect(m.loadMetaPixel).toHaveBeenCalledTimes(1);
+    setConsent({ analytics: false, support: false, marketing: false });
+    expect(m.disableGoogleAds).toHaveBeenCalledTimes(1);
+    expect(m.disableMetaPixel).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not touch Google Ads on an unrelated change', async () => {
+    const { setConsent } = await boot();
+    m.purgeMarketingStorage.mockClear();
+    setConsent({ analytics: true, support: false });
+    expect(m.loadGoogleAds).not.toHaveBeenCalled();
+    expect(m.disableGoogleAds).not.toHaveBeenCalled();
+    expect(m.purgeMarketingStorage).not.toHaveBeenCalled();
   });
 });

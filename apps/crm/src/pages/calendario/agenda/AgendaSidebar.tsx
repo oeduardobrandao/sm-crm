@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
-import { ptBR } from 'date-fns/locale';
 import { CalendarSync, Plus } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { useDateFnsLocale } from '@mesaas/i18n';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { avatarColorClass } from '@/lib/avatarColor';
-import { getInitials } from '@/lib/initials';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import type { AgendaTipo } from '../../../store/agenda';
 import { CamadasGrupo, type CamadasGrupoProps } from '../camadas/CamadasGrupo';
 import { TIPO_COR, TIPO_LABEL } from './agendaLogic';
@@ -71,6 +71,8 @@ export default function AgendaSidebar({
   onSincronizar,
   camadas,
 }: AgendaSidebarProps) {
+  const { t } = useTranslation('agenda');
+  const dateLocale = useDateFnsLocale();
   const [mes, setMes] = useState(dataSelecionada);
   useEffect(() => setMes(dataSelecionada), [dataSelecionada]);
 
@@ -94,20 +96,23 @@ export default function AgendaSidebar({
       {onCriar && (
         <Button type="button" size="lg" className="agenda-sidebar__criar" onClick={onCriar}>
           <Plus aria-hidden="true" />
-          Criar evento
+          {t('sidebar.criar')}
         </Button>
       )}
 
       <div className="agenda-sidebar__card">
         <Calendar
           mode="single"
-          locale={ptBR}
+          locale={dateLocale}
           weekStartsOn={1}
           selected={dataSelecionada}
           month={mes}
           onMonthChange={setMes}
           onSelect={(d) => d && onDataChange(d)}
           className="agenda-mini"
+          // The month is a flex item: without flex-1 it shrinks to the grid and
+          // sits left of center in the card.
+          classNames={{ month: 'flex-1 space-y-4' }}
         />
       </div>
 
@@ -115,21 +120,21 @@ export default function AgendaSidebar({
         <ToggleGroup
           type="single"
           className="agenda-segmented agenda-segmented--full"
-          aria-label="Mostrar"
+          aria-label={t('sidebar.mostrar')}
           value={filtro.modo}
           onValueChange={(next) =>
             next && onFiltroChange({ ...filtro, modo: next as AgendaFiltro['modo'] })
           }
         >
           <ToggleGroupItem value="minha" className="agenda-segmented__item">
-            Minha agenda
+            {t('sidebar.minha')}
           </ToggleGroupItem>
           <ToggleGroupItem value="equipe" className="agenda-segmented__item">
-            Toda a equipe
+            {t('sidebar.equipe')}
           </ToggleGroupItem>
         </ToggleGroup>
 
-        <div className="agenda-sidebar__rotulo">Pessoas</div>
+        <div className="agenda-sidebar__rotulo">{t('sidebar.pessoas')}</div>
         <ul className="agenda-pessoas">
           {ordenadas.map((p) => {
             const eu = p.id === meuId;
@@ -141,13 +146,15 @@ export default function AgendaSidebar({
                     checked={pessoaVisivel(filtro, meuId, p.id)}
                     onCheckedChange={(c) => alternarPessoa(p.id, c === true)}
                   />
-                  <span
-                    className={`avatar agenda-pessoa__avatar ${avatarColorClass(p.id)}`}
-                    aria-hidden="true"
-                  >
-                    {p.avatarUrl ? <img src={p.avatarUrl} alt="" /> : getInitials(p.nome)}
+                  <PessoaAvatar
+                    nome={p.nome}
+                    fotoUrl={p.avatarUrl}
+                    seed={p.id}
+                    className="agenda-pessoa__avatar"
+                  />
+                  <span className="agenda-pessoa__nome">
+                    {eu ? t('sidebar.voce', { nome: p.nome }) : p.nome}
                   </span>
-                  <span className="agenda-pessoa__nome">{eu ? `${p.nome} (você)` : p.nome}</span>
                 </label>
               </li>
             );
@@ -158,31 +165,24 @@ export default function AgendaSidebar({
       {camadas && <CamadasGrupo {...camadas} />}
 
       <div className="agenda-legenda">
-        <div className="agenda-sidebar__rotulo">Legenda</div>
-        {TIPOS.map((t) => (
-          <div key={t} className="agenda-legenda__item">
+        <div className="agenda-sidebar__rotulo">{t('sidebar.legenda')}</div>
+        {TIPOS.map((tipo) => (
+          <div key={tipo} className="agenda-legenda__item">
             <span
               className="agenda-ev__dot"
-              style={{ background: TIPO_COR[t] }}
+              style={{ background: TIPO_COR[tipo] }}
               aria-hidden="true"
             />
-            {TIPO_LABEL[t]}
+            {TIPO_LABEL[tipo]}
           </div>
         ))}
-        <div className="agenda-legenda__nota">
-          Evento com fundo colorido e borda tracejada: aguardando sua resposta
-        </div>
+        <div className="agenda-legenda__nota">{t('sidebar.legendaNota')}</div>
       </div>
 
       {onSincronizar && (
-        <Button
-          type="button"
-          variant="outline"
-          className="h-auto min-h-10 w-full justify-start whitespace-normal py-2 text-left"
-          onClick={onSincronizar}
-        >
+        <Button type="button" variant="outline" className="w-full" onClick={onSincronizar}>
           <CalendarSync aria-hidden="true" />
-          Sincronizar com seu calendário
+          {t('sidebar.sincronizar')}
         </Button>
       )}
     </div>

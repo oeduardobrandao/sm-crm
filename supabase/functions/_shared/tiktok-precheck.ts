@@ -18,6 +18,8 @@ export interface PrecheckMedia {
   kind: string;
   duration_seconds: number | null;
   media_lost_at: string | null;
+  /** files.thumbnail_frame_ms: the cover frame the cron sends (not used by the precheck). */
+  thumbnail_frame_ms?: number | null;
 }
 
 type TikTokFetch = (path: string, init: RequestInit & { accessToken: string }) => Promise<unknown>;
@@ -51,7 +53,7 @@ export async function fetchCreatorCheck(tiktokFetch: TikTokFetch, accessToken: s
 export async function fetchPrecheckMedia(svc: any, postId: number): Promise<PrecheckMedia[]> {
   const { data, error } = await svc
     .from("post_file_links")
-    .select("sort_order, files!inner(kind, duration_seconds, media_lost_at)")
+    .select("sort_order, files!inner(kind, duration_seconds, media_lost_at, thumbnail_frame_ms)")
     .eq("post_id", postId)
     .order("sort_order", { ascending: true });
   if (error) throw new Error(`fetchPrecheckMedia: post_file_links read failed: ${error.message}`);
@@ -60,6 +62,7 @@ export async function fetchPrecheckMedia(svc: any, postId: number): Promise<Prec
     kind: l.files.kind,
     duration_seconds: l.files.duration_seconds ?? null,
     media_lost_at: l.files.media_lost_at ?? null,
+    thumbnail_frame_ms: l.files.thumbnail_frame_ms ?? null,
   }));
 }
 

@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeCan, fakeMembership } from '@/test/makeCan';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 const { mockNavigate, openCSVSelectorMock, toastSuccessMock, toastErrorMock, mockUseAuth } =
   vi.hoisted(() => ({
@@ -37,6 +38,15 @@ vi.mock('../../../lib/csv', () => ({
 }));
 
 vi.mock('../../../lib/supabase');
+
+const v2 = vi.hoisted(() => ({ ativo: false }));
+vi.mock('@/hooks/useFinanceiroV2', () => ({
+  useFinanceiroV2: () => ({ ativo: v2.ativo, isLoading: false }),
+}));
+
+// These suites cover the desktop markup (table, header buttons); the phone branch below
+// 768px has its own suite. jsdom's matchMedia would otherwise render the phone branch.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 
 vi.mock('../../../context/AuthContext', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../context/AuthContext')>();
@@ -449,7 +459,7 @@ function renderPage() {
 }
 
 function getClientCard(name: string) {
-  const card = screen.getByRole('button', { name }).closest('.team-card');
+  const card = screen.getByRole('button', { name }).closest('tr');
   expect(card).not.toBeNull();
   return card as HTMLElement;
 }
@@ -477,6 +487,7 @@ beforeEach(() => {
   toastErrorMock.mockReset();
   mockUseAuth.mockReset();
   mockUseAuth.mockReturnValue({ canSeeFinancials: true, can: () => true });
+  v2.ativo = false;
   mockedSupabase.__resetSupabaseMock();
 
   mockedGetClientes.mockReset();
@@ -720,6 +731,74 @@ describe('ClientesPage', () => {
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['clientes'] });
   });
 
+  it('with Financeiro v2 the edit form neither shows nor writes the fee or the payment day', async () => {
+    v2.ativo = true;
+    mockedGetClientes.mockResolvedValue([makeCliente({ id: 7, nome: 'Beta Care' })]);
+    renderPage();
+
+    await screen.findByRole('button', { name: 'Beta Care' });
+    fireEvent.click(within(getClientCard('Beta Care')).getByRole('button', { name: 'Editar' }));
+
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).queryByLabelText('Valor Mensal (R$)')).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText('Dia de Pagamento (1-31)')).not.toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('link', {
+        name: 'A mensalidade e o status agora ficam na aba Financeiro.',
+      }),
+    ).toHaveAttribute('href', '/clientes/7/financeiro');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }));
+
+    await waitFor(() => expect(mockedUpdateCliente).toHaveBeenCalledTimes(1));
+    const payload = mockedUpdateCliente.mock.calls[0][1];
+    expect(payload).not.toHaveProperty('valor_mensal');
+    expect(payload).not.toHaveProperty('data_pagamento');
+    expect(payload).toMatchObject({ nome: 'Beta Care' });
+  });
+
+  it('keeps the fee and the payment day in the create form with v2 on', async () => {
+    v2.ativo = true;
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /Novo Cliente/ }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByLabelText('Valor Mensal (R$)')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Dia de Pagamento (1-31)')).toBeInTheDocument();
+  });
+
+  it('with Financeiro v2 the edit form neither shows nor writes status', async () => {
+    v2.ativo = true;
+    mockedGetClientes.mockResolvedValue([makeCliente({ id: 7, nome: 'Beta Care' })]);
+    renderPage();
+
+    await screen.findByRole('button', { name: 'Beta Care' });
+    fireEvent.click(within(getClientCard('Beta Care')).getByRole('button', { name: 'Editar' }));
+
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).queryByRole('button', { name: 'Pausado' })).not.toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('link', {
+        name: 'A mensalidade e o status agora ficam na aba Financeiro.',
+      }),
+    ).toHaveAttribute('href', '/clientes/7/financeiro');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }));
+
+    await waitFor(() => expect(mockedUpdateCliente).toHaveBeenCalledTimes(1));
+    expect(mockedUpdateCliente.mock.calls[0][1]).not.toHaveProperty('status');
+  });
+
+  it('keeps status in the edit form with v2 on but financials hidden', async () => {
+    v2.ativo = true;
+    mockUseAuth.mockReturnValue({ canSeeFinancials: false, can: () => true });
+    mockedGetClientes.mockResolvedValue([makeCliente({ id: 7, nome: 'Beta Care' })]);
+    renderPage();
+
+    await screen.findByRole('button', { name: 'Beta Care' });
+    fireEvent.click(within(getClientCard('Beta Care')).getByRole('button', { name: 'Editar' }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('button', { name: 'Pausado' })).toBeInTheDocument();
+    expect(within(dialog).queryByText(/agora ficam na aba Financeiro/)).not.toBeInTheDocument();
+  });
+
   it('removes a client after confirmation', async () => {
     mockedGetClientes.mockResolvedValue([
       makeCliente({ id: 21, nome: 'Delta Clinic', sigla: 'DC' }),
@@ -938,5 +1017,162 @@ describe('ClientesPage — mutation buttons gated on clientes:editar', () => {
     const card = getClientCard('Gamma Care');
     expect(within(card).getByRole('button', { name: 'Editar' })).toBeInTheDocument();
     expect(within(card).getByRole('button', { name: 'Remover' })).toBeInTheDocument();
+  });
+});
+
+describe('ClientesPage — Vidro toolbar', () => {
+  function renderInHarness(vidroShell: boolean) {
+    const queryClient = createTestQueryClient();
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <VidroToolbarHarness vidroShell={vidroShell}>
+            <ClientesPage />
+          </VidroToolbarHarness>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  beforeEach(() => {
+    mockedGetClientes.mockResolvedValue([makeCliente({ id: 5, nome: 'Gamma Care', sigla: 'GC' })]);
+  });
+
+  it('moves the title and every header action into the toolbar, each exactly once', async () => {
+    renderInHarness(true);
+
+    await screen.findByRole('button', { name: 'Gamma Care' });
+    const h1s = screen.getAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('.vidro-toolbar')).not.toBeNull();
+    expect(h1s[0]).toHaveTextContent('Clientes');
+    expect(screen.getAllByRole('button', { name: 'Novo Cliente' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Importar CSV' })).toHaveLength(1);
+    const toolbar = document.querySelector('.vidro-toolbar') as HTMLElement;
+    expect(within(toolbar).getByRole('button', { name: 'Novo Cliente' })).toBeInTheDocument();
+    expect(within(toolbar).getByRole('button', { name: 'Importar CSV' })).toBeInTheDocument();
+    expect(toolbar.querySelectorAll('[data-tooltip]')).toHaveLength(2);
+    expect(document.querySelector('.page-content .header')).toBeNull();
+  });
+
+  it('keeps the in-page header when the Vidro shell is off', async () => {
+    renderInHarness(false);
+
+    await screen.findByRole('button', { name: 'Gamma Care' });
+    expect(document.querySelector('.vidro-toolbar')).toBeNull();
+    const h1s = screen.getAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].closest('.header')).not.toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Novo Cliente' })).toHaveLength(1);
+  });
+});
+
+describe('ClientesPage — membro restrito a clientes atribuídos', () => {
+  beforeEach(() => {
+    mockedGetClientes.mockResolvedValue([makeCliente({ id: 5, nome: 'Gamma Care', sigla: 'GC' })]);
+  });
+
+  it('restricted_hides_novo_cliente: no Novo Cliente nor Importar CSV, edit stays', async () => {
+    const membership = fakeMembership({ role: 'agent', client_scope: 'atribuidos' });
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: false,
+      can: makeCan(membership),
+      membership,
+    } as never);
+
+    renderPage();
+
+    await screen.findByRole('button', { name: 'Gamma Care' });
+    expect(screen.queryByRole('button', { name: 'Novo Cliente' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Importar CSV' })).not.toBeInTheDocument();
+    const card = getClientCard('Gamma Care');
+    expect(within(card).getByRole('button', { name: 'Editar' })).toBeInTheDocument();
+  });
+
+  it('restricted_shows_badge: shows the assigned-clients line', async () => {
+    const membership = fakeMembership({ role: 'admin', client_scope: 'atribuidos' });
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: false,
+      can: makeCan(membership),
+      membership,
+    } as never);
+
+    renderPage();
+
+    await screen.findByRole('button', { name: 'Gamma Care' });
+    expect(screen.getByText('Você vê os clientes atribuídos a você.')).toBeInTheDocument();
+  });
+
+  it('todos_unchanged: a todos member keeps Novo Cliente and no badge', async () => {
+    const membership = fakeMembership({ role: 'agent', client_scope: 'todos' });
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: false,
+      can: makeCan(membership),
+      membership,
+    } as never);
+
+    renderPage();
+
+    await screen.findByRole('button', { name: 'Gamma Care' });
+    expect(screen.getByRole('button', { name: 'Novo Cliente' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Importar CSV' })).toBeInTheDocument();
+    expect(screen.queryByText('Você vê os clientes atribuídos a você.')).not.toBeInTheDocument();
+  });
+
+  it('an owner with a stale atribuidos scope is never restricted', async () => {
+    const membership = fakeMembership({ role: 'owner', client_scope: 'atribuidos' });
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: true,
+      can: makeCan(membership),
+      membership,
+    } as never);
+
+    renderPage();
+
+    await screen.findByRole('button', { name: 'Gamma Care' });
+    expect(screen.getByRole('button', { name: 'Novo Cliente' })).toBeInTheDocument();
+    expect(screen.queryByText('Você vê os clientes atribuídos a você.')).not.toBeInTheDocument();
+  });
+});
+
+describe('ClientesPage — ?novo=1 deep link', () => {
+  function renderAt(path: string) {
+    const queryClient = createTestQueryClient();
+    render(
+      <MemoryRouter initialEntries={[path]}>
+        <QueryClientProvider client={queryClient}>
+          <ClientesPage />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  beforeEach(() => {
+    mockedGetClientes.mockResolvedValue([makeCliente({ id: 5, nome: 'Gamma Care', sigla: 'GC' })]);
+  });
+
+  it('does not open the create dialog for a member restricted to assigned clients', async () => {
+    const membership = fakeMembership({ role: 'agent', client_scope: 'atribuidos' });
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: false,
+      can: makeCan(membership),
+      membership,
+    } as never);
+    renderAt('/clientes?novo=1');
+
+    await screen.findByRole('button', { name: 'Gamma Care' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('todos_unchanged: still opens the create dialog for an unscoped member', async () => {
+    const membership = fakeMembership({ role: 'agent', client_scope: 'todos' });
+    mockUseAuth.mockReturnValue({
+      canSeeFinancials: false,
+      can: makeCan(membership),
+      membership,
+    } as never);
+    renderAt('/clientes?novo=1');
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
   });
 });

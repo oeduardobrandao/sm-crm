@@ -95,6 +95,8 @@ export interface TarefaWithRelations extends Tarefa {
   tags: TarefaTag[];
   subtarefas_total: number;
   subtarefas_concluidas: number;
+  /** Team comments on the task (`tarefa_comentarios(count)`). */
+  comentarios_total: number;
   cliente_nome: string | null;
   cliente_cor: string | null;
   serie: TarefaSerieResumo | null;
@@ -105,18 +107,20 @@ interface TarefaRow extends Tarefa {
   tarefa_tag_links: { tarefa_tags: TarefaTag | null }[] | null;
   subtarefas: { id: number; concluida: boolean }[] | null;
   tarefa_series: TarefaSerieResumo | null;
+  tarefa_comentarios?: { count: number }[] | null;
 }
 
 export async function getTarefas(): Promise<TarefaWithRelations[]> {
   const { data, error } = await supabase
     .from('tarefas')
     .select(
-      '*, clientes(nome, cor), tarefa_tag_links(tarefa_tags(id, nome, cor)), subtarefas(id, concluida), tarefa_series(id, freq, intervalo, dias_semana, dia_mes, mes, modo, inicio, fim, pausada, encerrada_em, proxima_data)',
+      '*, clientes(nome, cor), tarefa_tag_links(tarefa_tags(id, nome, cor)), subtarefas(id, concluida), tarefa_series(id, freq, intervalo, dias_semana, dia_mes, mes, modo, inicio, fim, pausada, encerrada_em, proxima_data), tarefa_comentarios(count)',
     )
     .order('created_at', { ascending: false });
   if (error) throw error;
   return ((data as TarefaRow[]) || []).map((row) => {
-    const { clientes, tarefa_tag_links, subtarefas, tarefa_series, ...tarefa } = row;
+    const { clientes, tarefa_tag_links, subtarefas, tarefa_series, tarefa_comentarios, ...tarefa } =
+      row;
     const subs = subtarefas || [];
     return {
       ...tarefa,
@@ -125,6 +129,7 @@ export async function getTarefas(): Promise<TarefaWithRelations[]> {
         .filter((t): t is TarefaTag => t != null),
       subtarefas_total: subs.length,
       subtarefas_concluidas: subs.filter((s) => s.concluida).length,
+      comentarios_total: tarefa_comentarios?.[0]?.count ?? 0,
       cliente_nome: clientes?.nome ?? null,
       cliente_cor: clientes?.cor ?? null,
       serie: tarefa_series ?? null,
@@ -179,18 +184,34 @@ export async function deleteTarefa(id: number): Promise<void> {
   if (error) throw error;
 }
 
-/** Replaces the task's tag set (delete-all + re-insert: simplest correct diff). */
+/**
+ * Replaces the task's tag set with a diff: deletes only the removed links and inserts only the
+ * added ones, so an unchanged save writes nothing and the history records no tag churn.
+ */
 export async function setTarefaTags(tarefaId: number, tagIds: number[]): Promise<void> {
-  const conta_id = await getContaId();
-  const { error: delError } = await supabase
+  const { data: current, error: readError } = await supabase
     .from('tarefa_tag_links')
-    .delete()
+    .select('tag_id')
     .eq('tarefa_id', tarefaId);
-  if (delError) throw delError;
-  if (tagIds.length > 0) {
+  if (readError) throw readError;
+  const currentIds = new Set(((current as { tag_id: number }[] | null) || []).map((l) => l.tag_id));
+  const nextIds = new Set(tagIds);
+  const removed = [...currentIds].filter((id) => !nextIds.has(id));
+  const added = [...nextIds].filter((id) => !currentIds.has(id));
+
+  if (removed.length > 0) {
+    const { error: delError } = await supabase
+      .from('tarefa_tag_links')
+      .delete()
+      .eq('tarefa_id', tarefaId)
+      .in('tag_id', removed);
+    if (delError) throw delError;
+  }
+  if (added.length > 0) {
+    const conta_id = await getContaId();
     const { error } = await supabase
       .from('tarefa_tag_links')
-      .insert(tagIds.map((tag_id) => ({ tarefa_id: tarefaId, tag_id, conta_id })));
+      .insert(added.map((tag_id) => ({ tarefa_id: tarefaId, tag_id, conta_id })));
     if (error) throw error;
   }
 }

@@ -26,6 +26,8 @@ export interface EligibleWorkspace {
   name: string;
   role: string;
   feature_mcp: boolean;
+  /** Escopos que o papel do usuário neste workspace permite conceder (o resto fica desabilitado). */
+  allowed_scopes: string[];
 }
 
 export interface EligibleResult {
@@ -39,6 +41,18 @@ export function listEligibleWorkspaces(): Promise<EligibleResult> {
   return call<{ workspaces: EligibleWorkspace[]; platform_admin?: boolean }>({
     action: 'eligible-workspaces',
   }).then((d) => ({ workspaces: d.workspaces, platform_admin: d.platform_admin === true }));
+}
+
+/**
+ * Runs before the consent page asks Supabase for the authorization details: if this client's
+ * Mesaas connection was revoked, the edge function clears Supabase's leftover consent so the
+ * request shows the consent screen again instead of being auto-approved into a refused token.
+ */
+export function prepareOAuthAuthorization(authorizationId: string): Promise<string> {
+  return call<{ outcome: string }>({
+    action: 'prepare-authorization',
+    authorization_id: authorizationId,
+  }).then((d) => d.outcome);
 }
 
 /**
@@ -61,9 +75,14 @@ export interface OAuthGrant {
   created_at: string;
   revoked_at: string | null;
   connected_by: string | null;
+  /** Conexão do próprio usuário: ele pode desconectá-la mesmo sem `configuracoes:editar`. */
+  mine: boolean;
 }
 
-/** Active + revoked Claude OAuth connections for the current workspace (owner/admin). */
+/**
+ * Claude OAuth connections for the current workspace: all of them with `configuracoes:ver`,
+ * otherwise only the caller's own.
+ */
 export function listOAuthGrants(): Promise<OAuthGrant[]> {
   return call<{ grants: OAuthGrant[] }>({ action: 'list-grants' }).then((d) => d.grants);
 }

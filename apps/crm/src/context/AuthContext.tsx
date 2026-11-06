@@ -16,17 +16,25 @@ import {
   signOut as supabaseSignOut,
   healPendingInvite,
 } from '../lib/supabase';
-import { getMyMembership, type MyMembership } from '../store/workspace';
+import {
+  getMyMembership,
+  normalizeClientScope,
+  normalizeClientScopeRev,
+  type MyMembership,
+} from '../store/workspace';
 import { deriveFinancialAccess, type FinancialAccess } from '../lib/financialAccess';
 import {
   computePermissionTransitions,
   derivePermission,
+  isClientScoped,
   type PermissionAction,
   type PermissionCheck,
   type PermissionModule,
 } from '../lib/permissions';
 import { identifyWorkspaceUser, resetAnalytics } from '../lib/analytics';
+import { setClientScopedForErrors } from '../lib/client-scope-errors';
 import { clearPopupSession } from '../hooks/popupSession';
+import { resetVidroLook } from '../lib/vidroLook';
 import {
   clearCrispSessionCache,
   readCrispSessionCache,
@@ -42,6 +50,8 @@ interface Profile {
   role: 'owner' | 'admin' | 'agent';
   conta_id: string;
   active_workspace_id?: string;
+  /** Public URL or null. Written only by `set_member_photo`. */
+  avatar_url?: string | null;
   [key: string]: unknown;
 }
 
@@ -173,6 +183,12 @@ interface AuthContextValue {
    * 1:1, never re-implements the role/preset semantics here.
    */
   can: (module: PermissionModule, action?: PermissionAction) => PermissionCheck;
+  /**
+   * Full membership row for the active workspace, `null` while unresolved.
+   * Read it through the helpers in `lib/permissions.ts` (e.g. `isClientScoped`),
+   * never by poking at its fields directly.
+   */
+  membership: MyMembership | null;
   loading: boolean;
   refetchProfile: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -195,6 +211,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * truth. `null` while unresolved, same as `workspaceRole`.
    */
   const [membership, setMembership] = useState<MyMembership | null>(null);
+  // Lets plain store functions and event handlers read a bare 42501 as a client-scope
+  // refusal (lib/client-scope-errors.ts) without access to this context.
+  useEffect(() => {
+    setClientScopedForErrors(isClientScoped(membership));
+  }, [membership]);
   const [loading, setLoading] = useState(true);
   const [sessionReady, setSessionReady] = useState(false);
   const authGeneration = useRef(0);
@@ -292,8 +313,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // rendering with A's profile/canSeeFinancials/query cache until B's
       // membership resolved: a brief cross-account exposure. Match `signOut`
       // below (clearProfileCache, all four resets, queryClient.clear()).
-      const userChanged = activeUserId.current !== nextUserId;
+      const previousUserId = activeUserId.current;
+      const userChanged = previousUserId !== nextUserId;
       if (userChanged) profileRequestId.current += 1;
+      // The Vidro attribute belongs to the outgoing user. An in-place change (another tab signing
+      // in or out) never runs signOut(), and AppLayout re-seeds useVidro from the attribute, so drop
+      // it here. Not on the first session (previousUserId null): that is the pre-paint's own user.
+      if (userChanged && previousUserId !== null) resetVidroLook();
       activeUserId.current = nextUserId;
       setUser(nextUser);
       setSessionReady(true);
@@ -885,6 +911,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             role?: string;
             can_see_financials?: boolean;
             role_id?: string | null;
+            client_scope?: unknown;
+            client_scope_rev?: unknown;
           };
           if (row.workspace_id !== workspaceId) return;
           // The realtime UPDATE payload is the raw workspace_members row — it
@@ -895,7 +923,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // that now points at a custom role, or that just stopped pointing
           // at one, needs the full embed to know its `permissions` — re-fetch
           // through getMyMembership() rather than guess at that here.
-          if (row.role_id != null || row.role_id !== (membershipRef.current?.role_id ?? null)) {
+          //
+          // Acesso por cliente: the payload carries client_scope and
+          // client_scope_rev but NEVER the assignment list (it lives in
+          // workspace_member_clientes, which has no channel here; the server
+          // bumps client_scope_rev on every scope/list change precisely so
+          // this channel fires). Any scope or rev change refetches through
+          // getMyMembership() for the new list, and the resulting
+          // computePermissionTransitions purges the client-dependent caches.
+          // Compared NORMALIZED: a pre-migration row has no such keys, which
+          // must read as 'todos'/0 (what getMyMembership() resolved), not as
+          // a change on every can_see_financials edit.
+          const current = membershipRef.current;
+          const scopeChanged =
+            normalizeClientScope(row.client_scope) !== (current?.client_scope ?? 'todos') ||
+            normalizeClientScopeRev(row.client_scope_rev) !== (current?.client_scope_rev ?? 0);
+          if (scopeChanged || row.role_id != null || row.role_id !== (current?.role_id ?? null)) {
             fetchAndApplyMembership();
           } else {
             // Bump the shared seq FIRST: this direct apply never goes through
@@ -905,7 +948,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // afterwards, and overwrite this newer, already-applied raw row
             // with its stale result.
             membershipFetchSeq += 1;
-            applyMembership({ ...row, role_id: null, permissions: null } as MyMembership);
+            // Scope and rev are unchanged (checked above), so the current
+            // assignment list is still the truth: carry it forward instead of
+            // letting `cliente_ids: undefined` reach the transition check.
+            applyMembership({
+              ...row,
+              role_id: null,
+              permissions: null,
+              client_scope: current?.client_scope ?? 'todos',
+              client_scope_rev: current?.client_scope_rev ?? 0,
+              cliente_ids: current?.cliente_ids ?? [],
+            } as MyMembership);
           }
         },
       )
@@ -1082,6 +1135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         membershipResolved,
         canSeeFinancials,
         can,
+        membership,
         loading,
         refetchProfile: fetchProfile,
         signOut,

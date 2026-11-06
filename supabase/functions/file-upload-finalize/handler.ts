@@ -1,4 +1,11 @@
 import { createJsonResponder, internalServerError } from "../_shared/http.ts";
+import {
+  CLIENT_SCOPE_MESSAGE,
+  type ClientScopeLoader,
+  loadClientScope as realLoadClientScope,
+  rowVisibility,
+} from "../_shared/client-scope.ts";
+import { folderInfo, folderReadable, folderWritable } from "../_shared/file-client-scope.ts";
 
 type DbClient = {
   from: (table: string) => any;
@@ -17,6 +24,23 @@ interface FileUploadFinalizeDeps {
   headObject: (key: string) => Promise<HeadResult | null>;
   signUrl: (key: string) => Promise<string>;
   streamCopy?: (r2Key: string, meta: { file_id: string; conta_id: string }) => Promise<string>;
+  /** Acesso por cliente: the caller's client scope (defaults to the real loader). */
+  loadClientScope?: ClientScopeLoader;
+}
+
+const THUMBNAIL_SOURCES = new Set(["auto", "frame", "image"]);
+
+/** files.thumbnail_frame_ms / thumbnail_source for a video upload, from the client's claim. */
+export function videoThumbnailOrigin(
+  frame: unknown,
+  source: unknown,
+): { frameMs: number | null; source: "auto" | "frame" | "image" | null } {
+  const frameMs = typeof frame === "number" && Number.isInteger(frame) && frame >= 0 ? frame : null;
+  const claimed = typeof source === "string" && THUMBNAIL_SOURCES.has(source)
+    ? (source as "auto" | "frame" | "image")
+    : null;
+  const resolved = claimed ?? (frameMs !== null ? "auto" : null);
+  return { frameMs: resolved === "image" ? null : frameMs, source: resolved };
 }
 
 export function createFileUploadFinalizeHandler(deps: FileUploadFinalizeDeps) {
@@ -51,6 +75,10 @@ export function createFileUploadFinalizeHandler(deps: FileUploadFinalizeDeps) {
       height?: number;
       duration_seconds?: number;
       blur_data_url?: string;
+      /** Videos: the moment (ms) the thumbnail was captured from. See files.thumbnail_frame_ms. */
+      thumbnail_frame_ms?: number;
+      /** Videos: 'auto' | 'frame' | 'image'. See files.thumbnail_source. */
+      thumbnail_source?: string;
       post_id?: number;
       sort_order?: number;
     };
@@ -105,8 +133,36 @@ export function createFileUploadFinalizeHandler(deps: FileUploadFinalizeDeps) {
     }
 
     if (body.post_id) {
-      const { data: post } = await svc.from("workflow_posts").select("conta_id").eq("id", body.post_id).single();
+      const { data: post } = await svc.from("workflow_posts").select("conta_id, cliente_id, responsavel_id")
+        .eq("id", body.post_id).single();
       if (!post || post.conta_id !== profile.conta_id) return json({ error: "Post not found" }, 404);
+    }
+
+    // Acesso por cliente (migration C3 files INSERT): the target folder must be an assigned client's
+    // (hidden = missing folder; the Clientes root = limitado), and a file with neither folder nor post
+    // would have no client, which only unrestricted members create. Attaching to a post is a write
+    // (no "é dele": own post in a hidden client -> limitado). Unrestricted callers skip the extra
+    // reads; a scope read error is a generic 500.
+    try {
+      const scope = await (deps.loadClientScope ?? realLoadClientScope)(svc, user.id, profile.conta_id);
+      if (!scope.all) {
+        if (body.folder_id) {
+          const info = await folderInfo(svc as any, Number(body.folder_id), profile.conta_id);
+          if (!folderReadable(scope, info)) return json({ error: "Folder not found" }, 404);
+          if (!folderWritable(scope, info)) return json({ error: CLIENT_SCOPE_MESSAGE }, 403);
+        } else if (!body.post_id) {
+          return json({ error: CLIENT_SCOPE_MESSAGE }, 403);
+        }
+        if (body.post_id) {
+          const { data: p } = await svc.from("workflow_posts").select("cliente_id, responsavel_id")
+            .eq("id", body.post_id).eq("conta_id", profile.conta_id).maybeSingle();
+          const vis = p ? rowVisibility(scope, p, user.id) : "hidden";
+          if (vis === "hidden") return json({ error: "Post not found" }, 404);
+          if (vis === "own_only") return json({ error: CLIENT_SCOPE_MESSAGE }, 403);
+        }
+      }
+    } catch (err) {
+      return internalServerError(json, "file-upload-finalize:client-scope", err);
     }
 
     const { data: inserted, error: insErr } = await svc.rpc("file_insert_with_quota", {
@@ -136,6 +192,25 @@ export function createFileUploadFinalizeHandler(deps: FileUploadFinalizeDeps) {
       await svc.from("files").update({ blur_data_url: body.blur_data_url }).eq("id", (inserted as any).id);
     }
 
+    // Written after the insert, like blur_data_url (file_insert_with_quota takes a fixed field
+    // list). Videos only. A frame that isn't a non-negative integer is dropped (NULL just means
+    // TikTok falls back to its default cover frame); an unknown source is too. A frame without
+    // a source is the auto-generated one, and an image never has a frame.
+    let { frameMs: thumbnailFrameMs, source: thumbnailSource } = body.kind === "video"
+      ? videoThumbnailOrigin(body.thumbnail_frame_ms, body.thumbnail_source)
+      : { frameMs: null, source: null };
+    if (thumbnailFrameMs !== null || thumbnailSource !== null) {
+      const { error: frameErr } = await svc
+        .from("files")
+        .update({ thumbnail_frame_ms: thumbnailFrameMs, thumbnail_source: thumbnailSource })
+        .eq("id", (inserted as any).id);
+      if (frameErr) {
+        console.error("file-upload-finalize:thumbnail-frame", frameErr);
+        thumbnailFrameMs = null;
+        thumbnailSource = null;
+      }
+    }
+
     if (body.post_id) {
       // sort_order is assigned client-side from the upload selection order so
       // concurrent uploads land in the picked order, not finalize-completion
@@ -152,7 +227,10 @@ export function createFileUploadFinalizeHandler(deps: FileUploadFinalizeDeps) {
       if (linkErr) return internalServerError(json, "file-upload-finalize:create-link", linkErr);
     }
 
-    if (body.kind === "video" && deps.streamCopy) {
+    // Only uploads into a post copy to Stream right away. Library videos stay
+    // `parked` (set by the files BEFORE INSERT trigger) and enter Stream through
+    // post-media-cleanup-cron once they are linked to a live post.
+    if (body.kind === "video" && body.post_id && deps.streamCopy) {
       const fileId = (inserted as any).id;
       try {
         // Durable intent BEFORE the external call: a pending row with a null uid
@@ -188,6 +266,13 @@ export function createFileUploadFinalizeHandler(deps: FileUploadFinalizeDeps) {
     // to the client — always null at this point in the flow anyway (the ingest below hasn't
     // run yet), but strip them so the keys never leak even if that ever changes.
     const { stream_uid, stream_status, ...pub } = inserted as Record<string, unknown>;
-    return json({ ...pub, url, thumbnail_url, blur_data_url: body.blur_data_url ?? null });
+    return json({
+      ...pub,
+      url,
+      thumbnail_url,
+      blur_data_url: body.blur_data_url ?? null,
+      thumbnail_frame_ms: thumbnailFrameMs,
+      thumbnail_source: thumbnailSource,
+    });
   };
 }

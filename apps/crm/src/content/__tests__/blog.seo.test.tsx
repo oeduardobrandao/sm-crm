@@ -1,6 +1,15 @@
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, test } from 'vitest';
 import { parsePost } from '../blog.schema';
-import { renderBlogIndexHtml, renderBlogPostHtml, renderPostBodyHtml } from '../blog.seo';
+import {
+  blogRevisionMetaTag,
+  renderBlogIndexHtml,
+  renderBlogPostHtml,
+  renderPostBodyHtml,
+} from '../blog.seo';
+import { BLOG_FEATURES } from '../blog.features';
+import { BlogPostArticle } from '../../pages/blog/BlogPostArticle';
+import { DB_POST_META, dbPostLazy, dbPostWithBody } from './blogDbFixture';
 
 const post = parsePost(
   [
@@ -25,7 +34,7 @@ const post = parsePost(
 
 describe('renderPostBodyHtml', () => {
   test('renders markdown headings, links and GFM tables', () => {
-    const html = renderPostBodyHtml(post.body);
+    const html = renderPostBodyHtml(post.body ?? '');
     expect(html).toContain('<h2>Seção</h2>');
     expect(html).toContain('href="/precos"');
     expect(html).toContain('<table>');
@@ -75,5 +84,62 @@ describe('renderBlogIndexHtml', () => {
 
   test('handles an empty blog without crashing', () => {
     expect(renderBlogIndexHtml([])).toContain('<h1>');
+  });
+});
+
+describe('static mirror vs React article parity (DB post)', () => {
+  const db = dbPostWithBody();
+  const mirror = renderBlogPostHtml(db, [db, post]);
+  const page = renderToStaticMarkup(<BlogPostArticle post={db} body={db.body} />);
+  const text = (html: string) =>
+    new DOMParser().parseFromString(html, 'text/html').body.textContent ?? '';
+
+  test.each([
+    ['mirror', mirror],
+    ['page', page],
+  ])('%s carries every piece of the article', (_name, html) => {
+    const t = text(html);
+    expect(t).toContain(DB_POST_META.lede);
+    // Credit line of the cover and of the inline `img:` figure.
+    expect(t).toContain(`Foto: ${DB_POST_META.cover.credit}`);
+    expect(t).toContain(`Foto: ${DB_POST_META.images[0].credit}`);
+    expect(html).toContain(DB_POST_META.cover.url);
+    expect(html).toContain(DB_POST_META.images[0].url);
+    // The infographic is HTML text, every label readable.
+    expect(t).toContain('Tempo médio até a aprovação');
+    expect(t).toContain('Aprovação pelo WhatsApp');
+    expect(t).toContain('Aprovação por link');
+    expect(t).toContain('Fontes');
+    for (const source of DB_POST_META.sources) expect(t).toContain(source.title);
+    expect(t).toContain(BLOG_FEATURES['aprovacao-de-post'].titulo);
+    expect(t).toContain('Equipe Mesaas');
+    expect(html).not.toContain('—');
+  });
+
+  test('the organization byline carries no person role or bio', () => {
+    for (const html of [mirror, page]) {
+      expect(text(html)).not.toContain('Eduardo Brandão');
+      expect(text(html)).not.toContain('Fundador do Mesaas');
+    }
+  });
+
+  test('the mirror refuses a post whose body was not loaded', () => {
+    expect(() => renderBlogPostHtml(dbPostLazy(), [])).toThrow(/body not loaded/);
+  });
+
+  test('the file-post mirror carries no em dash either', () => {
+    expect(renderBlogPostHtml(post, [post])).not.toContain('—');
+  });
+});
+
+describe('blogRevisionMetaTag', () => {
+  test('marks a DB post with its revision', () => {
+    expect(blogRevisionMetaTag(dbPostWithBody())).toBe(
+      '<meta name="mesaas-blog-rev" content="3" />',
+    );
+  });
+
+  test('is empty for a file post (no revision)', () => {
+    expect(blogRevisionMetaTag(post)).toBe('');
   });
 });

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Save, Star, Pencil, Upload } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { openCSVSelector } from '@/lib/csv';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,6 +33,7 @@ export function BriefingTemplatesModal({
    * a partir de um briefing). Sem ele, o modal abre na lista. */
   initialDraft?: BriefingTemplateDraft | null;
 }) {
+  const { t } = useTranslation('clientBriefing');
   const qc = useQueryClient();
   const { data: templates = [] } = useQuery({
     queryKey: ['briefing-templates'],
@@ -68,11 +70,11 @@ export function BriefingTemplatesModal({
     setQuestions([]);
   }
 
-  function startEdit(t: BriefingTemplateRow) {
-    setEditing(t.id);
-    setTitle(t.title);
+  function startEdit(tpl: BriefingTemplateRow) {
+    setEditing(tpl.id);
+    setTitle(tpl.title);
     setQuestions(
-      (t.questions ?? []).map((q) => ({ question: q.question, section: q.section ?? null })),
+      (tpl.questions ?? []).map((q) => ({ question: q.question, section: q.section ?? null })),
     );
   }
 
@@ -84,15 +86,11 @@ export function BriefingTemplatesModal({
           .map((r) => ({ question: r.pergunta.trim(), section: r.secao?.trim() || null }));
         setImporting(false);
         if (imported.length === 0) {
-          toast.error('Nenhuma pergunta válida encontrada. Verifique a coluna "pergunta".');
+          toast.error(t('shared.noValidQuestions'));
           return;
         }
         setQuestions((prev) => [...prev, ...imported]);
-        toast.success(
-          `${imported.length} pergunta${imported.length !== 1 ? 's' : ''} importada${
-            imported.length !== 1 ? 's' : ''
-          }.`,
-        );
+        toast.success(t('templatesModal.imported', { count: imported.length }));
       },
       (err) => {
         setImporting(false);
@@ -124,7 +122,7 @@ export function BriefingTemplatesModal({
   async function handleSave() {
     const cleanTitle = title.trim();
     if (!cleanTitle) {
-      toast.error('Dê um título ao template.');
+      toast.error(t('templatesModal.titleRequired'));
       return;
     }
     const cleanQuestions = questions
@@ -134,28 +132,28 @@ export function BriefingTemplatesModal({
     try {
       if (editing === 'new') {
         await addBriefingTemplate({ title: cleanTitle, questions: cleanQuestions });
-        toast.success('Template criado!');
+        toast.success(t('templatesModal.created'));
       } else if (editing) {
         await updateBriefingTemplate(editing, { title: cleanTitle, questions: cleanQuestions });
-        toast.success('Template atualizado!');
+        toast.success(t('templatesModal.updated'));
       }
       setEditing(null);
       refresh();
     } catch (e: any) {
-      toast.error(e.message ?? 'Erro ao salvar template.');
+      toast.error(e.message ?? t('templatesModal.saveError'));
     } finally {
       setSaving(false);
     }
   }
 
   async function handleDelete(id: string) {
-    if (!window.confirm('Remover este template? Essa ação não pode ser desfeita.')) return;
+    if (!window.confirm(t('templatesModal.confirmRemove'))) return;
     try {
       await removeBriefingTemplate(id);
       refresh();
-      toast.success('Template removido.');
+      toast.success(t('templatesModal.removed'));
     } catch (e: any) {
-      toast.error(e.message ?? 'Erro ao remover template.');
+      toast.error(e.message ?? t('templatesModal.removeError'));
     }
   }
 
@@ -163,9 +161,9 @@ export function BriefingTemplatesModal({
     try {
       await setDefaultBriefingTemplate(id);
       refresh();
-      toast.success('Template padrão definido. Novos clientes começarão com ele.');
+      toast.success(t('templatesModal.defaultSet'));
     } catch (e: any) {
-      toast.error(e.message ?? 'Erro ao definir template padrão.');
+      toast.error(e.message ?? t('templatesModal.defaultError'));
     }
   }
 
@@ -178,65 +176,66 @@ export function BriefingTemplatesModal({
     >
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Templates de Briefing</DialogTitle>
+          <DialogTitle>{t('templatesModal.title')}</DialogTitle>
         </DialogHeader>
 
         {editing === null ? (
           <div className="space-y-3">
             <div className="flex gap-2">
               <Button size="sm" onClick={startNew}>
-                <Plus size={14} className="mr-1.5" /> Novo template
+                <Plus size={14} className="mr-1.5" /> {t('templatesModal.newTemplate')}
               </Button>
               <Button size="sm" variant="outline" onClick={startNewFromCSV}>
-                <Upload size={14} className="mr-1.5" /> Novo via CSV
+                <Upload size={14} className="mr-1.5" /> {t('templatesModal.newViaCsv')}
               </Button>
             </div>
             {templates.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4">Nenhum template ainda.</p>
+              <p className="text-sm text-muted-foreground py-4">{t('templatesModal.empty')}</p>
             ) : (
               <div className="space-y-2">
-                {templates.map((t) => (
+                {templates.map((tpl) => (
                   <div
-                    key={t.id}
+                    key={tpl.id}
                     className="flex items-center justify-between border rounded-lg p-3"
                   >
                     <div className="min-w-0">
                       <p className="text-sm font-medium truncate">
-                        {t.title}
-                        {t.is_default && (
-                          <span className="ml-2 text-xs text-primary font-semibold">(padrão)</span>
+                        {tpl.title}
+                        {tpl.is_default && (
+                          <span className="ml-2 text-xs text-primary font-semibold">
+                            {t('templatesModal.defaultBadge')}
+                          </span>
                         )}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {(t.questions ?? []).length} pergunta
-                        {(t.questions ?? []).length !== 1 ? 's' : ''}
+                        {t('templatesModal.questionCount', { count: (tpl.questions ?? []).length })}
                       </p>
                     </div>
                     <div className="flex gap-1 shrink-0">
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => handleSetDefault(t.id)}
-                        title="Definir como padrão"
+                        onClick={() => handleSetDefault(tpl.id)}
+                        title={t('templatesModal.setDefault')}
                       >
                         <Star
                           size={14}
-                          className={t.is_default ? 'fill-primary text-primary' : ''}
+                          className={tpl.is_default ? 'fill-primary text-primary' : ''}
                         />
                       </Button>
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => startEdit(t)}
-                        aria-label="Editar template"
+                        onClick={() => startEdit(tpl)}
+                        aria-label={t('templatesModal.editTemplate')}
                       >
                         <Pencil size={14} />
                       </Button>
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => handleDelete(t.id)}
-                        aria-label="Remover template"
+                        onClick={() => handleDelete(tpl.id)}
+                        aria-label={t('templatesModal.removeTemplate')}
                       >
                         <Trash2 size={14} />
                       </Button>
@@ -251,19 +250,23 @@ export function BriefingTemplatesModal({
             <Input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Título do template (ex: Onboarding)"
+              placeholder={t('templatesModal.titlePlaceholder')}
             />
             {importing && (
-              <div className="csv-progress" role="progressbar" aria-label="Importando CSV" />
+              <div
+                className="csv-progress"
+                role="progressbar"
+                aria-label={t('shared.importingCsv')}
+              />
             )}
             <div className="space-y-2">
               {questions.length > 0 && (
                 <div className="flex gap-2 px-0.5">
                   <span className="flex-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Perguntas
+                    {t('templatesModal.questionsHeader')}
                   </span>
                   <span className="w-40 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Seções
+                    {t('templatesModal.sectionsHeader')}
                   </span>
                   <span className="w-9 shrink-0" aria-hidden="true" />
                 </div>
@@ -273,20 +276,20 @@ export function BriefingTemplatesModal({
                   <Input
                     value={q.question}
                     onChange={(e) => updateRow(i, { question: e.target.value })}
-                    placeholder="Pergunta..."
+                    placeholder={t('templatesModal.questionPlaceholder')}
                     className="flex-1"
                   />
                   <Input
                     value={q.section ?? ''}
                     onChange={(e) => updateRow(i, { section: e.target.value })}
-                    placeholder="Seção (opcional)"
+                    placeholder={t('templatesModal.sectionPlaceholder')}
                     className="w-40"
                   />
                   <Button
                     size="sm"
                     variant="ghost"
                     onClick={() => removeRow(i)}
-                    aria-label="Remover pergunta"
+                    aria-label={t('shared.removeQuestion')}
                   >
                     <Trash2 size={14} />
                   </Button>
@@ -294,17 +297,19 @@ export function BriefingTemplatesModal({
               ))}
               <div className="flex items-center gap-2 flex-wrap">
                 <Button size="sm" variant="outline" onClick={addRow}>
-                  <Plus size={14} className="mr-1.5" /> Adicionar pergunta
+                  <Plus size={14} className="mr-1.5" /> {t('templatesModal.addQuestion')}
                 </Button>
                 <Button size="sm" variant="outline" onClick={handleImportCSV} disabled={importing}>
-                  <Upload size={14} className="mr-1.5" /> Importar CSV
+                  <Upload size={14} className="mr-1.5" /> {t('actions.importCsv')}
                 </Button>
-                <span className="text-xs text-muted-foreground">Colunas: pergunta*, secao</span>
+                <span className="text-xs text-muted-foreground">
+                  {t('templatesModal.columnsHint')}
+                </span>
               </div>
             </div>
             <div className="flex gap-2 pt-2">
               <Button size="sm" onClick={handleSave} disabled={saving}>
-                <Save size={14} className="mr-1.5" /> Salvar template
+                <Save size={14} className="mr-1.5" /> {t('templatesModal.saveTemplate')}
               </Button>
               <Button
                 size="sm"
@@ -312,7 +317,7 @@ export function BriefingTemplatesModal({
                 onClick={() => setEditing(null)}
                 disabled={saving}
               >
-                Cancelar
+                {t('actions.cancel')}
               </Button>
             </div>
           </div>

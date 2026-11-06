@@ -27,6 +27,23 @@ describe('CoverEditor', () => {
     );
   });
 
+  it('layoutPlatforms: mesmo kicker e handle derivados do CoverBlock', () => {
+    render(
+      <CoverEditor
+        block={coverBlock()}
+        snapshot={makeSnapshotFixture()}
+        onConfigChange={vi.fn()}
+        layoutPlatforms={['tiktok', 'instagram']}
+      />,
+    );
+    expect(screen.getByRole('textbox', { name: 'Texto de destaque da capa' })).toHaveValue(
+      'Relatório mensal · Instagram e TikTok',
+    );
+    expect(screen.getByRole('textbox', { name: 'Subtítulo da capa' })).toHaveValue(
+      '@seucliente · Dermatologia · São Paulo',
+    );
+  });
+
   it('editar o título chama onConfigChange com o novo valor', () => {
     const onConfigChange = vi.fn();
     render(

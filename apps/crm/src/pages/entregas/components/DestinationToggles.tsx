@@ -1,4 +1,5 @@
 import { useId, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { PLATFORM_DEFS, type PlatformId } from '@mesaas/platforms';
 import { PLATFORM_ICONS } from '@/components/platformIcons';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -25,6 +26,7 @@ export function DestinationToggles({
   pending: boolean;
   onToggle: (platform: PlatformId, on: boolean) => void;
 }) {
+  const { t } = useTranslation('postPanels');
   const [lastHint, setLastHint] = useState(false);
   // Único por instância: o WorkflowDrawer pode ter vários posts expandidos.
   const labelId = useId();
@@ -33,7 +35,7 @@ export function DestinationToggles({
 
   return (
     <div className="drawer-post-field drawer-post-field--destinos">
-      <label id={labelId}>Destinos</label>
+      <label id={labelId}>{t('destinationToggles.label')}</label>
       <TooltipProvider delayDuration={200}>
         <div role="group" aria-labelledby={labelId} className="icon-chips">
           {options.map((o) => {
@@ -66,7 +68,7 @@ export function DestinationToggles({
       </TooltipProvider>
       {lastHint && (
         <p style={{ fontSize: '0.72rem', color: 'var(--danger-text)', margin: '0.35rem 0 0' }}>
-          O post precisa de pelo menos um destino.
+          {t('destinationToggles.needsOne')}
         </p>
       )}
     </div>

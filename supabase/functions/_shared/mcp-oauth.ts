@@ -1,9 +1,13 @@
 import { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { effectivePlanFeature } from "./entitlements-rpc.ts";
+import { hasPermissionFor } from "./permissions.ts";
 import {
   MCP_ALLOWED_SCOPES,
+  MCP_SCOPE_PERMISSION,
   McpKeyContext,
+  McpScope,
   MCP_TOKEN_PREFIX,
+  memberRole,
   resolveMcpKey,
   validateScopes,
 } from "./mcp-token.ts";
@@ -113,19 +117,75 @@ export function grantActive(
   );
 }
 
+/**
+ * The subset of `scopes` the user's CURRENT role in the workspace allows (MCP_SCOPE_PERMISSION).
+ * Each distinct module/action pair is checked once via has_permission_for, which fails closed:
+ * a non-member, an unknown scope or an RPC error yields no scope.
+ */
+export async function permittedMcpScopes(
+  db: SupabaseClient,
+  userId: string,
+  contaId: string,
+  scopes: readonly string[] = MCP_ALLOWED_SCOPES,
+): Promise<string[]> {
+  const known = scopes.filter((s): s is McpScope => s in MCP_SCOPE_PERMISSION);
+  const pairKey = (s: McpScope) => {
+    const p = MCP_SCOPE_PERMISSION[s];
+    return `${p.module}:${p.action}`;
+  };
+  const pairs = [...new Set(known.map(pairKey))];
+  const results = await Promise.all(pairs.map((pair) => {
+    const [module, action] = pair.split(":") as [string, "ver" | "editar"];
+    return hasPermissionFor(db, userId, contaId, module, action);
+  }));
+  const allowed = new Set(pairs.filter((_, i) => results[i]));
+  return known.filter((s) => allowed.has(pairKey(s)));
+}
+
+export type PrepareAuthorizationOutcome = "repaired" | "ok" | "not_found" | "error";
+const PREPARE_OUTCOMES = new Set(["repaired", "ok", "not_found"]);
+const AUTHORIZATION_ID_RE = /^[A-Za-z0-9_-]{1,200}$/;
+
+/**
+ * Runs before the consent page asks Supabase for a pending authorization's details (the call that
+ * auto-approves an existing consent). When the client behind it has no active Mesaas grant for this
+ * user, mcp_oauth_prepare_authorization ends the stale consent + sessions, so a revoked connection
+ * reconnects through the consent screen instead of looping on 401. `userId` must be the
+ * JWT-verified caller. Never throws: any failure is "error" and the page carries on as before.
+ */
+export async function prepareOAuthAuthorization(
+  db: SupabaseClient,
+  authorizationId: unknown,
+  userId: string,
+): Promise<PrepareAuthorizationOutcome> {
+  if (typeof authorizationId !== "string" || !AUTHORIZATION_ID_RE.test(authorizationId)) return "not_found";
+  try {
+    const { data, error } = await db.rpc("mcp_oauth_prepare_authorization", {
+      p_authorization_id: authorizationId,
+      p_user_id: userId,
+    });
+    if (error) {
+      console.error("[mcp-oauth] prepare authorization failed:", error.message);
+      return "error";
+    }
+    if (typeof data !== "string" || !PREPARE_OUTCOMES.has(data)) {
+      console.error("[mcp-oauth] prepare authorization: unexpected outcome");
+      return "error";
+    }
+    return data as PrepareAuthorizationOutcome;
+  } catch (e) {
+    console.error("[mcp-oauth] prepare authorization threw:", e instanceof Error ? e.message : String(e));
+    return "error";
+  }
+}
+
 /** True if the user currently holds a workspace_members row for the workspace. */
 export async function isWorkspaceMember(
   db: SupabaseClient,
   userId: string,
   contaId: string,
 ): Promise<boolean> {
-  const { data } = await db
-    .from("workspace_members")
-    .select("user_id")
-    .eq("user_id", userId)
-    .eq("workspace_id", contaId)
-    .maybeSingle();
-  return data !== null;
+  return (await memberRole(db, userId, contaId)) !== null;
 }
 
 /**
@@ -155,7 +215,8 @@ export async function resolveOAuthCtx(
 
   const contaId = grant.conta_id as string;
   const featureOn = await effectivePlanFeature(db, contaId, "feature_mcp");
-  const isMember = await isWorkspaceMember(db, user.id, contaId);
+  const role = await memberRole(db, user.id, contaId);
+  const isMember = role !== null;
   if (!grantActive(grant as { revoked_at: string | null }, featureOn, isMember)) return null;
 
   // Enforce the token's granted scopes: when the JWT carries MCP-domain scopes (the client
@@ -164,13 +225,22 @@ export async function resolveOAuthCtx(
   // to be re-confirmed empirically once Supabase's OAuth server is enabled.)
   const payload = decodeJwtPayload(token);
   const tokenMcp = mcpScopesFromClaim(payload?.scope ?? payload?.scopes ?? null);
-  const scopes = boundGrantScopes((grant.scopes as string[]) ?? [], tokenMcp);
+  const bounded = boundGrantScopes((grant.scopes as string[]) ?? [], tokenMcp);
+  // Re-capped by the user's CURRENT role on every request, like membership above: a role
+  // downgrade shrinks the connection right away instead of surviving until a reconnect.
+  const [scopes, canWriteFinancials] = await Promise.all([
+    permittedMcpScopes(db, user.id, contaId, bounded),
+    hasPermissionFor(db, user.id, contaId, "financeiro", "editar"),
+  ]);
+  if (scopes.length === 0) return null;
 
   return {
     conta_id: contaId,
     scopes,
     key_id: `oauth:${clientId}`,
     created_by: user.id as string,
+    role,
+    can_write_financials: canWriteFinancials,
   };
 }
 

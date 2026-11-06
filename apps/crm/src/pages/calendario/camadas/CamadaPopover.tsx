@@ -1,10 +1,14 @@
 import { useId, useMemo, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { useTranslation } from 'react-i18next';
+import { getDateFnsLocale, i18n } from '@mesaas/i18n';
 import { Building2, Clock, Flag, Layers, Tag, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
+import { useVidroShell } from '@/components/layout/PageToolbarContext';
+import { BottomSheet } from '@/components/mobile/BottomSheet';
+import { useSheetActions } from '@/components/mobile/sheetActions';
 import { formatFinancialBRL, type FinancialAccess } from '@/lib/financialAccess';
 import { parseDateOnly } from '../../tarefas/tarefasLogic';
 import {
@@ -17,51 +21,64 @@ import { NICHE_CALENDARS } from '../nicheCalendars/registry';
 import { IconeDaCamada } from './icones';
 import { corDaCamada, tituloDaCamada } from './toCamadaEventInput';
 import { pagamentoDoItem, type PagamentoAConfirmar } from './useConfirmarPagamento';
-import { CAMADA_ROTULO, type CamadaItem } from './tipos';
+import { rotuloDaCamada, type CamadaItem } from './tipos';
 
 export interface CamadaPopoverProps {
   item: CamadaItem;
-  /** Clicked chip, or the tab container as a fallback. */
-  anchor: HTMLElement;
+  /** Clicked chip, or the tab container as a fallback. Unused by the sheet. */
+  anchor?: HTMLElement | null;
   onClose: () => void;
   /** Hands a receivable/payment to useConfirmarPagamento (its AlertDialog). */
   onConfirmar: (p: PagamentoAConfirmar) => void;
   canSeeFinancials: FinancialAccess | undefined;
+  /** `sheet`: the phone face, a bottom sheet the parent opens and closes with `open`
+   *  (kept mounted, so closing pops its history entry). */
+  apresentacao?: 'popover' | 'sheet';
+  open?: boolean;
+}
+
+/** Sheet body: builds the content with the sheet's closeThen, so "Abrir …" navigates and
+ *  "Confirmar" opens its dialog only once the sheet's history entry is gone. */
+function CorpoDoSheet({
+  montar,
+}: {
+  montar: (fecharEntao: (fn: () => void) => void) => ReactNode;
+}) {
+  const { closeThen } = useSheetActions();
+  return <>{montar(closeThen)}</>;
 }
 
 // ---- Formatting ---------------------------------------------------------------------
 
 const maiuscula = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-/** "Quarta, 7 de outubro de 2026". */
+/** "Quarta, 7 de outubro de 2026" ("Wednesday, October 7, 2026" in English). */
 function diaComSemana(d: Date): string {
-  const semana = format(d, 'EEEE', { locale: ptBR }).replace('-feira', '');
-  return `${maiuscula(semana)}, ${format(d, "d 'de' MMMM 'de' yyyy", { locale: ptBR })}`;
+  const locale = getDateFnsLocale();
+  const semana = format(d, 'EEEE', { locale }).replace('-feira', '');
+  return `${maiuscula(semana)}, ${format(d, i18n.t('calendario:popover.dateLong'), { locale })}`;
 }
 
 /** "Faltam 3 dias", "Vence hoje", "Estourado há 2 dias". */
 export function situacaoDoPrazo(diasRestantes: number, estourado: boolean): string {
   if (estourado) {
-    const n = Math.abs(diasRestantes);
-    return `Estourado há ${n} ${n === 1 ? 'dia' : 'dias'}`;
+    return i18n.t('calendario:popover.overdue', { count: Math.abs(diasRestantes) });
   }
-  if (diasRestantes === 0) return 'Vence hoje';
-  return diasRestantes === 1 ? 'Falta 1 dia' : `Faltam ${diasRestantes} dias`;
+  if (diasRestantes === 0) return i18n.t('calendario:shared.dueToday');
+  return i18n.t('calendario:popover.remaining', { count: diasRestantes });
 }
+
+const TIPOS_COMEMORATIVA = ['br', 'world', 'prof', 'week', 'month'] as const;
 
 /** One vocabulary for a commemorative date's type and its tags: the base words
  *  of the Datas Comemorativas tab filters ("Brasil", "Mundial", "Profissional"),
- *  the week/month types, then every niche's own filter labels. */
-const ROTULO_COMEMORATIVA: Record<string, string> = Object.assign(
-  {
-    br: 'Brasil',
-    world: 'Mundial',
-    prof: 'Profissional',
-    week: 'Semana',
-    month: 'Mês temático',
-  },
-  ...NICHE_CALENDARS.map((n) => n.filterLabels),
-);
+ *  the week/month types, then every niche's own filter labels. Built at render so
+ *  it follows the UI language. */
+function rotulosComemorativa(): Record<string, string> {
+  const base: Record<string, string> = {};
+  for (const tipo of TIPOS_COMEMORATIVA) base[tipo] = i18n.t(`calendario:popover.tipos.${tipo}`);
+  return Object.assign(base, ...NICHE_CALENDARS.map((n) => ({ ...n.filterLabels })));
+}
 
 /** Subtitle under the title: when the item happens. */
 function quando(item: CamadaItem): string {
@@ -72,11 +89,14 @@ function quando(item: CamadaItem): string {
   const d = parseDateOnly(item.dia);
   if (item.camada === 'comemorativas') {
     if (item.mesInteiro) {
-      return maiuscula(format(d, "MMMM 'de' yyyy", { locale: ptBR }));
+      return maiuscula(format(d, i18n.t('dateFormat.monthYear'), { locale: getDateFnsLocale() }));
     }
-    return item.ate ? `${diaComSemana(d)} até ${item.ate}` : diaComSemana(d);
+    return item.ate
+      ? i18n.t('calendario:popover.until', { start: diaComSemana(d), end: item.ate })
+      : diaComSemana(d);
   }
-  if (item.camada === 'prazos') return `Prazo: ${diaComSemana(d)}`;
+  if (item.camada === 'prazos')
+    return i18n.t('calendario:popover.deadline', { date: diaComSemana(d) });
   return diaComSemana(d);
 }
 
@@ -109,20 +129,19 @@ export function CamadaPopover({
   onClose,
   onConfirmar,
   canSeeFinancials,
+  apresentacao = 'popover',
+  open = true,
 }: CamadaPopoverProps) {
+  const { t } = useTranslation('calendario');
   const tituloId = useId();
   const navigate = useNavigate();
-  const virtualRef = useMemo(() => ({ current: ancoraVirtual(anchor) }), [anchor]);
+  const vidro = useVidroShell();
+  const virtualRef = useMemo(() => (anchor ? { current: ancoraVirtual(anchor) } : null), [anchor]);
   const cor = corDaCamada(item);
-
-  function ir(destino: string) {
-    onClose();
-    navigate(destino);
-  }
 
   const titulo =
     item.camada === 'recebimentos' || item.camada === 'pagamentos'
-      ? CAMADA_ROTULO[item.camada]
+      ? rotuloDaCamada(item.camada)
       : item.camada === 'prazos'
         ? item.prazo.etapaNome
         : item.camada === 'datas'
@@ -131,161 +150,240 @@ export function CamadaPopover({
             ? item.nome
             : tituloDaCamada(item);
 
-  let corpo: ReactNode = null;
-  let acao: ReactNode = null;
+  /** Body and action, given how to close before leaving (popover: at once; sheet: after
+   *  its history entry pops). */
+  function conteudo(fecharEntao: (fn: () => void) => void): { corpo: ReactNode; acao: ReactNode } {
+    const ir = (destino: string) => fecharEntao(() => navigate(destino));
+    let corpo: ReactNode = null;
+    let acao: ReactNode = null;
 
-  switch (item.camada) {
-    case 'posts': {
-      const p = item.post;
-      corpo = (
-        <>
-          {p.cliente_nome && <Linha icone={<Building2 {...ICONE} />}>{p.cliente_nome}</Linha>}
-          <Linha icone={<Layers {...ICONE} />}>{PLATFORM_LABELS[p.platform] ?? p.platform}</Linha>
-          <div>
-            <span className={`post-status-chip ${PUBLISH_STATE_CLASS[item.estado]}`}>
-              {PUBLISH_STATE_LABELS[item.estado]}
-            </span>
-          </div>
-        </>
-      );
-      acao = (
-        <Button
-          type="button"
-          size="sm"
-          className="mb-0"
-          onClick={() =>
-            ir(
-              p.workflow_id != null
-                ? `/entregas?drawer=${p.workflow_id}&post=${p.id}`
-                : `/entregas?post=${p.id}`,
-            )
-          }
-        >
-          Abrir post
-        </Button>
-      );
-      break;
-    }
-    case 'prazos': {
-      const pz = item.prazo;
-      corpo = (
-        <>
-          <Linha icone={<Layers {...ICONE} />}>{`Entrega: ${pz.workflowTitle}`}</Linha>
-          {pz.clienteId !== null && (
-            <Linha icone={<Building2 {...ICONE} />}>{`Cliente: ${pz.clienteNome}`}</Linha>
-          )}
-          <Linha icone={<Clock {...ICONE} />}>
-            <span
-              className="font-semibold"
-              style={{ color: pz.estourado ? 'var(--danger-text)' : 'var(--text-main)' }}
-            >
-              {situacaoDoPrazo(pz.diasRestantes, pz.estourado)}
-            </span>
-          </Linha>
-        </>
-      );
-      acao = (
-        <Button
-          type="button"
-          size="sm"
-          className="mb-0"
-          onClick={() => ir(`/entregas?drawer=${pz.workflowId}`)}
-        >
-          Abrir entrega
-        </Button>
-      );
-      break;
-    }
-    case 'recebimentos':
-    case 'pagamentos':
-      corpo = (
-        <ul className="m-0 flex list-none flex-col gap-2 p-0">
-          {item.itens.map((i) => (
-            <li
-              key={i.referencia}
-              className="flex items-center gap-3 rounded-[10px] border px-3 py-2 text-[13px]"
-              style={{ borderColor: 'var(--border-color)' }}
-            >
-              <div className="min-w-0 flex-1">
-                <div
-                  className="truncate font-medium"
-                  style={
-                    i.pago ? { textDecoration: 'line-through', color: 'var(--text-muted)' } : {}
-                  }
-                >
-                  {i.nome}
-                </div>
-                <div style={{ color: 'var(--text-muted)' }}>
-                  {formatFinancialBRL(i.valor, canSeeFinancials ?? 'unknown')}
-                </div>
-                {i.ajustado && (
-                  <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
-                    {`Dia ${i.diaConfigurado}, ajustado para o último dia do mês`}
-                  </div>
-                )}
-              </div>
-              {i.pago ? (
-                <span className="badge badge-success badge--sm">Pago</span>
-              ) : (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="mb-0"
-                  aria-label={`Confirmar ${i.nome}`}
-                  onClick={() => {
-                    onClose();
-                    onConfirmar(pagamentoDoItem(i));
-                  }}
-                >
-                  Confirmar
-                </Button>
-              )}
-            </li>
-          ))}
-        </ul>
-      );
-      break;
-    case 'datas':
-      corpo = item.cliente.nome ? (
-        <Linha icone={<Building2 {...ICONE} />}>{item.cliente.nome}</Linha>
-      ) : null;
-      acao = (
-        <Button
-          type="button"
-          size="sm"
-          className="mb-0"
-          onClick={() => ir(`/clientes/${item.cliente.id}`)}
-        >
-          Abrir cliente
-        </Button>
-      );
-      break;
-    case 'comemorativas': {
-      const tags = item.tags.filter((t) => t !== item.tipo);
-      corpo = (
-        <>
-          <Linha icone={<Flag {...ICONE} />}>{ROTULO_COMEMORATIVA[item.tipo] ?? item.tipo}</Linha>
-          {tags.length > 0 && (
-            <Linha icone={<Tag {...ICONE} />}>
-              <div className="flex flex-wrap gap-1.5">
-                {tags.map((t) => (
-                  <span key={t} className="badge badge-neutral badge--sm">
-                    {ROTULO_COMEMORATIVA[t] ?? t}
-                  </span>
-                ))}
-              </div>
+    switch (item.camada) {
+      case 'posts': {
+        const p = item.post;
+        corpo = (
+          <>
+            {p.cliente_nome && <Linha icone={<Building2 {...ICONE} />}>{p.cliente_nome}</Linha>}
+            <Linha icone={<Layers {...ICONE} />}>{PLATFORM_LABELS[p.platform] ?? p.platform}</Linha>
+            <div>
+              <span className={`post-status-chip ${PUBLISH_STATE_CLASS[item.estado]}`}>
+                {PUBLISH_STATE_LABELS[item.estado]}
+              </span>
+            </div>
+          </>
+        );
+        acao = (
+          <Button
+            type="button"
+            size="sm"
+            className="mb-0"
+            onClick={() =>
+              ir(
+                p.workflow_id != null
+                  ? `/entregas?drawer=${p.workflow_id}&post=${p.id}`
+                  : `/entregas?post=${p.id}`,
+              )
+            }
+          >
+            {t('popover.openPost')}
+          </Button>
+        );
+        break;
+      }
+      case 'prazos': {
+        const pz = item.prazo;
+        corpo = (
+          <>
+            <Linha icone={<Layers {...ICONE} />}>
+              {t('popover.workflow', { title: pz.workflowTitle })}
             </Linha>
-          )}
-        </>
-      );
-      break;
+            {pz.clienteId !== null && (
+              <Linha icone={<Building2 {...ICONE} />}>
+                {t('popover.client', { name: pz.clienteNome })}
+              </Linha>
+            )}
+            <Linha icone={<Clock {...ICONE} />}>
+              <span
+                className="font-semibold"
+                style={{ color: pz.estourado ? 'var(--danger-text)' : 'var(--text-main)' }}
+              >
+                {situacaoDoPrazo(pz.diasRestantes, pz.estourado)}
+              </span>
+            </Linha>
+          </>
+        );
+        acao = (
+          <Button
+            type="button"
+            size="sm"
+            className="mb-0"
+            onClick={() => ir(`/entregas?drawer=${pz.workflowId}`)}
+          >
+            {t('popover.openWorkflow')}
+          </Button>
+        );
+        break;
+      }
+      case 'recebimentos':
+      case 'pagamentos':
+        corpo = (
+          <ul className="m-0 flex list-none flex-col gap-2 p-0">
+            {item.itens.map((i) => (
+              <li
+                key={i.referencia}
+                className="flex items-center gap-3 rounded-[10px] border px-3 py-2 text-[13px]"
+                style={{ borderColor: 'var(--border-color)' }}
+              >
+                <div className="min-w-0 flex-1">
+                  <div
+                    className="truncate font-medium"
+                    style={
+                      i.pago ? { textDecoration: 'line-through', color: 'var(--text-muted)' } : {}
+                    }
+                  >
+                    {i.nome}
+                  </div>
+                  <div style={{ color: 'var(--text-muted)' }}>
+                    {formatFinancialBRL(i.valor, canSeeFinancials ?? 'unknown')}
+                  </div>
+                  {i.ajustado && (
+                    <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+                      {t('popover.adjustedDay', { day: i.diaConfigurado })}
+                    </div>
+                  )}
+                </div>
+                {i.pago ? (
+                  <span className="badge badge-success badge--sm">{t('shared.paid')}</span>
+                ) : (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="mb-0"
+                    aria-label={t('shared.confirmNamed', { name: i.nome })}
+                    onClick={() => fecharEntao(() => onConfirmar(pagamentoDoItem(i)))}
+                  >
+                    {t('actions.confirm')}
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        );
+        break;
+      case 'datas':
+        corpo = item.cliente.nome ? (
+          <Linha icone={<Building2 {...ICONE} />}>{item.cliente.nome}</Linha>
+        ) : null;
+        acao = (
+          <Button
+            type="button"
+            size="sm"
+            className="mb-0"
+            onClick={() => ir(`/clientes/${item.cliente.id}`)}
+          >
+            {t('popover.openClient')}
+          </Button>
+        );
+        break;
+      case 'comemorativas': {
+        const tags = item.tags.filter((tag) => tag !== item.tipo);
+        const rotulos = rotulosComemorativa();
+        corpo = (
+          <>
+            <Linha icone={<Flag {...ICONE} />}>{rotulos[item.tipo] ?? item.tipo}</Linha>
+            {tags.length > 0 && (
+              <Linha icone={<Tag {...ICONE} />}>
+                <div className="flex flex-wrap gap-1.5">
+                  {tags.map((tag) => (
+                    <span key={tag} className="badge badge-neutral badge--sm">
+                      {rotulos[tag] ?? tag}
+                    </span>
+                  ))}
+                </div>
+              </Linha>
+            )}
+          </>
+        );
+        break;
+      }
     }
+
+    return { corpo, acao };
   }
+
+  const cabecalho = (
+    <>
+      <span
+        className="agenda-camada-swatch agenda-camada-swatch--lg mt-1"
+        style={{ borderColor: cor, color: cor }}
+        aria-hidden="true"
+      >
+        <IconeDaCamada item={item} size={14} strokeWidth={2} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div
+          className="text-[11px] font-semibold uppercase tracking-[0.06em]"
+          style={{ color: 'var(--text-light)' }}
+        >
+          {rotuloDaCamada(item.camada)}
+        </div>
+        {apresentacao === 'sheet' ? (
+          <p
+            className="m-0 break-words text-[18px] font-semibold leading-tight"
+            style={{ fontFamily: 'var(--font-heading)' }}
+            aria-hidden="true"
+          >
+            {titulo}
+          </p>
+        ) : (
+          <h2
+            id={tituloId}
+            className="m-0 break-words text-[18px] font-semibold leading-tight"
+            style={{ fontFamily: 'var(--font-heading)' }}
+          >
+            {titulo}
+          </h2>
+        )}
+        <div className="mt-1 text-[13px]" style={{ color: 'var(--text-muted)' }}>
+          {quando(item)}
+        </div>
+      </div>
+    </>
+  );
+
+  if (apresentacao === 'sheet') {
+    return (
+      <BottomSheet
+        open={open}
+        onOpenChange={(aberto) => !aberto && onClose()}
+        title={titulo}
+        hideTitle
+        detents={['fit']}
+      >
+        <CorpoDoSheet
+          montar={(fecharEntao) => {
+            const { corpo, acao } = conteudo(fecharEntao);
+            return (
+              <div className="phone-agenda-camada">
+                <div className="flex items-start gap-3">{cabecalho}</div>
+                {corpo}
+                {acao && <div className="phone-agenda-camada__acao">{acao}</div>}
+              </div>
+            );
+          }}
+        />
+      </BottomSheet>
+    );
+  }
+
+  const { corpo, acao } = conteudo((fn) => {
+    onClose();
+    fn();
+  });
 
   return (
     <Popover open onOpenChange={(aberto) => !aberto && onClose()}>
-      <PopoverAnchor virtualRef={virtualRef} />
+      {virtualRef && <PopoverAnchor virtualRef={virtualRef} />}
       <PopoverContent
         side="bottom"
         align="start"
@@ -293,48 +391,31 @@ export function CamadaPopover({
         collisionPadding={16}
         aria-labelledby={tituloId}
         className="flex w-[360px] max-w-[calc(100vw-32px)] flex-col gap-4 overflow-y-auto p-5"
+        // Under Vidro, overlays.css paints the menu glass; these inline surface styles would beat it.
         style={{
-          background: 'var(--card-bg)',
-          borderColor: 'var(--border-color)',
-          borderRadius: 12,
+          ...(vidro
+            ? undefined
+            : {
+                background: 'var(--card-bg)',
+                borderColor: 'var(--border-color)',
+                borderRadius: 12,
+              }),
           color: 'var(--text-main)',
-          boxShadow: 'var(--shadow-popover, 0 12px 32px rgba(0, 0, 0, 0.16))',
+          ...(vidro
+            ? undefined
+            : { boxShadow: 'var(--shadow-popover, 0 12px 32px rgba(0, 0, 0, 0.16))' }),
           maxHeight: 'min(560px, var(--radix-popover-content-available-height, 560px))',
         }}
       >
         <div className="-mr-1.5 -mt-1.5 flex items-start gap-3">
-          <span
-            className="agenda-camada-swatch agenda-camada-swatch--lg mt-1"
-            style={{ borderColor: cor, color: cor }}
-            aria-hidden="true"
-          >
-            <IconeDaCamada item={item} size={14} strokeWidth={2} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div
-              className="text-[11px] font-semibold uppercase tracking-[0.06em]"
-              style={{ color: 'var(--text-light)' }}
-            >
-              {CAMADA_ROTULO[item.camada]}
-            </div>
-            <h2
-              id={tituloId}
-              className="m-0 break-words text-[18px] font-semibold leading-tight"
-              style={{ fontFamily: 'var(--font-heading)' }}
-            >
-              {titulo}
-            </h2>
-            <div className="mt-1 text-[13px]" style={{ color: 'var(--text-muted)' }}>
-              {quando(item)}
-            </div>
-          </div>
+          {cabecalho}
           <Button
             type="button"
             variant="ghost"
             size="icon"
             className="mb-0 h-9 w-9 shrink-0 rounded-lg"
             style={{ color: 'var(--text-muted)' }}
-            aria-label="Fechar"
+            aria-label={t('ui.close')}
             onClick={onClose}
           >
             <X aria-hidden="true" />

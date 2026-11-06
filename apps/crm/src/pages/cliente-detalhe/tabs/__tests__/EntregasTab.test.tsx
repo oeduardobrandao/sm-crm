@@ -1,7 +1,13 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type React from 'react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, Outlet } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// Desktop layout by default; the "no celular" describe flips it (jsdom's matchMedia is
+// false, so without a mock this suite would render the phone branch).
+const { desktop } = vi.hoisted(() => ({ desktop: { value: true } }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
 
 vi.mock('@/store', () => ({
   getWorkflowsByCliente: vi.fn(),
@@ -12,7 +18,6 @@ vi.mock('@/store', () => ({
   getMembros: vi.fn(),
   hasLaterApprovalEtapa: vi.fn(),
   revertEtapa: vi.fn(),
-  approvePostsInternally: vi.fn(),
   sendPostsToCliente: vi.fn(),
   duplicateWorkflow: vi.fn(),
   getWorkflowPostStats: vi.fn(),
@@ -26,18 +31,19 @@ vi.mock('@/store', () => ({
   getWorkflowTemplates: vi.fn(),
   getVigentePostProcessesByCliente: vi.fn(),
   // Consumed by the real usePostProcessCommands (not mocked — same rationale
-  // as completeEtapa/completeEtapaWithRearm below: this suite pins that the
+  // as the fluxo stage chain below: this suite pins that the
   // individual-post forward/revert buttons wire to the same commands the
   // Fluxos board uses).
   transitionPostProcess: vi.fn(),
   removePostProcess: vi.fn(),
   sendPostToCliente: vi.fn(),
   CLIENT_CLEARED_STATUSES: ['aprovado_cliente', 'agendado', 'postado', 'falha_publicacao'],
-  // Consumed by the real advanceEtapa.ts (not mocked — the rearm decision
-  // itself is covered by advanceEtapa.test.ts / KanbanRearm.test.tsx; this
-  // suite pins that EntregasTab wires it exactly the same way).
+  // Consumed by the real useWorkflowStageCommands (not mocked — the dialog
+  // logic itself is covered by KanbanApprovalExit.test.tsx; this suite pins
+  // that EntregasTab wires the same chain).
   completeEtapa: vi.fn(),
-  completeEtapaWithRearm: vi.fn(),
+  advanceWorkflowFromApproval: vi.fn(),
+  getWorkflowPostStatusCounts: vi.fn(),
   // Transitively required by the real WorkflowModals.tsx (EditWorkflowModal +
   // TemplatesModal share the module).
   addWorkflowTemplate: vi.fn(),
@@ -53,11 +59,12 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
 
-// Mutable so a future test can flip a feature on for just its own describe
-// block; every other test keeps the flags off (default null), same
-// mutable-features pattern as WorkflowDrawer.test.tsx. No test in THIS file
-// reassigns it yet, so `let` alone trips prefer-const.
-// eslint-disable-next-line prefer-const
+// The suggestion move guard reads this by path (not through the '@/store' barrel).
+vi.mock('@/store/posts', () => ({ hasPendingEditSuggestion: vi.fn(async () => false) }));
+
+// Mutable so a describe block can flip a feature on for its own tests; every
+// other test keeps the flags off (default null), same mutable-features pattern
+// as WorkflowDrawer.test.tsx.
 let mockFeatures: Record<string, boolean> | null = null;
 vi.mock('@/hooks/useWorkspaceLimits', () => ({
   useWorkspaceLimits: () => ({
@@ -81,8 +88,7 @@ vi.mock('@/pages/entregas/components/PropertyDefinitionPanel', () => ({
 }));
 
 // The card itself is not under test here — only the handlers it triggers.
-// Matches the mocking approach already established for this exact logic in
-// views/__tests__/KanbanRearm.test.tsx.
+// Same stub approach as the Kanban suites in views/__tests__/.
 vi.mock('@/pages/entregas/components/WorkflowCard', () => ({
   WorkflowCard: ({
     card,
@@ -180,10 +186,94 @@ vi.mock('@/pages/entregas/components/StandalonePostDrawer', () => ({
 }));
 
 vi.mock('@/pages/entregas/components/HistoryDrawer', () => ({
-  HistoryDrawer: ({ workflow, onClose }: { workflow: { titulo: string }; onClose: () => void }) => (
-    <div>
+  HistoryDrawer: ({
+    workflow,
+    onClose,
+    variant,
+  }: {
+    workflow: { titulo: string };
+    onClose: () => void;
+    variant?: string;
+  }) => (
+    <div data-variant={variant ?? 'drawer'} data-testid="history-drawer">
       <span>HistoryDrawer open: {workflow.titulo}</span>
       <button onClick={onClose}>close-history-drawer</button>
+    </div>
+  ),
+}));
+
+// Phone cards and their long-press menus (shipped Entregas phone code, with suites of
+// their own): stubs that expose the handlers EntregasTab wires.
+vi.mock('@/pages/entregas/phone/PhoneBoardCards', () => ({
+  PhoneWorkflowCard: ({
+    card,
+    counts,
+    onOpen,
+    onForward,
+    preview,
+  }: {
+    card: { workflow: { id: number; titulo: string } };
+    counts: { postsCount: number; clearedClienteCount: number };
+    onOpen?: () => void;
+    onForward?: () => void;
+    preview?: boolean;
+  }) =>
+    preview ? null : (
+      <div>
+        <span>{card.workflow.titulo}</span>
+        <span data-testid={`counts-${card.workflow.id}`}>
+          {counts.postsCount}/{counts.clearedClienteCount}
+        </span>
+        <button onClick={onOpen}>phone-open-card-{card.workflow.id}</button>
+        <button onClick={onForward}>phone-forward-card-{card.workflow.id}</button>
+      </div>
+    ),
+  PhonePostProcessCard: ({
+    entity,
+    onOpen,
+    preview,
+  }: {
+    entity: { id: string; titulo: string };
+    onOpen?: () => void;
+    preview?: boolean;
+  }) =>
+    preview ? null : (
+      <div>
+        <span>{entity.titulo}</span>
+        <button onClick={onOpen}>phone-open-post-{entity.id}</button>
+      </div>
+    ),
+}));
+vi.mock('@/pages/entregas/phone/cardMenus', () => ({
+  WorkflowCardMenu: ({
+    card,
+    onEdit,
+    onRevert,
+    children,
+  }: {
+    card: { workflow: { id: number } };
+    onEdit?: () => void;
+    onRevert?: () => void;
+    children: (api: { triggerProps: object }) => React.ReactNode;
+  }) => (
+    <div>
+      {children({ triggerProps: {} })}
+      <button onClick={onEdit}>menu-edit-{card.workflow.id}</button>
+      <button onClick={onRevert}>menu-revert-{card.workflow.id}</button>
+    </div>
+  ),
+  PostProcessCardMenu: ({
+    entity,
+    onRemoveProcess,
+    children,
+  }: {
+    entity: { id: string };
+    onRemoveProcess?: () => void;
+    children: (api: { triggerProps: object }) => React.ReactNode;
+  }) => (
+    <div>
+      {children({ triggerProps: {} })}
+      <button onClick={onRemoveProcess}>menu-remove-{entity.id}</button>
     </div>
   ),
 }));
@@ -197,7 +287,6 @@ import {
   getMembros,
   hasLaterApprovalEtapa,
   revertEtapa,
-  approvePostsInternally,
   sendPostsToCliente,
   duplicateWorkflow,
   getWorkflowPostStats,
@@ -211,7 +300,8 @@ import {
   getVigentePostProcessesByCliente,
   transitionPostProcess,
   completeEtapa,
-  completeEtapaWithRearm,
+  advanceWorkflowFromApproval,
+  getWorkflowPostStatusCounts,
   type Cliente,
   type ClientePost,
   type Workflow,
@@ -232,7 +322,6 @@ const mockedGetDeadlineInfo = vi.mocked(getDeadlineInfo);
 const mockedGetMembros = vi.mocked(getMembros);
 const mockedHasLaterApprovalEtapa = vi.mocked(hasLaterApprovalEtapa);
 const mockedRevertEtapa = vi.mocked(revertEtapa);
-const mockedApprovePostsInternally = vi.mocked(approvePostsInternally);
 const mockedSendPostsToCliente = vi.mocked(sendPostsToCliente);
 const mockedDuplicateWorkflow = vi.mocked(duplicateWorkflow);
 const mockedGetWorkflowPostStats = vi.mocked(getWorkflowPostStats);
@@ -248,7 +337,8 @@ const mockedGetVigentePostProcessesByCliente = vi.mocked(getVigentePostProcesses
 const mockedGetPostCovers = vi.mocked(getPostCovers);
 const mockedTransitionPostProcess = vi.mocked(transitionPostProcess);
 const mockedCompleteEtapa = vi.mocked(completeEtapa);
-const mockedCompleteEtapaWithRearm = vi.mocked(completeEtapaWithRearm);
+const mockedAdvanceWorkflowFromApproval = vi.mocked(advanceWorkflowFromApproval);
+const mockedGetWorkflowPostStatusCounts = vi.mocked(getWorkflowPostStatusCounts);
 const mockedToast = vi.mocked(toast);
 
 const CLIENTE: Cliente = {
@@ -405,25 +495,7 @@ function renderTab(cliente: Cliente = CLIENTE) {
   return { ...utils, queryClient, invalidateSpy };
 }
 
-/**
- * Wait until the per-workflow count queries have actually landed in the card.
- *
- * handleForwardConfirm picks between the silent advance and the client-approval
- * dialog by comparing postsCount with clearedClienteCount. Both arrive from
- * queries that settle *after* the workflow list does, so clicking "Avançar" as
- * soon as `forward-card-1` renders is a race: with the count maps still empty
- * `total` is 0, `allCleared` is false, and the approval dialog opens instead of
- * the path the test set up with mockCounts(). Any test that depends on the
- * counts must await this first — it is the difference between a deterministic
- * test and one that fails a few percent of the time under load.
- */
-async function awaitCountsLoaded(total: number, cleared: number) {
-  await waitFor(() =>
-    expect(screen.getByTestId('counts-1')).toHaveTextContent(`${total}/${cleared}`),
-  );
-}
-
-/** cleared/total feed the historical "allCleared" branch in handleForwardConfirm. */
+/** Board counts (WorkflowCard props); the approval-exit dialog fetches its own. */
 function mockCounts(cleared: number) {
   mockedGetWorkflowPostStats.mockResolvedValue({
     total: new Map([[1, 2]]),
@@ -433,6 +505,27 @@ function mockCounts(cleared: number) {
     revisaoInterna: new Map(),
     responsaveis: new Map(),
   });
+}
+
+/** Per-status counts the approval-exit dialog fetches on open. */
+const STATUS_COUNTS = { rascunho: 1, aprovado_interno: 1, aprovado_cliente: 1 };
+
+/** Waits for the approval-exit dialog with its counts loaded (the options past
+ *  "Manter" only show once they land). */
+async function openedExitDialog() {
+  await screen.findByRole('radio', { name: /Voltar todos para rascunho/ });
+}
+
+async function approveAllFromExitDialog() {
+  fireEvent.click(await screen.findByText('forward-card-1'));
+  await openedExitDialog();
+  fireEvent.click(screen.getByRole('radio', { name: /Aprovar todos/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Avançar' }));
+  await waitFor(() =>
+    expect(mockedAdvanceWorkflowFromApproval).toHaveBeenCalledWith(
+      expect.objectContaining({ choice: 'aprovar_todos' }),
+    ),
+  );
 }
 
 describe('EntregasTab', () => {
@@ -481,14 +574,13 @@ describe('EntregasTab', () => {
       workflow: workflow({ status: 'ativo' }),
       etapas: [],
     });
-    mockedCompleteEtapaWithRearm.mockResolvedValue({
-      workflow: workflow({ status: 'ativo' }),
-      etapas: [],
-      rearmed: true,
-      rearmFailed: false,
+    mockedAdvanceWorkflowFromApproval.mockResolvedValue({
+      workflowStatus: 'ativo',
+      etapaAtual: 2,
+      postsChanged: 2,
     });
+    mockedGetWorkflowPostStatusCounts.mockResolvedValue(STATUS_COUNTS);
     mockedHasLaterApprovalEtapa.mockReturnValue(true);
-    mockedApprovePostsInternally.mockResolvedValue(undefined);
     mockedSendPostsToCliente.mockResolvedValue(undefined);
     mockedRevertEtapa.mockResolvedValue(undefined);
     mockedDuplicateWorkflow.mockResolvedValue(workflow());
@@ -507,73 +599,91 @@ describe('EntregasTab', () => {
     expect(await screen.findByText('Posts Agosto')).toBeInTheDocument();
   });
 
-  describe('approval re-arm wiring (three advance paths, two rearm notifications)', () => {
-    it('silent all-cleared advance uses completeEtapaWithRearm and reports the re-arm', async () => {
-      mockCounts(2); // cleared === total → no approval dialog, straight advance
+  describe('saída de etapa de aprovação (cadeia compartilhada)', () => {
+    it('avançar um fluxo em etapa de aprovação abre o diálogo de saída, sem o ForwardConfirm', async () => {
       renderTab();
-      await awaitCountsLoaded(2, 2);
       fireEvent.click(await screen.findByText('forward-card-1'));
-      fireEvent.click(await screen.findByText('Avançar'));
-      await waitFor(() => expect(mockedCompleteEtapaWithRearm).toHaveBeenCalledWith(1, 11));
-      expect(mockedCompleteEtapa).not.toHaveBeenCalled();
+      await openedExitDialog();
+      expect(mockedGetWorkflowPostStatusCounts).toHaveBeenCalledWith(1);
+      expect(screen.queryByText('Avançar etapa?')).not.toBeInTheDocument();
+      expect(mockedHasLaterApprovalEtapa).toHaveBeenCalledWith([approvalEtapa, nextEtapa], 11);
+    });
+
+    it('confirmar a recomendada chama advanceWorkflowFromApproval e atualiza a aba', async () => {
+      const { invalidateSpy } = renderTab();
+      fireEvent.click(await screen.findByText('forward-card-1'));
+      await openedExitDialog();
+      expect(screen.getByRole('radio', { name: /Voltar todos para rascunho/ })).toBeChecked();
+      fireEvent.click(screen.getByRole('button', { name: 'Avançar' }));
       await waitFor(() =>
-        expect(mockedToast.info).toHaveBeenCalledWith(
-          expect.stringMatching(/voltaram para rascunho/i),
+        expect(mockedAdvanceWorkflowFromApproval).toHaveBeenCalledWith({
+          workflowId: 1,
+          expectedEtapaId: 11,
+          choice: 'voltar_rascunho',
+          expectedCounts: STATUS_COUNTS,
+        }),
+      );
+      await waitFor(() =>
+        expect(mockedToast.success).toHaveBeenCalledWith(
+          'Etapa concluída. Posts voltaram para rascunho.',
+        ),
+      );
+      // refreshCards keeps the historical invalidations.
+      for (const queryKey of [
+        ['workflowsByCliente', 42],
+        ['workflow-posts-counts'],
+        ['workflow-covers'],
+        ['concluded-by-cliente', 42],
+        ['concluded-summaries-cliente'],
+        ['workflow-events'],
+        ['post-processes-cliente', 42],
+        ['post-covers-cliente'],
+        ['clientePosts', 42],
+      ]) {
+        expect(invalidateSpy).toHaveBeenCalledWith({ queryKey });
+      }
+      expect(mockedCompleteEtapa).not.toHaveBeenCalled();
+    });
+
+    it('"Aprovar todos" avança com aprovar_todos', async () => {
+      renderTab();
+      fireEvent.click(await screen.findByText('forward-card-1'));
+      await openedExitDialog();
+      fireEvent.click(screen.getByRole('radio', { name: /Aprovar todos/ }));
+      fireEvent.click(screen.getByRole('button', { name: 'Avançar' }));
+      await waitFor(() =>
+        expect(mockedAdvanceWorkflowFromApproval).toHaveBeenCalledWith(
+          expect.objectContaining({ choice: 'aprovar_todos', expectedCounts: STATUS_COUNTS }),
         ),
       );
     });
 
-    it('"Aprovar internamente" approves then advances with re-arm', async () => {
-      renderTab(); // mockCounts(0) from beforeEach → cleared !== total → approval dialog
-      fireEvent.click(await screen.findByText('forward-card-1'));
-      fireEvent.click(await screen.findByText('Avançar'));
-      fireEvent.click(await screen.findByText('Aprovar internamente'));
-      await waitFor(() => expect(mockedApprovePostsInternally).toHaveBeenCalledWith(1));
-      await waitFor(() => expect(mockedCompleteEtapaWithRearm).toHaveBeenCalledWith(1, 11));
-      expect(mockedCompleteEtapa).not.toHaveBeenCalled();
-      await waitFor(() =>
-        expect(mockedToast.info).toHaveBeenCalledWith(
-          expect.stringMatching(/voltaram para rascunho/i),
-        ),
-      );
-    });
-
-    it('"Avançar sem aprovação" uses plain completeEtapa, passes rearm:false, and never notifies', async () => {
+    it('"Enviar ao portal" envia os posts sem avançar a etapa', async () => {
       renderTab();
       fireEvent.click(await screen.findByText('forward-card-1'));
-      fireEvent.click(await screen.findByText('Avançar'));
-      fireEvent.click(await screen.findByText('Avançar sem aprovação'));
-      await waitFor(() => expect(mockedCompleteEtapa).toHaveBeenCalledWith(1, 11));
-      expect(mockedCompleteEtapaWithRearm).not.toHaveBeenCalled();
-      expect(mockedToast.info).not.toHaveBeenCalled();
-    });
-
-    it('sends to the client portal without advancing the etapa', async () => {
-      renderTab();
-      fireEvent.click(await screen.findByText('forward-card-1'));
-      fireEvent.click(await screen.findByText('Avançar'));
-      fireEvent.click(await screen.findByText('Enviar para o cliente aprovar'));
+      await openedExitDialog();
+      fireEvent.click(screen.getByRole('radio', { name: /Enviar ao portal/ }));
+      fireEvent.click(screen.getByRole('button', { name: 'Enviar ao portal' }));
       await waitFor(() => expect(mockedSendPostsToCliente).toHaveBeenCalledWith(1));
+      expect(mockedAdvanceWorkflowFromApproval).not.toHaveBeenCalled();
       expect(mockedCompleteEtapa).not.toHaveBeenCalled();
-      expect(mockedCompleteEtapaWithRearm).not.toHaveBeenCalled();
       await waitFor(() =>
         expect(mockedToast.success).toHaveBeenCalledWith('Posts enviados ao portal do cliente!'),
       );
     });
 
-    it('shows the re-arm warning in the approval dialog only when another approval etapa lies ahead', async () => {
+    it('etapa padrão continua com o ForwardConfirm e completeEtapa', async () => {
+      const padrao: WorkflowEtapa = { ...approvalEtapa, tipo: 'padrao' };
+      mockedGetWorkflowEtapasByWorkflowIds.mockImplementation(
+        async (ids: number[]) => new Map(ids.map((id) => [id, [padrao, nextEtapa]])),
+      );
       renderTab();
       fireEvent.click(await screen.findByText('forward-card-1'));
-      fireEvent.click(await screen.findByText('Avançar'));
-      expect(await screen.findByText(/voltam para rascunho/i)).toBeInTheDocument();
-      expect(mockedHasLaterApprovalEtapa).toHaveBeenCalledWith([approvalEtapa, nextEtapa], 11);
-
-      mockedHasLaterApprovalEtapa.mockReturnValue(false);
-      fireEvent.click(screen.getByText('Cancelar'));
-      fireEvent.click(await screen.findByText('forward-card-1'));
-      fireEvent.click(await screen.findByText('Avançar'));
-      expect(await screen.findByText('Aprovar internamente')).toBeInTheDocument();
-      expect(screen.queryByText(/voltam para rascunho/i)).not.toBeInTheDocument();
+      fireEvent.click(await screen.findByRole('button', { name: 'Avançar' }));
+      await waitFor(() => expect(mockedCompleteEtapa).toHaveBeenCalledWith(1, 11));
+      expect(mockedAdvanceWorkflowFromApproval).not.toHaveBeenCalled();
+      expect(mockedGetWorkflowPostStatusCounts).not.toHaveBeenCalled();
+      await waitFor(() => expect(mockedToast.success).toHaveBeenCalledWith('Etapa concluída!'));
     });
   });
 
@@ -586,7 +696,7 @@ describe('EntregasTab', () => {
   // NÃO é mockado neste arquivo (ao contrário de
   // KanbanBatchAutoScheduleNudge.test.tsx), então os casos abaixo procuram o
   // conteúdo real do AlertDialog.
-  describe('batch auto-schedule nudge after "Aprovar internamente" (spec peça 2 / fix A)', () => {
+  describe('batch auto-schedule nudge after "Aprovar todos" (spec peça 2 / fix A)', () => {
     const futureIso = () => new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
 
     function approvedPost(overrides: Record<string, unknown> = {}) {
@@ -600,23 +710,15 @@ describe('EntregasTab', () => {
       };
     }
 
-    it('opens the batch dialog once scheduling is enabled, the client auto-publishes, and the approval is not a rearm', async () => {
+    it('opens the batch dialog once scheduling is enabled, the client auto-publishes, and no approval etapa lies ahead', async () => {
       mockFeatures = { feature_post_scheduling: true };
-      // hasLaterApprovalEtapa -> false makes decideApprovalAdvance's willRearm
-      // false (approvalAdvance.ts: willRearm = temAprovacaoAdiante), the
-      // !willRearm half of the gate this test exercises. Mirrors how
-      // KanbanBatchAutoScheduleNudge.test.tsx's makeCard()/renderBoard()
-      // construct the non-rearm case for KanbanView's equivalent handler.
+      // No later approval etapa: the nudge only shows when nothing else will ask
+      // the client to approve before publishing.
       mockedHasLaterApprovalEtapa.mockReturnValue(false);
       mockedGetWorkflowPosts.mockResolvedValue([approvedPost()] as never);
       renderTab({ ...CLIENTE, auto_publish_on_approval: true });
 
-      // mockCounts(0) from beforeEach -> cleared !== total -> approval-choice dialog.
-      fireEvent.click(await screen.findByText('forward-card-1'));
-      fireEvent.click(await screen.findByText('Avançar'));
-      fireEvent.click(await screen.findByText('Aprovar internamente'));
-
-      await waitFor(() => expect(mockedApprovePostsInternally).toHaveBeenCalledWith(1));
+      await approveAllFromExitDialog();
       expect(await screen.findByText('Agendar os posts aprovados?')).toBeInTheDocument();
       expect(await screen.findByRole('button', { name: /Agendar 1 post/ })).toBeInTheDocument();
     });
@@ -626,19 +728,14 @@ describe('EntregasTab', () => {
       mockedHasLaterApprovalEtapa.mockReturnValue(false);
       mockedGetWorkflowPosts.mockResolvedValue([approvedPost()] as never);
       mockedGetWorkflowsByCliente.mockResolvedValue([workflow({ recorrente: true })]);
-      mockedCompleteEtapaWithRearm.mockResolvedValue({
-        workflow: workflow({ status: 'concluido', recorrente: true }),
-        etapas: [],
-        rearmed: false,
-        rearmFailed: false,
+      mockedAdvanceWorkflowFromApproval.mockResolvedValue({
+        workflowStatus: 'concluido',
+        etapaAtual: 2,
+        postsChanged: 1,
       });
       renderTab({ ...CLIENTE, auto_publish_on_approval: true });
 
-      fireEvent.click(await screen.findByText('forward-card-1'));
-      fireEvent.click(await screen.findByText('Avançar'));
-      fireEvent.click(await screen.findByText('Aprovar internamente'));
-
-      await waitFor(() => expect(mockedApprovePostsInternally).toHaveBeenCalledWith(1));
+      await approveAllFromExitDialog();
       // The recurring-completion dialog wins (its own workflowId={recurringWfId
       // == null ? ... : null} render-time gate) -- settled state never shows
       // both AlertDialogs at once.
@@ -659,18 +756,17 @@ describe('EntregasTab', () => {
   });
 
   it('creates a new recurring cycle when a recurring workflow concludes', async () => {
-    mockCounts(2); // silent advance path
-    mockedCompleteEtapaWithRearm.mockResolvedValue({
-      workflow: workflow({ status: 'concluido', recorrente: true }),
-      etapas: [],
-      rearmed: false,
-      rearmFailed: false,
+    mockedAdvanceWorkflowFromApproval.mockResolvedValue({
+      workflowStatus: 'concluido',
+      etapaAtual: 2,
+      postsChanged: 0,
     });
     mockedGetWorkflowsByCliente.mockResolvedValue([workflow({ recorrente: true })]);
     renderTab();
-    await awaitCountsLoaded(2, 2);
     fireEvent.click(await screen.findByText('forward-card-1'));
-    fireEvent.click(await screen.findByText('Avançar'));
+    await openedExitDialog();
+    fireEvent.click(screen.getByRole('radio', { name: /Manter status atuais/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Avançar' }));
     fireEvent.click(await screen.findByText('Criar Novo Ciclo'));
     await waitFor(() => expect(mockedDuplicateWorkflow).toHaveBeenCalledWith(1));
     await waitFor(() => expect(mockedToast.success).toHaveBeenCalledWith('Novo ciclo criado!'));
@@ -757,6 +853,50 @@ describe('EntregasTab', () => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['clientePosts', 42] });
     });
 
+    describe('suggestion move guard', () => {
+      afterEach(async () => {
+        const { hasPendingEditSuggestion } = await import('@/store/posts');
+        vi.mocked(hasPendingEditSuggestion).mockResolvedValue(false);
+      });
+
+      it('asks before scheduling a post with a pending client suggestion and writes only after "Mover mesmo assim"', async () => {
+        const { updateWorkflowPost } = await import('@/store');
+        const { hasPendingEditSuggestion } = await import('@/store/posts');
+        vi.mocked(updateWorkflowPost).mockResolvedValue(undefined as never);
+        vi.mocked(hasPendingEditSuggestion).mockResolvedValue(true);
+        mockedGetClientePosts.mockResolvedValue([clientePost()]);
+        renderTab();
+        await screen.findByText('Post avulso de hoje');
+
+        fireEvent.click(screen.getByRole('button', { name: /○ Agendar/ }));
+
+        expect(await screen.findByText('Mover para Agendado?')).toBeInTheDocument();
+        expect(vi.mocked(hasPendingEditSuggestion)).toHaveBeenCalledWith(500);
+        expect(vi.mocked(updateWorkflowPost)).not.toHaveBeenCalled();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Mover mesmo assim' }));
+        await waitFor(() =>
+          expect(vi.mocked(updateWorkflowPost)).toHaveBeenCalledWith(500, { status: 'agendado' }),
+        );
+      });
+
+      it('Cancelar does not write', async () => {
+        const { updateWorkflowPost } = await import('@/store');
+        const { hasPendingEditSuggestion } = await import('@/store/posts');
+        vi.mocked(hasPendingEditSuggestion).mockResolvedValue(true);
+        mockedGetClientePosts.mockResolvedValue([clientePost()]);
+        renderTab();
+        await screen.findByText('Post avulso de hoje');
+
+        fireEvent.click(screen.getByRole('button', { name: /○ Agendar/ }));
+        await screen.findByText('Mover para Agendado?');
+        fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+
+        await waitFor(() => expect(screen.queryByText('Mover para Agendado?')).toBeNull());
+        expect(vi.mocked(updateWorkflowPost)).not.toHaveBeenCalled();
+      });
+    });
+
     it('opens a fluxo post in its workflow drawer', async () => {
       mockedGetClientePosts.mockResolvedValue([
         clientePost({
@@ -791,6 +931,12 @@ describe('EntregasTab', () => {
       // Query registers the cache entry even with workflowId still null.
       // `clientePosts` feeds the post calendar (fluxo posts + posts avulsos),
       // shared with WorkflowDrawer / StandalonePostDrawer.
+      // `workflow-post-status-counts` is the approval-exit dialog's per-status
+      // counts (useWorkflowStageCommands), registered disabled until it opens.
+      // `workflow-pending-suggestions` is the same dialog's count of posts with an
+      // unreviewed client suggestion (a post_edit_suggestions read), same lifecycle.
+      // `auto-schedule-batch-suggestions` is the batch auto-schedule dialog's count of
+      // the same thing over the posts it would schedule, registered disabled with it.
       const { queryClient } = renderTab();
       await screen.findByText('Posts Agosto');
 
@@ -814,9 +960,12 @@ describe('EntregasTab', () => {
             'workspace-slug',
             'hub-token',
             'auto-schedule-batch-posts',
+            'auto-schedule-batch-suggestions',
             'post-processes-cliente',
             'post-covers-cliente',
             'clientePosts',
+            'workflow-post-status-counts',
+            'workflow-pending-suggestions',
           ]),
         );
       });
@@ -965,6 +1114,117 @@ describe('EntregasTab', () => {
           queryKey: ['post-processes-cliente', 42],
         }),
       );
+    });
+  });
+
+  describe('no celular', () => {
+    beforeEach(() => {
+      desktop.value = false;
+    });
+    afterEach(() => {
+      desktop.value = true;
+    });
+
+    it('stacks phone cards instead of the desktop rail', async () => {
+      renderTab();
+      expect(await screen.findByText('phone-open-card-1')).toBeInTheDocument();
+      expect(screen.queryByText('open-card-1')).not.toBeInTheDocument();
+      expect(document.querySelector('.cliente-deliveries-rail')).toBeNull();
+      expect(screen.getByRole('heading', { level: 2, name: 'Fluxos' })).toBeInTheDocument();
+    });
+
+    it('opens the workflow drawer from the card and the edit modal from the menu', async () => {
+      renderTab();
+      fireEvent.click(await screen.findByText('phone-open-card-1'));
+      expect(await screen.findByText('WorkflowDrawer open: Posts Agosto')).toBeInTheDocument();
+      fireEvent.click(screen.getByText('close-workflow-drawer'));
+
+      fireEvent.click(screen.getByText('menu-edit-1'));
+      expect(await screen.findByRole('dialog', { name: 'Editar Fluxo' })).toBeInTheDocument();
+    });
+
+    it('shows the empty state card when there are no active deliveries', async () => {
+      mockedGetWorkflowsByCliente.mockResolvedValue([]);
+      renderTab();
+      expect(await screen.findByText('Nenhuma entrega ativa no momento.')).toBeInTheDocument();
+    });
+
+    it('opens a concluded fluxo as a pushed history screen in place of the tab', async () => {
+      const concluded = workflow({ id: 2, status: 'concluido', titulo: 'Ciclo Julho' });
+      mockedGetConcludedWorkflowsByCliente.mockResolvedValue([concluded]);
+      mockedGetConcludedWorkflowSummaries.mockResolvedValue([
+        { workflow: concluded, postCount: 3, totalDays: 12, completedAt: null },
+      ] as never);
+      renderTab();
+
+      fireEvent.click(await screen.findByRole('button', { name: /Ciclo Julho/ }));
+      expect(await screen.findByTestId('history-drawer')).toHaveAttribute('data-variant', 'page');
+      // Render only what's visible: the board is gone while the history is up.
+      expect(screen.queryByText('phone-open-card-1')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByText('close-history-drawer'));
+      expect(await screen.findByText('phone-open-card-1')).toBeInTheDocument();
+    });
+
+    it('asks to create a new cycle in a confirm sheet when a recurring fluxo concludes', async () => {
+      mockedAdvanceWorkflowFromApproval.mockResolvedValue({
+        workflowStatus: 'concluido',
+        etapaAtual: 2,
+        postsChanged: 0,
+      });
+      mockedGetWorkflowsByCliente.mockResolvedValue([workflow({ recorrente: true })]);
+      renderTab();
+      fireEvent.click(await screen.findByText('phone-forward-card-1'));
+      const exit = await screen.findByRole('dialog');
+      const manter = await within(exit).findByRole('button', { name: /Manter status atuais/ });
+      await waitFor(() => expect(manter).toBeEnabled());
+      fireEvent.click(manter);
+
+      const sheet = await screen.findByRole('dialog', { name: 'Criar novo ciclo?' });
+      fireEvent.click(within(sheet).getByRole('button', { name: 'Criar novo ciclo' }));
+      await waitFor(() => expect(mockedDuplicateWorkflow).toHaveBeenCalledWith(1));
+    });
+
+    it('uses the phone post calendar and keeps the Agendar step', async () => {
+      const { updateWorkflowPost } = await import('@/store');
+      vi.mocked(updateWorkflowPost).mockResolvedValue(undefined as never);
+      const d = new Date();
+      const p = (n: number) => String(n).padStart(2, '0');
+      mockedGetClientePosts.mockResolvedValue([
+        {
+          id: 500,
+          workflow_id: null,
+          titulo: 'Post avulso de hoje',
+          tipo: 'feed',
+          status: 'aprovado_interno',
+          custom_status_id: null,
+          scheduled_at: `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T12:00:00`,
+          ordem: 0,
+          workflow_titulo: null,
+        },
+      ]);
+      renderTab();
+
+      expect(await screen.findByText('Post avulso de hoje')).toBeInTheDocument();
+      expect(document.querySelector('.phone-ent-v-cal')).not.toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Agendar' }));
+      await waitFor(() =>
+        expect(vi.mocked(updateWorkflowPost)).toHaveBeenCalledWith(500, { status: 'agendado' }),
+      );
+
+      fireEvent.click(
+        screen.getByRole('button', { name: /Abrir publicação: Post avulso de hoje/i }),
+      );
+      expect(await screen.findByText('StandalonePostDrawer open: 500')).toBeInTheDocument();
+    });
+
+    it('wires "Remover processo" on an individual post card menu', async () => {
+      mockFeatures = { feature_post_processes: true };
+      mockedGetVigentePostProcessesByCliente.mockResolvedValue([postProcess()]);
+      renderTab();
+      fireEvent.click(await screen.findByText('menu-remove-post:9'));
+      // usePostProcessCommands asks before removing (its own AlertDialog).
+      expect(await screen.findByRole('alertdialog')).toBeInTheDocument();
     });
   });
 });

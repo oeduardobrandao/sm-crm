@@ -1,4 +1,5 @@
 import { ArrowRight, Download, Copy, Trash2, X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface BulkActionBarProps {
   count: number;
@@ -33,6 +34,7 @@ export function BulkActionBar({
   isZipping,
   canEdit,
 }: BulkActionBarProps) {
+  const { t } = useTranslation('files');
   if (count === 0) return null;
 
   const busy = isMoving || isCopying || isDeleting || isZipping;
@@ -52,7 +54,7 @@ export function BulkActionBar({
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-full bg-[var(--surface-hover)] hover:bg-[var(--surface-darker)] transition-colors disabled:opacity-40"
         >
           <ArrowRight className="h-3.5 w-3.5" />
-          Mover
+          {t('bulkActionBar.move')}
         </button>
       )}
 
@@ -63,7 +65,7 @@ export function BulkActionBar({
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-full bg-[var(--surface-hover)] hover:bg-[var(--surface-darker)] transition-colors disabled:opacity-40"
         >
           <Copy className="h-3.5 w-3.5" />
-          Copiar
+          {t('bulkActionBar.copy')}
         </button>
       )}
 
@@ -73,7 +75,7 @@ export function BulkActionBar({
         className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-full bg-[var(--surface-hover)] hover:bg-[var(--surface-darker)] transition-colors disabled:opacity-40"
       >
         <Download className="h-3.5 w-3.5" />
-        ZIP
+        {t('bulkActionBar.zip')}
       </button>
 
       {canEdit && (
@@ -83,7 +85,7 @@ export function BulkActionBar({
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-full bg-[rgba(245,90,66,0.1)] text-[var(--danger)] hover:bg-[rgba(245,90,66,0.2)] transition-colors disabled:opacity-40"
         >
           <Trash2 className="h-3.5 w-3.5" />
-          Excluir
+          {t('bulkActionBar.delete')}
         </button>
       )}
 
@@ -92,7 +94,7 @@ export function BulkActionBar({
       <button
         onClick={onClear}
         className="p-1 rounded-full hover:bg-[var(--surface-hover)] text-[var(--text-muted)] transition-colors"
-        title="Limpar seleção"
+        title={t('bulkActionBar.clearSelection')}
       >
         <X className="h-4 w-4" />
       </button>

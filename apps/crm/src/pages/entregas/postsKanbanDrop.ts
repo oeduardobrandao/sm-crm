@@ -1,3 +1,4 @@
+import { i18n } from '@mesaas/i18n';
 import type { ActivePost } from '@/store';
 import { LOCKED_STATUSES, LOCKED_TOOLTIPS } from './postLabels';
 import { statusChangeNeedsConfirm, type StatusKey, type StatusRegistry } from './statusRegistry';
@@ -45,7 +46,7 @@ export function resolvePostsKanbanDrop({
   if (LOCKED_STATUSES.has(targetOpt.canonical)) {
     return {
       kind: 'locked-column',
-      message: LOCKED_TOOLTIPS[targetOpt.canonical] ?? 'Esta coluna é controlada pelo sistema.',
+      message: LOCKED_TOOLTIPS[targetOpt.canonical] ?? i18n.t('entregas:kanbanDrop.lockedColumn'),
     };
   }
 

@@ -14,6 +14,7 @@ vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), err
 import * as store from '../../../../store';
 import { CamadaPopover, situacaoDoPrazo } from '../CamadaPopover';
 import { useConfirmarPagamento } from '../useConfirmarPagamento';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 function LocationProbe() {
   const loc = useLocation();
@@ -21,14 +22,23 @@ function LocationProbe() {
 }
 
 /** The popover plus the confirm hook, wired the way AgendaTab wires them. */
-function Harness({ item, onClose }: { item: CamadaItem; onClose: () => void }) {
+function Harness({
+  item,
+  onClose,
+  sheet = false,
+}: {
+  item: CamadaItem;
+  onClose: () => void;
+  sheet?: boolean;
+}) {
   const { pedirConfirmacao, dialog } = useConfirmarPagamento(true);
   const anchor = document.getElementById('ancora')!;
   return (
     <>
       <CamadaPopover
         item={item}
-        anchor={anchor}
+        anchor={sheet ? undefined : anchor}
+        apresentacao={sheet ? 'sheet' : 'popover'}
         onClose={onClose}
         onConfirmar={pedirConfirmacao}
         canSeeFinancials={true}
@@ -38,7 +48,7 @@ function Harness({ item, onClose }: { item: CamadaItem; onClose: () => void }) {
   );
 }
 
-function renderPopover(item: CamadaItem) {
+function renderPopover(item: CamadaItem, sheet = false, vidro = false) {
   document.getElementById('ancora')?.remove();
   const ancora = document.createElement('div');
   ancora.id = 'ancora';
@@ -48,7 +58,13 @@ function renderPopover(item: CamadaItem) {
   render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={['/calendario']}>
-        <Harness item={item} onClose={onClose} />
+        {vidro ? (
+          <VidroToolbarHarness>
+            <Harness item={item} onClose={onClose} sheet={sheet} />
+          </VidroToolbarHarness>
+        ) : (
+          <Harness item={item} onClose={onClose} sheet={sheet} />
+        )}
         <LocationProbe />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -280,4 +296,54 @@ describe('CamadaPopover', () => {
       await waitFor(() => expect(invalidar).toHaveBeenCalledWith({ queryKey: ['transacoes'] }));
     },
   );
+});
+
+describe('CamadaPopover as a phone sheet', () => {
+  beforeEach(() => {
+    vi.mocked(store.addTransacao).mockReset();
+  });
+
+  it('is a dialog named after the item; "Abrir post" closes it, then navigates', () => {
+    const { onClose } = renderPopover(post(), true);
+    const sheet = screen.getByRole('dialog', { name: 'Carrossel de dicas' });
+    expect(sheet).toHaveTextContent('Posts agendados');
+    expect(sheet).toHaveTextContent('Quarta, 7 de outubro de 2026 · 10:30');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir post' }));
+    expect(onClose).toHaveBeenCalled();
+    expect(screen.getByTestId('location')).toHaveTextContent('/entregas?drawer=3&post=55');
+  });
+
+  it('Confirmar closes the sheet and opens the same confirm dialog', async () => {
+    const { onClose } = renderPopover(
+      { camada: 'recebimentos', id: 'x', dia: '2026-10-10', itens: [pagamento({})] },
+      true,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar Clínica Sorriso' }));
+    expect(onClose).toHaveBeenCalled();
+    expect(await screen.findByText('Confirmar Agendamento')).toBeInTheDocument();
+  });
+});
+
+describe('CamadaPopover under the Vidro look', () => {
+  it('keeps its own surface inline styles without the Vidro shell', () => {
+    renderPopover(post());
+    const dialog = screen.getByRole('dialog', { name: 'Carrossel de dicas' });
+    // Only the component's own declarations: Radix appends its popper variables and, until
+    // floating-ui settles, a timing-dependent `animation: none`.
+    expect(dialog.getAttribute('style')!.split('; --radix-')[0]).toMatchInlineSnapshot(
+      `"background: var(--card-bg); border-color: var(--border-color); border-radius: 12px; color: var(--text-main); box-shadow: var(--shadow-popover, 0 12px 32px rgba(0, 0, 0, 0.16)); max-height: min(560px, var(--radix-popover-content-available-height, 560px))"`,
+    );
+  });
+
+  it('drops background, border colour, radius and shadow under the Vidro shell', () => {
+    renderPopover(post(), false, true);
+    const dialog = screen.getByRole('dialog', { name: 'Carrossel de dicas' });
+    expect(dialog.style.background).toBe('');
+    expect(dialog.style.borderColor).toBe('');
+    expect(dialog.style.borderRadius).toBe('');
+    expect(dialog.style.boxShadow).toBe('');
+    expect(dialog.style.color).toBe('var(--text-main)');
+    expect(dialog.style.maxHeight).toContain('min(560px');
+  });
 });

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import { useIntlLocale } from '@mesaas/i18n';
 import {
   ArrowLeft,
   Edit2,
@@ -11,6 +13,7 @@ import {
   Trash2,
   Copy,
   CopyPlus,
+  MessageSquare,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -23,12 +26,14 @@ import { copyAppLink } from '@/lib/copyAppLink';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { updateWorkflowEtapa, type Membro } from '../../../store';
 import { sanitizeUrl } from '@/utils/security';
-import { avatarColorClass } from '@/lib/avatarColor';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { getInitials } from '@/lib/initials';
 import { WorkflowTimelinePopover } from './WorkflowTimelinePopover';
 import { DeadlinePill } from './DeadlinePill';
 import { etapaDeadlineDate } from '../etapaPrazo';
 import { progressColor } from '../progressColor';
+import { useVidroShell } from '@/components/layout/PageToolbarContext';
+import { ClienteFoto } from '@/components/ClienteFoto';
 
 interface WorkflowCardProps {
   card: BoardCard;
@@ -47,6 +52,8 @@ interface WorkflowCardProps {
   onPostsClick?: () => void;
   /** Number of posts associated with this workflow (shown as badge) */
   postsCount?: number;
+  /** Unread discussion messages across the workflow's posts. Badge only when > 0. */
+  discussaoNaoLidas?: number;
   /** Number of posts approved by client */
   approvedPostsCount?: number;
   /** Number of posts that have cleared client approval — approved, scheduled,
@@ -77,6 +84,7 @@ export function WorkflowCard({
   onForwardClick,
   onPostsClick,
   postsCount,
+  discussaoNaoLidas,
   approvedPostsCount,
   clearedClienteCount,
   revisaoInternaCount,
@@ -84,7 +92,14 @@ export function WorkflowCard({
   onDeleteClick,
   onDuplicateClick,
 }: WorkflowCardProps) {
+  const { t } = useTranslation('workflows');
+  const intlLocale = useIntlLocale();
   const navigate = useNavigate();
+  // Under Vidro the board actions trade the `!important` .btn-edit-workflow for
+  // vidro-board-action and drop their inline radius/padding, so buttons.css can paint them.
+  // The card root drops its inline padding/radius too, so boards.css's 12px card radius applies.
+  const vidroShell = useVidroShell();
+  const boardAction = vidroShell ? 'vidro-board-action' : 'btn-edit-workflow';
   const [assignDropdownOpen, setAssignDropdownOpen] = useState(false);
   const [localMembro, setLocalMembro] = useState<Membro | undefined | null>(undefined);
   const dl = card.deadline;
@@ -96,18 +111,18 @@ export function WorkflowCard({
         ? 'deadline-caution'
         : 'deadline-ok';
   const deadlineText = dl.estourado
-    ? `${Math.abs(dl.diasRestantes)}d atrasado`
+    ? t('workflowCard.overdue', { d: Math.abs(dl.diasRestantes) })
     : dl.diasRestantes === 0 && dl.horasRestantes === 0
-      ? 'Vence agora'
+      ? t('workflowCard.dueNow')
       : dl.diasRestantes === 0
-        ? `${dl.horasRestantes}h restantes`
+        ? t('workflowCard.hoursLeft', { h: dl.horasRestantes })
         : dl.horasRestantes > 0
-          ? `${dl.diasRestantes}d ${dl.horasRestantes}h restantes`
-          : `${dl.diasRestantes}d restantes`;
+          ? t('workflowCard.daysHoursLeft', { d: dl.diasRestantes, h: dl.horasRestantes })
+          : t('workflowCard.daysLeft', { d: dl.diasRestantes });
   const progressPct =
     card.totalEtapas > 0 ? Math.round((card.etapaIdx / card.totalEtapas) * 100) : 0;
   const iniciadoEm = card.etapa.iniciado_em
-    ? new Date(card.etapa.iniciado_em).toLocaleDateString('pt-BR', {
+    ? new Date(card.etapa.iniciado_em).toLocaleDateString(intlLocale, {
         day: '2-digit',
         month: 'short',
       })
@@ -123,17 +138,29 @@ export function WorkflowCard({
         opacity: isDragOverlay ? 0.85 : 1,
         position: 'relative',
         zIndex: assignDropdownOpen ? 50 : 1,
-        padding: '0.7rem',
+        ...(vidroShell ? null : { padding: '0.7rem' }),
         gap: '0.45rem',
-        borderRadius: '10px',
+        ...(vidroShell ? null : { borderRadius: '10px' }),
       }}
       onClick={assignDropdownOpen ? () => setAssignDropdownOpen(false) : onClick}
     >
       {/* Top row: client + recurrent + drag handle */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      {/* Wraps instead of squeezing: a long client name keeps one line and the
+          chips drop below it. */}
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '0.35rem 0.5rem',
+        }}
+      >
         <span
           className="board-card-client"
           style={{
+            minWidth: 0,
+            maxWidth: '100%',
             borderLeft: 'none',
             paddingLeft: 0,
             fontSize: '0.74rem',
@@ -148,39 +175,36 @@ export function WorkflowCard({
         >
           {card.cliente ? (
             <>
-              {card.clienteAvatarUrl ? (
-                <img
-                  src={card.clienteAvatarUrl}
-                  alt=""
-                  loading="lazy"
-                  decoding="async"
-                  style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: '50%',
-                    objectFit: 'cover',
-                    flexShrink: 0,
-                  }}
-                />
-              ) : (
-                <div
-                  style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: '50%',
-                    background: card.cliente.cor || 'var(--surface-hover)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '0.45rem',
-                    fontWeight: 800,
-                    color: '#fff',
-                    flexShrink: 0,
-                  }}
-                >
-                  {getInitials(card.cliente.nome)}
-                </div>
-              )}
+              <ClienteFoto
+                srcs={[card.clienteAvatarUrl, card.cliente.foto_url]}
+                alt=""
+                style={{
+                  width: 18,
+                  height: 18,
+                  borderRadius: '50%',
+                  objectFit: 'cover',
+                  flexShrink: 0,
+                }}
+                fallback={
+                  <div
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: '50%',
+                      background: card.cliente.cor || 'var(--surface-hover)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '0.45rem',
+                      fontWeight: 800,
+                      color: '#fff',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {getInitials(card.cliente.nome)}
+                  </div>
+                }
+              />
               <span
                 role="link"
                 tabIndex={0}
@@ -199,7 +223,12 @@ export function WorkflowCard({
                   color: card.cliente.cor || 'var(--text-muted)',
                   opacity: 0.85,
                   fontWeight: 500,
+                  minWidth: 0,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
                 }}
+                title={card.cliente.nome}
               >
                 {card.cliente.nome}
               </span>
@@ -208,7 +237,7 @@ export function WorkflowCard({
                   href={sanitizeUrl(card.hubUrl)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  title="Abrir Hub do cliente"
+                  title={t('workflowCard.openHub')}
                   onClick={(e) => e.stopPropagation()}
                   style={{
                     display: 'inline-flex',
@@ -235,7 +264,7 @@ export function WorkflowCard({
                   }}
                 >
                   <ExternalLink style={{ width: 10, height: 10 }} />
-                  Hub
+                  {t('workflowCard.hub')}
                 </a>
               )}
             </>
@@ -246,7 +275,7 @@ export function WorkflowCard({
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0 }}>
           {card.workflow.recorrente && (
             <span
-              title="Recorrente"
+              title={t('workflowCard.recurring')}
               style={{
                 fontSize: '0.68rem',
                 fontWeight: 700,
@@ -260,18 +289,29 @@ export function WorkflowCard({
               ↻
             </span>
           )}
+          {discussaoNaoLidas != null && discussaoNaoLidas > 0 && (
+            <span
+              className="board-card-discussao-badge"
+              role="img"
+              aria-label={t('workflowCard.newMessages', { count: discussaoNaoLidas })}
+              title={t('workflowCard.newMessages', { count: discussaoNaoLidas })}
+            >
+              <MessageSquare className="h-3 w-3" aria-hidden="true" />
+              {discussaoNaoLidas}
+            </span>
+          )}
           <button
             type="button"
             className="board-card-posts-chip"
             data-tour="wf-posts"
-            title="Posts do fluxo"
+            title={t('workflowCard.flowPosts')}
             onClick={(e) => {
               e.stopPropagation();
               onPostsClick?.();
             }}
           >
             <FileText className="h-3 w-3" />
-            {postsCount ?? 0} posts
+            {t('workflowCard.postsCount', { n: postsCount ?? 0 })}
             {approvedPostsCount ? ` · ${approvedPostsCount} ✓` : ''}
           </button>
         </div>
@@ -291,7 +331,7 @@ export function WorkflowCard({
         {card.workflow.titulo}
         {card.workflow.created_via === 'agent' && (
           <span
-            title="Criado por agente de IA"
+            title={t('workflowCard.createdByAgent')}
             style={{
               marginLeft: '0.4rem',
               padding: '0.05rem 0.35rem',
@@ -304,7 +344,7 @@ export function WorkflowCard({
               verticalAlign: 'middle',
             }}
           >
-            IA
+            {t('workflowCard.ai')}
           </span>
         )}
       </div>
@@ -357,12 +397,13 @@ export function WorkflowCard({
               const displayMembro = localMembro !== undefined ? localMembro : card.membro;
               return displayMembro ? (
                 <>
-                  <div
-                    className={`avatar ${avatarColorClass(displayMembro.id ?? displayMembro.nome)}`}
-                    style={{ width: 20, height: 20, fontSize: '0.55rem', fontWeight: 800 }}
-                  >
-                    {getInitials(displayMembro.nome)}
-                  </div>
+                  <PessoaAvatar
+                    nome={displayMembro.nome}
+                    fotoUrl={displayMembro.avatar_url}
+                    seed={displayMembro.id}
+                    size={20}
+                    className="!text-[0.55rem] !font-extrabold"
+                  />
                   <span
                     style={{
                       fontSize: '0.75rem',
@@ -397,7 +438,7 @@ export function WorkflowCard({
                   <span
                     style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}
                   >
-                    Sem responsável
+                    {t('shared.noAssignee')}
                   </span>
                 </>
               );
@@ -416,11 +457,11 @@ export function WorkflowCard({
                   setLocalMembro(m);
                   try {
                     await updateWorkflowEtapa(card.etapa.id!, { responsavel_id: m.id });
-                    toast.success('Responsável atualizado!');
+                    toast.success(t('workflowCard.assigneeUpdated'));
                     onRefresh?.();
                   } catch {
                     setLocalMembro(undefined);
-                    toast.error('Erro ao atualizar');
+                    toast.error(t('workflowCard.updateError'));
                   }
                 }}
                 style={{
@@ -431,12 +472,13 @@ export function WorkflowCard({
                   fontSize: '0.75rem',
                 }}
               >
-                <div
-                  className={`avatar ${avatarColorClass(m.id ?? m.nome)}`}
-                  style={{ width: 16, height: 16, fontSize: '0.5rem' }}
-                >
-                  {getInitials(m.nome)}
-                </div>
+                <PessoaAvatar
+                  nome={m.nome}
+                  fotoUrl={m.avatar_url}
+                  seed={m.id}
+                  size={16}
+                  className="!text-[0.5rem]"
+                />
                 {m.nome}
               </DropdownMenuItem>
             ))}
@@ -461,7 +503,7 @@ export function WorkflowCard({
                 color: 'var(--success)',
               }}
             >
-              ✓ Aprovado pelo cliente
+              ✓ {t('workflowCard.approvedByClient')}
             </div>
           ) : (
             <div
@@ -473,7 +515,7 @@ export function WorkflowCard({
                 letterSpacing: '0.02em',
               }}
             >
-              ⏳ Aguardando aprovação do cliente
+              ⏳ {t('workflowCard.awaitingClient')}
             </div>
           )}
         </div>
@@ -493,7 +535,7 @@ export function WorkflowCard({
                 color: '#eab308',
               }}
             >
-              ✏️ Aguardando aprovação interna
+              ✏️ {t('workflowCard.awaitingInternal')}
             </div>
           </div>
         )}
@@ -516,7 +558,7 @@ export function WorkflowCard({
                 letterSpacing: '0.02em',
               }}
             >
-              ⏳ {awaitingClienteCount} post{awaitingClienteCount === 1 ? '' : 's'} com o cliente
+              ⏳ {t('workflowCard.postsWithClient', { count: awaitingClienteCount ?? 0 })}
             </div>
           </div>
         );
@@ -542,7 +584,7 @@ export function WorkflowCard({
           aria-valuemax={card.totalEtapas}
           aria-valuenow={card.etapaIdx + 1}
           aria-valuetext={`${card.etapa.nome} ${card.etapaIdx + 1}/${card.totalEtapas}`}
-          aria-label="Progresso do fluxo"
+          aria-label={t('workflowCard.progressAria')}
           title={`${card.etapa.nome} ${card.etapaIdx + 1}/${card.totalEtapas}`}
           style={{
             height: '4px',
@@ -577,7 +619,7 @@ export function WorkflowCard({
             letterSpacing: '0.05em',
           }}
         >
-          iniciada em {iniciadoEm}
+          {t('workflowCard.startedAt', { date: iniciadoEm })}
         </div>
       )}
 
@@ -662,10 +704,14 @@ export function WorkflowCard({
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="btn-edit-workflow board-card-kebab"
-              aria-label="Mais opções"
-              title="Mais opções"
-              style={{ padding: '0.35rem 0.55rem', borderRadius: '8px', flexShrink: 0 }}
+              className={`${boardAction} board-card-kebab`}
+              aria-label={t('workflowCard.moreOptions')}
+              title={t('workflowCard.moreOptions')}
+              style={
+                vidroShell
+                  ? { flexShrink: 0 }
+                  : { padding: '0.35rem 0.55rem', borderRadius: '8px', flexShrink: 0 }
+              }
               onClick={(e) => e.stopPropagation()}
             >
               <MoreHorizontal className="h-3.5 w-3.5" />
@@ -680,7 +726,7 @@ export function WorkflowCard({
                 }}
               >
                 <Copy className="h-3.5 w-3.5" />
-                Copiar link do fluxo
+                {t('shared.copyFlowLink')}
               </DropdownMenuItem>
             )}
             <DropdownMenuItem
@@ -690,7 +736,7 @@ export function WorkflowCard({
               }}
             >
               <Edit2 className="h-3.5 w-3.5" />
-              Editar
+              {t('actions.edit')}
             </DropdownMenuItem>
             {onPostsClick && (
               <DropdownMenuItem
@@ -700,7 +746,7 @@ export function WorkflowCard({
                 }}
               >
                 <FileText className="h-3.5 w-3.5" />
-                Abrir posts
+                {t('workflowCard.openPosts')}
               </DropdownMenuItem>
             )}
             {onDuplicateClick && !isDragOverlay && (
@@ -711,7 +757,7 @@ export function WorkflowCard({
                 }}
               >
                 <CopyPlus className="h-3.5 w-3.5" />
-                Duplicar fluxo
+                {t('workflowCard.duplicateFlow')}
               </DropdownMenuItem>
             )}
             {card.etapaIdx > 0 && onRevertClick && (
@@ -722,7 +768,7 @@ export function WorkflowCard({
                 }}
               >
                 <ArrowLeft className="h-3.5 w-3.5" />
-                Voltar etapa
+                {t('workflowCard.revertStage')}
               </DropdownMenuItem>
             )}
             {onDeleteClick && (
@@ -734,20 +780,21 @@ export function WorkflowCard({
                 }}
               >
                 <Trash2 className="h-3.5 w-3.5" />
-                Excluir
+                {t('shared.delete')}
               </DropdownMenuItem>
             )}
           </DropdownMenuContent>
         </DropdownMenu>
         {onForwardClick && (
           <button
-            className="btn-edit-workflow btn-forward-etapa"
+            className={`${boardAction} btn-forward-etapa`}
             title={
-              card.etapaIdx < card.totalEtapas - 1 ? 'Concluir etapa e avançar' : 'Concluir fluxo'
+              card.etapaIdx < card.totalEtapas - 1
+                ? t('workflowCard.completeAndAdvance')
+                : t('workflowCard.completeFlow')
             }
             style={{
-              padding: '0.35rem 0.55rem',
-              borderRadius: '8px',
+              ...(vidroShell ? null : { padding: '0.35rem 0.55rem', borderRadius: '8px' }),
               flexShrink: 0,
               marginLeft: 'auto',
               color: '#3ecf8e',

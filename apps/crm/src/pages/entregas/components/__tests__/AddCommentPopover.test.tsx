@@ -20,6 +20,9 @@ vi.mock('@/store/posts', async (importOriginal) => ({
 
 import { getMembros, getClientes, getTarefas } from '@/store';
 import { AddCommentPopover } from '../AddCommentPopover';
+import { setEditorText } from '@/test/mentionEditor';
+
+const input = () => screen.getByRole('textbox', { name: 'Escreva seu comentário...' });
 
 function render(ui: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
@@ -42,9 +45,7 @@ describe('AddCommentPopover', () => {
     render(<AddCommentPopover position={position} onSubmit={onSubmit} onClose={vi.fn()} />);
     const submit = screen.getByRole('button', { name: 'Comentar' });
     expect(submit).toBeDisabled();
-    fireEvent.change(screen.getByPlaceholderText('Escreva seu comentário...'), {
-      target: { value: '  ajustar o gancho  ' },
-    });
+    setEditorText(input(), '  ajustar o gancho  ');
     expect(submit).toBeEnabled();
     fireEvent.click(submit);
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('ajustar o gancho'));
@@ -54,9 +55,7 @@ describe('AddCommentPopover', () => {
     const onSubmit = vi.fn().mockRejectedValue(new Error('boom'));
     const onClose = vi.fn();
     render(<AddCommentPopover position={position} onSubmit={onSubmit} onClose={onClose} />);
-    fireEvent.change(screen.getByPlaceholderText('Escreva seu comentário...'), {
-      target: { value: 'ajustar' },
-    });
+    setEditorText(input(), 'ajustar');
     fireEvent.click(screen.getByRole('button', { name: 'Comentar' }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
     await waitFor(() => expect(screen.getByRole('button', { name: 'Comentar' })).toBeEnabled());
@@ -66,7 +65,7 @@ describe('AddCommentPopover', () => {
   it('closes on Escape', () => {
     const onClose = vi.fn();
     render(<AddCommentPopover position={position} onSubmit={vi.fn()} onClose={onClose} />);
-    fireEvent.keyDown(screen.getByPlaceholderText('Escreva seu comentário...'), { key: 'Escape' });
+    fireEvent.keyDown(input(), { key: 'Escape' });
     expect(onClose).toHaveBeenCalled();
   });
 

@@ -65,6 +65,17 @@
  * each start time is reminded once. A failed reminders query degrades to
  * "no reminders" for this run instead of failing the whole digest.
  *
+ * Linhas editoriais (spec §8.4): when the workspace has `feature_linha_editorial`
+ * (checked per client through `effective_plan_feature`, because the claim RPC
+ * gates only on the Hub portal), linhas with `status = 'enviada'` and
+ * `enviada_at` in the SAME window as the approvals, `(approvalsLower, upper]`,
+ * are listed as "Linha editorial de {mês} aguardando sua aprovação". Each adds
+ * `linha:<id>:<enviada_at>` to the idempotency key, so a linha the agency
+ * re-sends after "ajustes" (new `enviada_at`) produces a new digest. Unlike
+ * the reminders, a failing entitlement or linhas query FAILS the client (the
+ * lease is released and the window is retried): degrading to "no linhas"
+ * would advance the cursor past a linha that was never mentioned.
+ *
  * Per-client failures (a bad query, a Resend rejection, a failed cursor
  * advance after an already-sent email, ...) are caught individually and
  * release that ONE client's lease; they never abort the batch loop,
@@ -72,8 +83,11 @@
  */
 import {
   buildClientEventEmail,
+  type ClientEventLinha,
   type ClientEventReminder,
   clientEventSubject,
+  clientUnsubFooterUrl,
+  clientUnsubFunctionUrl,
   signUnsubToken,
 } from "../_shared/client-event-email.ts";
 import { sanitizeFromName } from "../_shared/email-headers.ts";
@@ -121,6 +135,10 @@ export interface ClientEventEmailDb {
     fn: "agenda_cliente_lembretes_marcar",
     args: { p_conta: string; p_cliente: number; p_itens: Array<{ ocorrencia_id: number; inicio: string }> },
   ): PromiseLike<{ data: unknown; error: DbError | null }>;
+  rpc(
+    fn: "effective_plan_feature",
+    args: { ws_id: string; feature_key: string },
+  ): PromiseLike<{ data: unknown; error: DbError | null }>;
   from(table: string): {
     // deno-lint-ignore no-explicit-any
     select(columns: string): FilterChain<any>;
@@ -140,6 +158,13 @@ interface MensagemRow {
   created_at: string;
 }
 
+interface LinhaRow {
+  id: string;
+  periodo: string;
+  titulo: string | null;
+  enviada_at: string;
+}
+
 interface PendingPost {
   titulo: string;
   tipo: string;
@@ -154,6 +179,11 @@ export interface ClientEventEmailCronDeps {
   tokenSecret: string;
   /** SUPABASE_URL -- the unsub link is `${unsubBaseUrl}/functions/v1/client-email-unsub/<token>`. */
   unsubBaseUrl: string;
+  /**
+   * APP_BASE_URL for the footer's CRM confirmation page (`/cancelar-avisos/`).
+   * null/absent: the footer falls back to the function URL.
+   */
+  unsubPageBaseUrl?: string | null;
   resolveHubUrl: (clienteId: number, contaId: string) => Promise<string>;
   sendEmail: (p: {
     to: string;
@@ -244,6 +274,8 @@ const SEND_DEADLINE_MS = 60_000;
  */
 const EVENTS_QUERY_CAP = 1000;
 
+const LINHA_FEATURE = "feature_linha_editorial";
+
 /**
  * Completes a tied created_at group that the cap may have cut through (see
  * point 1 above). `tied` is the supplementary fetch's result
@@ -274,7 +306,7 @@ function maxDate(iso: string | null, floor: Date): Date {
 /**
  * Stable per (cliente, exact composite id set); order-insensitive. Mirrors
  * buildDigestIdempotencyKey's sha1-16 approach (_shared/notification-email.ts)
- * over sorted composite ids ("pse:<id>" / "msg:<id>").
+ * over sorted composite ids ("pse:<id>" / "msg:<id>" / "oc:<id>:<inicio>" / "linha:<id>:<enviada_at>").
  */
 export async function buildClientEventIdempotencyKey(clienteId: number, ids: string[]): Promise<string> {
   const payload = [...ids].sort().join(",");
@@ -302,6 +334,18 @@ async function releaseLease(db: ClientEventEmailDb, ids: number[]): Promise<void
   if (error) {
     console.error(`[client-event-email-cron] release failed for ${ids.length} ids:`, error.message);
   }
+}
+
+/** `effective_plan_feature(feature_linha_editorial)` for one workspace. An
+ * error throws on purpose (see the header: a skipped linha must be retried,
+ * not silently outrun by the cursor). */
+async function linhaFeatureEnabled(db: ClientEventEmailDb, contaId: string): Promise<boolean> {
+  const { data, error } = await db.rpc("effective_plan_feature", {
+    ws_id: contaId,
+    feature_key: LINHA_FEATURE,
+  });
+  if (error) throw new Error(`effective_plan_feature failed: ${error.message}`);
+  return data === true;
 }
 
 /** `agenda_cliente_lembretes_pendentes` for one claimed client. Any error (or
@@ -484,7 +528,34 @@ export async function runClientEventEmailCron(
         safeUpperMs = safeUpperMs === null ? msgSafeUpperMs : Math.min(safeUpperMs, msgSafeUpperMs);
       }
 
-      // The bound is now final (folded across both queries, tie-completed).
+      // ---- linhas editoriais (spec §8.4) --------------------------------------------
+      // Same lower bound as the approvals (no floor: a linha still awaiting an
+      // answer is exactly what is worth surfacing) and the same upper bound.
+      // Skipped entirely, query included, when the workspace lacks the flag.
+      let linhas: LinhaRow[] = [];
+      if (await linhaFeatureEnabled(deps.db, row.conta_id)) {
+        const { data: linhaRows, error: linhaErr } = await deps.db
+          .from("linhas_editoriais")
+          .select("id, periodo, titulo, enviada_at")
+          .eq("conta_id", row.conta_id)
+          .eq("cliente_id", row.id)
+          .eq("status", "enviada")
+          .gt("enviada_at", approvalsLowerIso)
+          .lte("enviada_at", upperIso)
+          .order("enviada_at", { ascending: true })
+          .order("id", { ascending: true })
+          .limit(EVENTS_QUERY_CAP);
+        if (linhaErr) throw new Error(`linhas_editoriais query failed: ${linhaErr.message}`);
+        linhas = (linhaRows ?? []) as LinhaRow[];
+        // One linha per cliente and month makes the cap unreachable in practice;
+        // if it is hit anyway, fold it into the bound like the other queries.
+        if (linhas.length === EVENTS_QUERY_CAP) {
+          const lastLinhaMs = new Date(linhas[linhas.length - 1].enviada_at).getTime();
+          safeUpperMs = safeUpperMs === null ? lastLinhaMs : Math.min(safeUpperMs, lastLinhaMs);
+        }
+      }
+
+      // The bound is now final (folded across all queries, tie-completed).
       // Trim BOTH item sets to it: if only ONE query capped, the OTHER
       // query's items newer than the folded bound would otherwise still
       // ship in THIS digest while the cursor only advances to the bound --
@@ -508,6 +579,7 @@ export async function runClientEventEmailCron(
       const boundIso = new Date(boundMs).toISOString();
       eventRowsArr = eventRowsArr.filter((e) => new Date(e.created_at).getTime() <= boundMs);
       messages = messages.filter((m) => new Date(m.created_at).getTime() <= boundMs);
+      linhas = linhas.filter((l) => new Date(l.enviada_at).getTime() <= boundMs);
 
       // supabase-js can't DISTINCT ON: dedupe by post_id over the
       // created_at-ASC, bound-trimmed result. Iterating oldest-to-newest and
@@ -528,6 +600,7 @@ export async function runClientEventEmailCron(
       }));
       const approvalIds: string[] = Array.from(latestByPost.values()).map((p) => `pse:${p.id}`);
       const messageIds = messages.map((m) => `msg:${m.id}`);
+      const linhaIds = linhas.map((l) => `linha:${l.id}:${l.enviada_at}`);
 
       // ---- agenda reminders (spec §9) -------------------------------------------
       const reminders = await fetchReminders(deps.db, row, now);
@@ -535,7 +608,7 @@ export async function runClientEventEmailCron(
       // agenda_cliente_lembretes_marcar, and one RPC call is self-consistent.
       const reminderIds = reminders.map((r) => `oc:${r.ocorrencia_id}:${r.inicio}`);
 
-      if (pendingPosts.length === 0 && messages.length === 0 && reminders.length === 0) {
+      if (pendingPosts.length === 0 && messages.length === 0 && reminders.length === 0 && linhas.length === 0) {
         skippedNoContent++;
         await releaseLease(deps.db, [row.id]);
         continue;
@@ -563,7 +636,8 @@ export async function runClientEventEmailCron(
       const logoUrl = branding?.logo_url ?? null;
 
       const unsubToken = await signUnsubToken(row.id, deps.tokenSecret);
-      const unsubUrl = `${deps.unsubBaseUrl}/functions/v1/client-email-unsub/${unsubToken}`;
+      const unsubUrl = clientUnsubFunctionUrl(deps.unsubBaseUrl, unsubToken);
+      const unsubFooterUrl = clientUnsubFooterUrl(deps.unsubPageBaseUrl, deps.unsubBaseUrl, unsubToken);
 
       const html = buildClientEventEmail({
         clienteNome: row.nome,
@@ -573,13 +647,15 @@ export async function runClientEventEmailCron(
         pendingPosts,
         unreadMessages: messages.length,
         hubUrl,
-        unsubUrl,
+        unsubUrl: unsubFooterUrl,
         pendingEvents: reminders,
+        linhas: linhas.map((l): ClientEventLinha => ({ periodo: l.periodo, titulo: l.titulo })),
       });
       const idempotencyKey = await buildClientEventIdempotencyKey(row.id, [
         ...approvalIds,
         ...messageIds,
         ...reminderIds,
+        ...linhaIds,
       ]);
 
       await deps.sendEmail({
@@ -657,6 +733,7 @@ export async function runClientEventEmailCron(
             posts: pendingPosts.length,
             messages: messages.length,
             ...(reminders.length > 0 ? { events: reminders.length } : {}),
+            ...(linhas.length > 0 ? { linhas: linhas.length } : {}),
           },
         });
       } catch (auditErr) {

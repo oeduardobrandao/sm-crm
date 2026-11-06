@@ -362,6 +362,18 @@ Deno.test("run: sends each claimed item with key, sender, unsubscribe headers an
   assertEquals(marks().map((m) => m.args), [{ p_id: 5, p_versao: 3, p_ok: true, p_erro: null }]);
 });
 
+Deno.test("run: unsub footer links the CRM page; List-Unsubscribe keeps the function", async () => {
+  const { db } = makeDb([item()]);
+  const { deps, sent } = baseDeps(db, { unsubPageBaseUrl: "https://app.test/" });
+  await runAgendaClienteEmail(deps);
+  const [, , html, , , , headers] = sent[0] as [string, string, string, string, string, unknown, Record<string, string>];
+  const token = await signUnsubToken(42, "test-secret");
+  const fnUrl = `https://x.supabase.co/functions/v1/client-email-unsub/${token}`;
+  assert(html.includes(`https://app.test/cancelar-avisos/${token}`));
+  assert(!html.includes(fnUrl));
+  assertEquals(headers["List-Unsubscribe"], `<${fnUrl}>`);
+});
+
 Deno.test("run: send throws -> marked not ok with the error name only", async () => {
   const { db, marks } = makeDb([item(), item({ id: 6, versao: 1 })]);
   let n = 0;

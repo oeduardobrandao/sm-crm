@@ -37,7 +37,7 @@ deno test supabase/functions/    # Deno edge-function suite
 npm run check:functions  # deno check over the edge functions (test:functions runs --no-check)
 
 # Lint & format (both enforced in CI)
-npm run lint             # eslint apps/ packages/ (runs in the typecheck-and-test job)
+npm run lint             # eslint apps/ packages/ (runs in the lint-and-typecheck job)
 npm run format           # prettier --write  (auto-fix apps/** and packages/**)
 npm run format:check     # prettier --check  (format-check job gate; run before pushing)
 
@@ -50,24 +50,28 @@ npx supabase db push --linked                   # push migrations to staging
 ### What CI actually runs
 
 `.github/workflows/ci.yml` is the source of truth. It fires on pull requests and
-pushes to `main` and `staging`, with **eight** jobs:
+pushes to `main` and `staging`, with **ten** jobs:
 
 | Job | Runs |
 |---|---|
-| `typecheck-and-test` | `npm run lint`, then `tsc` for **all four** projects (crm, hub, admin, `tsconfig.scripts.json`), then `npm run test:coverage` |
+| `lint-and-typecheck` | `npm run lint`, then `tsc` for **all five** projects (crm, hub, admin, `apps/mcp-widgets`, `tsconfig.scripts.json`), then rebuilds the MCP cards bundle (`npm run build:mcp-widgets`) and fails on `git diff --exit-code supabase/functions/mcp/ui/generated/cards.ts` |
+| `unit-tests` (4 shards) | `vitest run --shard=N/4 --coverage --reporter=blob`; each shard uploads its blob |
 | `edge-function-tests` | `npm run check:functions` (`deno check` over every `*/index.ts` and `_shared` module), then `npm run test:functions` (Deno) |
 | `entitlement-tests` | `supabase start` + `bash scripts/test-entitlements.sh` — the psql RLS/entitlement suites |
-| `coverage-threshold` | `npm run coverage:check` |
+| `coverage-threshold` | merges the 4 shard blobs (`vitest --merge-reports`, re-reports any failure) and applies the `vitest.coverage.config.ts` floor, same gate as `npm run coverage:check` |
 | `format-check` | `npm run format:check` |
 | `migration-version-guard` | fails on duplicate migration version prefixes |
 | `e2e` | Playwright |
 | `e2e-secrets-guard` | warns when E2E secrets are absent |
+| `landing-prerender-smoke` | `vite build` + `npm run prerender` with placeholder `VITE_*`, then asserts `dist/index.html` has `data-ssr="landing"` and `lp2-hero` |
 
 Four things this list is here to prevent:
 
 - **`npm run build` is not the typecheck.** It only covers the CRM. CI
-  typechecks four projects separately, so a Hub, Admin or scripts break passes
-  locally and fails in CI. Run the four `tsc` commands, not `build`.
+  typechecks five projects separately, so a Hub, Admin, mcp-widgets or scripts break passes
+  locally and fails in CI. Run the five `tsc` commands, not `build`. Anything under
+  `apps/mcp-widgets/` also needs `npm run build:mcp-widgets` and the regenerated
+  `cards.ts` committed, or the diff check fails.
 - **`supabase/tests/entitlements/*.sql` IS gated by CI.** It is easy to assume
   otherwise because it needs a local database to run by hand. It does not need
   one to be enforced.
@@ -81,7 +85,7 @@ Four things this list is here to prevent:
   runs first in the same job.
 
 Before pushing, run `npm run lint`, `npm run format:check` (`npm run format`
-auto-fixes), the four `tsc` commands, `npm run test`, `npm run check:functions`
+auto-fixes), the five `tsc` commands, `npm run test`, `npm run check:functions`
 and `npm run test:functions`.
 `npm run test:db` needs Docker locally; CI covers it either way.
 
@@ -94,6 +98,7 @@ Monorepo with npm workspaces:
 - `apps/crm/` -- Internal CRM dashboard (React 19, React Router v7, TanStack Query)
 - `apps/hub/` -- Client-facing portal (React 19, createBrowserRouter)
 - `packages/ui/` -- Shared UI primitives
+- `apps/mcp-widgets/` -- Cards do MCP (React + Vite, build em arquivo único); `npm run build:mcp-widgets` gera `supabase/functions/mcp/ui/generated/cards.ts`, que se commita e nunca se edita à mão
 - `supabase/functions/` -- Deno edge functions (backend)
 - `supabase/migrations/` -- SQL migrations
 
@@ -122,7 +127,12 @@ Monorepo with npm workspaces:
 - `_shared/cors.ts` -- `buildCorsHeaders(req)` for CORS (never use wildcard `*`)
 - `_shared/audit.ts` -- `insertAuditLog()` for audit trail
 - `_shared/r2.ts` -- Cloudflare R2 storage client (presigned URLs)
-- `mcp-admin/` -- MCP do Admin da plataforma (OAuth-only; `platform_admins` + `admin_mcp_oauth_grants`; banners, popups, artigos da KB em Markdown, leituras de workspaces/planos/dashboard). Escopos em `_shared/mcp-admin-scopes.ts`, bundlados também em `mcp-oauth-consent`: mudar escopo = redeploy dos dois + CRM
+- `mcp/` -- MCP do workspace (chaves `mcp-keys` e OAuth `mcp-oauth-consent`). Escopos em `_shared/mcp-token.ts` (`MCP_ALLOWED_SCOPES`), espelhados no CRM (`apps/crm/src/lib/mcp-scopes.ts`). Os escopos `financeiro:*` são só do dono (`OWNER_ONLY_SCOPES`): a emissão recusa não-dono (`owner_only_scope`, papel de `workspace_members` do workspace da chave/grant) e a ferramenta confere o papel a cada chamada, então um dono rebaixado perde acesso na chamada seguinte. Mudar escopo = redeploy de `mcp`, `mcp-keys` e `mcp-oauth-consent` + CRM
+  - Cards (MCP Apps, spec `docs/superpowers/specs/2026-10-29-mcp-apps-cards-design.md`, runbook `docs/mcp-apps-rollout.md`, listagens `docs/mcp-apps-directory-submission.md`): ligados por `MCP_APPS` (`off` padrão | `pilot` | `on`, ver Environment variables); desligado, o `mcp` não registra ferramenta de card nem recurso `ui://` e se comporta como antes. Ferramentas de card: `preview_post`, `show_caption_options`, `show_client_calendar`, `show_attach_image` (todas `client_id`, não `cliente_id`, e `structuredContent` com `card` e `v: 1`)
+  - **O agente não envia sozinho.** `send_post_to_client` e `attach_image_to_post` são só do widget (`_meta.ui.visibility: ["app"]`), registradas apenas em conexão OAuth (`key_id` começa com `oauth:`; chave `mesaas_sk_` nunca as vê) e o envio exige o nonce HMAC que o card recebe em `_meta["mesaas/sendNonce"]` do resultado de `create_post`/`update_post` (só deles: `preview_post` não emite nonce, então o card só envia depois de salvar nele mesmo, a partir do status que esse save devolveu; 30 min, nunca no `audit_log`). O `UPDATE` de status e o anexo passam só pelas RPCs `mcp_send_post_to_client` e `mcp_attach_post_file_v2` (EXECUTE só `service_role`, membership por `workspace_members`; a v2 confere sob o lock o slide ou a contagem que o card viu, `stale_post`, para um retry ou uma edição no CRM nunca duplicar nem sobrescrever o slide errado, e faz o trim de "Substituir os slides atuais" na mesma transação; a v1 `mcp_attach_post_file` só atende card antigo em cache). Várias imagens: um card só (`show_attach_image` com `images`), anexadas uma por chamada, em ordem. Toda ferramenta nova do `mcp` precisa de entrada em `TOOL_META` (título e annotations; teste estrutural) e de `auditArgs` sem texto de post, legenda, nonce ou `download_url`
+  - **Revogar conexão OAuth encerra também o lado do Supabase.** O trigger `trg_mcp_oauth_grant_revoked` (em `mcp_oauth_grants` e `admin_mcp_oauth_grants`, migration `20261107000001`) chama `mcp_revoke_oauth_client_access` quando `revoked_at` sai de nulo: revoga o `auth.oauth_consents` e apaga as `auth.sessions` daquele cliente, se não sobrar grant ativo dele em nenhuma das duas tabelas. Sem isso o Supabase reaprovava o consentimento velho e o cliente entrava em loop de 401. A `ConsentPage` chama `prepare-authorization` (`mcp-oauth-consent`) antes do `getAuthorizationDetails` pelo mesmo motivo; não inverta essa ordem
+  - **URI versionada:** o recurso é `CARDS_URI` em `mcp/apps.ts` (hoje `ui://mesaas/cards-v3.html`) e hosts guardam o HTML em cache pela URI: o ChatGPT seguiu mostrando o card antigo depois de um redeploy do v1. Toda mudança em `apps/mcp-widgets/` sobe a versão da URI e passa a anterior para `LEGACY_CARDS_URIS` (continua servida, com o HTML atual, para quem guardou a listagem velha). Mudou o widget = `npm run build:mcp-widgets`, commit do `cards.ts`, versão nova em `CARDS_URI` e redeploy de `mcp`; no ChatGPT em modo dev ainda é preciso "Refresh" no app. Sem `_meta.ui.domain` de propósito (Claude e ChatGPT pedem valores incompatíveis); só `openai/widgetDomain`
+- `mcp-admin/` -- MCP do Admin da plataforma (OAuth-only; `platform_admins` + `admin_mcp_oauth_grants`; banners, popups, artigos da KB em Markdown, leituras de workspaces/planos/dashboard, rascunhos do blog). Escopos em `_shared/mcp-admin-scopes.ts`, bundlados também em `mcp-oauth-consent` e espelhados no CRM (`apps/crm/src/lib/mcp-scopes.ts`) e no Admin (`apps/admin/src/lib/mcp-admin-scopes.ts`): mudar escopo = redeploy dos dois + CRM + Admin
 - Cron functions authenticate via `x-cron-secret` header (not JWT)
 - All other functions verify JWT via `Authorization: Bearer <token>` header
 
@@ -156,6 +166,8 @@ Monorepo with npm workspaces:
 ### CRM app (Vite, prefixed with `VITE_`)
 - `VITE_SUPABASE_URL` -- Supabase project URL
 - `VITE_SUPABASE_ANON_KEY` -- Supabase anon key
+- `VITE_GOOGLE_ADS_ID` -- Google Ads tag ID (`AW-…`). Optional: unset, gtag.js never loads. Vercel **Production** only, so preview/staging/dev clicks stay out of the Ads account. Loads only with the `marketing` ("Publicidade") cookie consent via `lib/googleAdsLoader.ts`; conversions go through `trackGoogleAdsConversion(label)`. Build-time, so a change needs a redeploy
+- `VITE_META_PIXEL_ID` -- Meta Pixel (dataset) ID. Same rules as `VITE_GOOGLE_ADS_ID` (Production only, `marketing` consent, build-time), via `lib/metaPixelLoader.ts`; events go through `trackMetaEvent(name, params)` (standard) or `trackMetaCustomEvent(name, params)` (`trackCustom`, e.g. `IniciouCadastro` on the first focus in the signup form, once per page load, `pages/login/signupStarted.ts`). `autoConfig` and SPA PageView tracking (`disablePushState`) are off on purpose, so signed-in CRM URLs never reach Meta. Checkout returns send Google "Compra" and Meta `Purchase` together from `reportPurchaseConversion()`
 
 ### Edge functions (Deno.env)
 - `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
@@ -178,6 +190,21 @@ Monorepo with npm workspaces:
   `stream-steps:ingest`/`stream-steps:settle`/`stream-steps:reap`); `_shared/stream.ts` already
   retries a lone 429 with backoff, so a 429 reaching these logs means the retry budget was
   exhausted under sustained throttling, not a one-off blip
+- `STREAM_RELEASE_GRACE_DAYS` / `STREAM_RELEASE_IDLE_DAYS` / `STREAM_RELEASE_BATCH` -- retention
+  dials for the same cron (defaults 7 / 60 / 50). A video stays in Cloudflare Stream only while a
+  post it belongs to is "live" (`stream_post_is_live`, migration 20261113000001): `agendado` or
+  `falha_publicacao` is always live; `postado` is live for GRACE days after `published_at` (NULL `published_at` counts as not live; GRACE=0 is honored); any
+  other status is live only if it changed status in the last IDLE days. When no post is live the
+  next run deletes the Stream copy and sets `stream_status = 'parked'` (out of Stream by policy,
+  not an error). A `parked` video is re-ingested automatically once a post makes it live again,
+  and playback falls back to R2 meanwhile. GRACE/IDLE also drive the ingest eligibility RPC (one
+  shared predicate), so change them knowing both sides move. BATCH caps Stream deletes per run:
+  50/run on the hourly prod job caps a backlog at about 1,200 deletes/day. Plain edge secrets, no
+  deploy needed. The release step runs whenever `STREAM_ACCOUNT_ID` + `STREAM_API_TOKEN` are set,
+  so also in the cleanup-only kill-switch mode. Rolling the cron back to a pre-retention version
+  is safe but leaves the migration's insert trigger in place, and the old cron never ingests
+  `parked`: post videos linked by any path other than `file-upload-finalize` (file-manage
+  `/links`, duplicating a post, MCP, picking from the library) stay on R2 until the new cron is back
 - `STREAM_REAP_INTERVAL_HOURS` -- hours between the same cron's Stream orphan-reap runs (default
   6). Reap lists the WHOLE Cloudflare Stream account every time it runs -- as the video library
   grows this is the main driver of the account's Stream API request volume, so it's the lever to
@@ -210,12 +237,48 @@ Monorepo with npm workspaces:
   at most 2880/day, under the free plan's 3000). Hourly because `rate_limit_log` is pruned
   every hour (`rate-limit-cleanup`), so a daily window would never count past one hour.
   Raise it together with the Geoapify plan; changing it needs no deploy
+- `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_PRIVATE_KEY`, `APNS_BUNDLE_ID` -- Apple Push
+  Notification service token auth for `notification-push-cron` (push channel of the iOS app,
+  `apps/mobile`). `APNS_PRIVATE_KEY` is the whole `AuthKey_XXXX.p8` file (literal `\n` for
+  newlines is accepted); `APNS_BUNDLE_ID` is `br.com.mesaas.app`. Optional as a set, no default:
+  without all four the cron claims nothing and returns `skipped`, so it can be deployed and
+  scheduled before the Apple Developer account exists. The cron is scheduled every minute by
+  migration 20261015000002, which must be applied AFTER the function is deployed. Sandbox vs
+  production is per device (`push_devices.environment`, reported by the app build), not a secret
+- `MCP_APPS` -- liga os cards do MCP (`mcp`): `off` (padrão, vale também para qualquer valor desconhecido) |
+  `pilot` (só os `conta_id` de `MCP_APPS_PILOT_CONTAS`) | `on` (todos). Lida a cada requisição, então mudar não
+  precisa de deploy; desligar é o rollback instantâneo. Passo a passo e verificações do piloto em
+  `docs/mcp-apps-rollout.md`
+- `MCP_APPS_PILOT_CONTAS` -- `conta_id`s separados por vírgula, lidos só com `MCP_APPS=pilot`. Opcional, sem default
+- `MCP_IMAGE_HOSTS` -- hostnames (separados por vírgula, igualdade exata) de onde o `attach_image_to_post` aceita
+  baixar a imagem do chat. Opcional, sem default: **vazio recusa toda imagem**, então o card de anexar não funciona
+  até o piloto preencher (o host sai do log `[mcp] image host refused: <host>`). As mesmas origens entram na CSP do
+  card (`resourceDomains`), para as miniaturas das imagens do chat aparecerem. Sem deploy ao mudar
+- `NURTURE_UNSUB_SECRET` -- HMAC secret of the nurture-email unsubscribe links. REQUIRED, no default. `nurture-unsub` throws at module load if missing; `lifecycle-email-cron` reads it lazily inside the nurture path, so a missing secret fails each nurture send (and the preview) through cron triage while welcome, thank-you and trial reminder keep running. Rotating it invalidates every link already sent
+- `NURTURE_EMAILS` -- liga a varredura de nurture do `lifecycle-email-cron` (e-mails para donos que nunca assinaram): `off` (padrão) | `on`; qualquer valor diferente de `on` é desligado. Lida a cada execução, então mudar não precisa de deploy; desligar é o rollback. A prévia manual (`{"nurture_preview_to": ...}`) funciona com ela desligada. Runbook: `docs/nurture-emails.md`
 - `GEMINI_API_KEY` -- Google Gemini key for AI narrative generation in analytics reports (instagram-analytics, instagram-report-generator-v2). Optional, no default -- AI narrative is skipped when unset
+- `WORKERS_AI_ACCOUNT_ID`, `WORKERS_AI_API_TOKEN` -- Cloudflare account id + API token (permissões `Workers AI - Read` e `Workers AI - Edit`) da leitura de comentários do Instagram (`instagram-analytics`, rotas `comments-analysis*`, modelo `COMMENTS_MODEL` em `comments-ai.ts`). Opcionais, sem default: sem os dois, as análises respondem 503 `ai_unavailable` e a lista de comentários segue funcionando. O plano gratuito do Workers AI dá 10 mil neurons/dia (zera 00:00 UTC; esgotado, erro 3036 vira `ai_unavailable` até o dia seguinte). Secrets comuns: mudar não precisa de deploy
+- `GSC_SERVICE_ACCOUNT_JSON` -- chave JSON (uma linha) da conta de serviço do Google com acesso
+  **Restrito** à propriedade do Search Console; lida só pelo `blog-search-console-cron`
+  (cliques, impressões, posição e indexação por post, para o Admin do blog). Opcional, sem
+  default: ausente (staging, local), o cron responde 200 `skipped: not_configured` sem tocar em
+  nada e o Admin mostra "Search Console não configurado". Nunca na linha de comando: use
+  `--env-file` com arquivo temporário. Passo a passo: `docs/search-console-service-account.md`;
+  spec `docs/superpowers/specs/2026-10-27-blog-metrics-design.md`
+- `GSC_SITE_URL` -- propriedade do Search Console consultada pelo mesmo cron (padrão
+  `sc-domain:mesaas.com.br`). Só defina se o site estiver registrado de outra forma (prefixo de
+  URL). Secret comum: mudar não precisa de deploy
 - `REPORT_PRINT_BASE` -- origem pública que serve a página de print do relatório
   de blocos (ex.: https://mesaas.com.br). Usada por report-docs POST /:id/pdf
   para montar a URL que o Gotenberg imprime. Opcional: sem ela (ou sem
   GOTENBERG_URL / INTERNAL_FUNCTION_SECRET) o export responde 503
   pdf_not_configured; as demais rotas seguem normais
+- `VERCEL_BLOG_DEPLOY_HOOK` -- URL do Deploy Hook da Vercel (branch `main`, produção) que o
+  `platform-admin` dispara ao aprovar, editar ou despublicar um post do blog: o build seguinte
+  roda `blog:sync` e põe o post no ar. Só prod recebe. Opcional, sem default: ausente (staging,
+  local), aprovar responde 503 `publish_unavailable` e o Admin mostra "Publicação indisponível
+  neste ambiente"; o resto do fluxo do blog segue normal. Spec:
+  `docs/superpowers/specs/2026-10-23-blog-automatico-design.md`
 - `STRIPE_SECRET_KEY` -- Stripe API secret key. REQUIRED by billing functions, no default -- throw if missing. Also used (optionally) by billing-downgrade-cron for the switch's leg D enforcement; absent, that leg is skipped with `switchSkipped: true`
 - `STRIPE_WEBHOOK_SECRET` -- Stripe webhook signing secret. REQUIRED by stripe-webhook, no default -- throw if missing
 - `AFFILIATE_MIN_PAYOUT_CENTS` -- repasse mínimo do programa de afiliados, em centavos
@@ -246,6 +309,13 @@ Monorepo with npm workspaces:
   `metrics-snapshot-cron` (pg_cron `44 2 * * *` UTC = 23:44 em São Paulo), que não depende dela.
 - `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REDIRECT_URI` -- TikTok Login Kit OAuth (tiktok-integration)
 - `TIKTOK_APP_AUDITED` -- unset until TikTok's Content Posting audit passes; while unset, scheduling enforces SELF_ONLY privacy
+- `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` -- Google OAuth client for the YouTube + Google Meu Negócio connect flow (google-integration). Both REQUIRED, no default -- throw if missing. Two Cloud projects: prod and staging use different OAuth clients
+- `GOOGLE_REDIRECT_URI` -- optional; falls back to `${SUPABASE_URL}/functions/v1/google-integration/callback`. The same string must go in the auth request and the code exchange, and be registered in that Cloud project's OAuth client
+- `GOOGLE_SYNC_BATCH_LIMIT` / `GOOGLE_SYNC_CONCURRENCY` -- throughput dials for `youtube-sync-cron` and
+  `gbp-sync-cron` (defaults 25 / 4; GMN concurrency is capped at 4 regardless, to stay under the
+  Business Profile APIs' 300 QPM). Both crons run hourly and claim units not synced in 20 h, so
+  capacity is `24 × GOOGLE_SYNC_BATCH_LIMIT` unit-syncs per product per day. Plain secrets: changing
+  them needs no deploy
 - `TIKTOK_URL_VERIFY_FILENAME`, `TIKTOK_URL_VERIFY_CONTENT` -- TikTok URL-prefix verification file (optional; 404 until set)
 - `LOOPS_API_KEY` -- Loops REST API key for marketing lifecycle emails. REQUIRED by
   loops-sync-cron, no default -- `_shared/loops.ts` throws if missing
@@ -315,13 +385,39 @@ Monorepo with npm workspaces:
 - Page param validation: `Math.max(1, parseInt(pageStr) || 1)`
 - localStorage iteration: collect keys first, then remove. Modifying during iteration skips items
 - Roles are `owner | admin | agent` -- always check via `AuthContext`, never hardcode
-- Supabase edge function deploy always needs `--no-verify-jwt` flag for functions that handle their own auth (OAuth callbacks, cron, hub). `hub-briefing`, `hub-agenda` and `hub-post-references` (token do hub), `agenda-convite` (token do convidado externo), `agenda-cliente-email` (cron, `x-cron-secret`), `briefing-audio`, `geo-autocomplete` and `post-references` (verify the user JWT themselves) need it too, and so do `affiliate-public` (programa de afiliados, link mágico por e-mail trocado por sessão) and `affiliate-payout-cron` (cron, `x-cron-secret`)
+- Supabase edge function deploy always needs `--no-verify-jwt` flag for functions that handle their own auth (OAuth callbacks, cron, hub). `nurture-unsub` (one-click opt-out dos e-mails de nurture, token HMAC), `hub-briefing`, `hub-agenda`, `hub-post-references`, `hub-media-notes` and `hub-linha-editorial` (token do hub), `agenda-convite` (token do convidado externo), `agenda-cliente-email` (cron, `x-cron-secret`), `briefing-audio`, `geo-autocomplete` and `post-references` (verify the user JWT themselves) need it too, and so do `affiliate-public` (programa de afiliados, link mágico por e-mail trocado por sessão) and `affiliate-payout-cron` (cron, `x-cron-secret`), `blog-view` (contador de views do blog, público e anônimo) and `blog-search-console-cron` (cron, `x-cron-secret`), `tiktok-analytics` (verifies the user JWT itself), and `google-integration` (OAuth callback plus routes that verify the user JWT themselves), plus `youtube-analytics` and `gbp-analytics` (verify the user JWT themselves) and `youtube-sync-cron`, `gbp-sync-cron` and `notification-push-cron` (cron, `x-cron-secret`)
 - Hub app uses token-based access (no Supabase auth), builds to `dist/hub/` with base path `/hub/`
 - Vercel rewrites in `vercel.json` route Hub URLs to `/hub/index.html` and CRM URLs to `/index.html`
 - `membros` and `clientes` use column-level `GRANT SELECT` allowlists (Migration `20260728000002`). Any column added to either table is invisible to the CRM until it is added to the grant, to `membros_v`/`clientes_v`, and to the `*_SAFE_COLUMNS` constants in `store/team.ts` / `store/clients.ts`. The failure surfaces as a confusing missing-column error. The same allowlist also keeps six PostgREST embeds, ten dependent RLS policies and `get_client_health_aggregates()` working -- none of which a `from('clientes')` grep finds.
 - Deploys trocam de versão em silêncio (`installSilentUpdate` em `packages/app-lifecycle`). Todo editor fora de modal com conteúdo não persistido ou save em voo chama `useUnsavedWork(condição)`, e toda função de upload envolve a promise em `trackUnsavedWork`. Modais com `confirmClose` já estão cobertos pelo `DialogContent`. A heurística de DOM só segura diálogo aberto, campo focado e controle de formulário que o usuário alterou nesta sessão; um save silencioso em voo só o registro vê. Nunca use `useBlocker` nos apps: o React Router honra só o último blocker registrado e `installSilentUpdate` já registra um, então um segundo desliga a troca silenciosa sem aviso. Spec: `docs/superpowers/specs/2026-09-05-seamless-updates-design.md`
 
+- Google (YouTube + Google Meu Negócio, spec `docs/superpowers/specs/2026-10-29-youtube-google-meu-negocio-design.md`): um workspace tem UMA identidade Google em `google_connections`, compartilhada pelos dois produtos. Nunca apague uma linha de `google_connections` fora das RPCs de revogação (`_google_revoke_if_unused` via `google_unlink_*`/`google_release_sub`, o trigger de exclusão de workspace e `google_disconnect_identity`): são elas que aplicam a regra do §4.2 (só revoga no Google quando nenhum produto ainda usa a identidade) sob o lock do sub e gravam `google_revocations`. `google_disconnect_identity` ("Desconectar conta" em Configurações > Contas conectadas) é a única que apaga a linha do workspace mesmo quando a identidade segue em uso em outro workspace (aí não revoga no Google). Um delete direto deixa o refresh token vivo no Google e perde o controle dos prazos de exclusão que a política de privacidade promete (YouTube 7 dias, GMN 30 dias). Prod e staging usam projetos Google Cloud separados (clientes OAuth, tela de consentimento e verificação próprios): `GOOGLE_REDIRECT_URI` tem que bater com o registrado no projeto com o qual você está falando. Ordem de deploy: migrations `20261108000001`..`20261108000003` → `google-integration` (com `--no-verify-jwt`) + os oito importadores de `_shared/entitlements.ts` (`automation-media`, `data-import`, `equipe-chat-media`, `mcp-keys`, `mcp-oauth-consent`, `paywall-report`, `platform-admin`, `workspace-limits`) → merge. Redeployar `platform-admin` antes da migration `20261108000001` faz todo save de plano no Admin dar 400. A política de privacidade e os termos citam YouTube e Google Meu Negócio por `GOOGLE_LEGAL_TEXT_LIVE` (`apps/crm/src/lib/googleLegalLaunch.ts`), ligado desde a Fase 2, que entregou as exclusões que o texto promete
+  - **Fase 2 (sync, exclusões, abas; plano `docs/superpowers/plans/2026-10-30-youtube-gmn-phase2-sync-analytics.md`).** Ordem de deploy: (1) migrations `20261112000010`..`20261112000012` (tabelas de histórico, `maps_uri`, `last_sync_attempt_at`, RPCs de purge/expiração/liberação); `db push` aplica tudo o que estiver pendente, então rode de um checkout descartável sem `…20`/`…21`; (2) as cinco functions: `google-integration`, `youtube-analytics` e `gbp-analytics` (as três com `--no-verify-jwt`), `youtube-sync-cron` e `gbp-sync-cron` (também `--no-verify-jwt`); (3) migrations `20261112000020` + `20261112000021` (agendam os crons, `35 * * * *` e `40 * * * *`; agendadas antes do deploy, o pg_cron bate numa function inexistente); (4) merge. `google-integration` novo antes da `…11` quebra o salvar do seletor de unidades (grava `maps_uri`)
+  - **`gbp-sync-cron` carrega os deveres de exclusão da política de privacidade** (`google_expire_units`, retentativa de `google_revocations`, liberação de identidades órfãs), rodando independentemente das flags. Desagendar ou desligar esse cron quebra a promessa de 30 dias; `youtube-sync-cron` drena a fila `youtube_pdf_purges`. As tabelas de histórico não têm FK para os vínculos (de propósito): excluir um cliente apaga `youtube_channels`/`gbp_locations` em cascata e o histórico que sobra sai pela passada de órfãos do `google_expire_units` (até 10 mil linhas por tabela por execução). Excluir um workspace dispara o trigger `trg_workspaces_google_release` (migration `20261112000012`), que solta cada identidade Google do workspace pela mesma `google_release_sub` (regra do §4.2: só revoga se nenhum outro workspace usa a identidade) antes do cascade apagar `google_connections`; a revogação vai para `google_revocations` e sai no próximo `gbp-sync-cron`. Raro: uma exclusão de workspace concorrente com um relink, com um `invalid_grant` daquela identidade ou com um "Desconectar conta" dela pode cair em `deadlock_detected`; repetir a exclusão resolve. A migration cria trigger em `workspaces`, então o `db push` pode estourar o `lock_timeout` de 5 s com um save concorrente: é só rodar de novo
+  - **Fases seguintes:** a Fase 4 recria `youtube_purge_channel` com a remoção dos blocos `youtube_*` do layout e `youtube_channel_id = NULL`, mantendo a ordem histórico → lock → fila de PDF → update, e torna condicional a gravação de `pdf_storage_path` em `report-docs/pdf.ts` (um export renderizado antes do purge não pode gravar o PDF depois dele). A Fase 3 recria `google_unlink_youtube` com os passos de alvo/upload e tem que manter a chamada de purge; `google_disconnect_identity` repete esses passos por canal (ou os dois chamam o mesmo helper por canal), então a Fase 3 recria as duas. A Fase 4 mantém a assinatura `(uuid, text, bigint)` de `youtube_purge_channel`, que `google_disconnect_identity` também chama
+  - **Desconectar conta** (Configurações > Contas conectadas, spec `docs/superpowers/specs/2026-11-04-google-account-disconnect-design.md`): `GET /accounts` e `POST /accounts/:connectionId/disconnect` do `google-integration`, gate por `configuracoes:ver`/`editar` (`has_permission_for`), sem flag de plano. Ordem de deploy: migration `20261116000001` (aditiva, segura antes de qualquer código) → `google-integration` (com `--no-verify-jwt`; antes da migration o POST novo responde 500 e o GET funciona) → merge. Rollback: frontend primeiro; a RPC pode ficar
+
 - Programa de afiliados (spec `docs/superpowers/specs/2026-10-10-programa-de-afiliados-design.md`): só pagamentos Stripe geram comissão, via `stripe-webhook`, com percentual e janela de meses por plano em `affiliate_commission_rules` (editável no Admin). O repasse é por Stripe Connect (conta Express do afiliado, transfer mensal do `affiliate-payout-cron`), então o Connect precisa estar ativado na conta Stripe. O endpoint do webhook no painel do Stripe precisa ter `invoice.paid`, `charge.refunded`, `charge.dispute.created` e `charge.dispute.closed` ativos, senão nenhuma comissão é registrada. A atribuição é o trigger `on_auth_user_created_zz_affiliate_referral`, que depende de rodar DEPOIS de `on_auth_user_created_workspace` (ordem alfabética): não renomeie nenhum dos dois sem conferir isso
+- Financeiro v2 (flag `feature_financeiro_v2`, spec `docs/superpowers/specs/2026-10-23-financeiro-rentabilidade-design.md`): as tabelas `financeiro_*` só aceitam escrita pelas RPCs SECURITY DEFINER (`financeiro_*_salvar`, `financeiro_seed`, reabrir/fechar); nunca escreva nelas direto. As RPCs regravam as colunas legadas (`clientes.valor_mensal`/`data_pagamento`/`status`, `membros.custo_mensal`/`data_pagamento`) a partir da versão vigente no período `aberto`, e os triggers `trg_financeiro_v2_*_legado` fazem o caminho inverso: uma escrita legada (CSV, MCP, conversão de lead, telas antigas) vira versão no início do período aberto, com compare-and-skip como trava contra loop. `_financeiro_calcular` é a única função de rateio; `financeiro_rolar_periodos` (pg_cron `29 * * * *`) fecha períodos com snapshot e abre o próximo, e toda escrita v2 pega `pg_advisory_xact_lock_shared(_financeiro_lock_key(conta))` contra o lock exclusivo do job. Com a flag ligada, os formulários legados de cliente não gravam mensalidade, dia de pagamento nem status (isso vai pela aba Financeiro, que pede "Vale a partir de"). Contratos dos acordos ficam no bucket privado `financeiro-acordos` (`<conta_id>/<membro_id>/<uuid>.<ext>`, URL assinada de 300 s, sem UPDATE/DELETE)
+- Acesso por cliente (flag `feature_acesso_por_cliente`, spec `docs/superpowers/specs/2026-11-03-acesso-por-cliente-design.md`, plano `docs/superpowers/plans/2026-11-03-acesso-por-cliente.md`): `workspace_members.client_scope` (`todos` | `atribuidos`) + `workspace_member_clientes` restringem um membro aos clientes atribuídos, no banco (RLS, RPCs SECURITY DEFINER, triggers `zz_*`):
+  - **Predicado:** `(SELECT my_client_scope_all()) OR can_access_cliente(<cliente>) OR <é dele>`, com o initplan sempre primeiro (quem vê todos não paga nada por linha). Dono nunca é restrito; restrito com zero linhas = zero clientes; `auth.uid()` nulo (cron, service role) = sem restrição. O predicado **nunca** lê a flag: a flag só controla pôr alguém em `atribuidos` e a UI. "É dele" (responsável/criador/participante, via `membros.crm_user_id`) vale para ler e editar, nunca para criar, apagar ou mover: item dele em cliente oculto não sai do cliente e não é repassado (o SELECT USING recusa a linha nova com 42501, inclusive quando uma automação reatribui). Contexto (`can_see_cliente_context`) só abre marca, briefing e identidade. Notificação de cliente oculto aparece no sino e sai por e-mail ou push (o push e o badge do app seguem o claim do e-mail, migration `20261120000001`) só se o item dela (chave mais específica do metadata: `post_id` > `task_id` > `idea_id` > `linha_id` > `etapa_id` > `workflow_id`) é legível por ele (`notification_item_visible`, sob a RLS dele; `notification_item_visible_for` no claim e na discussão do post); emissor novo grava a chave do item no metadata, senão a notificação vira só de escopo. `audit_log` e o detalhe por cliente de `workspace_usage()` ficam fechados para o restrito
+  - **Tabela nova com `cliente_id`** (ou filha de uma) quebra o `99_acesso_por_cliente_drift.sql` até ganhar o predicado ou uma isenção comentada. O drift só olha `public`: policy nova em `storage.objects` precisa ser conferida à mão (o bucket `financeiro-acordos` já exige `my_client_scope_all()`). Função SECURITY DEFINER nova que lê ou grava dado de cliente precisa do mesmo filtro (helpers `scope_check_*`, só service_role). Coluna nova em `analytics_reports` precisa de GRANT por coluna para o CRM gravar (caminhos do PDF são só dos geradores). A isenção `pg_trigger_depth() > 1` do guard de `folders` só é segura enquanto `folder_sync_*` forem os únicos triggers que gravam pastas
+  - **Financeiro:** `_financeiro_calcular` e `financeiro_rolar_periodos` não mudam; o filtro é na leitura. Restrito vê só os clientes dele (sem custo sem cliente, sem custo total de membro) e não grava nada que mexa no rateio (atribuições, acordo, config, status do cliente, períodos)
+  - **Ordem de deploy:** (0) em prod, antes: rode `docs/superpowers/plans/2026-11-03-acesso-por-cliente-prod-precheck.sql` (tem que dar 0 linhas: toda policy que as migrations reescrevem existe com o nome esperado e nenhuma policy fora do repo sobra numa tabela de cliente; rode depois da `20261116100000`, que converge o drift conhecido de prod, a 20260315 que nunca rodou: antes dela a checagem lista justamente essas policies) e confira o tamanho de `notifications` (a `…13` faz o backfill de `cliente_id` em lotes, com lock de linha até o commit, e a `…14` cria o índice com SHARE, que segura os INSERTs de notificação durante a construção); (1) migrations `20261116100000` (reconcilia as policies legadas de prod; sem ela a `…02` falha no ALTER POLICY de `clientes_*` e as legadas FOR ALL somam com OR e anulam o escopo) e `20261117000000`..`…15` (`db push`; a `…15` tira o SELECT público de `avatars`, `post-media` e `tiktok-posts`: arquivo segue servido pela URL pública, só a listagem pela API fecha); (2) edge: as funções do branch de edge (leem `client_scope`; antes da `…01` dão 500), `manage-workspace-user`, `mcp`, `notification-deadline-cron`, `instagram-automation-cron` e `instagram-webhook` (mandam `p_cliente_id`; antes da `…11` perdem notificação) e os oito importadores de `_shared/entitlements.ts` (`automation-media`, `data-import`, `equipe-chat-media`, `mcp-keys`, `mcp-oauth-consent`, `paywall-report`, `platform-admin`, `workspace-limits`; a coluna `plans.feature_acesso_por_cliente` tem que existir antes, senão todo save de plano no Admin dá 400); (3) merge; (4) ligar a flag por workspace via override
+  - **Rollback:** ponha todo mundo em `todos` antes de reverter qualquer coisa; com todos em `todos` as policies e RPCs voltam a se comportar como antes. Ordem: frontend e edge functions primeiro, banco por último (edge antigo sobre o banco novo funciona; edge novo sobre o banco antigo lê `client_scope` e dá 500). Continua valendo mesmo com todos em `todos`, e um revert das migrations precisa decidir sobre cada um: os triggers de autor imutável, a guarda `zz_briefing_cliente_guard` (pergunta e briefing do mesmo cliente), o REVOKE de escrita nas colunas de caminho de `analytics_reports`, o UPDATE de `notifications` só em `read_at`/`dismissed_at`, o REVOKE de `anon` nas RPCs de `mensagens`, o fim da listagem pública de `avatars`/`post-media`/`tiktok-posts` e as sobrecargas antigas removidas (`resolve_notification_targets` de 3 argumentos, `insert_notification_batch` de 6, `_financeiro_rentabilidade_core(uuid, uuid, date)`). Nenhum deles depende do escopo, então mantê-los é o padrão
+- Linha editorial (flag `feature_linha_editorial`, spec `docs/superpowers/specs/2026-10-26-linha-editorial-design.md`): as quatro tabelas (`linhas_editoriais`, `linha_editorial_colunas`, `linha_editorial_itens`, `linha_editorial_respostas`) têm `REVOKE ALL FROM PUBLIC, anon, authenticated` e grants por coluna para `authenticated`; `status`, `rodada`, `enviada_*`, `decidida_at`, `post_id` e `convertido_*` só mudam pelas RPCs (`linha_editorial_criar`/`enviar`/`recolher`/`converter` no CRM, as de decisão no Hub), e o bloco DO da migration confere o ACL. A flag vale nas policies de escrita e em toda RPC. Ordem de deploy: migrations → `hub-linha-editorial` + `hub-bootstrap` → os oito importadores de `_shared/entitlements.ts` que a spec §9 lista (a coluna `plans.feature_linha_editorial` tem que existir antes, senão todo save de plano no Admin dá 400) → `notification-email-cron` + `client-event-email-cron` → merge. Depois do push em staging, rode `\dp linha_editorial_itens` e espere `authenticated=rd` na tabela (DELETE de linha não convertida) mais os ACLs por coluna
+
+- Métricas do blog (spec `docs/superpowers/specs/2026-10-27-blog-metrics-design.md`, chave do Google em `docs/search-console-service-account.md`). Ordem de deploy: aplique a migration `20261101000001` (views) ANTES de redeployar `platform-admin` (sem ela `blog-metrics` responde 500) e `blog-view` (sem ela nenhuma view é gravada). A `20261101000002` (Search Console) pode vir depois: até lá `blog-metrics` loga a falha de leitura do Google e o Admin mostra as views com "Search Console não configurado". Deploye `blog-search-console-cron` ANTES de aplicar a `20261101000003` (que agenda o cron `38 7 * * *` UTC; agendada antes, o pg_cron bate numa função inexistente todo dia)
+- Relatórios multi-plataforma (TikTok nos relatórios, spec `docs/superpowers/specs/2026-10-28-tiktok-analytics-and-multiplatform-reports-design.md` Parte B): a migration `20261103000002` (`report_documents.tiktok_account_id`) vem ANTES de qualquer deploy de `report-docs`: sem a coluna todo `/generate` dá 500 e todo `/refresh-data` falha, inclusive em relatório só de Instagram, porque o insert e o select sempre citam a coluna. A ordem de deploy da function em relação ao merge é a do item de seções abaixo, que vai no mesmo PR e a substitui
+- Seções por plataforma nos relatórios (spec `docs/superpowers/specs/2026-10-28-report-platform-sections-design.md`): o layout ganha o marcador `section` (Instagram, TikTok, Geral) e cada widget de plataforma só vive na seção dela. Ordem de deploy: migrations `20261103000002` + `20261103000003` (o trigger `validate_report_layout()` passa a aceitar e exigir as regras de seção) → merge → `report-docs` só depois que o deploy de produção da Vercel desse merge estiver no ar (`instagram-report-generator-v2` não lê layout; só precisa de deploy pelas mudanças da Parte B em `_shared/report-template`). Na ordem inversa o editor antigo (a aba aberta antes do deploy) recebe um relatório com `section`, o `validateLayout` dele recusa e todo autosave falha com toast. Layouts antigos sem `section` seguem válidos e são convertidos na leitura, então a migration antes do merge é segura. Na janela entre o merge e o deploy da function, um modelo padrão do workspace salvo pelo editor novo (já com `section`) é recusado pelo `report-docs` antigo, que loga "template default com layout inválido; usando o padrão do sistema" e gera pelo padrão do sistema: esperado, some com o deploy. **Rollback:** depois que existir um relatório ou modelo com `section` (qualquer geração do `report-docs` novo ou qualquer save do editor novo), nunca volte o frontend para antes desse merge (instant rollback da Vercel ou revert): o editor antigo não salva essas linhas. Voltar só o `report-docs` é seguro (com modelo seccionado ele volta a gerar pelo padrão do sistema, como na janela acima); as linhas seccionadas não precisam de migration de volta
+- Seção Google Meu Negócio nos relatórios (spec `docs/superpowers/specs/2026-11-04-gmn-report-section-design.md`): plataforma de seção `google`, blocos com prefixo `gbp_`, dados em `data_snapshot.google` (as unidades usadas ficam no snapshot; não há coluna de conta), carregados por `report-docs/google-section.ts` com o `_shared/gbp-analytics` (mesma janela e mesmas contas da aba para o período personalizado do mês: fim no `data_through`, anterior = mesmo número de dias logo antes). Só com `feature_google_business`. Ordem de deploy: migration `20261118000001` (o trigger passa a aceitar a seção `google` e o prefixo `gbp_`; segura antes de tudo) → merge → `report-docs` só depois que o deploy de produção da Vercel desse merge estiver no ar (a mesma regra das seções: um bundle antigo não salva layout com `gbp_*`). Rollback depois que existir documento com GMN: volte só o `report-docs`, nunca o frontend para antes do merge. `youtube` fica reservado entre `tiktok` e `google` em `PLATFORM_ORDER`, fora de qualquer validador até os blocos dele existirem
+- Onboarding com teste primeiro (spec `docs/superpowers/specs/2026-10-27-trial-first-onboarding-design.md`): o `/comecar` aparece uma vez por workspace, controlado por `workspaces.trial_offer_seen_at` (gravado por `mark_trial_offer_seen()`); o redirecionamento vem de `useTrialOfferRedirect` no `ProtectedRoute`, só para dono elegível (workspace ativo lido, Free resolvido, `plan_source` diferente de `manual`, nunca testou). O lembrete de fim de teste é uma varredura do `lifecycle-email-cron` (`get_trial_reminder_candidates`, `lifecycle_emails.email_type = 'trial_reminder'`, `ref_at` = data da primeira cobrança); o lembrete nativo de trial da Stripe precisa ficar **desligado** (Dashboard > Billing > Customer emails), senão o cliente recebe dois. No Pagar.me `amount_cents` é o total anual e a parcela é `amount_cents / 12`. Páginas estáticas não citam nenhum número de plano que uma edição no Admin mude; se algum dia citarem, editar o plano passa a exigir redeploy do frontend. Ordem de deploy: migration `20261102000001` → `lifecycle-email-cron` + `pagarme-checkout` → merge. Nenhum dos dois lados falha aberto sem a migration: o frontend antes dela quebra a leitura do plano efetivo (`trial_offer_seen_at`), com erro na Cobrança, no `/comecar`, no aviso de teste e nos preços logados; o `pagarme-checkout` antes dela derruba todo checkout do Pagar.me, porque sempre grava `switched_from_trialing`. Rollback: frontend primeiro, depois as functions; nunca apague linhas de `lifecycle_emails`
+- Blog automático (spec `docs/superpowers/specs/2026-10-23-blog-automatico-design.md`, brief da rotina em `docs/routines/blog-diario.md`). Os posts da rotina vivem em `blog_posts` e entram no build por `npm run blog:sync`, que roda antes do `build` no `vercel.json`:
+  - **Regra de rollback:** com algum post do banco no ar, nunca volte o frontend (instant rollback da Vercel ou revert) para antes do deploy que introduziu o `blog-sync`. Um build mais antigo não tem posts do banco e `/blog/:slug` dá 404 para todos eles. Voltar para qualquer deploy posterior é seguro: cada build sincroniza de novo a partir do banco
+  - **Build falhando em `blog:sync`** com post inválido ou slug repetido (arquivo e banco): a mensagem do build nomeia o slug. Despublique ou edite esse post no Admin (`/admin/blog`) e rode o deploy de novo. Enquanto isso todo deploy (inclusive hotfix e preview) segue bloqueado, porque o sync falha fechado
+  - `apps/crm/src/content/blog-db/` é gerado por `npm run blog:sync` (um `.json` por post, gitignored). Não edite nem commite: o próximo sync sobrescreve
+  - Post escrito à mão novo em `apps/crm/src/content/blog/` exige adicionar slug, título, `description`, `category` e `date` em `supabase/functions/_shared/blog-file-posts.ts` (a rotina lê essa lista para não repetir tema nem slug). O teste de paridade `apps/crm/src/content/__tests__/blog-rules-parity.test.ts` falha se faltar. Essa lista vai empacotada em `blog-view`, `blog-search-console-cron`, `platform-admin` e `mcp-admin`: depois do deploy do frontend, redeploye as quatro, senão `blog-view` descarta em silêncio as views do post novo e ele fica fora da lista do Admin e da inspeção do Google
+  - Mudar os escopos `blog:*` (como qualquer escopo do MCP do Admin) = redeploy de `mcp-admin` + `mcp-oauth-consent` + CRM + Admin, e reautorizar o conector com os escopos novos marcados, senão a rotina perde acesso
 
 ## Deployment
 
@@ -329,6 +425,17 @@ Monorepo with npm workspaces:
 - Backend: **Supabase** (Postgres + Edge Functions + Auth)
 - Media storage: **Cloudflare R2** (presigned upload URLs)
 - `vercel.json` configures rewrites and runs both `build` and `build:hub`
+- `npm run prerender` server-renders the landing (`/`): it runs a Vite SSR build of
+  `apps/crm/src/entry-server.tsx` (`apps/crm/vite.ssr.config.ts`) into
+  `node_modules/.cache/landing-ssr` (never `dist/`), writes the result into `dist/index.html`
+  as `<div id="root" data-ssr="landing">`, and `main.tsx` hydrates it. Landing render code must
+  be hydration-stable: no browser reads during render (storage, `document`, `matchMedia`); the
+  server and the first client render show the anonymous first-visit state, effects adjust after.
+  Only `/` is server-rendered; the other prerendered routes keep their `.seo.ts` mirrors
+  The SSR bundle is single-file (`inlineDynamicImports`), so every CRM module's top-level code,
+  every lazy page and not just the landing, runs in Node at prerender: a module-level
+  `window`/`document`/`localStorage` access anywhere breaks the Vercel build (the
+  `landing-prerender-smoke` CI job catches it)
 
 ## Reference files
 

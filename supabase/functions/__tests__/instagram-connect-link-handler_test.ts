@@ -1,5 +1,6 @@
 import { assertEquals } from "./assert.ts";
 import { createConnectLinkHandler } from "../instagram-connect-link/handler.ts";
+import { allClientsScope } from "../_shared/client-scope.ts";
 
 const BASE = "https://app.mesaas.com.br";
 const NOW = "2026-08-06T12:00:00.000Z";
@@ -74,6 +75,8 @@ function makeDeps(over: Record<string, unknown> = {}) {
     metaAppId: () => "app-id",
     metaRedirectUri: () => "https://x/functions/v1/instagram-integration",
     automationScopesLive: false,
+    // Acesso por cliente: unrestricted unless a test overrides it.
+    loadClientScope: () => Promise.resolve(allClientsScope()),
     ...over,
   };
 }
@@ -627,4 +630,37 @@ Deno.test("public routes never require an Authorization header", async () => {
     verifyUser: () => Promise.reject(new Error("verifyUser must not be called on public routes")),
   }));
   assertEquals((await h(publicReq("GET", "/public/whatever"))).status, 404);
+});
+
+// ── acesso por cliente ──────────────────────────────────────────────────────
+
+const ownedDb = () => makeDb({ profiles: { active_workspace_id: CONTA }, clientes: { conta_id: CONTA } });
+const restrictedTo = (ids: number[]) => () => Promise.resolve({ all: false, ids: new Set(ids), membroIds: new Set<number>() });
+
+Deno.test("agency GET: restricted member on a hidden client gets the foreign-client 403", async () => {
+  const h = createConnectLinkHandler(makeDeps({ createDb: ownedDb, loadClientScope: restrictedTo([99]) }));
+  const res = await h(req("GET", "?cliente_id=42"));
+  assertEquals(res.status, 403);
+  assertEquals(await res.json(), { error: "Não autorizado" });
+});
+
+Deno.test("agency GET: restricted member on an assigned client is unchanged", async () => {
+  const h = createConnectLinkHandler(makeDeps({ createDb: ownedDb, loadClientScope: restrictedTo([42]) }));
+  const res = await h(req("GET", "?cliente_id=42"));
+  assertEquals(res.status, 200);
+});
+
+Deno.test("agency POST: a scope read error is a 500, never a link", async () => {
+  let rpcCalled = false;
+  const h = createConnectLinkHandler(makeDeps({
+    createDb: () => makeDb({
+      profiles: { active_workspace_id: CONTA },
+      clientes: { conta_id: CONTA },
+      onRpc: () => { rpcCalled = true; },
+    }),
+    loadClientScope: () => Promise.reject(new Error("boom")),
+  }));
+  const res = await h(req("POST", "", { cliente_id: 42 }));
+  assertEquals(res.status, 500);
+  assertEquals(rpcCalled, false);
 });

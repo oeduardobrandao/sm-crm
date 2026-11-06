@@ -140,6 +140,7 @@ function makeEditing(overrides: Partial<TarefaWithRelations> = {}): TarefaWithRe
     tags: [],
     subtarefas_total: 0,
     subtarefas_concluidas: 0,
+    comentarios_total: 0,
     cliente_nome: null,
     cliente_cor: null,
     serie: null,

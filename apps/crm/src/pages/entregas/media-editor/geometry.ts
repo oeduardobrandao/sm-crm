@@ -1,3 +1,6 @@
+import { i18n } from '@mesaas/i18n';
+import type { DownscalePlan } from './downscalePlan';
+
 export type Adjustment = {
   width: number;
   height: number;
@@ -38,7 +41,7 @@ export function getPlacement(
   y: number,
 ) {
   if (![sourceWidth, sourceHeight, width, height].every((v) => Number.isFinite(v) && v > 0)) {
-    throw new Error('Dimensões inválidas');
+    throw new Error(i18n.t('posts:mediaEditor.invalidDimensions'));
   }
   const scale =
     mode === 'fit'
@@ -61,7 +64,8 @@ export function videoArguments(
   duration: number,
   maxBytes: number,
 ) {
-  if (!Number.isFinite(duration) || duration <= 0) throw new Error('Duração inválida');
+  if (!Number.isFinite(duration) || duration <= 0)
+    throw new Error(i18n.t('posts:mediaEditor.invalidDuration'));
   const color = /^#[0-9a-f]{6}$/i.test(a.color) ? a.color.slice(1) : '12151a';
   // Crop before scaling: a very narrow input must not allocate a 100,000-pixel
   // intermediate frame. The last crop absorbs source-pixel rounding without stretch.
@@ -83,7 +87,7 @@ export function videoArguments(
   }
   // Leave room for audio/container overhead; validate actual bytes after encoding.
   const bitrate = Math.floor(Math.min(8_000_000, (maxBytes * 8 * 0.88) / duration - 128_000));
-  if (bitrate < 100_000) throw new Error('Não foi possível ajustar o vídeo ao limite de tamanho.');
+  if (bitrate < 100_000) throw new Error(i18n.t('posts:mediaEditor.cannotFitSize'));
   return [
     '-i',
     'input',
@@ -101,6 +105,52 @@ export function videoArguments(
     'yuv420p',
     '-r',
     '30',
+    '-b:v',
+    String(bitrate),
+    '-maxrate',
+    String(Math.min(25_000_000, bitrate * 2)),
+    '-bufsize',
+    String(bitrate * 2),
+    '-g',
+    '60',
+    '-flags',
+    '+cgop',
+    '-c:a',
+    'aac',
+    '-ar',
+    '48000',
+    '-ac',
+    '2',
+    '-b:a',
+    '128k',
+    '-movflags',
+    '+faststart',
+    '-use_editlist',
+    '0',
+    '-map_metadata',
+    '-1',
+    'output.mp4',
+  ];
+}
+
+/** Plain re-encode to the plan's size: no crop, pad, blur or frame-rate change. */
+export function scaleVideoArguments(plan: DownscalePlan): string[] {
+  const { bitrate } = plan;
+  return [
+    '-i',
+    'input',
+    '-map',
+    '0:v:0',
+    '-map',
+    '0:a:0?',
+    '-vf',
+    `scale=${plan.width}:${plan.height}:force_divisible_by=2`,
+    '-c:v',
+    'libx264',
+    '-preset',
+    'ultrafast',
+    '-pix_fmt',
+    'yuv420p',
     '-b:v',
     String(bitrate),
     '-maxrate',

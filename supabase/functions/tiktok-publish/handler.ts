@@ -50,6 +50,14 @@ import {
   fetchCreatorCheck as realFetchCreatorCheck,
 } from "../_shared/tiktok-precheck.ts";
 import { buildTikTokMediaUrl as realBuildTikTokMediaUrl } from "../_shared/tiktok-media-url.ts";
+import {
+  type ClientScopeLoader,
+  hasClientAccess,
+  loadClientScope as realLoadClientScope,
+  memberWorkspaceOfClient,
+  type ResourceWorkspaceResolver,
+  rowWriteGate,
+} from "../_shared/client-scope.ts";
 
 type DbClient = {
   // deno-lint-ignore no-explicit-any
@@ -71,6 +79,10 @@ export interface TikTokPublishDeps {
   fetchCreatorCheck?: typeof realFetchCreatorCheck;
   buildTikTokMediaUrl?: typeof realBuildTikTokMediaUrl;
   sleep?: (ms: number) => Promise<void>;
+  /** Acesso por cliente: the caller's client scope (defaults to the real loader). */
+  loadClientScope?: ClientScopeLoader;
+  /** The post's own workspace, if the caller is a member of it (defaults to the real resolver). */
+  resolvePostWorkspace?: ResourceWorkspaceResolver;
 }
 
 /** A failure whose message is a curated pt-BR sentence: safe to persist and return (422). */
@@ -144,6 +156,27 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
     const { data: client } = await svcDb.from("clientes").select("conta_id").eq("id", clientId).single();
     if (!client || (client as { conta_id?: string }).conta_id !== contaId) {
       return json({ error: "Unauthorized" }, 403);
+    }
+    // Acesso por cliente: a client outside the caller's scope answers like a foreign one, unless he
+    // has an own post there (responsavel_id among his membros): creator-info drives the scheduling
+    // modal of his own post, which he may publish (ruling 4a).
+    try {
+      const scope = await (deps.loadClientScope ?? realLoadClientScope)(svcDb, actorId!, contaId);
+      if (!hasClientAccess(scope, clientId, false)) {
+        const membroIds = [...scope.membroIds];
+        if (membroIds.length === 0) return json({ error: "Unauthorized" }, 403);
+        const { data: own, error: ownError } = await svcDb
+          .from("workflow_posts")
+          .select("id")
+          .eq("conta_id", contaId)
+          .eq("cliente_id", clientId)
+          .in("responsavel_id", membroIds)
+          .limit(1);
+        if (ownError) throw new Error(`own post read failed: ${ownError.message ?? "unknown"}`);
+        if (!Array.isArray(own) || own.length === 0) return json({ error: "Unauthorized" }, 403);
+      }
+    } catch (err) {
+      return internalServerError(json, "tiktok-publish:client-scope", err);
     }
 
     const gateFailure = await requireFeatureGates(svcDb, contaId, json);
@@ -229,6 +262,7 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
       .from("workflow_posts")
       .select(
         "id, status, platform, tipo, tiktok_caption, tiktok_title, tiktok_settings, ig_caption, scheduled_at, " +
+          "cliente_id, responsavel_id, " +
           "instagram_media_id, targets_state:post_targets(id, platform, status, processing_at)",
       )
       .eq("id", postId)
@@ -236,8 +270,32 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
     if (!post) return json({ error: "Post não encontrado." }, 404);
 
     const { data: actorProfile } = await svcDb.from("profiles").select("conta_id").eq("id", actorId).single();
-    const contaId = actorProfile?.conta_id as string | undefined;
-    if (!contaId) return json({ error: "Unauthorized" }, 403);
+    if (!actorProfile?.conta_id) return json({ error: "Unauthorized" }, 403);
+
+    // Acesso por cliente. The workspace is the POST's own (its client's conta_id, with the caller a
+    // member there), never profiles.conta_id: that column goes stale on a workspace switch, and a
+    // member restricted in the post's workspace but `todos` in the stale one would pass. The same
+    // workspace drives the plan gates. Every action below writes with the service role, so the
+    // post's client must be in scope or the post must be the caller's own ("é dele": responsavel_id
+    // among his membros, the workflow_posts read rule; ruling 4a). A post they cannot read answers
+    // like a missing one.
+    let contaId: string | null;
+    try {
+      contaId = await (deps.resolvePostWorkspace ?? memberWorkspaceOfClient)(svcDb, actorId!, post.cliente_id);
+    } catch (err) {
+      return internalServerError(json, "tiktok-publish:post-workspace", err);
+    }
+    if (!contaId) return json({ error: "Post não encontrado." }, 404);
+    const scopeDenied = await rowWriteGate(
+      svcDb,
+      actorId!,
+      contaId,
+      post,
+      { status: 404, body: { error: "Post não encontrado." } },
+      deps.loadClientScope,
+      { allowOwn: true },
+    );
+    if (scopeDenied) return json(scopeDenied.body, scopeDenied.status);
 
     // Gate scope mirrors instagram-publish's asymmetry: only schedule/publish-now require the
     // paid feature flags (creator-info is gated separately above, inside handleCreatorInfo).
@@ -476,7 +534,10 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
         if (post.tipo === "reels") {
           const videoUrl = await buildMediaUrl(media[0].r2_key, 7200);
           initPath = "/post/publish/video/init/";
-          initPayload = buildVideoInitPayload(claimedPost, videoUrl);
+          initPayload = buildVideoInitPayload(claimedPost, videoUrl, {
+            durationSeconds: media[0].duration_seconds,
+            thumbnailFrameMs: media[0].thumbnail_frame_ms,
+          });
         } else {
           const imageUrls = await Promise.all(media.map((m) => buildMediaUrl(m.r2_key, 7200)));
           initPath = "/post/publish/content/init/";

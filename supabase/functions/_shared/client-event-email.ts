@@ -23,6 +23,42 @@ export interface ClientEventEmailParams {
   /** Shared Agenda occurrences still waiting for the client's answer (spec §9).
    *  Optional so every pre-Agenda caller keeps its exact output. */
   pendingEvents?: ClientEventReminder[];
+  /** Linhas editoriais sent to the client and still awaiting an answer
+   *  (spec §8.4). Optional so every older caller keeps its exact output. */
+  linhas?: ClientEventLinha[];
+}
+
+/** One linha editorial awaiting approval: `periodo` is the month, 'YYYY-MM-DD'. */
+export interface ClientEventLinha {
+  periodo: string;
+  /** Custom title (spec §14); null or absent means the derived one. */
+  titulo?: string | null;
+}
+
+const MESES_PT = [
+  "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+  "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+];
+
+/** "Linha editorial de {mês} aguardando sua aprovação", or "{titulo} aguardando
+ * sua aprovação" for a renamed linha (spec §14.2). The month comes from the
+ * 'YYYY-MM' prefix of `periodo` as text, never through a Date, so no timezone
+ * can shift it; an unreadable value drops the month. The caller escapes. */
+export function linhaItemText(periodo: string, titulo?: string | null): string {
+  const custom = titulo?.trim();
+  if (custom) return `${custom} aguardando sua aprovação`;
+  const m = /^\d{4}-(\d{2})/.exec(periodo);
+  const mes = m ? MESES_PT[Number(m[1]) - 1] : undefined;
+  return mes ? `Linha editorial de ${mes} aguardando sua aprovação` : "Linha editorial aguardando sua aprovação";
+}
+
+/** Bordered list of linha items, each linking to the Hub's linha tab. */
+function linhaList(linhas: ClientEventLinha[], href: string): string {
+  const trs = linhas.map((l, i) => {
+    const bd = i === linhas.length - 1 ? "" : `border-bottom: 1px solid ${EMAIL.divider};`;
+    return `<tr><td style="padding: 12px 16px; ${bd} font-size: 14px; line-height: 20px; word-break: break-word; overflow-wrap: anywhere;">${link(href, linhaItemText(l.periodo, l.titulo))}</td></tr>`;
+  }).join("");
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border: 1px solid ${EMAIL.border}; border-radius: 12px; border-collapse: separate;">${trs}</table>`;
 }
 
 /** One row of `agenda_cliente_lembretes_pendentes`. */
@@ -58,9 +94,14 @@ export function clientEventSubject(workspaceName: string): string {
  * messages. All zero is unreachable in production (the cron releases the
  * lease without sending in that case), but the builder still needs a sane,
  * non-crashing fallback for a direct/manual call. */
-function buildPendingTitle(postsCount: number, messagesCount: number, eventsCount = 0): string {
+function buildPendingTitle(postsCount: number, messagesCount: number, eventsCount = 0, linhasCount = 0): string {
   if (postsCount > 0) {
     return postsCount === 1 ? "1 post espera sua aprovação" : `${postsCount} posts esperam sua aprovação`;
+  }
+  if (linhasCount > 0) {
+    return linhasCount === 1
+      ? "1 linha editorial espera sua aprovação"
+      : `${linhasCount} linhas editoriais esperam sua aprovação`;
   }
   if (eventsCount > 0) {
     return eventsCount === 1 ? "1 evento aguarda sua confirmação" : `${eventsCount} eventos aguardam sua confirmação`;
@@ -74,10 +115,22 @@ function buildPendingTitle(postsCount: number, messagesCount: number, eventsCoun
 /** Dynamic preheader text (spec §8/§11): "{N} posts aguardando sua aprovação
  * e {M} mensagens." with the zeroed part omitted entirely and singular forms
  * for exactly 1 of either. */
-function buildPendingPreheaderText(postsCount: number, messagesCount: number, eventsCount = 0): string {
+function buildPendingPreheaderText(
+  postsCount: number,
+  messagesCount: number,
+  eventsCount = 0,
+  linhasCount = 0,
+): string {
   const parts: string[] = [];
   if (postsCount > 0) {
     parts.push(postsCount === 1 ? "1 post aguardando sua aprovação" : `${postsCount} posts aguardando sua aprovação`);
+  }
+  if (linhasCount > 0) {
+    parts.push(
+      linhasCount === 1
+        ? "1 linha editorial aguardando sua aprovação"
+        : `${linhasCount} linhas editoriais aguardando sua aprovação`,
+    );
   }
   if (eventsCount > 0) {
     parts.push(
@@ -95,17 +148,18 @@ export function buildClientEventEmail(p: ClientEventEmailParams): string {
   const { clienteNome, workspaceName, logoUrl, pendingPosts, unreadMessages, hubUrl, unsubUrl } = p;
   const brandColor = corSegura(p.brandColor);
   const pendingEvents = p.pendingEvents ?? [];
+  const linhas = p.linhas ?? [];
   const firstName = clienteNome.split(" ")[0];
   const hubBase = hubUrl.replace(/\/+$/, "");
 
-  const greeting = pendingPosts.length > 0
+  const greeting = pendingPosts.length > 0 || linhas.length > 0
     ? `Olá, ${firstName}! Quando puder, dá uma olhada no que a equipe preparou:`
     : pendingEvents.length > 0
     ? `Olá, ${firstName}! Confirme sua presença nos próximos eventos:`
     : `Olá, ${firstName}!`;
 
   const sections: string[] = [
-    heading(buildPendingTitle(pendingPosts.length, unreadMessages, pendingEvents.length)) +
+    heading(buildPendingTitle(pendingPosts.length, unreadMessages, pendingEvents.length, linhas.length)) +
       paragraph(greeting, "body", "0"),
   ];
 
@@ -116,6 +170,11 @@ export function buildClientEventEmail(p: ClientEventEmailParams): string {
       postList(visible) +
         (hidden > 0 ? paragraph(`e mais ${hidden} posts aguardando aprovação.`, "small", "8px 0 0") : ""),
     );
+  }
+
+  const linhaHref = hubBase ? `${hubBase}/aprovacoes?aba=linha` : null;
+  if (linhas.length > 0) {
+    sections.push(linhaList(linhas, linhaHref ?? ""));
   }
 
   if (pendingEvents.length > 0) {
@@ -141,15 +200,21 @@ export function buildClientEventEmail(p: ClientEventEmailParams): string {
     sections.push(callout(label));
   }
 
-  // Posts keep their CTA; an events-only digest leads to the Hub Agenda.
-  const eventsCta = pendingPosts.length === 0 && pendingEvents.length > 0;
-  const ctaLabel = pendingPosts.length > 0 ? "Revisar e aprovar" : eventsCta ? "Confirmar presença" : "Ver mensagens";
-  const ctaHref = eventsCta ? `${hubBase}/agenda` : hubUrl;
+  // Posts keep their CTA; without posts, linhas lead to the Hub's linha tab,
+  // then an events-only digest to the Hub Agenda.
+  const linhaCta = pendingPosts.length === 0 && linhas.length > 0;
+  const eventsCta = pendingPosts.length === 0 && !linhaCta && pendingEvents.length > 0;
+  const ctaLabel = pendingPosts.length > 0 || linhaCta
+    ? "Revisar e aprovar"
+    : eventsCta
+    ? "Confirmar presença"
+    : "Ver mensagens";
+  const ctaHref = linhaCta ? `${hubBase}/aprovacoes?aba=linha` : eventsCta ? `${hubBase}/agenda` : hubUrl;
   const cta = hubUrl ? button(ctaHref, ctaLabel, { brandColor }) : "";
   if (cta) sections.push(cta);
 
   return brandedEmail({
-    preheader: buildPendingPreheaderText(pendingPosts.length, unreadMessages, pendingEvents.length),
+    preheader: buildPendingPreheaderText(pendingPosts.length, unreadMessages, pendingEvents.length, linhas.length),
     workspaceName,
     brandColor,
     logoUrl,
@@ -263,4 +328,26 @@ export async function verifyUnsubToken(
 ): Promise<number | null> {
   const alvo = await verifyUnsubTokenKind(token, secret);
   return alvo?.tipo === "cliente" ? alvo.id : null;
+}
+
+/**
+ * Footer link for a client/guest unsubscribe token. Points at the CRM page
+ * `/cancelar-avisos/<token>` when the app URL is known: the Supabase gateway
+ * serves function HTML as text/plain with a sandbox CSP, so the function's own
+ * page shows as raw markup. Without an app URL it falls back to the function,
+ * which still works for the RFC 8058 One-Click POST. The List-Unsubscribe
+ * header must keep using `clientUnsubFunctionUrl`.
+ */
+export function clientUnsubFooterUrl(
+  pageBaseUrl: string | null | undefined,
+  functionBaseUrl: string,
+  token: string,
+): string {
+  const base = pageBaseUrl?.trim().replace(/\/+$/, "");
+  return base ? `${base}/cancelar-avisos/${token}` : clientUnsubFunctionUrl(functionBaseUrl, token);
+}
+
+/** `${SUPABASE_URL}/functions/v1/client-email-unsub/<token>` (List-Unsubscribe target). */
+export function clientUnsubFunctionUrl(functionBaseUrl: string, token: string): string {
+  return `${functionBaseUrl.replace(/\/+$/, "")}/functions/v1/client-email-unsub/${token}`;
 }

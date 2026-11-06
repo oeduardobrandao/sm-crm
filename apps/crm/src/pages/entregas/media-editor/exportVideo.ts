@@ -1,4 +1,5 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
+import { i18n } from '@mesaas/i18n';
 import coreURL from '@ffmpeg/core?url';
 import wasmURL from '@ffmpeg/core/wasm?url';
 import { videoArguments, type Adjustment } from './geometry';
@@ -16,6 +17,36 @@ export async function exportVideo(
   maxBytes: number,
   signal: AbortSignal,
   onProgress: (percent: number) => void,
+): Promise<File> {
+  return runFfmpeg(
+    file,
+    videoArguments(adjustment, width, height, duration, maxBytes),
+    maxBytes,
+    signal,
+    onProgress,
+    adjustedFilename(file.name, 'video'),
+  );
+}
+
+/** Scale-only re-encode (`scaleVideoArguments`), same worker lifecycle as `exportVideo`. */
+export async function runFfmpegScale(
+  file: File,
+  args: string[],
+  maxBytes: number,
+  signal: AbortSignal,
+  onProgress: (pct: number) => void,
+  outputName: string,
+): Promise<File> {
+  return runFfmpeg(file, args, maxBytes, signal, onProgress, outputName);
+}
+
+async function runFfmpeg(
+  file: File,
+  args: string[],
+  maxBytes: number,
+  signal: AbortSignal,
+  onProgress: (percent: number) => void,
+  outputName: string,
 ): Promise<File> {
   signal.throwIfAborted();
   const ffmpeg = new FFmpeg();
@@ -37,26 +68,21 @@ export async function exportVideo(
     signal.throwIfAborted();
     await ffmpeg.writeFile('input', new Uint8Array(await file.arrayBuffer()));
     signal.throwIfAborted();
-    const code = await ffmpeg.exec(videoArguments(adjustment, width, height, duration, maxBytes));
-    if (code !== 0) throw new VideoExportError('Falha ao processar o vídeo. Tente novamente.');
+    const code = await ffmpeg.exec(args);
+    if (code !== 0) throw new VideoExportError(i18n.t('posts:mediaEditor.processFailed'));
     signal.throwIfAborted();
     const output = await ffmpeg.readFile('output.mp4');
     if (typeof output === 'string' || !output.byteLength)
-      throw new VideoExportError('O vídeo processado está vazio.');
+      throw new VideoExportError(i18n.t('posts:mediaEditor.outputEmpty'));
     if (output.byteLength > maxBytes)
-      throw new VideoExportError('O vídeo ajustado ainda excede o limite de tamanho.');
+      throw new VideoExportError(i18n.t('posts:mediaEditor.outputTooLarge'));
     onProgress(100);
-    return new File([new Uint8Array(output)], adjustedFilename(file.name, 'video'), {
-      type: 'video/mp4',
-    });
+    return new File([new Uint8Array(output)], outputName, { type: 'video/mp4' });
   } catch (error) {
     signal.throwIfAborted();
-    if (timedOut)
-      throw new Error(
-        'O processamento demorou demais. Tente um vídeo menor ou outro enquadramento.',
-      );
+    if (timedOut) throw new Error(i18n.t('posts:mediaEditor.processTimeout'));
     if (error instanceof VideoExportError) throw error;
-    throw new Error('Não foi possível processar este vídeo neste navegador. Tente novamente.');
+    throw new Error(i18n.t('posts:mediaEditor.processUnsupported'));
   } finally {
     clearTimeout(timeout);
     signal.removeEventListener('abort', abort);

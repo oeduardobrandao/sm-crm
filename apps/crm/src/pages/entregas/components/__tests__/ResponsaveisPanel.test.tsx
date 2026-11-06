@@ -5,7 +5,7 @@ import { ResponsaveisPanel } from '../ResponsaveisPanel';
 import type { Membro } from '../../../../store';
 
 const membro = (id: number, nome: string) =>
-  ({ id, nome, cargo: '', tipo: 'clt', custo_mensal: null, avatar_url: '' }) as Membro;
+  ({ id, nome, cargo: '', tipo: 'clt', custo_mensal: null, avatar_url: null }) as Membro;
 const membros = [membro(8, 'Bruno Lima'), membro(7, 'Ana Silva'), membro(9, 'Érica Souza')];
 
 function renderPanel(props: Partial<ComponentProps<typeof ResponsaveisPanel>> = {}) {

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Edit2, Wallet, CheckCircle2, Clock } from 'lucide-react';
 import { StatCard } from '@/components/StatCard';
 import { StatCardGrid } from '@/components/StatCardGrid';
@@ -15,25 +16,35 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { getMembros, getTransacoes, formatDate, getInitials } from '../../store';
+import { getMembros, getTransacoes, formatDate } from '../../store';
 import { useAuth } from '../../context/AuthContext';
-import { avatarColorClass } from '@/lib/avatarColor';
-import { formatFinancialBRL } from '@/lib/financialAccess';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
+import { FotoPessoaEditor } from '@/components/FotoPessoaEditor';
+import { formatFinancialBRL, type FinancialAccess } from '@/lib/financialAccess';
+import { isClientScoped } from '@/lib/permissions';
 import { RoleRestrictionNotice } from '@/components/help/RoleRestrictionNotice';
 import { MembroFormDialog } from '../equipe/MembroFormDialog';
-
-const TIPO_LABEL: Record<string, string> = {
-  clt: 'CLT',
-  freelancer_mensal: 'Freelancer Mensal',
-  freelancer_demanda: 'Freelancer Demanda',
-};
+import { useFinanceiroV2 } from '@/hooks/useFinanceiroV2';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useWorkspaceMemberEmails } from '@/hooks/useWorkspaceMemberEmails';
+import { usePageToolbar } from '@/components/layout/PageToolbarContext';
+import { AcordoCard } from './AcordoCard';
+import { EntregasManuaisCard } from './EntregasManuaisCard';
+import { MembroDetalhePhone } from './phone/MembroDetalhePhone';
 
 export default function MembroDetalhePage() {
-  const { canSeeFinancials, can } = useAuth();
+  const { t } = useTranslation('member');
+  const { canSeeFinancials, can, membership } = useAuth();
+  // A member restricted to assigned clients reads membros_v.custo_mensal as NULL: mask the
+  // cost instead of showing a believable R$ 0.
+  const costAccess: FinancialAccess = isClientScoped(membership) ? false : canSeeFinancials;
   const canEditTeam = can('equipe', 'editar') === true;
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [modalOpen, setModalOpen] = useState(false);
+  // Below 768px: a pushed screen with the phone nav bar (PLAN F2d).
+  const isPhone = !useIsDesktop(768);
+  const { ativo: financeiroV2 } = useFinanceiroV2();
 
   const { data: membros = [], isLoading: loadingMembros } = useQuery({
     queryKey: ['membros'],
@@ -54,47 +65,103 @@ export default function MembroDetalhePage() {
   const transacoes = canSeeFinancials === true ? transacoesRaw : [];
 
   const membro = membros.find((m) => m.id?.toString() === id);
-
-  if (!loadingMembros && !membro) {
-    return (
-      <div style={{ padding: '2rem' }}>
-        <Button variant="outline" onClick={() => navigate('/equipe')}>
-          <ArrowLeft className="h-4 w-4" /> Voltar
-        </Button>
-        <p style={{ marginTop: 16 }}>Membro não encontrado.</p>
-      </div>
-    );
-  }
+  const memberEmails = useWorkspaceMemberEmails();
+  const email = membro?.crm_user_id ? memberEmails.get(membro.crm_user_id) : undefined;
 
   const membroTx = transacoes.filter(
-    (t) =>
-      (membro && t.descricao?.includes(membro.nome)) ||
-      t.referencia_agendamento?.includes(`membro_${id}`),
+    (tx) =>
+      (membro && tx.descricao?.includes(membro.nome)) ||
+      tx.referencia_agendamento?.includes(`membro_${id}`),
   );
-  const totalPago = membroTx.filter((t) => t.status === 'pago').reduce((s, t) => s + t.valor, 0);
-  const pendente = membroTx.filter((t) => t.status === 'agendado').reduce((s, t) => s + t.valor, 0);
+  const totalPago = membroTx
+    .filter((tx) => tx.status === 'pago')
+    .reduce((s, tx) => s + tx.valor, 0);
+  const pendente = membroTx
+    .filter((tx) => tx.status === 'agendado')
+    .reduce((s, tx) => s + tx.valor, 0);
 
   const openEdit = () => {
     if (!membro) return;
     setModalOpen(true);
   };
 
-  const avatarClass = avatarColorClass(membro?.id ?? membro?.nome);
+  const backButton = (
+    <Button variant="outline" onClick={() => navigate('/equipe')}>
+      <ArrowLeft className="h-4 w-4" /> {t('actions.back')}
+    </Button>
+  );
+  const primaryAction = canEditTeam ? (
+    <Button variant="outline" onClick={openEdit}>
+      <Edit2 className="h-4 w-4" /> {t('actions.edit')}
+    </Button>
+  ) : undefined;
+
+  const inToolbar = usePageToolbar(
+    membro
+      ? { leading: backButton, title: membro.nome, primary: primaryAction }
+      : loadingMembros
+        ? { leading: backButton, title: null }
+        : null,
+  );
+
+  // Financeiro v2: the member's acordo (where the cost is edited once v2 is on) and the
+  // deliveries of a per-delivery member. Same cards on desktop and phone. Acordos are hidden
+  // from a member restricted to assigned clients, and so are these cards.
+  const financeiroCards =
+    financeiroV2 && costAccess === true && membro?.id != null ? (
+      <>
+        <AcordoCard membro={membro} />
+        <EntregasManuaisCard membroId={membro.id} />
+      </>
+    ) : null;
+
+  if (isPhone) {
+    return (
+      <>
+        <MembroDetalhePhone
+          membro={membro}
+          email={email}
+          loadingMembro={loadingMembros}
+          canEditTeam={canEditTeam}
+          canSeeFinancials={canSeeFinancials}
+          costAccess={costAccess}
+          transacoes={membroTx}
+          loadingTransacoes={canSeeFinancials === true && loadingTx}
+          totalPago={totalPago}
+          pendente={pendente}
+          onEdit={openEdit}
+          financeiro={financeiroCards}
+        />
+        <MembroFormDialog
+          open={modalOpen}
+          membro={membro ?? null}
+          membros={membros}
+          onOpenChange={setModalOpen}
+        />
+      </>
+    );
+  }
+
+  if (!loadingMembros && !membro) {
+    return (
+      <div style={{ padding: '2rem' }}>
+        <Button variant="outline" onClick={() => navigate('/equipe')}>
+          <ArrowLeft className="h-4 w-4" /> {t('actions.back')}
+        </Button>
+        <p style={{ marginTop: 16 }}>{t('shared.membroNaoEncontrado')}</p>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ padding: '1.5rem' }}>
-      <div className="header">
-        <Button variant="outline" onClick={() => navigate('/equipe')}>
-          <ArrowLeft className="h-4 w-4" /> Voltar
-        </Button>
-        {canEditTeam && (
-          <div className="header-actions">
-            <Button variant="outline" onClick={openEdit}>
-              <Edit2 className="h-4 w-4" /> Editar
-            </Button>
-          </div>
-        )}
-      </div>
+    // Under Vidro the panel already pads the content.
+    <div style={inToolbar ? undefined : { padding: '1.5rem' }}>
+      {!inToolbar && (
+        <div className="header">
+          {backButton}
+          {canEditTeam && <div className="header-actions">{primaryAction}</div>}
+        </div>
+      )}
 
       {loadingMembros && !membro && (
         <SkeletonStatus>
@@ -121,37 +188,65 @@ export default function MembroDetalhePage() {
 
       {membro && (
         <>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, margin: '1.5rem 0' }}>
-            <div
-              className={`avatar ${avatarClass}`}
-              style={{ fontWeight: 700, width: 56, height: 56, fontSize: 22 }}
-            >
-              {getInitials(membro.nome)}
+          {canEditTeam && membro.id != null ? (
+            // Editors get the photo editor (camera, Alterar / Remover foto) with the name
+            // above it; everyone else sees the photo as before.
+            <div style={{ margin: '1.5rem 0' }}>
+              <div style={{ marginBottom: 16 }}>
+                <h2 style={{ margin: 0 }}>{membro.nome}</h2>
+                <div style={{ color: '#888' }}>{membro.cargo}</div>
+                {email && (
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>{email}</div>
+                )}
+              </div>
+              <FotoPessoaEditor
+                alvo={{ kind: 'membro', membroId: membro.id }}
+                nome={membro.nome}
+                seed={membro.id}
+                fotoUrl={membro.avatar_url}
+                variant="desktop"
+              />
             </div>
-            <div>
-              <h2 style={{ margin: 0 }}>{membro.nome}</h2>
-              <div style={{ color: '#888' }}>{membro.cargo}</div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, margin: '1.5rem 0' }}>
+              <PessoaAvatar
+                nome={membro.nome}
+                fotoUrl={membro.avatar_url}
+                seed={membro.id}
+                size={56}
+                className="font-bold"
+              />
+              <div>
+                <h2 style={{ margin: 0 }}>{membro.nome}</h2>
+                <div style={{ color: '#888' }}>{membro.cargo}</div>
+                {email && (
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>{email}</div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           {canEditTeam && (
             <StatCardGrid style={{ marginBottom: '1.5rem' }}>
               {(
                 [
                   {
-                    label: 'Custo mensal',
-                    value: formatFinancialBRL(membro.custo_mensal, canSeeFinancials),
+                    key: 'custo',
+                    label: t('shared.custoMensal'),
+                    value: formatFinancialBRL(membro.custo_mensal, costAccess),
                     icon: Wallet,
                     tone: 'blue' as const,
                   },
                   {
-                    label: 'Total pago',
+                    key: 'pago',
+                    label: t('shared.totalPago'),
                     value: formatFinancialBRL(totalPago, canSeeFinancials),
                     icon: CheckCircle2,
                     tone: 'green' as const,
                   },
                   {
-                    label: 'Pendente',
+                    key: 'pendente',
+                    label: t('shared.pendente'),
                     value: formatFinancialBRL(pendente, canSeeFinancials),
                     icon: Clock,
                     tone: 'amber' as const,
@@ -159,7 +254,7 @@ export default function MembroDetalhePage() {
                 ] as const
               ).map((k) => (
                 <StatCard
-                  key={k.label}
+                  key={k.key}
                   label={k.label}
                   value={k.value}
                   icon={k.icon}
@@ -170,24 +265,27 @@ export default function MembroDetalhePage() {
             </StatCardGrid>
           )}
 
+          {financeiroCards}
+
           <div className="card" style={{ marginBottom: '1.5rem' }}>
-            <h3 style={{ marginBottom: 12 }}>Informações</h3>
+            <h3 style={{ marginBottom: 12 }}>{t('shared.informacoes')}</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <div>
-                <strong>Cargo:</strong> {membro.cargo}
+                <strong>{t('membroDetalhe.cargo')}</strong> {membro.cargo}
               </div>
               <div>
-                <strong>Tipo:</strong> {TIPO_LABEL[membro.tipo]}
+                <strong>{t('membroDetalhe.tipo')}</strong>{' '}
+                {membro.tipo ? t(`shared.tipos.${membro.tipo}`, { defaultValue: '' }) : ''}
               </div>
               {canEditTeam && (
                 <div>
-                  <strong>Dia de Pagamento:</strong> {membro.data_pagamento ?? '—'}
+                  <strong>{t('membroDetalhe.diaPagamento')}</strong> {membro.data_pagamento ?? '—'}
                 </div>
               )}
               {canEditTeam && (
                 <div>
-                  <strong>Custo Mensal:</strong>{' '}
-                  {formatFinancialBRL(membro.custo_mensal, canSeeFinancials)}
+                  <strong>{t('membroDetalhe.custoMensal')}</strong>{' '}
+                  {formatFinancialBRL(membro.custo_mensal, costAccess)}
                 </div>
               )}
             </div>
@@ -195,7 +293,7 @@ export default function MembroDetalhePage() {
 
           {canEditTeam && (
             <>
-              <h3 style={{ marginBottom: 12 }}>Transações</h3>
+              <h3 style={{ marginBottom: 12 }}>{t('shared.transacoes')}</h3>
               {canSeeFinancials === true && loadingTx ? (
                 <TableSkeleton rows={3} columns={5} />
               ) : canSeeFinancials === true ? (
@@ -203,23 +301,31 @@ export default function MembroDetalhePage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Data</TableHead>
-                        <TableHead>Descrição</TableHead>
-                        <TableHead>Categoria</TableHead>
-                        <TableHead>Valor</TableHead>
-                        <TableHead>Status</TableHead>
+                        <TableHead>{t('membroDetalhe.data')}</TableHead>
+                        <TableHead>{t('membroDetalhe.descricao')}</TableHead>
+                        <TableHead>{t('membroDetalhe.categoria')}</TableHead>
+                        <TableHead>{t('membroDetalhe.valor')}</TableHead>
+                        <TableHead>{t('membroDetalhe.status')}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {membroTx.map((t, i) => (
-                        <TableRow key={t.id ?? `tx-${i}`}>
-                          <TableCell data-label="Data">{formatDate(t.data)}</TableCell>
-                          <TableCell data-label="Descrição">{t.descricao}</TableCell>
-                          <TableCell data-label="Categoria">{t.categoria}</TableCell>
-                          <TableCell data-label="Valor">
-                            {formatFinancialBRL(t.valor, canSeeFinancials)}
+                      {membroTx.map((tx, i) => (
+                        <TableRow key={tx.id ?? `tx-${i}`}>
+                          <TableCell data-label={t('membroDetalhe.data')}>
+                            {formatDate(tx.data)}
                           </TableCell>
-                          <TableCell data-label="Status">{t.status}</TableCell>
+                          <TableCell data-label={t('membroDetalhe.descricao')}>
+                            {tx.descricao}
+                          </TableCell>
+                          <TableCell data-label={t('membroDetalhe.categoria')}>
+                            {tx.categoria}
+                          </TableCell>
+                          <TableCell data-label={t('membroDetalhe.valor')}>
+                            {formatFinancialBRL(tx.valor, canSeeFinancials)}
+                          </TableCell>
+                          <TableCell data-label={t('membroDetalhe.status')}>
+                            {t(`membroDetalhe.txStatus.${tx.status}`, { defaultValue: tx.status })}
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -232,8 +338,8 @@ export default function MembroDetalhePage() {
                 // restricted admin. Say why it's hidden instead.
                 <div className="card">
                   <RoleRestrictionNotice
-                    title="Transações"
-                    description="A visualização de transações financeiras está disponível apenas para quem tem acesso financeiro liberado."
+                    title={t('shared.transacoes')}
+                    description={t('shared.transacoesRestritas')}
                   />
                 </div>
               )}

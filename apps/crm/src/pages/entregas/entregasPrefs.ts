@@ -1,13 +1,21 @@
+import { lazyLabels } from './postLabels';
 import type { EntregasMode } from './components/ModeToggle';
 import type { EntidadeFilter, ListGroupBy } from './viewQuery';
 import { BOARD_COLUMN_SORTS, type BoardColumnSort } from './postsBoardOrder';
 import type { FilaOrdem } from './minhaFila';
 
 /** Ordenacao de uma coluna (etapa) do board de Fluxos: 'prazo' (padrao,
- *  atrasados primeiro) ou 'manual' (position persistida via drag). */
-export type FluxosColumnSort = 'prazo' | 'manual';
+ *  atrasados primeiro), 'publicacao' (scheduled_at dos posts individuais) ou
+ *  'manual' (position persistida via drag). */
+export type FluxosColumnSort = 'prazo' | 'publicacao' | 'manual';
 
-const FLUXOS_COLUMN_SORTS: FluxosColumnSort[] = ['prazo', 'manual'];
+/** Ordem em que o menu do header da coluna lista os modos. */
+export const FLUXOS_COLUMN_SORTS: FluxosColumnSort[] = ['prazo', 'publicacao', 'manual'];
+
+export const FLUXOS_COLUMN_SORT_LABELS: Record<FluxosColumnSort, string> = lazyLabels(
+  FLUXOS_COLUMN_SORTS,
+  (k) => `entregas:fluxosColumnSort.${k}`,
+);
 
 const fluxosSortsKey = (contaId: string) => `entregas_fluxos_sorts_${contaId}`;
 
@@ -186,6 +194,27 @@ export function loadFilaOrdem(contaId: string): FilaOrdem {
 export function persistFilaOrdem(contaId: string, ordem: FilaOrdem): void {
   try {
     localStorage.setItem(filaOrdemKey(contaId), ordem);
+  } catch {
+    // Best effort: a preferência só não sobrevive ao reload.
+  }
+}
+
+const linhaDirecaoKey = (contaId: string) => `entregas_linha_direcao_oculta_${contaId}`;
+
+/** Whether the linha editorial table hides "Direção do conteúdo", per conta and browser. The
+ *  column is still shown to the client and carried into the post: this only hides it here. */
+export function loadLinhaDirecaoOculta(contaId: string): boolean {
+  try {
+    return localStorage.getItem(linhaDirecaoKey(contaId)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function persistLinhaDirecaoOculta(contaId: string, oculta: boolean): void {
+  try {
+    if (oculta) localStorage.setItem(linhaDirecaoKey(contaId), '1');
+    else localStorage.removeItem(linhaDirecaoKey(contaId));
   } catch {
     // Best effort: a preferência só não sobrevive ao reload.
   }

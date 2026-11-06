@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import type { BlockProps } from '../BlockRenderer';
 import { pickAccentFg } from '../theme';
+import { coverDefaults } from '../platform';
 
-const KICKER_DEFAULT = 'Relatório mensal · Instagram';
 const LOGO_SIZE_DEFAULT = 36;
 const COVER_INK_FALLBACK = '#171717';
 
@@ -63,17 +63,22 @@ export interface CoverConfig {
   logoSize?: number;
 }
 
-export function CoverBlock({ block, snapshot }: BlockProps) {
+export function CoverBlock({ block, snapshot, layoutPlatforms }: BlockProps) {
   const b = snapshot.branding;
   const config = (block.config ?? {}) as CoverConfig;
-  const kicker = typeof config.kicker === 'string' ? config.kicker : KICKER_DEFAULT;
+  // Kicker e handle derivados das plataformas do layout; config.kicker vence.
+  const defaults = coverDefaults(snapshot, layoutPlatforms);
+  const kicker = typeof config.kicker === 'string' ? config.kicker : defaults.kicker;
   const title = typeof config.title === 'string' ? config.title : snapshot.period.label;
+  // Sem handle (capa só do Google Meu Negócio): sem "@" solto, só a especialidade.
   const subtitle =
     typeof config.subtitle === 'string'
       ? config.subtitle
-      : `@${snapshot.account.handle}${snapshot.account.specialty ? ` · ${snapshot.account.specialty}` : ''}`;
+      : [defaults.handle ? `@${defaults.handle}` : null, snapshot.account.specialty || null]
+          .filter(Boolean)
+          .join(' · ');
   const logoSize = config.logoSize ?? LOGO_SIZE_DEFAULT;
-  const clientName = snapshot.account.client_name ?? snapshot.account.handle;
+  const clientName = snapshot.account.client_name ?? defaults.handle;
 
   const colorStyle =
     typeof config.color === 'string'
@@ -100,11 +105,7 @@ export function CoverBlock({ block, snapshot }: BlockProps) {
             style={{ height: logoSize, borderRadius: 8, background: '#fff', padding: 4 }}
           />
         ) : null}
-        <CoverAvatar
-          name={clientName}
-          photoUrl={snapshot.account.profile_picture_url ?? null}
-          size={logoSize}
-        />
+        <CoverAvatar name={clientName} photoUrl={defaults.avatarUrl} size={logoSize} />
         <span style={{ fontWeight: 600 }}>{b.workspace_name}</span>
       </div>
       <p
@@ -128,7 +129,9 @@ export function CoverBlock({ block, snapshot }: BlockProps) {
       >
         {title}
       </h1>
-      <p style={{ margin: '0.25rem 0 0', opacity: 0.9 }}>{subtitle}</p>
+      {typeof config.subtitle === 'string' || subtitle ? (
+        <p style={{ margin: '0.25rem 0 0', opacity: 0.9 }}>{subtitle}</p>
+      ) : null}
       {b.splash_url ? (
         <img
           src={b.splash_url}

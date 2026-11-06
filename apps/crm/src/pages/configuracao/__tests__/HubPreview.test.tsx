@@ -195,6 +195,23 @@ describe('HubPreview', () => {
     expect(within(bottomNav).getByText('Mais')).toBeInTheDocument();
   });
 
+  it('initialDevice="mobile" opens on the mobile shell, and Computador still switches back', () => {
+    render(
+      <HubPreview
+        draft={BASE_DRAFT}
+        workspaceName="Agência Teste"
+        workspaceLogoUrl={null}
+        customized
+        initialDevice="mobile"
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Celular' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByTestId('hub-preview-sidebar')).not.toBeInTheDocument();
+    expect(screen.getByTestId('hub-preview-bottom-nav')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Computador' }));
+    expect(screen.getByTestId('hub-preview-sidebar')).toBeInTheDocument();
+  });
+
   it('switching back to Computador restores the desktop shell', () => {
     renderPreview();
     fireEvent.click(screen.getByRole('button', { name: 'Celular' }));

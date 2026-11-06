@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { MentionTextarea } from '@/components/mentions/MentionTextarea';
+import { useTranslation } from 'react-i18next';
+import { MentionEditor } from '@/components/mentions/MentionEditor';
 
 export interface AddCommentPopoverProps {
   position: { top: number; left: number };
@@ -8,6 +9,8 @@ export interface AddCommentPopoverProps {
   onClose: () => void;
   /** Elements whose mousedown must not count as "outside" (e.g. the trigger button). */
   ignoreRefs?: React.RefObject<HTMLElement | null>[];
+  /** Extra class on the popover (the phone layout widens it to the screen). */
+  className?: string;
 }
 
 /** "Adicionar comentário" popover shared by the content editor and the caption field. */
@@ -16,7 +19,9 @@ export function AddCommentPopover({
   onSubmit,
   onClose,
   ignoreRefs = [],
+  className,
 }: AddCommentPopoverProps) {
+  const { t } = useTranslation('postPanels');
   const [text, setText] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -50,14 +55,14 @@ export function AddCommentPopover({
   return createPortal(
     <div
       ref={rootRef}
-      className="comment-add-popover"
+      className={className ? `comment-add-popover ${className}` : 'comment-add-popover'}
       style={{ position: 'fixed', top: position.top, left: position.left, zIndex: 9999 }}
       onMouseDown={(e) => e.stopPropagation()}
     >
-      <div className="comment-add-label">Adicionar comentário</div>
-      <MentionTextarea
+      <div className="comment-add-label">{t('addComment.label')}</div>
+      <MentionEditor
         className="comment-add-input"
-        placeholder="Escreva seu comentário..."
+        placeholder={t('addComment.placeholder')}
         value={text}
         onValueChange={setText}
         onKeyDown={(e) => {
@@ -75,7 +80,7 @@ export function AddCommentPopover({
         onClick={() => void submit()}
         disabled={!text.trim() || submitting}
       >
-        Comentar
+        {t('addComment.submit')}
       </button>
     </div>,
     document.body,

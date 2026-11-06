@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { useTranslation } from 'react-i18next';
+import { useDateFnsLocale } from '@mesaas/i18n';
 import { Calendar as CalendarIcon, X } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -22,12 +23,14 @@ export interface DatePickerProps {
 export function DatePicker({
   value,
   onChange,
-  placeholder = 'Selecionar data',
+  placeholder,
   className,
   disabled,
   clearable = true,
   displayFormat = 'dd/MM/yyyy',
 }: DatePickerProps) {
+  const { t } = useTranslation();
+  const dateLocale = useDateFnsLocale();
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -42,12 +45,16 @@ export function DatePicker({
           )}
         >
           <CalendarIcon className="mr-2 h-4 w-4" />
-          {value ? format(value, displayFormat, { locale: ptBR }) : <span>{placeholder}</span>}
+          {value ? (
+            format(value, displayFormat, { locale: dateLocale })
+          ) : (
+            <span>{placeholder ?? t('ui.selectDate')}</span>
+          )}
           {clearable && value && (
             <span
               role="button"
               tabIndex={0}
-              aria-label="Limpar"
+              aria-label={t('ui.clear')}
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -68,7 +75,13 @@ export function DatePicker({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0" align="start" style={{ zIndex: 9999 }}>
-        <Calendar mode="single" locale={ptBR} selected={value} onSelect={onChange} initialFocus />
+        <Calendar
+          mode="single"
+          locale={dateLocale}
+          selected={value}
+          onSelect={onChange}
+          initialFocus
+        />
       </PopoverContent>
     </Popover>
   );

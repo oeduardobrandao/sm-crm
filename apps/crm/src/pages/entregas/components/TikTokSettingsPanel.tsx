@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle } from 'lucide-react';
-import { TIKTOK_MSG } from '@mesaas/tiktok-messages';
+import { AlertTriangle, ImageIcon } from 'lucide-react';
+import { Trans, useTranslation } from 'react-i18next';
+import { i18n } from '@mesaas/i18n';
+import { TIKTOK_LIMITS, TIKTOK_MSG } from '@mesaas/tiktok-messages';
 import {
   Select,
   SelectContent,
@@ -22,13 +24,16 @@ import {
   cannotPostMessage,
   computeTikTokReadiness,
   disclosureLabel,
-  DISCLOSURE_INCOMPLETE_MSG,
   isAppAudited,
   isPublicAccountInTestMode,
   longestVideoSeconds,
   privacyOptionState,
+  tiktokLimitLines,
+  tiktokMediaIssues,
   type TikTokReadiness,
 } from '../tiktokComposerRules';
+import { ThumbnailPickerDialog } from './ThumbnailPickerDialog';
+import { formatCoverTimestamp, videoCoverState } from '../videoCover';
 
 // =============================================================================
 // TikTok settings panel — audit-mandated creator_info compliance UI
@@ -57,31 +62,31 @@ import {
 // `tiktok_settings` is a jsonb column with no partial-update semantics on the
 // client — every write sends the FULL settings object, never a diff.
 //
-// ── Out of scope (noted, not a gap) ────────────────────────────────────────
-// `video_cover_timestamp_ms` and `photo_cover_index` are valid tiktok_settings
-// keys (cron/publish payload builders already read them) but neither gets a UI
-// control here — cover-frame/cover-image picking needs a dedicated media-picker
-// component this task doesn't build. `photo_cover_index` defaults to 0 (first
-// image), matching buildPhotoInitPayload's own `s.photo_cover_index ?? 0` fallback.
+// ── Covers ─────────────────────────────────────────────────────────────────
+// The TikTok video cover follows the video's thumbnail (spec
+// 2026-10-30-tiktok-cover-follows-thumbnail): TikTok only takes a frame offset, so the
+// publishers send files.thumbnail_frame_ms, the moment the thumbnail was captured from.
+// This panel only reports it and opens the same ThumbnailPickerDialog the gallery uses;
+// an uploaded image (or a file from before the column) has no frame, and TikTok falls back
+// to its default frame. `photo_cover_index` still has no UI control and defaults to 0
+// (first image), matching buildPhotoInitPayload's own `s.photo_cover_index ?? 0` fallback.
 
-const CAPTION_MAX_VIDEO = 2200; // UTF-16 code units == TikTok's "runes"; JS .length
-const CAPTION_MAX_PHOTO = 4000; // already counts UTF-16 code units, no extra lib needed.
-const TITLE_MAX = 90;
+const CAPTION_MAX_VIDEO = TIKTOK_LIMITS.captionVideoMax; // UTF-16 code units == TikTok's "runes"
+const CAPTION_MAX_PHOTO = TIKTOK_LIMITS.captionPhotoMax;
+const TITLE_MAX = TIKTOK_LIMITS.titlePhotoMax;
 const CAPTION_DEBOUNCE_MS = 1500;
-
-const TEST_MODE_BANNER =
-  'App em modo de teste: até a aprovação do TikTok, as publicações saem como privadas.';
 
 function formatDuration(s: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-const PRIVACY_LABELS: Record<string, string> = {
-  PUBLIC_TO_EVERYONE: 'Todos',
-  MUTUAL_FOLLOW_FRIENDS: 'Amigos que se seguem',
-  FOLLOWER_OF_CREATOR: 'Seguidores',
-  SELF_ONLY: 'Somente eu (privado)',
-};
+/** TikTok privacy_level values with a translated label; anything else renders raw. */
+const PRIVACY_LEVELS = new Set([
+  'PUBLIC_TO_EVERYONE',
+  'MUTUAL_FOLLOW_FRIENDS',
+  'FOLLOWER_OF_CREATOR',
+  'SELF_ONLY',
+]);
 
 interface TikTokSettingsDraft {
   privacy_level?: string;
@@ -151,7 +156,8 @@ export interface TikTokSettingsPanelProps {
   post: Pick<
     WorkflowPost,
     'id' | 'tipo' | 'tiktok_settings' | 'tiktok_caption' | 'tiktok_title' | 'ig_caption'
-  >;
+  > &
+    Partial<Pick<WorkflowPost, 'platform'>>;
   /** Same optimistic-write path `tipo`/`platform`/`ig_caption` already use
    * (WorkflowDrawer's onFieldChange -> updateWorkflowPost). */
   onFieldChange: (field: keyof WorkflowPost, value: unknown) => void;
@@ -166,6 +172,10 @@ export interface TikTokSettingsPanelProps {
   /** Com feature_multiplatform a legenda do TikTok mora na aba do TikTok
    *  (DestinationCaptionTabs); o painel fica só com as configurações. */
   hideCaption?: boolean;
+  /** `phone`: the thumbnail editor opens as a bottom sheet. */
+  layout?: 'default' | 'phone';
+  /** After the thumbnail editor saves: refresh the post's media (the gallery's own keys). */
+  onThumbnailUpdated?: () => void;
 }
 
 export function TikTokSettingsPanel({
@@ -177,7 +187,11 @@ export function TikTokSettingsPanel({
   mediaError = false,
   showTestModeBanner = false,
   hideCaption = false,
+  layout = 'default',
+  onThumbnailUpdated,
 }: TikTokSettingsPanelProps) {
+  const { t } = useTranslation('posts');
+  const [thumbnailEditorOpen, setThumbnailEditorOpen] = useState(false);
   const [creatorInfo, setCreatorInfo] = useState<TikTokCreatorInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -244,7 +258,7 @@ export function TikTokSettingsPanel({
       })
       .catch((err: Error) => {
         if (!cancelled) {
-          setLoadError(err.message || 'Erro ao consultar informações do criador no TikTok');
+          setLoadError(err.message || i18n.t('posts:tiktokSettings.creatorInfoError'));
         }
       })
       .finally(() => {
@@ -260,6 +274,7 @@ export function TikTokSettingsPanel({
     loadError,
     creator: creatorInfo,
     tipo: post.tipo,
+    platform: post.platform,
     privacyLevel: draft.privacy_level,
     disclosureOn,
     brandOrganic: draft.brand_organic_toggle,
@@ -268,6 +283,8 @@ export function TikTokSettingsPanel({
       kind: m.kind,
       duration_seconds: m.duration_seconds,
       media_lost_at: m.media_lost_at ?? null,
+      mime_type: m.mime_type,
+      size_bytes: m.size_bytes,
     })),
     mediaError,
   });
@@ -299,12 +316,19 @@ export function TikTokSettingsPanel({
     isVideoTipo && maxDur != null && longest != null && longest > maxDur
       ? TIKTOK_MSG.durationExceeded(longest, maxDur)
       : null;
+  const mediaIssues = tiktokMediaIssues(post.tipo, post.platform, media);
+  const limitLines = tiktokLimitLines(post.tipo, post.platform, maxDur);
 
   const persist = (patch: Partial<TikTokSettingsDraft>) => {
     const next = { ...draft, ...patch };
     setDraft(next);
     onFieldChange('tiktok_settings', next);
   };
+
+  const coverVideo = isVideoTipo ? media?.find((m) => m.kind === 'video') : undefined;
+  const cover = coverVideo ? videoCoverState(coverVideo) : null;
+  // What the publishers send: the file's frame, whatever its source (see videoCover.ts).
+  const coverFrameMs = coverVideo?.thumbnail_frame_ms ?? null;
 
   const handleCaptionChange = (value: string) => {
     if (value.length > captionMax) return;
@@ -339,7 +363,7 @@ export function TikTokSettingsPanel({
           className="text-xs rounded-md px-2 py-1.5"
           style={{ color: 'var(--warning)', background: 'rgba(245, 163, 66, 0.1)' }}
         >
-          {TEST_MODE_BANNER}
+          {t('tiktokSettings.testModeBanner')}
         </div>
       )}
 
@@ -376,28 +400,48 @@ export function TikTokSettingsPanel({
           <div className="flex flex-col">
             <span className="text-sm font-semibold" style={{ color: 'var(--text-main)' }}>
               {loading ? (
-                'Carregando informações do criador…'
+                t('tiktokSettings.loadingCreator')
               ) : creatorInfo?.creator_nickname ? (
-                <>
-                  Publicando como @<span>{creatorInfo.creator_nickname}</span>
-                </>
+                <Trans
+                  t={t}
+                  i18nKey="tiktokSettings.postingAs"
+                  values={{ nickname: creatorInfo.creator_nickname }}
+                  components={{ name: <span /> }}
+                />
               ) : (
                 '—'
               )}
             </span>
-            {isVideoTipo && maxDur != null && (
-              <span className="text-xs" style={{ color: 'var(--text-light)' }}>
-                Duração máxima de vídeo nesta conta: {maxDur}s
-              </span>
-            )}
           </div>
         </div>
       )}
 
+      {/* Os limites que o servidor confere ao agendar, à vista antes do clique */}
+      {limitLines.length > 0 && (
+        <section
+          aria-label={t('entregas:tiktokRules.limits.title')}
+          className="flex flex-col gap-1 rounded-md px-2.5 py-2 text-xs"
+          style={{ background: 'var(--surface-main)', border: '1px solid var(--border-color)' }}
+        >
+          <span className="font-semibold" style={{ color: 'var(--text-muted)' }}>
+            {t('entregas:tiktokRules.limits.title')}
+          </span>
+          <ul
+            className="flex list-disc flex-col gap-0.5 pl-4"
+            style={{ color: 'var(--text-light)' }}
+          >
+            {limitLines.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+            <li>{t('entregas:tiktokRules.limits.daily')}</li>
+          </ul>
+        </section>
+      )}
+
       {/* Preview (spec A5): what will be sent */}
-      <section aria-label="Prévia" className="flex flex-col gap-1.5">
+      <section aria-label={t('tiktokSettings.preview')} className="flex flex-col gap-1.5">
         <span className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
-          Prévia
+          {t('tiktokSettings.preview')}
         </span>
         {media === undefined ? null : media.length === 0 ? (
           <p className="text-xs" style={{ color: 'var(--text-light)' }}>
@@ -447,12 +491,77 @@ export function TikTokSettingsPanel({
             {TIKTOK_MSG.mediaLost}
           </p>
         )}
+        {mediaIssues.map((issue) => (
+          <p key={issue} className="text-xs" style={{ color: 'var(--danger-text)' }}>
+            {issue}
+          </p>
+        ))}
         {durationError && (
           <p className="text-xs" style={{ color: 'var(--danger-text)' }}>
             {durationError}
           </p>
         )}
       </section>
+
+      {/* Cover (video only): the thumbnail's frame; TikTok takes a frame offset, not an image */}
+      {coverVideo && (
+        <section aria-label={t('tiktokCover.label')} className="flex items-start gap-3">
+          <div
+            className="relative h-28 w-16 overflow-hidden rounded-md flex-shrink-0"
+            style={{ background: 'var(--surface-3)' }}
+          >
+            {coverVideo.thumbnail_url && !coverVideo.media_lost_at && (
+              <img
+                data-testid="tiktok-cover-thumbnail"
+                src={sanitizeUrl(coverVideo.thumbnail_url)}
+                alt=""
+                className="h-full w-full object-cover"
+              />
+            )}
+          </div>
+          <div className="flex flex-col gap-1 min-w-0">
+            <span className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+              {t('tiktokCover.label')}
+            </span>
+            {coverFrameMs !== null ? (
+              <span className="text-xs" style={{ color: 'var(--text-light)' }}>
+                {t(
+                  cover?.kind === 'frame'
+                    ? 'tiktokCover.followsChosenFrame'
+                    : 'tiktokCover.followsDefaultFrame',
+                  { time: formatCoverTimestamp(coverFrameMs) },
+                )}
+              </span>
+            ) : (
+              <p className="flex items-start gap-1.5 text-xs" style={{ color: 'var(--text-main)' }}>
+                <AlertTriangle
+                  aria-hidden="true"
+                  className="mt-px h-3.5 w-3.5 shrink-0"
+                  style={{ color: 'var(--warning)' }}
+                />
+                <span>
+                  {t(cover?.kind === 'image' ? 'tiktokCover.imageCover' : 'tiktokCover.noFrame')}
+                </span>
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={() => setThumbnailEditorOpen(true)}
+              disabled={!!coverVideo.media_lost_at}
+              className="inline-flex w-fit items-center gap-1 px-2.5 py-1 rounded-full bg-stone-900 text-white text-[11px] font-semibold hover:bg-stone-700 disabled:opacity-50"
+            >
+              <ImageIcon aria-hidden="true" className="h-3 w-3" />
+              {t('tiktokCover.editThumbnail')}
+            </button>
+          </div>
+          <ThumbnailPickerDialog
+            media={thumbnailEditorOpen ? coverVideo : null}
+            onClose={() => setThumbnailEditorOpen(false)}
+            onUpdated={() => onThumbnailUpdated?.()}
+            layout={layout}
+          />
+        </section>
+      )}
 
       {loadError && (
         <p className="text-xs" style={{ color: 'var(--danger)' }}>
@@ -462,13 +571,13 @@ export function TikTokSettingsPanel({
 
       {/* Privacy — audit requirement: no default preselected */}
       <div className="flex flex-col gap-1">
-        <Label>Privacidade</Label>
+        <Label>{t('tiktokSettings.privacy')}</Label>
         <Select
           value={draft.privacy_level}
           onValueChange={(value) => persist({ privacy_level: value })}
         >
           <SelectTrigger>
-            <SelectValue placeholder="Selecione a privacidade" />
+            <SelectValue placeholder={t('tiktokSettings.privacyPlaceholder')} />
           </SelectTrigger>
           <SelectContent>
             {(creatorInfo?.privacy_level_options ?? []).map((opt) => {
@@ -478,7 +587,7 @@ export function TikTokSettingsPanel({
               });
               return (
                 <SelectItem key={opt} value={opt} disabled={st.disabled}>
-                  {PRIVACY_LABELS[opt] ?? opt}
+                  {PRIVACY_LEVELS.has(opt) ? t(`tiktokSettings.privacyLevels.${opt}`) : opt}
                   {st.suffix ? ` ${st.suffix}` : ''}
                 </SelectItem>
               );
@@ -496,7 +605,7 @@ export function TikTokSettingsPanel({
             disabled={commentLocked}
             onCheckedChange={(checked) => persist({ disable_comment: checked !== true })}
           />
-          <Label htmlFor={`tt-comment-${post.id}`}>Permitir comentários</Label>
+          <Label htmlFor={`tt-comment-${post.id}`}>{t('tiktokSettings.allowComments')}</Label>
         </div>
         {isVideoTipo && (
           <>
@@ -507,7 +616,7 @@ export function TikTokSettingsPanel({
                 disabled={duetLocked}
                 onCheckedChange={(checked) => persist({ disable_duet: checked !== true })}
               />
-              <Label htmlFor={`tt-duet-${post.id}`}>Permitir dueto</Label>
+              <Label htmlFor={`tt-duet-${post.id}`}>{t('tiktokSettings.allowDuet')}</Label>
             </div>
             <div className="flex items-center gap-2">
               <Checkbox
@@ -516,7 +625,7 @@ export function TikTokSettingsPanel({
                 disabled={stitchLocked}
                 onCheckedChange={(checked) => persist({ disable_stitch: checked !== true })}
               />
-              <Label htmlFor={`tt-stitch-${post.id}`}>Permitir stitch</Label>
+              <Label htmlFor={`tt-stitch-${post.id}`}>{t('tiktokSettings.allowStitch')}</Label>
             </div>
           </>
         )}
@@ -528,10 +637,10 @@ export function TikTokSettingsPanel({
         style={{ borderTop: '1px solid var(--border-color)' }}
       >
         <div className="flex items-center justify-between gap-2">
-          <Label htmlFor={`tt-disclosure-${post.id}`}>Divulgação de conteúdo comercial</Label>
+          <Label htmlFor={`tt-disclosure-${post.id}`}>{t('tiktokSettings.disclosure')}</Label>
           <Switch
             id={`tt-disclosure-${post.id}`}
-            aria-label="Divulgação de conteúdo comercial"
+            aria-label={t('tiktokSettings.disclosure')}
             checked={disclosureOn}
             onCheckedChange={(checked) => {
               setDisclosureOn(checked === true);
@@ -542,7 +651,7 @@ export function TikTokSettingsPanel({
           />
         </div>
         <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          Indique se este conteúdo promove você, uma marca, um produto ou um serviço.
+          {t('tiktokSettings.disclosureHint')}
         </p>
         {disclosureOn && (
           <>
@@ -553,9 +662,11 @@ export function TikTokSettingsPanel({
                 onCheckedChange={(c) => persist({ brand_organic_toggle: c === true })}
               />
               <div className="flex flex-col">
-                <Label htmlFor={`tt-brand-organic-${post.id}`}>Sua marca</Label>
+                <Label htmlFor={`tt-brand-organic-${post.id}`}>
+                  {t('tiktokSettings.yourBrand')}
+                </Label>
                 <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                  Você está promovendo a si mesmo ou o seu negócio.
+                  {t('tiktokSettings.yourBrandHint')}
                 </span>
               </div>
             </div>
@@ -569,7 +680,7 @@ export function TikTokSettingsPanel({
               />
               <div className="flex flex-col">
                 <Label htmlFor={`tt-brand-content-${post.id}`}>
-                  Conteúdo de marca{' '}
+                  {t('tiktokSettings.brandedContent')}{' '}
                   {brandedState.suffix && (
                     <span
                       data-testid="tt-branded-suffix"
@@ -581,7 +692,7 @@ export function TikTokSettingsPanel({
                   )}
                 </Label>
                 <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                  {brandedState.helper ?? 'Você está promovendo outra marca ou um terceiro.'}
+                  {brandedState.helper ?? t('tiktokSettings.brandedContentHint')}
                 </span>
               </div>
             </div>
@@ -593,7 +704,12 @@ export function TikTokSettingsPanel({
                   border: '1px solid var(--border-color)',
                 }}
               >
-                Seu post será rotulado como <strong>{label}</strong>.
+                <Trans
+                  t={t}
+                  i18nKey="tiktokSettings.labeledAs"
+                  values={{ label }}
+                  components={{ b: <strong /> }}
+                />
               </p>
             ) : (
               <p className="flex items-start gap-1.5 text-xs" style={{ color: 'var(--text-main)' }}>
@@ -602,7 +718,7 @@ export function TikTokSettingsPanel({
                   className="mt-px h-3.5 w-3.5 shrink-0"
                   style={{ color: 'var(--warning)' }}
                 />
-                <span>{DISCLOSURE_INCOMPLETE_MSG}</span>
+                <span>{t('entregas:tiktokRules.disclosureIncomplete')}</span>
               </p>
             )}
           </>
@@ -616,7 +732,7 @@ export function TikTokSettingsPanel({
 
       {isPhotoTipo && (
         <div className="flex items-center justify-between gap-2">
-          <Label htmlFor={`tt-auto-music-${post.id}`}>Adicionar música automaticamente</Label>
+          <Label htmlFor={`tt-auto-music-${post.id}`}>{t('tiktokSettings.autoMusic')}</Label>
           <Switch
             id={`tt-auto-music-${post.id}`}
             checked={draft.auto_add_music}
@@ -632,7 +748,7 @@ export function TikTokSettingsPanel({
             checked={draft.is_aigc}
             onCheckedChange={(checked) => persist({ is_aigc: checked === true })}
           />
-          <Label htmlFor={`tt-aigc-${post.id}`}>Conteúdo gerado por IA</Label>
+          <Label htmlFor={`tt-aigc-${post.id}`}>{t('tiktokSettings.aigc')}</Label>
         </div>
       )}
 
@@ -640,9 +756,7 @@ export function TikTokSettingsPanel({
       {!hideCaption && (
         <div className="flex flex-col gap-1">
           <div className="flex items-center justify-between">
-            <Label htmlFor={`tt-caption-${post.id}`}>
-              Legenda do TikTok (opcional: usa a legenda do Instagram se vazia)
-            </Label>
+            <Label htmlFor={`tt-caption-${post.id}`}>{t('tiktokSettings.captionLabel')}</Label>
             <span
               className="text-xs"
               style={{ color: 'var(--text-light)', fontFamily: 'var(--font-mono)' }}
@@ -654,7 +768,7 @@ export function TikTokSettingsPanel({
             id={`tt-caption-${post.id}`}
             value={captionLocal}
             onChange={(e) => handleCaptionChange(e.target.value)}
-            placeholder="Texto exato a publicar no TikTok. Deixe vazio para usar a legenda do Instagram."
+            placeholder={t('tiktokSettings.captionPlaceholder')}
             className="min-h-[70px] resize-y"
             style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem' }}
           />
@@ -665,7 +779,7 @@ export function TikTokSettingsPanel({
       {isPhotoTipo && (
         <div className="flex flex-col gap-1">
           <div className="flex items-center justify-between">
-            <Label htmlFor={`tt-title-${post.id}`}>Título do TikTok (opcional)</Label>
+            <Label htmlFor={`tt-title-${post.id}`}>{t('tiktokSettings.titleLabel')}</Label>
             <span
               className="text-xs"
               style={{ color: 'var(--text-light)', fontFamily: 'var(--font-mono)' }}
@@ -677,7 +791,7 @@ export function TikTokSettingsPanel({
             id={`tt-title-${post.id}`}
             value={titleLocal}
             onChange={(e) => handleTitleChange(e.target.value)}
-            placeholder="Título do post de fotos"
+            placeholder={t('tiktokSettings.titlePlaceholder')}
           />
         </div>
       )}

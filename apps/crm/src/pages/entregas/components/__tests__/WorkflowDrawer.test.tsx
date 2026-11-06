@@ -13,6 +13,21 @@ import { makeCan, fakeMembership } from '@/test/makeCan';
 // only thing actually exercised. Patterns follow WorkflowCalendarView.test.tsx (dnd-kit +
 // store mocking) and LandingPage.test.tsx (AuthContext mocking).
 
+// Desktop layout; the phone branch has its own suite (WorkflowDrawerPhone.test.tsx).
+// Feedback em mídia: the drawers fetch client notes by path (not through the mocked '@/store').
+vi.mock('@/store/mediaNotes', () => ({
+  getMediaNotes: async () => [],
+  mediaNotesKey: (ids: number[]) => ['media-notes', ids.join(',')],
+  replyToMediaNote: async () => undefined,
+  setMediaNoteStatus: async () => undefined,
+}));
+
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
+// Desktop editor: jsdom's matchMedia reports no match, which would render the phone editor.
+vi.mock('@/pages/entregas/components/postEditorPhone/useIsPhoneEditor', () => ({
+  useIsPhoneEditor: () => false,
+}));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
 vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }));
@@ -47,6 +62,8 @@ vi.mock('@dnd-kit/core', () => ({
   DndContext: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   closestCenter: () => null,
   PointerSensor: class {},
+  MouseSensor: class {},
+  TouchSensor: class {},
   useSensor: () => ({}),
   useSensors: (...sensors: unknown[]) => sensors,
 }));
@@ -87,12 +104,16 @@ vi.mock('@/store', () => ({
   removeWorkflowPost: vi.fn(),
   reorderWorkflowPosts: vi.fn(),
   sendPostsToCliente: vi.fn(),
+  sendSelectedPostsToCliente: vi.fn(),
+  isSendableFromSelection: (s: string) =>
+    !['enviado_cliente', 'aprovado_cliente', 'agendado', 'postado', 'falha_publicacao'].includes(s),
   getPostApprovals: vi.fn(async () => []),
   getPostStatusEvents: vi.fn(async () => []),
   getPostProcessEvents: vi.fn(async () => []),
   replyToPostApproval: vi.fn(),
   completeEtapa: vi.fn(),
   getPostCommentThreads: vi.fn(async () => []),
+  getDiscussaoNaoLidas: vi.fn(async () => []),
   createCommentThread: vi.fn(),
   saveIgCaption: vi.fn(),
   addPostComment: vi.fn(),
@@ -138,6 +159,9 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
 }));
 
 vi.mock('@/services/postMedia', () => ({ listPostMedia: vi.fn(async () => []) }));
+
+// The suggestion move guard reads this by path (not through the '@/store' barrel).
+vi.mock('@/store/posts', () => ({ hasPendingEditSuggestion: vi.fn(async () => false) }));
 // PostEditorBody and WorkflowDrawer read client references from this module by path.
 vi.mock('@/store/postReferences', () => ({
   getPostReferences: vi.fn(async () => []),
@@ -167,9 +191,21 @@ vi.mock('@/pages/entregas/components/PostEditor', () => ({
   // `key`) re-hydrates it. Mirror that here with useState's lazy initializer, captured once
   // per mount, so the suggestion-acceptance race test below can tell "remounted with stale
   // content" apart from "re-rendered with fresh content" the way the real editor would.
-  PostEditor: ({ initialContent }: { initialContent: unknown }) => {
+  PostEditor: ({
+    initialContent,
+    onDeleteComment,
+  }: {
+    initialContent: unknown;
+    onDeleteComment?: (commentId: number, threadId: number) => Promise<void>;
+  }) => {
     const [frozenContent] = useState(initialContent);
-    return <div data-testid="post-editor-stub" data-content={JSON.stringify(frozenContent)} />;
+    return (
+      <div data-testid="post-editor-stub" data-content={JSON.stringify(frozenContent)}>
+        <button type="button" onClick={() => void onDeleteComment?.(10, 1)}>
+          delete comment stub
+        </button>
+      </div>
+    );
   },
 }));
 vi.mock('@/pages/entregas/components/PropertyPanel', () => ({
@@ -177,6 +213,37 @@ vi.mock('@/pages/entregas/components/PropertyPanel', () => ({
 }));
 vi.mock('@/pages/entregas/components/PostCommentSummary', () => ({
   default: () => <div data-testid="post-comment-summary-stub" />,
+}));
+// The post's team discussion mounts a MentionEditor (needs getMembros on the @/store mock)
+// and useDiscussao opens a realtime channel (this supabase stub has no channel/rpc):
+// stub both, they have their own suites.
+vi.mock('@/pages/entregas/discussao/DiscussaoEquipe', () => ({
+  DiscussaoEquipe: ({
+    focusRequest,
+    onFocusHandled,
+  }: {
+    focusRequest?: number;
+    onFocusHandled?: () => void;
+  }) => (
+    <div data-testid="discussao-equipe-stub" data-autofocus={String(!!focusRequest)}>
+      <button type="button" onClick={onFocusHandled}>
+        stub focused
+      </button>
+    </div>
+  ),
+  DiscussaoTimeline: () => null,
+}));
+vi.mock('@/pages/entregas/discussao/useDiscussao', () => ({
+  useDiscussao: () => ({
+    participacao: undefined,
+    isParticipant: false,
+    naoLidas: 0,
+    unreadAnchorId: null,
+    send: async () => {},
+    sending: false,
+    toggleSeguir: async () => {},
+    sectionRef: () => {},
+  }),
 }));
 vi.mock('@/pages/entregas/components/PostTimelinePopover', () => ({
   PostTimelinePopover: () => <div data-testid="post-timeline-popover-stub" />,
@@ -200,6 +267,7 @@ vi.mock('@/pages/entregas/components/TikTokSettingsPanel', () => ({
   TikTokSettingsPanel: () => <div data-testid="tiktok-settings-stub" />,
 }));
 vi.mock('@/pages/entregas/components/ScheduleButton', () => ({
+  useScheduleActions: () => ({}),
   ScheduleButton: () => <div data-testid="schedule-button-stub" />,
 }));
 vi.mock('@/components/ui/date-time-picker', () => ({
@@ -234,12 +302,20 @@ import {
   detachPostsKeepingProcess,
   movePostsToNewFlow,
   addWorkflowPost,
+  sendSelectedPostsToCliente,
+  getPostCommentThreads,
+  getDiscussaoNaoLidas,
+  deleteCommentThread,
+  deletePostComment,
 } from '@/store';
+import { hasPendingEditSuggestion } from '@/store/posts';
 import { resolveInlineImageUrls } from '@/services/inlineImage';
+import { POST_STATUS_DEFINITIONS_QUERY_KEY } from '@/hooks/useStatusRegistry';
 
 const mockGetPosts = vi.mocked(getWorkflowPostsWithProperties);
 const mockResolveInlineImageUrls = vi.mocked(resolveInlineImageUrls);
 const mockUpdate = vi.mocked(updateWorkflowPost);
+const mockHasPending = vi.mocked(hasPendingEditSuggestion);
 const mockGetEditSuggestions = vi.mocked(getPostEditSuggestions);
 const mockAcceptEditSuggestion = vi.mocked(acceptEditSuggestion);
 const mockSyncMentions = vi.mocked(syncMentions);
@@ -247,6 +323,9 @@ const mockDetach = vi.mocked(detachPostsFromWorkflow);
 const mockDetachKeepingProcess = vi.mocked(detachPostsKeepingProcess);
 const mockMoveToNewFlow = vi.mocked(movePostsToNewFlow);
 const mockAddPost = vi.mocked(addWorkflowPost);
+const mockSendSelected = vi.mocked(sendSelectedPostsToCliente);
+const mockGetThreads = vi.mocked(getPostCommentThreads);
+const mockGetNaoLidas = vi.mocked(getDiscussaoNaoLidas);
 
 function renderDrawer(
   qc: QueryClient,
@@ -254,6 +333,8 @@ function renderDrawer(
     onClose?: () => void;
     onRefresh?: () => void;
     initialPostId?: number;
+    focusRequest?: number;
+    onDiscussaoFocused?: () => void;
     onOpenWorkflow?: (workflowId: number) => void;
     onDetachedKeepingProcess?: (postIds: number[]) => void;
     card?: Partial<BoardCard>;
@@ -297,19 +378,27 @@ function renderDrawer(
     ...overrides.card,
   } as unknown as BoardCard;
 
-  return render(
+  const onClose = overrides.onClose ?? vi.fn();
+  const onRefresh = overrides.onRefresh ?? vi.fn();
+  const tree = (o: typeof overrides) => (
     <QueryClientProvider client={qc}>
       <WorkflowDrawer
         card={card}
         membros={[]}
-        onClose={overrides.onClose ?? vi.fn()}
-        onRefresh={overrides.onRefresh ?? vi.fn()}
-        initialPostId={overrides.initialPostId ?? 1}
-        onOpenWorkflow={overrides.onOpenWorkflow}
-        onDetachedKeepingProcess={overrides.onDetachedKeepingProcess}
+        onClose={onClose}
+        onRefresh={onRefresh}
+        initialPostId={o.initialPostId ?? 1}
+        focusRequest={o.focusRequest}
+        onDiscussaoFocused={o.onDiscussaoFocused}
+        onOpenWorkflow={o.onOpenWorkflow}
+        onDetachedKeepingProcess={o.onDetachedKeepingProcess}
       />
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+  const utils = render(tree(overrides));
+  /** Re-renders the SAME drawer instance with other props (no remount). */
+  const rerenderWith = (o: typeof overrides) => utils.rerender(tree({ ...overrides, ...o }));
+  return { ...utils, rerenderWith };
 }
 
 // mockFeatures is set true only inside the "handleDetachedKeepingProcess" describe
@@ -385,6 +474,11 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
     },
     suggested_conteudo_plain: '@Ana confere',
     suggested_ig_caption: null,
+    // The base the client started from: equal to the live post below, so nothing conflicts
+    // (a NULL base would read as '' and still match here, but state it).
+    original_conteudo: null,
+    original_conteudo_plain: '',
+    original_ig_caption: null,
     changed_fields: ['conteudo'],
     status: 'pending' as const,
     updated_at: '2026-08-01T00:00:00Z',
@@ -421,7 +515,12 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
     fireEvent.click(acceptButton);
 
     await waitFor(() =>
-      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z'),
+      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(
+        200,
+        '2026-08-01T00:00:00Z',
+        ['texto'],
+        [],
+      ),
     );
     await waitFor(() => expect(mockSyncMentions).toHaveBeenCalledWith('workflow_post', 1, [7]));
   });
@@ -437,7 +536,12 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
     fireEvent.click(acceptButton);
 
     await waitFor(() =>
-      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z'),
+      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(
+        200,
+        '2026-08-01T00:00:00Z',
+        ['legenda'],
+        [],
+      ),
     );
     expect(mockSyncMentions).not.toHaveBeenCalled();
   });
@@ -459,9 +563,244 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
     fireEvent.click(acceptButton);
 
     await waitFor(() =>
-      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z'),
+      // `conteudo` with a NULL doc is not a texto change: only the legenda is offered.
+      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(
+        200,
+        '2026-08-01T00:00:00Z',
+        ['legenda'],
+        [],
+      ),
     );
     expect(mockSyncMentions).not.toHaveBeenCalled();
+  });
+
+  it('accepts without a dialog when nothing conflicts', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Aceitar' }));
+
+    await waitFor(() => expect(mockAcceptEditSuggestion).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('dialog', { name: 'Aceitar a sugestão?' })).toBeNull();
+  });
+
+  it('a no-conflict accept that the server rejects as suggestion_conflict shows the review-again toast and refetches', async () => {
+    // The drawer's post prop was stale: another member edited the caption after it opened, so the
+    // card showed no conflict and sent no acknowledgement. The server re-checks and refuses.
+    const { toast } = await import('sonner');
+    mockAcceptEditSuggestion.mockRejectedValue({ message: 'suggestion_conflict' });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
+    renderDrawer(qc);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Aceitar' }));
+
+    await waitFor(() =>
+      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(
+        200,
+        '2026-08-01T00:00:00Z',
+        ['texto'],
+        [],
+      ),
+    );
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        'O post mudou desde que você abriu. Revise a sugestão de novo.',
+      ),
+    );
+    expect(toast.error).not.toHaveBeenCalledWith('Erro ao aceitar sugestão');
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['post-edit-suggestions'] });
+    expect(mockSyncMentions).not.toHaveBeenCalled();
+  });
+
+  it('invalidates the post destinations after an accept (the Geral caption lives there)', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
+    renderDrawer(qc);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Aceitar' }));
+
+    await waitFor(() =>
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['post-targets', 1] }),
+    );
+  });
+
+  it('target_gone on a TikTok caption names the destination and refetches', async () => {
+    const { toast } = await import('sonner');
+    mockGetEditSuggestions.mockResolvedValue([
+      {
+        ...suggestion,
+        changed_fields: ['tiktok_caption'],
+        suggested_tiktok_caption: 'TikTok do cliente',
+        original_tiktok_caption: null,
+      },
+    ] as never);
+    mockAcceptEditSuggestion.mockRejectedValue({ message: 'target_gone', code: 'P0001' });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
+    renderDrawer(qc);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Aceitar' }));
+
+    await waitFor(() =>
+      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(
+        200,
+        '2026-08-01T00:00:00Z',
+        ['legenda_tiktok'],
+        [],
+      ),
+    );
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        'O destino TikTok foi removido do post. Revise a sugestão de novo.',
+      ),
+    );
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['post-edit-suggestions'] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['post-targets', 1] });
+  });
+
+  it('a deadlock (40P01) asks to try again instead of the generic error', async () => {
+    const { toast } = await import('sonner');
+    mockAcceptEditSuggestion.mockRejectedValue({ message: 'deadlock detected', code: '40P01' });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Aceitar' }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith('Não deu para aplicar agora. Tente de novo.'),
+    );
+    expect(toast.error).not.toHaveBeenCalledWith('Erro ao aceitar sugestão');
+  });
+
+  describe('when the team edited a field the client also changed', () => {
+    // texto: the client added a mention; the team edited the legenda since. Aceitar… asks first.
+    const captionClash = {
+      ...suggestion,
+      suggested_ig_caption: 'Legenda do cliente',
+      original_ig_caption: 'Legenda base',
+      changed_fields: ['conteudo', 'ig_caption'],
+    };
+    const teamPost = (over: Record<string, unknown>) =>
+      mockGetPosts.mockResolvedValue([
+        {
+          id: 1,
+          workflow_id: 10,
+          titulo: 'Post A',
+          conteudo: null,
+          conteudo_plain: '',
+          tipo: 'feed',
+          ordem: 0,
+          status: 'rascunho',
+          responsavel_id: null,
+          scheduled_at: null,
+          ig_caption: 'Legenda da equipe',
+          platform: 'instagram',
+          ...over,
+        } as never,
+      ]);
+
+    it('opens the dialog from "Aceitar…" and sends only the non-conflicting field by default', async () => {
+      teamPost({});
+      mockGetEditSuggestions.mockResolvedValue([captionClash] as never);
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      renderDrawer(qc);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Aceitar…' }));
+      expect(mockAcceptEditSuggestion).not.toHaveBeenCalled();
+      const dialog = await screen.findByRole('dialog', { name: 'Aceitar a sugestão?' });
+      expect(
+        within(dialog).getByRole('radio', { name: 'Manter a versão da equipe' }),
+      ).toBeChecked();
+
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Aceitar sugestão' }));
+      await waitFor(() =>
+        expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(
+          200,
+          '2026-08-01T00:00:00Z',
+          ['texto'],
+          [],
+        ),
+      );
+      // texto was applied, so the mention from the client's doc is synced.
+      await waitFor(() => expect(mockSyncMentions).toHaveBeenCalledWith('workflow_post', 1, [7]));
+    });
+
+    it('sends the conflicting field too when the reviewer picks the client version', async () => {
+      teamPost({});
+      mockGetEditSuggestions.mockResolvedValue([captionClash] as never);
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      renderDrawer(qc);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Aceitar…' }));
+      const dialog = await screen.findByRole('dialog', { name: 'Aceitar a sugestão?' });
+      fireEvent.click(within(dialog).getByRole('radio', { name: 'Usar a versão do cliente' }));
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Aceitar sugestão' }));
+
+      await waitFor(() =>
+        expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(
+          200,
+          '2026-08-01T00:00:00Z',
+          ['texto', 'legenda'],
+          ['legenda'],
+        ),
+      );
+    });
+
+    it('does not sync mentions when the team texto is kept', async () => {
+      // Both fields clash and the reviewer keeps the team's texto: the live doc (and its
+      // mentions) stays, so syncing from the suggestion's doc would wipe them.
+      teamPost({ conteudo_plain: 'Texto da equipe' });
+      mockGetEditSuggestions.mockResolvedValue([
+        { ...captionClash, original_conteudo_plain: 'Texto base' },
+      ] as never);
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      renderDrawer(qc);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Aceitar…' }));
+      const dialog = await screen.findByRole('dialog', { name: 'Aceitar a sugestão?' });
+      // Texto keeps the team version (default); legenda goes to the client.
+      fireEvent.click(
+        within(dialog).getAllByRole('radio', { name: 'Usar a versão do cliente' })[1],
+      );
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Aceitar sugestão' }));
+
+      await waitFor(() =>
+        expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(
+          200,
+          '2026-08-01T00:00:00Z',
+          ['legenda'],
+          ['legenda'],
+        ),
+      );
+      expect(mockSyncMentions).not.toHaveBeenCalled();
+    });
+
+    it('shows the review-again toast and refetches when the server reports suggestion_conflict', async () => {
+      const { toast } = await import('sonner');
+      teamPost({});
+      mockGetEditSuggestions.mockResolvedValue([captionClash] as never);
+      mockAcceptEditSuggestion.mockRejectedValue({ message: 'suggestion_conflict' });
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
+      renderDrawer(qc);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Aceitar…' }));
+      const dialog = await screen.findByRole('dialog', { name: 'Aceitar a sugestão?' });
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Aceitar sugestão' }));
+
+      await waitFor(() =>
+        expect(toast.error).toHaveBeenCalledWith(
+          'O post mudou desde que você abriu. Revise a sugestão de novo.',
+        ),
+      );
+      expect(toast.error).not.toHaveBeenCalledWith('Erro ao aceitar sugestão');
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['post-edit-suggestions'] });
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ['workflow-posts-with-props', expect.anything()],
+      });
+      expect(mockSyncMentions).not.toHaveBeenCalled();
+    });
   });
 
   it('remounts the editor with the accepted content, not the stale pre-suggestion doc', async () => {
@@ -517,7 +856,12 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
     fireEvent.click(acceptButton);
 
     await waitFor(() =>
-      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z'),
+      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(
+        200,
+        '2026-08-01T00:00:00Z',
+        ['texto'],
+        [],
+      ),
     );
 
     // While the posts refetch that handleAcceptSuggestion explicitly awaits is still
@@ -598,7 +942,12 @@ describe('WorkflowDrawer edit-suggestion acceptance mention sync', () => {
     fireEvent.click(acceptButton);
 
     await waitFor(() =>
-      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(200, '2026-08-01T00:00:00Z'),
+      expect(mockAcceptEditSuggestion).toHaveBeenCalledWith(
+        200,
+        '2026-08-01T00:00:00Z',
+        ['texto'],
+        [],
+      ),
     );
 
     // The diff card clears once posts + suggestions settle, but the signed-URL fetch is
@@ -739,6 +1088,44 @@ describe('WorkflowDrawer Histórico tab', () => {
   });
 });
 
+describe('WorkflowDrawer posts count', () => {
+  const basePost = {
+    workflow_id: 10,
+    conteudo: null,
+    conteudo_plain: '',
+    tipo: 'feed',
+    status: 'rascunho',
+    responsavel_id: null,
+    scheduled_at: null,
+    ig_caption: null,
+    platform: 'instagram',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('shows how many posts the fluxo has in the section header', async () => {
+    mockGetPosts.mockResolvedValue([
+      { ...basePost, id: 1, titulo: 'Post A', ordem: 0 },
+      { ...basePost, id: 2, titulo: 'Post B', ordem: 1 },
+      { ...basePost, id: 3, titulo: 'Post C', ordem: 2 },
+    ] as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    expect(await screen.findByText('Posts (3)')).toBeInTheDocument();
+  });
+
+  it('shows zero for an empty fluxo', async () => {
+    mockGetPosts.mockResolvedValue([]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    expect(await screen.findByText('Posts (0)')).toBeInTheDocument();
+  });
+});
+
 describe('WorkflowDrawer desmembrar do fluxo (Task 15)', () => {
   // Two posts so partial vs. total selection is actually distinguishable --
   // the archive-empty-flow checkbox in the confirm dialog only shows when the
@@ -823,6 +1210,57 @@ describe('WorkflowDrawer desmembrar do fluxo (Task 15)', () => {
     await waitFor(() =>
       expect(screen.queryByTestId('drawer-selection-bar')).not.toBeInTheDocument(),
     );
+  });
+
+  it('"Enviar ao cliente" na barra envia os selecionados (mesmo em rascunho) após confirmar', async () => {
+    mockSendSelected.mockResolvedValue(2);
+    const onRefresh = vi.fn();
+    const { toast } = await import('sonner');
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc, { initialPostId: undefined, onRefresh });
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Selecionar Post A' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Selecionar todos' }));
+    await screen.findByText('2 selecionados');
+    fireEvent.click(
+      within(screen.getByTestId('drawer-selection-bar')).getByRole('button', {
+        name: 'Enviar ao cliente',
+      }),
+    );
+
+    await screen.findByText('Enviar 2 posts ao cliente?');
+    expect(mockSendSelected).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar ao cliente' }));
+
+    await waitFor(() => expect(mockSendSelected).toHaveBeenCalledWith(10, [1, 2]));
+    await waitFor(() => expect(onRefresh).toHaveBeenCalled());
+    expect(toast.success).toHaveBeenCalledWith('2 posts enviados ao cliente!');
+    expect(screen.queryByTestId('drawer-selection-bar')).not.toBeInTheDocument();
+  });
+
+  it('"Enviar ao cliente" pula posts já no portal e avisa quando nenhum selecionado pode ir', async () => {
+    mockGetPosts.mockResolvedValue([
+      { ...(postA as object), status: 'enviado_cliente' },
+      { ...(postB as object), status: 'aprovado_cliente' },
+    ] as never);
+    const { toast } = await import('sonner');
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc, { initialPostId: undefined });
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Selecionar Post A' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Selecionar todos' }));
+    await screen.findByText('2 selecionados');
+    fireEvent.click(
+      within(screen.getByTestId('drawer-selection-bar')).getByRole('button', {
+        name: 'Enviar ao cliente',
+      }),
+    );
+
+    expect(toast.error).toHaveBeenCalledWith(
+      'Nenhum dos posts selecionados pode ser enviado. Eles já estão no portal, aprovados ou agendados.',
+    );
+    expect(screen.queryByText(/ao cliente\?$/)).not.toBeInTheDocument();
+    expect(mockSendSelected).not.toHaveBeenCalled();
   });
 
   it('o confirm só mostra o checkbox de arquivar quando a seleção cobre todos os posts do fluxo', async () => {
@@ -1264,6 +1702,22 @@ describe('WorkflowDrawer scrolls the targeted post into view', () => {
     expect(container.querySelector('.drawer-body')!.scrollTop).toBe(0);
   });
 
+  it('creates the new post after the highest ordem, even with gaps in the list', async () => {
+    // Deletes and moves leave gaps: 2 posts whose ordem is 0 and 5. posts.length (2) would
+    // sort the new post between them.
+    mockGetPosts.mockResolvedValue([makePost(1, 0), makePost(2, 5)]);
+    mockAddPost.mockResolvedValue(makePost(3, 6));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc, { initialPostId: undefined });
+    await screen.findByText('Post 2');
+
+    fireEvent.click(screen.getAllByRole('button', { name: /Novo Post/ })[1]);
+
+    await waitFor(() =>
+      expect(mockAddPost).toHaveBeenCalledWith(expect.objectContaining({ ordem: 6 })),
+    );
+  });
+
   it('scrolls to the post "Novo Post" just created once it renders', async () => {
     mockGetPosts.mockResolvedValue([makePost(1, 0)]);
     mockAddPost.mockResolvedValue(makePost(3, 1));
@@ -1273,9 +1727,339 @@ describe('WorkflowDrawer scrolls the targeted post into view', () => {
     await screen.findByText('Post 1');
 
     mockGetPosts.mockResolvedValue([makePost(1, 0), makePost(3, 1)]);
-    fireEvent.click(screen.getByRole('button', { name: /Novo Post/ }));
+    // Header button and the full-width one after the last post both create a post; use the latter.
+    const addButtons = screen.getAllByRole('button', { name: /Novo Post/ });
+    expect(addButtons).toHaveLength(2);
+    expect(addButtons[1]).toHaveClass('drawer-add-post-btn--row');
+    fireEvent.click(addButtons[1]);
 
     const body = container.querySelector('.drawer-body')!;
     await waitFor(() => expect(body.scrollTop).toBe(800));
+  });
+});
+
+describe('WorkflowDrawer deleting a comment', () => {
+  const post = {
+    id: 1,
+    workflow_id: 10,
+    titulo: 'Post A',
+    conteudo: null,
+    conteudo_plain: '',
+    tipo: 'feed',
+    ordem: 0,
+    status: 'rascunho',
+    responsavel_id: null,
+    scheduled_at: null,
+    ig_caption: null,
+    platform: 'instagram',
+  } as never;
+  const thread = (field: string) =>
+    ({
+      id: 1,
+      post_id: 1,
+      field,
+      post_comments: [{ id: 10, thread_id: 1, content: 'x' }],
+    }) as never;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetPosts.mockResolvedValue([post]);
+    mockGetNaoLidas.mockResolvedValue([]);
+  });
+
+  it('deletes only the comment when the last message belongs to the general thread', async () => {
+    mockGetThreads.mockResolvedValue([thread('geral')]);
+    renderDrawer(new QueryClient({ defaultOptions: { queries: { retry: false } } }));
+    await waitFor(() => expect(mockGetThreads).toHaveBeenCalled());
+    fireEvent.click(await screen.findByRole('button', { name: 'delete comment stub' }));
+    await waitFor(() => expect(vi.mocked(deletePostComment)).toHaveBeenCalledWith(10));
+    expect(vi.mocked(deleteCommentThread)).not.toHaveBeenCalled();
+  });
+
+  it('still deletes a passage thread together with its last message', async () => {
+    mockGetThreads.mockResolvedValue([thread('conteudo')]);
+    renderDrawer(new QueryClient({ defaultOptions: { queries: { retry: false } } }));
+    await waitFor(() => expect(mockGetThreads).toHaveBeenCalled());
+    fireEvent.click(await screen.findByRole('button', { name: 'delete comment stub' }));
+    await waitFor(() => expect(vi.mocked(deleteCommentThread)).toHaveBeenCalledWith(1));
+    expect(vi.mocked(deletePostComment)).not.toHaveBeenCalled();
+  });
+});
+
+describe('WorkflowDrawer discussao=1 deep link', () => {
+  const mkPost = (id: number) =>
+    ({
+      id,
+      workflow_id: 10,
+      titulo: `Post ${id}`,
+      conteudo: null,
+      conteudo_plain: '',
+      tipo: 'feed',
+      ordem: id,
+      status: 'rascunho',
+      responsavel_id: null,
+      scheduled_at: null,
+      ig_caption: null,
+      platform: 'instagram',
+    }) as never;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetPosts.mockResolvedValue([mkPost(1), mkPost(2)]);
+    mockGetThreads.mockResolvedValue([]);
+    mockGetNaoLidas.mockResolvedValue([]);
+  });
+
+  const qcNew = () => new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+  it('hands the focus request to the linked post only, expanded, and relays the report', async () => {
+    const onDiscussaoFocused = vi.fn();
+    renderDrawer(qcNew(), { initialPostId: 2, focusRequest: 1, onDiscussaoFocused });
+    await screen.findByText('Post 2');
+    // Only the linked post is expanded, so it is the only row with a discussion section.
+    const stubs = await screen.findAllByTestId('discussao-equipe-stub');
+    expect(stubs).toHaveLength(1);
+    expect(stubs[0]).toHaveAttribute('data-autofocus', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'stub focused' }));
+    expect(onDiscussaoFocused).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-expands a collapsed linked post on a new request, without remounting', async () => {
+    const { rerenderWith } = renderDrawer(qcNew(), { initialPostId: 2, focusRequest: 1 });
+    expect(await screen.findAllByTestId('discussao-equipe-stub')).toHaveLength(1);
+
+    // The user collapses the post (its row toggle is the post title).
+    fireEvent.click(screen.getByText('Post 2'));
+    await waitFor(() => expect(screen.queryByTestId('discussao-equipe-stub')).toBeNull());
+
+    rerenderWith({ focusRequest: 2 });
+    const stub = await screen.findByTestId('discussao-equipe-stub');
+    expect(stub).toHaveAttribute('data-autofocus', 'true');
+  });
+
+  it('a new request while on Histórico returns to Posts with the post expanded', async () => {
+    const { rerenderWith } = renderDrawer(qcNew(), { initialPostId: 2, focusRequest: 1 });
+    await screen.findByTestId('discussao-equipe-stub');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Histórico' }));
+    expect(await screen.findByTestId('workflow-history-view-stub')).toBeInTheDocument();
+    expect(screen.queryByTestId('discussao-equipe-stub')).toBeNull();
+
+    rerenderWith({ focusRequest: 2 });
+    await waitFor(() => expect(screen.queryByTestId('workflow-history-view-stub')).toBeNull());
+    const stub = await screen.findByTestId('discussao-equipe-stub');
+    expect(stub).toHaveAttribute('data-autofocus', 'true');
+  });
+
+  it('does not ask for focus without the flag', async () => {
+    renderDrawer(qcNew(), { initialPostId: 2 });
+    const stub = await screen.findByTestId('discussao-equipe-stub');
+    expect(stub).toHaveAttribute('data-autofocus', 'false');
+  });
+});
+
+describe('WorkflowDrawer discussion badge on the post trigger', () => {
+  const post = {
+    id: 1,
+    workflow_id: 10,
+    titulo: 'Post A',
+    conteudo: null,
+    conteudo_plain: '',
+    tipo: 'feed',
+    ordem: 0,
+    status: 'rascunho',
+    responsavel_id: null,
+    scheduled_at: null,
+    ig_caption: null,
+    platform: 'instagram',
+  } as never;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetPosts.mockResolvedValue([post]);
+    mockGetThreads.mockResolvedValue([]);
+    mockGetNaoLidas.mockResolvedValue([]);
+  });
+
+  const renderOne = () =>
+    renderDrawer(new QueryClient({ defaultOptions: { queries: { retry: false } } }), {
+      initialPostId: undefined,
+    });
+
+  it('asks the RPC once for the drawer posts', async () => {
+    renderOne();
+    await screen.findByText('Post A');
+    await waitFor(() => expect(mockGetNaoLidas).toHaveBeenCalledTimes(1));
+    expect(mockGetNaoLidas).toHaveBeenCalledWith({ postIds: [1], workflowIds: [] });
+  });
+
+  it('shows the unread count with the dot class when the participant has unread messages', async () => {
+    mockGetNaoLidas.mockResolvedValue([{ postId: 1, workflowId: 10, total: 9, naoLidas: 3 }]);
+    renderOne();
+    const badge = await screen.findByLabelText('3 mensagens novas na discussão');
+    expect(badge).toHaveTextContent('3');
+    expect(badge).toHaveClass('drawer-post-comment-badge--unread');
+  });
+
+  it('shows the plain total, with no dot, when nothing is unread', async () => {
+    mockGetNaoLidas.mockResolvedValue([{ postId: 1, workflowId: 10, total: 9, naoLidas: 0 }]);
+    renderOne();
+    const badge = await screen.findByLabelText('9 mensagens na discussão');
+    expect(badge).toHaveTextContent('9');
+    expect(badge).not.toHaveClass('drawer-post-comment-badge--unread');
+  });
+
+  it('counts comments, not threads: two threads, five messages', async () => {
+    // Used to show "2" (commentThreads.length); the badge now reports messages (RPC total).
+    mockGetThreads.mockResolvedValue([
+      { id: 1, post_id: 1, comments: [] },
+      { id: 2, post_id: 1, comments: [] },
+    ] as never);
+    mockGetNaoLidas.mockResolvedValue([{ postId: 1, workflowId: 10, total: 5, naoLidas: 0 }]);
+    renderOne();
+    expect(await screen.findByLabelText('5 mensagens na discussão')).toHaveTextContent('5');
+    expect(screen.queryByLabelText('2 mensagens na discussão')).not.toBeInTheDocument();
+  });
+
+  it('shows no badge until the count arrives (threads never stand in as messages)', async () => {
+    mockGetThreads.mockResolvedValue([
+      { id: 1, post_id: 1, field: 'geral', comments: [] },
+      { id: 2, post_id: 1, field: 'conteudo', comments: [] },
+    ] as never);
+    mockGetNaoLidas.mockReturnValue(new Promise(() => {}));
+    renderOne();
+    await screen.findByText('Post A');
+    await waitFor(() => expect(mockGetThreads).toHaveBeenCalled());
+    expect(screen.queryByLabelText(/na discussão/)).not.toBeInTheDocument();
+  });
+
+  it('announces the badge to screen readers as an image with its label', async () => {
+    mockGetNaoLidas.mockResolvedValue([{ postId: 1, workflowId: 10, total: 9, naoLidas: 3 }]);
+    renderOne();
+    expect(
+      await screen.findByRole('img', { name: '3 mensagens novas na discussão' }),
+    ).toHaveTextContent('3');
+  });
+
+  it('shows nothing when there is no discussion and no thread', async () => {
+    renderOne();
+    await screen.findByText('Post A');
+    await waitFor(() => expect(mockGetNaoLidas).toHaveBeenCalled());
+    expect(screen.queryByLabelText(/na discussão/)).not.toBeInTheDocument();
+  });
+});
+
+describe('WorkflowDrawer suggestion move guard', () => {
+  const CUSTOM_ID = '11111111-2222-3333-4444-555555555555';
+  const post = (status: string) =>
+    ({
+      id: 1,
+      workflow_id: 10,
+      titulo: 'Post A',
+      conteudo: null,
+      conteudo_plain: '',
+      tipo: 'feed',
+      ordem: 0,
+      status,
+      responsavel_id: null,
+      scheduled_at: null,
+      ig_caption: null,
+      platform: 'instagram',
+    }) as never;
+  const statusSelect = () => document.querySelector('select.drawer-select') as HTMLSelectElement;
+
+  afterEach(() => {
+    mockHasPending.mockResolvedValue(false);
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetPosts.mockResolvedValue([post('rascunho')]);
+    mockGetEditSuggestions.mockResolvedValue([] as never);
+    mockUpdate.mockResolvedValue({} as never);
+    mockHasPending.mockResolvedValue(false);
+  });
+
+  it('writes straight away when the post has no pending suggestion', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+    await screen.findByRole('radio', { name: 'Imagem', checked: true });
+    fireEvent.change(statusSelect(), { target: { value: 'agendado' } });
+    await waitFor(() =>
+      expect(mockUpdate).toHaveBeenCalledWith(1, { status: 'agendado', custom_status_id: null }),
+    );
+    expect(screen.queryByText('Mover para Agendado?')).toBeNull();
+  });
+
+  it('asks before moving to agendado and only writes after "Mover mesmo assim"', async () => {
+    mockHasPending.mockResolvedValue(true);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+    await screen.findByRole('radio', { name: 'Imagem', checked: true });
+    fireEvent.change(statusSelect(), { target: { value: 'agendado' } });
+    expect(await screen.findByText('Mover para Agendado?')).toBeTruthy();
+    expect(mockHasPending).toHaveBeenCalledWith(1);
+    expect(mockUpdate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Mover mesmo assim' }));
+    await waitFor(() =>
+      expect(mockUpdate).toHaveBeenCalledWith(1, { status: 'agendado', custom_status_id: null }),
+    );
+  });
+
+  it('Cancelar leaves the post where it was', async () => {
+    mockHasPending.mockResolvedValue(true);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+    await screen.findByRole('radio', { name: 'Imagem', checked: true });
+    fireEvent.change(statusSelect(), { target: { value: 'postado' } });
+    expect(await screen.findByText('Mover para Postado?')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    await waitFor(() => expect(screen.queryByText('Mover para Postado?')).toBeNull());
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it('a custom status that behaves as aprovado_cliente awaits the guard before the write', async () => {
+    mockHasPending.mockResolvedValue(true);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(POST_STATUS_DEFINITIONS_QUERY_KEY, [
+      {
+        id: CUSTOM_ID,
+        conta_id: 'conta-1',
+        nome: 'Pronto para cliente',
+        cor: '#7c5cff',
+        icone: null,
+        behaves_as: 'aprovado_cliente',
+        ordem: 0,
+        arquivado: false,
+        created_at: '2026-08-05T00:00:00Z',
+        updated_at: '2026-08-05T00:00:00Z',
+      },
+    ]);
+    renderDrawer(qc);
+    await screen.findByRole('radio', { name: 'Imagem', checked: true });
+    fireEvent.change(statusSelect(), { target: { value: `custom:${CUSTOM_ID}` } });
+    expect(await screen.findByText('Mover para Aprovado pelo cliente?')).toBeTruthy();
+    expect(mockUpdate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Mover mesmo assim' }));
+    await waitFor(() =>
+      expect(mockUpdate).toHaveBeenCalledWith(1, { custom_status_id: CUSTOM_ID }),
+    );
+  });
+
+  it('runs after the "post aprovado" confirm, not instead of it', async () => {
+    mockGetPosts.mockResolvedValue([post('aprovado_cliente')]);
+    mockHasPending.mockResolvedValue(true);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+    await screen.findByRole('radio', { name: 'Imagem', checked: true });
+    fireEvent.change(statusSelect(), { target: { value: 'agendado' } });
+    // First dialog: the existing approved-post confirm. No lookup yet.
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirmar' }));
+    expect(await screen.findByText('Mover para Agendado?')).toBeTruthy();
+    expect(mockUpdate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Mover mesmo assim' }));
+    await waitFor(() =>
+      expect(mockUpdate).toHaveBeenCalledWith(1, { status: 'agendado', custom_status_id: null }),
+    );
   });
 });

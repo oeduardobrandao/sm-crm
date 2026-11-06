@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -10,10 +10,24 @@ import { makeCan, fakeMembership } from '@/test/makeCan';
 // delete flows) is actually exercised. AttachToFluxoDialog is stubbed away entirely --
 // its own behavior is covered by AttachToFluxoDialog.test.tsx.
 
+// Desktop editor: jsdom's matchMedia reports no match, which would render the phone editor.
+// Feedback em mídia: the drawers fetch client notes by path (not through the mocked '@/store').
+vi.mock('@/store/mediaNotes', () => ({
+  getMediaNotes: async () => [],
+  mediaNotesKey: (ids: number[]) => ['media-notes', ids.join(',')],
+  replyToMediaNote: async () => undefined,
+  setMediaNoteStatus: async () => undefined,
+}));
+
+vi.mock('@/pages/entregas/components/postEditorPhone/useIsPhoneEditor', () => ({
+  useIsPhoneEditor: () => false,
+}));
+// Same for the dialogs (ApprovalExitDialog switches to a phone sheet below 768px).
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
 // `can` e um vi.fn() para cada teste poder negar uma permissao especifica.
-const authMock = vi.hoisted(() => ({ can: vi.fn() }));
+const authMock = vi.hoisted(() => ({ can: vi.fn(), membership: null as unknown }));
 vi.mock('@/context/AuthContext', () => ({
   useAuth: () => ({
     user: { id: 'user-1' },
@@ -21,6 +35,7 @@ vi.mock('@/context/AuthContext', () => ({
     loading: false,
     profile: null,
     can: authMock.can,
+    membership: authMock.membership,
   }),
 }));
 
@@ -62,6 +77,7 @@ vi.mock('@/lib/supabase', () => ({
 
 vi.mock('@/store', () => ({
   getStandalonePost: vi.fn(),
+  getClienteContexto: vi.fn(),
   getPostApprovals: vi.fn(async () => []),
   getPostStatusEvents: vi.fn(async () => []),
   getPostCommentThreads: vi.fn(async () => []),
@@ -88,6 +104,7 @@ vi.mock('@/store', () => ({
   getPostProcessEvents: vi.fn(async () => []),
   transitionPostProcess: vi.fn(),
   removePostProcess: vi.fn(),
+  resolvePostProcessRascunhoBanner: vi.fn(),
   CLIENT_CLEARED_STATUSES: ['aprovado_cliente', 'agendado', 'postado', 'falha_publicacao'],
   // Consumed by ApplyProcessDialog, which this drawer mounts in its header for the
   // "Aplicar processo" action -- the module-namespace mock below must list every
@@ -101,6 +118,9 @@ vi.mock('@/store', () => ({
 }));
 
 vi.mock('@/services/postMedia', () => ({ listPostMedia: vi.fn(async () => []) }));
+
+// The suggestion move guard reads this by path (not through the '@/store' barrel).
+vi.mock('@/store/posts', () => ({ hasPendingEditSuggestion: vi.fn(async () => false) }));
 // PostEditorBody and WorkflowDrawer read client references from this module by path.
 vi.mock('@/store/postReferences', () => ({
   getPostReferences: vi.fn(async () => []),
@@ -122,12 +142,17 @@ vi.mock('@/services/inlineImage', () => ({
 vi.mock('@/pages/entregas/components/PostEditor', () => ({
   PostEditor: ({
     onUpdate,
+    onDeleteComment,
   }: {
     onUpdate?: (json: Record<string, unknown>, plain: string) => void;
+    onDeleteComment?: (commentId: number, threadId: number) => Promise<void>;
   }) => (
     <div data-testid="post-editor-stub">
       <button type="button" onClick={() => onUpdate?.({ type: 'doc' }, 'novo texto')}>
         Editar conteúdo
+      </button>
+      <button type="button" onClick={() => void onDeleteComment?.(10, 1)}>
+        delete comment stub
       </button>
     </div>
   ),
@@ -137,6 +162,37 @@ vi.mock('@/pages/entregas/components/PropertyPanel', () => ({
 }));
 vi.mock('@/pages/entregas/components/PostCommentSummary', () => ({
   default: () => <div data-testid="post-comment-summary-stub" />,
+}));
+// The post's team discussion mounts a MentionEditor (needs getMembros on the @/store mock)
+// and useDiscussao opens a realtime channel (this supabase stub has no channel/rpc):
+// stub both, they have their own suites.
+vi.mock('@/pages/entregas/discussao/DiscussaoEquipe', () => ({
+  DiscussaoEquipe: ({
+    focusRequest,
+    onFocusHandled,
+  }: {
+    focusRequest?: number;
+    onFocusHandled?: () => void;
+  }) => (
+    <div data-testid="discussao-equipe-stub" data-autofocus={String(!!focusRequest)}>
+      <button type="button" onClick={onFocusHandled}>
+        stub focused
+      </button>
+    </div>
+  ),
+  DiscussaoTimeline: () => null,
+}));
+vi.mock('@/pages/entregas/discussao/useDiscussao', () => ({
+  useDiscussao: () => ({
+    participacao: undefined,
+    isParticipant: false,
+    naoLidas: 0,
+    unreadAnchorId: null,
+    send: async () => {},
+    sending: false,
+    toggleSeguir: async () => {},
+    sectionRef: () => {},
+  }),
 }));
 vi.mock('@/pages/entregas/components/PostMediaGallery', () => ({
   PostMediaGallery: () => <div data-testid="post-media-gallery-stub" />,
@@ -152,6 +208,7 @@ vi.mock('@/pages/entregas/components/TikTokSettingsPanel', () => ({
   TikTokSettingsPanel: () => <div data-testid="tiktok-settings-stub" />,
 }));
 vi.mock('@/pages/entregas/components/ScheduleButton', () => ({
+  useScheduleActions: () => ({}),
   ScheduleButton: () => <div data-testid="schedule-button-stub" />,
 }));
 vi.mock('@/components/ui/date-time-picker', () => ({
@@ -180,19 +237,31 @@ vi.mock('../WorkflowCalendarView', () => ({
 import { StandalonePostDrawer } from '../StandalonePostDrawer';
 import {
   getStandalonePost,
+  getClienteContexto,
   getVigentePostProcess,
   getPostStatusEvents,
   updateWorkflowPost,
   removeWorkflowPost,
   transitionPostProcess,
+  resolvePostProcessRascunhoBanner,
+  getPostCommentThreads,
+  deleteCommentThread,
+  deletePostComment,
+  getPostEditSuggestions,
+  acceptEditSuggestion,
+  syncMentions,
 } from '@/store';
+import { hasPendingEditSuggestion } from '@/store/posts';
+import { toast } from 'sonner';
 
 const mockGetStandalonePost = vi.mocked(getStandalonePost);
 const mockGetVigentePostProcess = vi.mocked(getVigentePostProcess);
 const mockGetPostStatusEvents = vi.mocked(getPostStatusEvents);
 const mockUpdate = vi.mocked(updateWorkflowPost);
+const mockHasPending = vi.mocked(hasPendingEditSuggestion);
 const mockRemove = vi.mocked(removeWorkflowPost);
 const mockTransition = vi.mocked(transitionPostProcess);
+const mockResolveBanner = vi.mocked(resolvePostProcessRascunhoBanner);
 
 function basePost(overrides: Record<string, unknown> = {}) {
   return {
@@ -218,7 +287,7 @@ function renderDrawer(qc: QueryClient, props: Partial<Record<string, unknown>> =
   const onClose = vi.fn();
   const onRefresh = vi.fn();
   const onAttached = vi.fn();
-  const utils = render(
+  const tree = (extra: Partial<Record<string, unknown>>) => (
     <MemoryRouter>
       <QueryClientProvider client={qc}>
         <StandalonePostDrawer
@@ -228,11 +297,15 @@ function renderDrawer(qc: QueryClient, props: Partial<Record<string, unknown>> =
           onRefresh={onRefresh}
           onAttached={onAttached}
           {...props}
+          {...extra}
         />
       </QueryClientProvider>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
-  return { ...utils, onClose, onRefresh, onAttached };
+  const utils = render(tree({}));
+  /** Re-renders the SAME drawer instance with other props (no remount). */
+  const rerenderWith = (extra: Partial<Record<string, unknown>>) => utils.rerender(tree(extra));
+  return { ...utils, onClose, onRefresh, onAttached, rerenderWith };
 }
 
 // ── Fixtures dos comandos do processo individual (Task 7) ────────────────────
@@ -284,11 +357,13 @@ const approvalActiveProcessFixture = {
 describe('StandalonePostDrawer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authMock.membership = null;
     limitsMock.features = null;
     authMock.can.mockImplementation(makeCan(fakeMembership({ role: 'owner' })));
     mockGetStandalonePost.mockResolvedValue(basePost() as never);
     mockUpdate.mockResolvedValue({} as never);
     mockRemove.mockResolvedValue(undefined as never);
+    mockHasPending.mockResolvedValue(false);
   });
 
   it('renders the post editor without a PropertyPanel (posts avulsos have no template)', async () => {
@@ -297,6 +372,34 @@ describe('StandalonePostDrawer', () => {
 
     expect(await screen.findByTestId('post-editor-stub')).toBeInTheDocument();
     expect(screen.queryByTestId('property-panel-stub')).not.toBeInTheDocument();
+  });
+
+  it('deleting the last message of the general thread removes the comment, never the thread', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    vi.mocked(getPostCommentThreads).mockResolvedValue([
+      {
+        id: 1,
+        post_id: 5,
+        field: 'geral',
+        post_comments: [{ id: 10, thread_id: 1, content: 'x' }],
+      },
+    ] as never);
+    renderDrawer(qc);
+    await waitFor(() => expect(vi.mocked(getPostCommentThreads)).toHaveBeenCalled());
+    fireEvent.click(await screen.findByRole('button', { name: 'delete comment stub' }));
+    await waitFor(() => expect(vi.mocked(deletePostComment)).toHaveBeenCalledWith(10));
+    expect(vi.mocked(deleteCommentThread)).not.toHaveBeenCalled();
+  });
+
+  it('discussao=1 deep link: asks the discussion section to focus and relays the report', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const onDiscussaoFocused = vi.fn();
+    renderDrawer(qc, { focusRequest: 1, onDiscussaoFocused });
+
+    const stub = await screen.findByTestId('discussao-equipe-stub');
+    expect(stub).toHaveAttribute('data-autofocus', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'stub focused' }));
+    expect(onDiscussaoFocused).toHaveBeenCalledTimes(1);
   });
 
   describe('aba Calendário', () => {
@@ -319,6 +422,24 @@ describe('StandalonePostDrawer', () => {
 
       expect(await screen.findByTestId('post-editor-stub')).toBeInTheDocument();
       expect(screen.queryByTestId('calendar-view-stub')).not.toBeInTheDocument();
+    });
+
+    it('discussao=1 deep link com o Calendário aberto volta ao post e pede o foco', async () => {
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const { rerenderWith } = renderDrawer(qc);
+
+      fireEvent.click(await screen.findByRole('tab', { name: 'Calendário' }));
+      expect(screen.getByTestId('calendar-view-stub')).toBeInTheDocument();
+
+      rerenderWith({ focusRequest: 2 });
+
+      expect(await screen.findByTestId('post-editor-stub')).toBeInTheDocument();
+      expect(screen.queryByTestId('calendar-view-stub')).not.toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Post' })).toHaveAttribute('aria-selected', 'true');
+      expect(await screen.findByTestId('discussao-equipe-stub')).toHaveAttribute(
+        'data-autofocus',
+        'true',
+      );
     });
 
     it('escopa a posse nos posts avulsos do cliente (currentWorkflowId null), não num fluxo', async () => {
@@ -490,6 +611,66 @@ describe('StandalonePostDrawer', () => {
       }),
     );
     expect(screen.queryByText('Post aprovado')).not.toBeInTheDocument();
+  });
+
+  describe('suggestion move guard', () => {
+    const statusSelectOf = (container: HTMLElement) =>
+      Array.from(container.querySelectorAll('select')).find((s) =>
+        s.querySelector('option[value="rascunho"]'),
+      ) as HTMLSelectElement;
+
+    beforeEach(() => {
+      mockHasPending.mockResolvedValue(false);
+    });
+
+    it('asks before moving to agendado with a pending suggestion, and writes only after "Mover mesmo assim"', async () => {
+      mockHasPending.mockResolvedValue(true);
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const { container } = renderDrawer(qc);
+      await screen.findByTestId('post-editor-stub');
+
+      fireEvent.change(statusSelectOf(container), { target: { value: 'agendado' } });
+
+      expect(await screen.findByText('Mover para Agendado?')).toBeInTheDocument();
+      expect(mockHasPending).toHaveBeenCalledWith(5);
+      expect(mockUpdate).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'Mover mesmo assim' }));
+      await waitFor(() =>
+        expect(mockUpdate).toHaveBeenCalledWith(5, { status: 'agendado', custom_status_id: null }),
+      );
+    });
+
+    it('Cancelar does not write', async () => {
+      mockHasPending.mockResolvedValue(true);
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const { container } = renderDrawer(qc);
+      await screen.findByTestId('post-editor-stub');
+
+      fireEvent.change(statusSelectOf(container), { target: { value: 'postado' } });
+      await screen.findByText('Mover para Postado?');
+      fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+      await waitFor(() =>
+        expect(screen.queryByText('Mover para Postado?')).not.toBeInTheDocument(),
+      );
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('runs after the "post aprovado" confirm, not instead of it', async () => {
+      mockGetStandalonePost.mockResolvedValue(basePost({ status: 'aprovado_cliente' }) as never);
+      mockHasPending.mockResolvedValue(true);
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const { container } = renderDrawer(qc);
+      await screen.findByTestId('post-editor-stub');
+
+      fireEvent.change(statusSelectOf(container), { target: { value: 'agendado' } });
+      fireEvent.click(await screen.findByRole('button', { name: 'Confirmar' }));
+      expect(await screen.findByText('Mover para Agendado?')).toBeInTheDocument();
+      expect(mockUpdate).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'Mover mesmo assim' }));
+      await waitFor(() =>
+        expect(mockUpdate).toHaveBeenCalledWith(5, { status: 'agendado', custom_status_id: null }),
+      );
+    });
   });
 
   it('flag desligada sem processo: tag "Avulso" (consulta o processo, que vem nulo)', async () => {
@@ -737,5 +918,275 @@ describe('StandalonePostDrawer', () => {
     renderDrawer(qc2);
     await screen.findByText('Avulso');
     expect(screen.queryByRole('button', { name: 'Aplicar processo' })).toBeNull();
+  });
+  // Saída de etapa de aprovação: o post continua aprovado_cliente numa etapa
+  // padrão entre duas aprovações -> aviso para voltar a rascunho.
+  describe('banner de rascunho', () => {
+    // Microssegundos de propósito: o ciclo precisa chegar à RPC intacto.
+    const CICLO = '2026-10-20T10:00:00.123456+00:00';
+    const bannerProcess = (dispensadoEm: string | null = null) => ({
+      ...processFixture,
+      aviso_rascunho_dispensado_em: dispensadoEm,
+      steps: [
+        processStep(0, 'concluido', { tipo: 'aprovacao_cliente', concluido_em: CICLO }),
+        processStep(1, 'ativo'),
+        processStep(2, 'pendente', { tipo: 'aprovacao_cliente' }),
+      ],
+    });
+    const approvedPost = () => ({ ...postFixture, status: 'aprovado_cliente' });
+
+    it('aparece com o post aprovado entre duas aprovações; o X dispensa com o ciclo intacto e some', async () => {
+      mockGetStandalonePost.mockResolvedValue(approvedPost() as never);
+      mockGetVigentePostProcess.mockResolvedValue(bannerProcess() as never);
+      mockResolveBanner.mockResolvedValueOnce(true);
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const invalidate = vi.spyOn(qc, 'invalidateQueries');
+      const { onRefresh } = renderDrawer(qc);
+      expect(await screen.findByText('Este post continua aprovado.')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Dispensar aviso' }));
+      expect(mockResolveBanner).toHaveBeenCalledWith(9, CICLO, false);
+      expect(screen.queryByText('Este post continua aprovado.')).toBeNull();
+      await waitFor(() =>
+        expect(invalidate).toHaveBeenCalledWith({ queryKey: ['post-process', 5] }),
+      );
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['standalone-post', 5] });
+      expect(onRefresh).toHaveBeenCalled();
+      expect(toast.success).not.toHaveBeenCalled();
+    });
+
+    it('"Voltar para rascunho" confirmado chama a RPC com reset e avisa', async () => {
+      mockGetStandalonePost.mockResolvedValue(approvedPost() as never);
+      mockGetVigentePostProcess.mockResolvedValue(bannerProcess() as never);
+      mockResolveBanner.mockResolvedValueOnce(true);
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      renderDrawer(qc);
+      await screen.findByText('Este post continua aprovado.');
+      fireEvent.click(screen.getByRole('button', { name: 'Voltar para rascunho' }));
+      expect(await screen.findByText('Voltar o post para rascunho?')).toBeInTheDocument();
+      const confirm = screen
+        .getAllByRole('button', { name: 'Voltar para rascunho' })
+        .find((b) => b.closest('[role="alertdialog"]'))!;
+      fireEvent.click(confirm);
+      await waitFor(() => expect(mockResolveBanner).toHaveBeenCalledWith(9, CICLO, true));
+      await waitFor(() =>
+        expect(toast.success).toHaveBeenCalledWith('O post voltou para rascunho.'),
+      );
+    });
+
+    it('não aparece quando o aviso já foi dispensado neste ciclo', async () => {
+      mockGetStandalonePost.mockResolvedValue(approvedPost() as never);
+      mockGetVigentePostProcess.mockResolvedValue(
+        bannerProcess('2026-10-20T11:00:00+00:00') as never,
+      );
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      renderDrawer(qc);
+      await screen.findByText('Individual · Etapa 1');
+      expect(screen.queryByText('Este post continua aprovado.')).toBeNull();
+    });
+
+    it('ciclo_changed: o aviso volta, mostra a mensagem e recarrega', async () => {
+      mockGetStandalonePost.mockResolvedValue(approvedPost() as never);
+      mockGetVigentePostProcess.mockResolvedValue(bannerProcess() as never);
+      mockResolveBanner.mockRejectedValueOnce({ message: 'ciclo_changed', code: 'P0001' });
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const { onRefresh } = renderDrawer(qc);
+      await screen.findByText('Este post continua aprovado.');
+      fireEvent.click(screen.getByRole('button', { name: 'Dispensar aviso' }));
+      await waitFor(() => expect(toast.error).toHaveBeenCalled());
+      expect(await screen.findByText('Este post continua aprovado.')).toBeInTheDocument();
+      expect(onRefresh).toHaveBeenCalled();
+    });
+  });
+});
+
+describe('StandalonePostDrawer edit suggestions', () => {
+  const mentionDoc = {
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'mention', attrs: { entityType: 'membro', id: 7, label: 'Ana', parentId: null } },
+        ],
+      },
+    ],
+  };
+  const suggestion = {
+    id: 300,
+    post_id: 5,
+    suggested_conteudo: mentionDoc,
+    suggested_conteudo_plain: '@Ana confere',
+    suggested_ig_caption: 'Legenda do cliente',
+    original_conteudo: null,
+    original_conteudo_plain: '',
+    original_ig_caption: 'Legenda base',
+    changed_fields: ['conteudo', 'ig_caption'],
+    status: 'pending' as const,
+    updated_at: '2026-08-01T00:00:00Z',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    authMock.membership = null;
+    mockGetStandalonePost.mockResolvedValue(basePost({ ig_caption: 'Legenda da equipe' }) as never);
+    vi.mocked(getPostEditSuggestions).mockResolvedValue([suggestion] as never);
+    vi.mocked(acceptEditSuggestion).mockResolvedValue(undefined as never);
+  });
+
+  it('shows the conflict line and the "Aceitar…" button when the team edited the caption', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+    expect(await screen.findByRole('button', { name: 'Aceitar…' })).toBeInTheDocument();
+    expect(
+      screen.getByText('A equipe editou a legenda depois desta sugestão.'),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the team caption by default: applies texto only and syncs its mentions', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+    fireEvent.click(await screen.findByRole('button', { name: 'Aceitar…' }));
+    expect(vi.mocked(acceptEditSuggestion)).not.toHaveBeenCalled();
+    const dialog = await screen.findByRole('dialog', { name: 'Aceitar a sugestão?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Aceitar sugestão' }));
+
+    await waitFor(() =>
+      expect(vi.mocked(acceptEditSuggestion)).toHaveBeenCalledWith(
+        300,
+        '2026-08-01T00:00:00Z',
+        ['texto'],
+        [],
+      ),
+    );
+    await waitFor(() =>
+      expect(vi.mocked(syncMentions)).toHaveBeenCalledWith('workflow_post', 5, [7]),
+    );
+  });
+
+  it('a caption-only accept leaves the team mentions alone', async () => {
+    vi.mocked(getPostEditSuggestions).mockResolvedValue([
+      { ...suggestion, original_ig_caption: 'Legenda da equipe', changed_fields: ['ig_caption'] },
+    ] as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+    fireEvent.click(await screen.findByRole('button', { name: 'Aceitar' }));
+
+    await waitFor(() =>
+      expect(vi.mocked(acceptEditSuggestion)).toHaveBeenCalledWith(
+        300,
+        '2026-08-01T00:00:00Z',
+        ['legenda'],
+        [],
+      ),
+    );
+    expect(vi.mocked(syncMentions)).not.toHaveBeenCalled();
+  });
+
+  it('a no-conflict accept that the server rejects as suggestion_conflict shows the review-again toast and refetches', async () => {
+    // Stale drawer: the team caption changed after it opened, so the card sent no acknowledgement.
+    mockGetStandalonePost.mockResolvedValue(basePost({ ig_caption: 'Legenda base' }) as never);
+    vi.mocked(acceptEditSuggestion).mockRejectedValue({ message: 'suggestion_conflict' });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
+    renderDrawer(qc);
+    fireEvent.click(await screen.findByRole('button', { name: 'Aceitar' }));
+
+    await waitFor(() =>
+      expect(vi.mocked(acceptEditSuggestion)).toHaveBeenCalledWith(
+        300,
+        '2026-08-01T00:00:00Z',
+        ['texto', 'legenda'],
+        [],
+      ),
+    );
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        'O post mudou desde que você abriu. Revise a sugestão de novo.',
+      ),
+    );
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['standalone-post', 5] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['post-edit-suggestions'] });
+    expect(vi.mocked(syncMentions)).not.toHaveBeenCalled();
+  });
+
+  it('suggestion_conflict shows the review-again toast and refetches the post and suggestion', async () => {
+    vi.mocked(acceptEditSuggestion).mockRejectedValue({ message: 'suggestion_conflict' });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
+    renderDrawer(qc);
+    fireEvent.click(await screen.findByRole('button', { name: 'Aceitar…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Aceitar a sugestão?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Aceitar sugestão' }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        'O post mudou desde que você abriu. Revise a sugestão de novo.',
+      ),
+    );
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['standalone-post', 5] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['post-edit-suggestions'] });
+    expect(vi.mocked(syncMentions)).not.toHaveBeenCalled();
+  });
+});
+
+describe('StandalonePostDrawer: client identity for a restricted member', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    authMock.membership = null;
+    limitsMock.features = null;
+    authMock.can.mockImplementation(makeCan(fakeMembership({ role: 'agent' })));
+    mockHasPending.mockResolvedValue(false);
+    vi.mocked(getClienteContexto).mockResolvedValue({
+      id: 42,
+      nome: 'Clínica Sol',
+      sigla: 'CS',
+      cor: null,
+      foto_url: null,
+    });
+  });
+
+  const subtitle = () => document.querySelector('.drawer-header-subtitle') as HTMLElement;
+
+  it('post_detail_uses_context_rpc_for_hidden_client: names the client the embed hid', async () => {
+    authMock.membership = fakeMembership({ role: 'agent', client_scope: 'atribuidos' });
+    mockGetStandalonePost.mockResolvedValue(basePost({ cliente_nome: '' }) as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    await waitFor(() => expect(subtitle()).toHaveTextContent('Clínica Sol'));
+    expect(getClienteContexto).toHaveBeenCalledWith(42);
+  });
+
+  it('hides "Remover processo" on the own post in a hidden client (remove_post_process is refused)', async () => {
+    authMock.membership = fakeMembership({ role: 'agent', client_scope: 'atribuidos' });
+    mockGetStandalonePost.mockResolvedValue(basePost({ cliente_nome: '' }) as never);
+    mockGetVigentePostProcess.mockResolvedValueOnce(processFixture as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    await screen.findByRole('button', { name: 'Avançar etapa' });
+    expect(screen.queryByRole('button', { name: 'Remover processo' })).toBeNull();
+  });
+
+  it('keeps "Remover processo" for a restricted member on a visible client', async () => {
+    authMock.membership = fakeMembership({ role: 'agent', client_scope: 'atribuidos' });
+    mockGetStandalonePost.mockResolvedValue(basePost() as never);
+    mockGetVigentePostProcess.mockResolvedValueOnce(processFixture as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    await screen.findByRole('button', { name: 'Avançar etapa' });
+    expect(screen.getByRole('button', { name: 'Remover processo' })).toBeInTheDocument();
+  });
+
+  it('todos_unchanged: an unscoped member never calls the RPC', async () => {
+    authMock.membership = fakeMembership({ role: 'agent', client_scope: 'todos' });
+    mockGetStandalonePost.mockResolvedValue(basePost({ cliente_nome: '' }) as never);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderDrawer(qc);
+
+    await screen.findByTestId('post-editor-stub');
+    expect(subtitle()).toHaveTextContent('—');
+    expect(getClienteContexto).not.toHaveBeenCalled();
   });
 });

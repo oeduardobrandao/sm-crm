@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Copy } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -33,13 +34,12 @@ export interface FeedAgendaDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const ERRO_LINK = 'Não foi possível atualizar o link. Tente novamente.';
-
 type Confirmacao = 'gerar' | 'desativar';
 
 /** "Sincronizar com seu calendário": the personal secret iCal URL (spec:
  *  2026-10-06-agenda-google-ics-feed). Three states: loading, no link, link. */
 export function FeedAgendaDialog({ open, onOpenChange }: FeedAgendaDialogProps) {
+  const { t } = useTranslation('agenda');
   const qc = useQueryClient();
   const { profile } = useAuth();
   // Scoped to the workspace so switching never shows another workspace's link.
@@ -64,7 +64,7 @@ export function FeedAgendaDialog({ open, onOpenChange }: FeedAgendaDialogProps) 
       setConfirmando(null);
     },
     onError: (err) => {
-      toast.error(formatAgendaError(err, ERRO_LINK));
+      toast.error(formatAgendaError(err, t('feed.erroLink')));
       setConfirmando(null);
     },
   });
@@ -74,10 +74,10 @@ export function FeedAgendaDialog({ open, onOpenChange }: FeedAgendaDialogProps) 
     onSuccess: () => {
       qc.setQueryData(chave, null);
       setConfirmando(null);
-      toast.success('Link desativado');
+      toast.success(t('feed.desativado'));
     },
     onError: (err) => {
-      toast.error(formatAgendaError(err, ERRO_LINK));
+      toast.error(formatAgendaError(err, t('feed.erroLink')));
       setConfirmando(null);
     },
   });
@@ -90,9 +90,9 @@ export function FeedAgendaDialog({ open, onOpenChange }: FeedAgendaDialogProps) 
     if (!url) return;
     try {
       await navigator.clipboard.writeText(url);
-      toast.success('Link copiado');
+      toast.success(t('feed.copiado'));
     } catch {
-      toast.error('Não foi possível copiar. Selecione o link e copie manualmente.');
+      toast.error(t('feed.erroCopiar'));
     }
   };
 
@@ -101,25 +101,23 @@ export function FeedAgendaDialog({ open, onOpenChange }: FeedAgendaDialogProps) 
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-[520px] gap-0 p-6">
           <DialogHeader className="mb-4">
-            <DialogTitle>Sincronizar com seu calendário</DialogTitle>
-            <DialogDescription>
-              Veja seus eventos do Mesaas no Google Agenda, Apple ou Outlook.
-            </DialogDescription>
+            <DialogTitle>{t('feed.titulo')}</DialogTitle>
+            <DialogDescription>{t('feed.descricao')}</DialogDescription>
           </DialogHeader>
 
           {isPending && !isError && (
             <p className="m-0 text-[13px]" style={{ color: 'var(--text-muted)' }} role="status">
-              Carregando…
+              {t('loading')}
             </p>
           )}
 
           {isError && (
             <div className="flex flex-col items-start gap-3">
               <p className="m-0 text-[13px]" style={{ color: 'var(--danger-text)' }}>
-                Não foi possível carregar o link.
+                {t('feed.erroCarregar')}
               </p>
               <Button type="button" variant="outline" size="sm" onClick={() => void refetch()}>
-                Tentar novamente
+                {t('shared.tentarNovamente')}
               </Button>
             </div>
           )}
@@ -127,11 +125,10 @@ export function FeedAgendaDialog({ open, onOpenChange }: FeedAgendaDialogProps) 
           {!isPending && !isError && !url && (
             <div className="flex flex-col items-start gap-4">
               <p className="m-0 text-[13px]" style={{ color: 'var(--text-muted)' }}>
-                Gere um link secreto e assine no seu calendário. Aparecem os eventos que você
-                organiza ou em que foi convidado, exceto os recusados.
+                {t('feed.vazio')}
               </p>
               <Button type="button" disabled={ocupado} onClick={() => gerar.mutate()}>
-                Gerar link
+                {t('feed.gerar')}
               </Button>
             </div>
           )}
@@ -144,13 +141,13 @@ export function FeedAgendaDialog({ open, onOpenChange }: FeedAgendaDialogProps) 
                 <Input
                   readOnly
                   value={url}
-                  aria-label="Link do seu calendário"
+                  aria-label={t('feed.linkLabel')}
                   className="min-w-0 flex-1 text-[13px]"
                   onFocus={(e) => e.currentTarget.select()}
                 />
                 <Button type="button" variant="outline" onClick={() => void copiar()}>
                   <Copy aria-hidden="true" />
-                  Copiar
+                  {t('feed.copiar')}
                 </Button>
               </div>
 
@@ -161,28 +158,24 @@ export function FeedAgendaDialog({ open, onOpenChange }: FeedAgendaDialogProps) 
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    Abrir no Google Agenda
+                    {t('feed.abrirGoogle')}
                   </a>
                 </Button>
                 <Button asChild variant="outline" size="sm">
-                  <a href={webcal}>Abrir no Apple Calendar</a>
+                  <a href={webcal}>{t('feed.abrirApple')}</a>
                 </Button>
               </div>
 
               <p className="m-0 text-[13px]" style={{ color: 'var(--text-muted)' }}>
-                No Outlook, use Adicionar calendário &gt; Da Internet e cole o link.
+                {t('feed.outlook')}
               </p>
 
               <div
                 className="flex flex-col gap-1 border-t pt-3 text-[12px]"
                 style={{ borderColor: 'var(--border-color)', color: 'var(--text-muted)' }}
               >
-                <p className="m-0">
-                  O Google Agenda pode levar algumas horas para mostrar mudanças.
-                </p>
-                <p className="m-0">
-                  Quem tiver este link vê seus eventos. Se ele vazar, gere um novo.
-                </p>
+                <p className="m-0">{t('feed.googleDemora')}</p>
+                <p className="m-0">{t('feed.aviso')}</p>
               </div>
 
               <div className="flex flex-wrap gap-2">
@@ -193,7 +186,7 @@ export function FeedAgendaDialog({ open, onOpenChange }: FeedAgendaDialogProps) 
                   disabled={ocupado}
                   onClick={() => setConfirmando('gerar')}
                 >
-                  Gerar novo link
+                  {t('feed.gerarNovo')}
                 </Button>
                 <Button
                   type="button"
@@ -202,7 +195,7 @@ export function FeedAgendaDialog({ open, onOpenChange }: FeedAgendaDialogProps) 
                   disabled={ocupado}
                   onClick={() => setConfirmando('desativar')}
                 >
-                  Desativar link
+                  {t('feed.desativar')}
                 </Button>
               </div>
             </div>
@@ -217,12 +210,14 @@ export function FeedAgendaDialog({ open, onOpenChange }: FeedAgendaDialogProps) 
         <AlertDialogContent className="sm:max-w-[400px]">
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {confirmando === 'desativar' ? 'Desativar link?' : 'Gerar novo link?'}
+              {confirmando === 'desativar'
+                ? t('feed.confirmarDesativarTitulo')
+                : t('feed.confirmarGerarTitulo')}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {confirmando === 'desativar'
-                ? 'Os calendários que usam este link deixam de mostrar seus eventos.'
-                : 'O link atual para de funcionar.'}
+                ? t('feed.confirmarDesativarTexto')
+                : t('feed.confirmarGerarTexto')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="gap-2 sm:gap-0">
@@ -232,7 +227,7 @@ export function FeedAgendaDialog({ open, onOpenChange }: FeedAgendaDialogProps) 
               disabled={ocupado}
               onClick={() => setConfirmando(null)}
             >
-              Cancelar
+              {t('actions.cancel')}
             </Button>
             <Button
               type="button"
@@ -240,7 +235,7 @@ export function FeedAgendaDialog({ open, onOpenChange }: FeedAgendaDialogProps) 
               disabled={ocupado}
               onClick={() => (confirmando === 'desativar' ? desativar.mutate() : gerar.mutate())}
             >
-              {confirmando === 'desativar' ? 'Desativar link' : 'Gerar novo link'}
+              {confirmando === 'desativar' ? t('feed.desativar') : t('feed.gerarNovo')}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

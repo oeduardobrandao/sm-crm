@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getNavGroups, getMoreSheetGroups } from '../nav-data';
+import { getNavGroups, getMoreSheetGroups, getPhoneNav, isNavRouteActive } from '../nav-data';
 import { deriveFinancialAccess } from '@/lib/financialAccess';
 import { makeCan, fakeMembership } from '@/test/makeCan';
 import type { MyMembership } from '@/store/workspace';
@@ -139,10 +139,13 @@ describe('getNavGroups legacy-agent positive parity', () => {
       'tarefas',
       'arquivos',
       'analytics',
+      // Listed as "Em breve" (disabled) while features is null.
+      'analytics-youtube',
+      'analytics-google',
       'novidades',
-      'ajuda',
-      'configuracao',
       'politica-de-privacidade',
+      'configuracao',
+      'ajuda',
     ]);
   });
 
@@ -154,11 +157,241 @@ describe('getNavGroups legacy-agent positive parity', () => {
   });
 });
 
-describe('TikTok analytics placeholder', () => {
-  it('is gone for every role (spec B4)', () => {
+describe('TikTok analytics nav item', () => {
+  const ON = { feature_tiktok: true, feature_analytics_reports: true };
+
+  it('TikTok item shows under feature_tiktok + feature_analytics_reports', () => {
+    const got = ids(getNavGroups(ON, 'owner', ownerCan));
+    expect(got).toContain('analytics-tiktok');
+    // Right after Instagram, in the Analytics group.
+    expect(got.indexOf('analytics-tiktok')).toBe(got.indexOf('analytics') + 1);
+    const group = getNavGroups(ON, 'owner', ownerCan).find((g) => g.id === 'analytics-group');
+    expect(group?.items.find((i) => i.id === 'analytics-tiktok')).toMatchObject({
+      route: '/analytics/tiktok',
+      label: 'TikTok',
+      labelKey: 'nav.tiktok',
+      icon: 'ph-tiktok-logo',
+    });
+  });
+
+  it('TikTok item hidden when features null', () => {
     expect(ids(getNavGroups(null, 'owner', ownerCan))).not.toContain('analytics-tiktok');
     expect(ids(getNavGroups(null, 'agent', agentCan))).not.toContain('analytics-tiktok');
     expect(ids(getMoreSheetGroups(null, 'owner', ownerCan))).not.toContain('analytics-tiktok');
+  });
+
+  it('TikTok item hidden when feature_tiktok false', () => {
+    const got = ids(getNavGroups({ ...ON, feature_tiktok: false }, 'owner', ownerCan));
+    expect(got).not.toContain('analytics-tiktok');
+    expect(got).toContain('analytics');
+  });
+
+  it('TikTok item hidden when feature_tiktok is missing (fail-closed)', () => {
+    expect(ids(getNavGroups({ feature_analytics_reports: true }, 'owner', ownerCan))).not.toContain(
+      'analytics-tiktok',
+    );
+  });
+
+  it('TikTok item hidden when feature_analytics_reports false', () => {
+    expect(
+      ids(getNavGroups({ ...ON, feature_analytics_reports: false }, 'owner', ownerCan)),
+    ).not.toContain('analytics-tiktok');
+  });
+
+  it('TikTok item needs analytics.ver', () => {
+    const can = makeCan(
+      fakeMembership({
+        role: 'agent',
+        role_id: 'role-1',
+        permissions: { analytics: 'none', clientes: 'ver' } as never,
+      }),
+    );
+    expect(ids(getNavGroups(ON, 'agent', can))).not.toContain('analytics-tiktok');
+  });
+});
+
+describe('YouTube and Google Meu Negócio analytics nav items', () => {
+  const ON = {
+    feature_tiktok: true,
+    feature_youtube: true,
+    feature_google_business: true,
+    feature_analytics_reports: true,
+  };
+  const analyticsItems = (features: Record<string, boolean> | null) =>
+    getNavGroups(features, 'owner', ownerCan).find((g) => g.id === 'analytics-group')?.items ?? [];
+  const item = (features: Record<string, boolean> | null, id: string) =>
+    analyticsItems(features).find((i) => i.id === id);
+
+  it('analytics group lists Instagram, TikTok, YouTube, Google Meu Negócio in order', () => {
+    expect(analyticsItems(ON).map((i) => i.id)).toEqual([
+      'analytics',
+      'analytics-tiktok',
+      'analytics-youtube',
+      'analytics-google',
+    ]);
+    expect(item(ON, 'analytics-youtube')).toMatchObject({
+      route: '/analytics/youtube',
+      label: 'YouTube',
+      labelKey: 'nav.youtube',
+      icon: 'ph-youtube-logo',
+    });
+    expect(item(ON, 'analytics-google')).toMatchObject({
+      route: '/analytics/google',
+      label: 'Google Meu Negócio',
+      labelKey: 'nav.googleBusiness',
+      icon: 'ph-storefront',
+    });
+  });
+
+  it('YouTube and GMN are disabled ("Em breve") when their flag is false', () => {
+    const off = { ...ON, feature_youtube: false, feature_google_business: false };
+    expect(item(off, 'analytics-youtube')).toMatchObject({ disabled: true });
+    expect(item(off, 'analytics-google')).toMatchObject({ disabled: true });
+    expect(item(off, 'analytics-youtube')?.locked).toBeFalsy();
+  });
+
+  it('YouTube and GMN are disabled when their flag is missing', () => {
+    const missing = { feature_analytics_reports: true };
+    expect(item(missing, 'analytics-youtube')).toMatchObject({ disabled: true });
+    expect(item(missing, 'analytics-google')).toMatchObject({ disabled: true });
+  });
+
+  it('YouTube and GMN are disabled while features is null', () => {
+    expect(item(null, 'analytics-youtube')).toMatchObject({ disabled: true });
+    expect(item(null, 'analytics-google')).toMatchObject({ disabled: true });
+    const sheet = getMoreSheetGroups(null, 'owner', ownerCan).flatMap((g) => g.items);
+    expect(sheet.find((i) => i.id === 'analytics-youtube')).toMatchObject({ disabled: true });
+    expect(sheet.find((i) => i.id === 'analytics-google')).toMatchObject({ disabled: true });
+  });
+
+  it('YouTube and GMN are enabled only when their flag is exactly true', () => {
+    expect(item(ON, 'analytics-youtube')?.disabled).toBeFalsy();
+    expect(item(ON, 'analytics-google')?.disabled).toBeFalsy();
+    // Each item follows its own flag.
+    const ytOnly = { ...ON, feature_google_business: false };
+    expect(item(ytOnly, 'analytics-youtube')?.disabled).toBeFalsy();
+    expect(item(ytOnly, 'analytics-google')).toMatchObject({ disabled: true });
+  });
+
+  it('YouTube and GMN are hidden without analytics:ver', () => {
+    const can = makeCan(
+      fakeMembership({
+        role: 'agent',
+        role_id: 'role-1',
+        permissions: { analytics: 'none', clientes: 'ver' } as never,
+      }),
+    );
+    const got = ids(getNavGroups(ON, 'agent', can));
+    expect(got).not.toContain('analytics-youtube');
+    expect(got).not.toContain('analytics-google');
+  });
+
+  it('YouTube and GMN are hidden when feature_analytics_reports is false', () => {
+    const got = ids(getNavGroups({ ...ON, feature_analytics_reports: false }, 'owner', ownerCan));
+    expect(got).not.toContain('analytics-youtube');
+    expect(got).not.toContain('analytics-google');
+    // Hidden wins over "Em breve" when the product flag is off too.
+    const allOff = {
+      feature_analytics_reports: false,
+      feature_youtube: false,
+      feature_google_business: false,
+    };
+    const gotOff = ids(getNavGroups(allOff, 'owner', ownerCan));
+    expect(gotOff).not.toContain('analytics-youtube');
+    expect(gotOff).not.toContain('analytics-google');
+  });
+});
+
+describe('isNavRouteActive', () => {
+  it('lights YouTube only on the YouTube overview and a client YouTube tab', () => {
+    for (const path of ['/analytics/youtube', '/analytics/12/youtube']) {
+      expect(isNavRouteActive(path, '/analytics/youtube', 'analytics-youtube')).toBe(true);
+      expect(isNavRouteActive(path, '/analytics/google', 'analytics-google')).toBe(false);
+      expect(isNavRouteActive(path, '/analytics/tiktok', 'analytics-tiktok')).toBe(false);
+    }
+  });
+
+  it('lights Google Meu Negócio only on the GMN overview and a client GMN tab', () => {
+    for (const path of ['/analytics/google', '/analytics/12/google']) {
+      expect(isNavRouteActive(path, '/analytics/google', 'analytics-google')).toBe(true);
+      expect(isNavRouteActive(path, '/analytics/youtube', 'analytics-youtube')).toBe(false);
+      expect(isNavRouteActive(path, '/analytics/tiktok', 'analytics-tiktok')).toBe(false);
+    }
+  });
+
+  it('does not light Instagram on any TikTok, YouTube or GMN path', () => {
+    for (const path of [
+      '/analytics/youtube',
+      '/analytics/12/youtube',
+      '/analytics/google',
+      '/analytics/12/google',
+      '/analytics/tiktok',
+      '/analytics/12/tiktok',
+    ]) {
+      expect(isNavRouteActive(path, '/analytics', 'analytics')).toBe(false);
+    }
+  });
+
+  it('does not light YouTube or GMN on Instagram or TikTok paths', () => {
+    for (const path of [
+      '/analytics',
+      '/analytics/12',
+      '/analytics/12/instagram',
+      '/analytics/tiktok',
+      '/analytics/12/tiktok',
+    ]) {
+      expect(isNavRouteActive(path, '/analytics/youtube', 'analytics-youtube')).toBe(false);
+      expect(isNavRouteActive(path, '/analytics/google', 'analytics-google')).toBe(false);
+    }
+  });
+
+  it('without an item id, YouTube and GMN paths match /analytics (phone tab)', () => {
+    for (const path of [
+      '/analytics/youtube',
+      '/analytics/12/youtube',
+      '/analytics/google',
+      '/analytics/12/google',
+    ]) {
+      expect(isNavRouteActive(path, '/analytics')).toBe(true);
+    }
+  });
+
+  it('does not light Instagram on the TikTok overview', () => {
+    expect(isNavRouteActive('/analytics/tiktok', '/analytics', 'analytics')).toBe(false);
+  });
+
+  it('does not light Instagram on a client TikTok tab', () => {
+    expect(isNavRouteActive('/analytics/12/tiktok', '/analytics', 'analytics')).toBe(false);
+  });
+
+  it('lights TikTok on the overview and on a client TikTok tab', () => {
+    expect(isNavRouteActive('/analytics/tiktok', '/analytics/tiktok', 'analytics-tiktok')).toBe(
+      true,
+    );
+    expect(isNavRouteActive('/analytics/12/tiktok', '/analytics/tiktok', 'analytics-tiktok')).toBe(
+      true,
+    );
+  });
+
+  it('lights Instagram on the client Instagram and Relatórios tabs, not TikTok', () => {
+    expect(isNavRouteActive('/analytics/12/instagram', '/analytics', 'analytics')).toBe(true);
+    expect(isNavRouteActive('/analytics/12/relatorios', '/analytics', 'analytics')).toBe(true);
+    expect(isNavRouteActive('/analytics/12', '/analytics', 'analytics')).toBe(true);
+    expect(isNavRouteActive('/analytics', '/analytics', 'analytics')).toBe(true);
+    expect(
+      isNavRouteActive('/analytics/12/instagram', '/analytics/tiktok', 'analytics-tiktok'),
+    ).toBe(false);
+    expect(isNavRouteActive('/analytics', '/analytics/tiktok', 'analytics-tiktok')).toBe(false);
+  });
+
+  it('keeps the prefix boundary: /analytics-fluxos is not /analytics', () => {
+    expect(isNavRouteActive('/analytics-fluxos', '/analytics', 'analytics')).toBe(false);
+    expect(isNavRouteActive('/analytics-fluxos', '/analytics')).toBe(false);
+  });
+
+  it('without an item id, every /analytics* child path matches /analytics (phone tab)', () => {
+    expect(isNavRouteActive('/analytics/tiktok', '/analytics')).toBe(true);
+    expect(isNavRouteActive('/analytics/12/tiktok', '/analytics')).toBe(true);
   });
 });
 
@@ -187,5 +420,116 @@ describe('locked nav items (showLockedWhenGated)', () => {
   it('features null (carregando/ilimitado) não marca nada', () => {
     const items = getNavGroups(null, 'owner', ownerCan).flatMap((g) => g.items);
     expect(items.find((i) => i.id === 'automacoes')?.locked).toBeUndefined();
+  });
+});
+
+describe('getPhoneNav (D18 phone tab bar)', () => {
+  const tabIds = (nav: ReturnType<typeof getPhoneNav>) => nav.tabs.map((t) => t.navId);
+
+  it('prefers Início, Entregas, Agenda, Mensagens and moves Clientes/Analytics to the top of Mais', () => {
+    const nav = getPhoneNav({ feature_mensagens: true }, 'owner', ownerCan, {
+      agendaEnabled: true,
+    });
+    expect(tabIds(nav)).toEqual(['dashboard', 'entregas', 'calendario', 'mensagens']);
+    expect(nav.tabs.map((t) => t.label)).toEqual(['Início', 'Entregas', 'Agenda', 'Mensagens']);
+    expect(nav.tabs[2].route).toBe('/calendario');
+    expect(nav.shortcuts.map((s) => [s.id, s.label])).toEqual([
+      ['clientes', 'Clientes'],
+      ['analytics', 'Analytics'],
+    ]);
+    const more = ids(nav.moreGroups);
+    for (const id of [
+      'dashboard',
+      'entregas',
+      'calendario',
+      'mensagens',
+      'clientes',
+      'analytics',
+    ]) {
+      expect(more).not.toContain(id);
+    }
+    expect(more).toContain('analytics-fluxos');
+  });
+
+  it('keeps the editorial Calendário in Mais and gives its slot to Clientes without the Agenda', () => {
+    const nav = getPhoneNav(null, 'owner', ownerCan, { agendaEnabled: false });
+    expect(tabIds(nav)).toEqual(['dashboard', 'entregas', 'clientes', 'mensagens']);
+    expect(nav.shortcuts.map((s) => s.id)).toEqual(['analytics']);
+    expect(ids(nav.moreGroups)).toContain('calendario');
+  });
+
+  it('uses Clientes then Analytics when both Agenda and Mensagens are unavailable', () => {
+    const nav = getPhoneNav({ feature_mensagens: false }, 'owner', ownerCan, {
+      agendaEnabled: false,
+    });
+    expect(tabIds(nav)).toEqual(['dashboard', 'entregas', 'clientes', 'analytics']);
+    expect(nav.shortcuts).toEqual([]);
+  });
+
+  it('respects the plan flag on the Analytics fallback, like the sidebar', () => {
+    const nav = getPhoneNav(
+      { feature_mensagens: false, feature_analytics_reports: false },
+      'owner',
+      ownerCan,
+      { agendaEnabled: false },
+    );
+    expect(tabIds(nav)).toEqual(['dashboard', 'entregas', 'clientes']);
+  });
+
+  it('does not touch the desktop nav: Calendário stays a sidebar item on every plan', () => {
+    const groups = getNavGroups({ feature_agenda: false }, 'owner', ownerCan);
+    expect(ids(groups)).toContain('calendario');
+  });
+
+  it('shows only Início while the membership is unresolved (fails closed, like the sidebar)', () => {
+    const nav = getPhoneNav(null, 'owner', unresolvedCan, { agendaEnabled: true });
+    expect(tabIds(nav)).toEqual(['dashboard']);
+  });
+
+  it('keeps a legacy agent on Início, Entregas, Clientes, Mensagens without the Agenda', () => {
+    const nav = getPhoneNav(null, 'agent', agentCan, { agendaEnabled: false });
+    expect(tabIds(nav)).toEqual(['dashboard', 'entregas', 'clientes', 'mensagens']);
+  });
+});
+
+describe('mensagens nav item: array flag (feature_mensagens OR feature_team_chat)', () => {
+  it('stays visible when only feature_team_chat is true (feature_mensagens explicitly false)', () => {
+    const got = ids(
+      getNavGroups({ feature_mensagens: false, feature_team_chat: true }, 'owner', ownerCan),
+    );
+    expect(got).toContain('mensagens');
+  });
+
+  it('is hidden when both feature_mensagens and feature_team_chat are false', () => {
+    const got = ids(
+      getNavGroups({ feature_mensagens: false, feature_team_chat: false }, 'owner', ownerCan),
+    );
+    expect(got).not.toContain('mensagens');
+  });
+
+  it('stays visible when feature_mensagens is true and feature_team_chat is undefined (legacy flag alone still governs)', () => {
+    const got = ids(getNavGroups({ feature_mensagens: true }, 'owner', ownerCan));
+    expect(got).toContain('mensagens');
+  });
+
+  // Rollout-window regression guard: before workspace-limits is redeployed
+  // with the new feature_team_chat column, BOTH flags are simply absent from
+  // the features map (not `false`). feature_mensagens is the legacy,
+  // fail-open flag in the pair, so its own absence must not hide the item.
+  it('stays visible when both flags are undefined (pre-redeploy legacy behaviour)', () => {
+    const got = ids(getNavGroups({}, 'owner', ownerCan));
+    expect(got).toContain('mensagens');
+  });
+
+  it('gives the phone tab bar its Mensagens tab with only the team chat', () => {
+    const nav = getPhoneNav(
+      { feature_mensagens: false, feature_team_chat: true },
+      'owner',
+      ownerCan,
+      {
+        agendaEnabled: true,
+      },
+    );
+    expect(nav.tabs.map((t) => t.navId)).toContain('mensagens');
   });
 });

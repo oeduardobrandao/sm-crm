@@ -5,6 +5,10 @@ import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeCan, fakeMembership } from '@/test/makeCan';
 
+// jsdom's matchMedia reports no match, which would render the phone branch; this suite
+// pins the desktop form (the phone screen has HubTab.phone.test.tsx).
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 const { useAuthMock, storeMock } = vi.hoisted(() => ({
   useAuthMock: vi.fn(),
   storeMock: {

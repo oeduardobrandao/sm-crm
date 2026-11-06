@@ -23,7 +23,7 @@
         { "key": "X-Frame-Options", "value": "DENY" },
         { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
         { "key": "X-XSS-Protection", "value": "0" },
-        { "key": "Content-Security-Policy-Report-Only", "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com https://client.crisp.chat https://eu-assets.i.posthog.com https://eu.i.posthog.com https://js.stripe.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://client.crisp.chat; font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net https://client.crisp.chat; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.r2.cloudflarestorage.com https://*.r2.dev https://cdn.mesaas.com https://eu.i.posthog.com https://eu-assets.i.posthog.com https://*.crisp.chat wss://*.crisp.chat https://api.stripe.com https://*.cloudflarestream.com https://upload.videodelivery.net https://*.videodelivery.net; frame-src 'self' https://checkout.stripe.com https://js.stripe.com https://*.crisp.chat https://*.cloudflarestream.com; object-src 'none'; base-uri 'self'; form-action 'self'" },
+        { "key": "Content-Security-Policy-Report-Only", "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://client.crisp.chat https://eu-assets.i.posthog.com https://eu.i.posthog.com https://js.stripe.com https://www.googletagmanager.com https://connect.facebook.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://client.crisp.chat; font-src 'self' data: https://fonts.gstatic.com https://client.crisp.chat; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.r2.cloudflarestorage.com https://*.r2.dev https://cdn.mesaas.com https://eu.i.posthog.com https://eu-assets.i.posthog.com https://*.crisp.chat wss://*.crisp.chat https://api.stripe.com https://*.cloudflarestream.com https://upload.videodelivery.net https://*.videodelivery.net https://www.googletagmanager.com https://www.google.com https://www.googleadservices.com https://googleads.g.doubleclick.net https://connect.facebook.net https://www.facebook.com; frame-src 'self' https://checkout.stripe.com https://js.stripe.com https://*.crisp.chat https://*.cloudflarestream.com https://td.doubleclick.net https://www.googletagmanager.com; object-src 'none'; base-uri 'self'; form-action 'self'" },
         { "key": "Cross-Origin-Opener-Policy", "value": "same-origin-allow-popups" },
         {
           "key": "Strict-Transport-Security",
@@ -37,7 +37,7 @@
       "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }]
     },
     {
-      "source": "/(login|configurar-senha|workspace-setup|comecar|conectar|oauth|dashboard|clientes|financeiro|contratos|leads|equipe|configuracao|calendario|entregas|tarefas|post-express|arquivos|analytics-fluxos|analytics|relatorios|ideias|mensagens|automacoes|ajuda|importar|afiliados)(/.*)?",
+      "source": "/(login|configurar-senha|workspace-setup|comecar|conectar|descadastrar|cancelar-avisos|oauth|dashboard|clientes|financeiro|contratos|leads|equipe|configuracao|calendario|entregas|tarefas|post-express|arquivos|analytics-fluxos|analytics|relatorios|ideias|mensagens|automacoes|ajuda|importar|afiliados)(/.*)?",
       "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }]
     },
     {
@@ -80,6 +80,10 @@
     }
   ],
   "rewrites": [
+    {
+      "source": "/oauth/google/callback",
+      "destination": "https://skjzpekeqefvlojenfsw.supabase.co/functions/v1/google-integration/callback"
+    },
     { "source": "/:workspace/hub/:token/(.*)", "destination": "/hub/index.html" },
     { "source": "/:workspace/hub/:token", "destination": "/hub/index.html" },
     { "source": "/relatorios/print/:docId", "destination": "/hub/index.html" },
@@ -97,10 +101,10 @@
     { "source": "/termos-de-uso", "destination": "/termos-de-uso.html" },
     { "source": "/lgpd", "destination": "/lgpd.html" },
     {
-      "source": "/(login|configurar-senha|workspace-setup|comecar|conectar|oauth|dashboard|clientes|financeiro|contratos|leads|equipe|configuracao|calendario|entregas|tarefas|post-express|arquivos|analytics-fluxos|analytics|relatorios|ideias|mensagens|automacoes|ajuda|importar|afiliados)(/.*)?",
+      "source": "/(login|configurar-senha|workspace-setup|comecar|conectar|descadastrar|cancelar-avisos|oauth|dashboard|clientes|financeiro|contratos|leads|equipe|configuracao|calendario|entregas|tarefas|post-express|arquivos|analytics-fluxos|analytics|relatorios|ideias|mensagens|automacoes|ajuda|importar|afiliados)(/.*)?",
       "destination": "/app.html"
     }
   ],
-  "buildCommand": "npm run build && npm run prerender && npm run build:hub && npm run build:admin",
+  "buildCommand": "npm run blog:sync && npm run build && npm run prerender && npm run build:hub && npm run build:admin",
   "outputDirectory": "dist"
 }

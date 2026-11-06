@@ -1,0 +1,208 @@
+{
+  "shared": {
+    "paid": "Pago",
+    "confirmNamed": "Confirmar {{name}}",
+    "noActivity": "Nenhuma movimentação neste dia.",
+    "calendarTitle": "Calendário",
+    "monthlyOverview": "Visão geral mensal.",
+    "clientBirthday": "Aniversário do cliente",
+    "birthday": "Aniversário",
+    "dayMonth": "{{day}} de {{month}}",
+    "dueToday": "Vence hoje",
+    "searchPlaceholder": "Buscar data...",
+    "niche": "Nicho",
+    "filters": {
+      "all": "Todos",
+      "br": "Brasil",
+      "world": "Mundial",
+      "prof": "Profissional"
+    },
+    "legend": {
+      "br": "Brasil",
+      "world": "Mundial / OMS / OPAS",
+      "prof": "Profissões",
+      "week": "Semanas",
+      "month": "Meses temáticos"
+    },
+    "count": {
+      "receivables_zero": "{{count}} recebimentos",
+      "receivables_one": "{{count}} recebimento",
+      "receivables_other": "{{count}} recebimentos",
+      "payments_zero": "{{count}} pagamentos",
+      "payments_one": "{{count}} pagamento",
+      "payments_other": "{{count}} pagamentos",
+      "deliveries_zero": "{{count}} entregas",
+      "deliveries_one": "{{count}} entrega",
+      "deliveries_other": "{{count}} entregas",
+      "birthdays_zero": "{{count}} aniversários",
+      "birthdays_one": "{{count}} aniversário",
+      "birthdays_other": "{{count}} aniversários",
+      "dates_zero": "{{count}} datas",
+      "dates_one": "{{count}} data",
+      "dates_other": "{{count}} datas"
+    }
+  },
+  "deadlineStatus": {
+    "none": "Sem prazo",
+    "overdue": "{{count}}d atrasado",
+    "remaining_one": "{{count}}d restante",
+    "remaining_other": "{{count}}d restantes"
+  },
+  "page": {
+    "commemorativeTab": "Datas Comemorativas",
+    "agendaTitle": "Agenda",
+    "agendaSubtitle": "Eventos, reuniões e gravações da equipe.",
+    "loading": "Carregando calendário"
+  },
+  "financeiro": {
+    "pillIncome": "{{count}} Receb.",
+    "pillExpense": "{{count}} Desp.",
+    "pillDeadline_one": "{{count}} Entrega",
+    "pillDeadline_other": "{{count}} Entregas",
+    "pillBirthday": "{{count}} Aniv.",
+    "pillDate_one": "{{count}} Data",
+    "pillDate_other": "{{count}} Datas",
+    "scheduled": "Agendado",
+    "selectedDate": "{{day}} de {{month}}, {{year}}",
+    "confirm": "CONFIRMAR",
+    "plan": "PLANO: {{plan}}",
+    "team": "EQUIPE - {{role}} ({{type}})",
+    "expected": "Previsto:",
+    "stage": "{{client}} · ETAPA: {{stage}}",
+    "stageDeadline": "Prazo da etapa",
+    "birthdayBadge": "ANIVERSÁRIO",
+    "importantDateBadge": "DATA IMPORTANTE"
+  },
+  "niche": {
+    "shown": "DATAS EXIBIDAS"
+  },
+  "phone": {
+    "viewAria": "Visão do calendário",
+    "commemorativeTab": "Datas comemorativas",
+    "incomeSubtitle": "Plano: {{plan}} · Previsto {{value}}",
+    "expenseSubtitle": "Equipe · {{details}} · Previsto {{value}}",
+    "stage": "{{client}} · Etapa: {{stage}}",
+    "noClient": "Sem cliente",
+    "legend": {
+      "income": "Recebimento",
+      "expense": "Pagamento",
+      "deadline": "Entrega",
+      "importantDate": "Data importante"
+    },
+    "filterAria": "Filtrar datas",
+    "closeSearch": "Fechar busca",
+    "searchDate": "Buscar data",
+    "shown_zero": "{{count}} datas exibidas",
+    "shown_one": "{{count}} data exibida",
+    "shown_other": "{{count}} datas exibidas",
+    "noDates": "Nenhuma data encontrada."
+  },
+  "camadas": {
+    "rotulo": {
+      "posts": "Posts agendados",
+      "prazos": "Prazos de entrega",
+      "recebimentos": "Recebimentos",
+      "pagamentos": "Pagamentos da equipe",
+      "datas": "Datas dos clientes",
+      "comemorativas": "Datas comemorativas"
+    },
+    "group": "Camadas",
+    "postOf": "Post de {{client}}",
+    "clientFallback": "cliente",
+    "monthPrefix": "Mês",
+    "weekPrefix": "Semana"
+  },
+  "popover": {
+    "dateLong": "d 'de' MMMM 'de' yyyy",
+    "until": "{{start}} até {{end}}",
+    "deadline": "Prazo: {{date}}",
+    "overdue_zero": "Estourado há {{count}} dias",
+    "overdue_one": "Estourado há {{count}} dia",
+    "overdue_other": "Estourado há {{count}} dias",
+    "remaining_one": "Falta {{count}} dia",
+    "remaining_other": "Faltam {{count}} dias",
+    "openPost": "Abrir post",
+    "openWorkflow": "Abrir entrega",
+    "openClient": "Abrir cliente",
+    "workflow": "Entrega: {{title}}",
+    "client": "Cliente: {{name}}",
+    "adjustedDay": "Dia {{day}}, ajustado para o último dia do mês",
+    "tipos": {
+      "br": "Brasil",
+      "world": "Mundial",
+      "prof": "Profissional",
+      "week": "Semana",
+      "month": "Mês temático"
+    }
+  },
+  "confirmarPagamento": {
+    "title": "Confirmar Agendamento",
+    "description": "Confirmar o recebimento/pagamento agendado de {{desc}} ({{value}})?",
+    "success": "Pagamento confirmado!",
+    "error": "Erro"
+  },
+  "niches": {
+    "medico": {
+      "label": "Médico",
+      "title": "Calendário Médico",
+      "subtitle": "Brasil & Mundial — Datas de Saúde & Conscientização",
+      "filterLabels": {
+        "cancer": "Câncer",
+        "cardio": "Cardiologia",
+        "saude-mental": "Saúde Mental",
+        "infeccao": "Infecção"
+      }
+    },
+    "juridico": {
+      "label": "Jurídico",
+      "title": "Calendário Jurídico",
+      "subtitle": "Brasil & Mundial — Datas do Direito & Justiça",
+      "filterLabels": {
+        "trabalhista": "Trabalhista",
+        "civil": "Civil",
+        "criminal": "Criminal",
+        "tributario": "Tributário",
+        "consumidor": "Consumidor",
+        "empresarial": "Empresarial",
+        "digital": "Digital"
+      }
+    },
+    "varejo": {
+      "label": "Varejo",
+      "title": "Calendário de Varejo",
+      "subtitle": "Brasil & Mundial — Datas de Consumo & Comércio",
+      "filterLabels": {
+        "sazonal": "Sazonal / Liquidação",
+        "ecommerce": "E-commerce",
+        "consumidor": "Consumidor",
+        "moda": "Moda",
+        "pet": "Pet",
+        "casa": "Casa & Decoração"
+      }
+    },
+    "belezaEstetica": {
+      "label": "Beleza & Estética",
+      "title": "Calendário de Beleza & Estética",
+      "subtitle": "Brasil & Mundial — Datas de Beleza & Bem-estar",
+      "filterLabels": {
+        "capilar": "Capilar",
+        "pele": "Pele",
+        "unhas": "Unhas",
+        "maquiagem": "Maquiagem",
+        "bem-estar": "Bem-estar",
+        "barbearia": "Barbearia"
+      }
+    },
+    "gastronomia": {
+      "label": "Gastronomia",
+      "title": "Calendário de Gastronomia",
+      "subtitle": "Brasil & Mundial — Datas de Gastronomia & Alimentação",
+      "filterLabels": {
+        "bebidas": "Bebidas",
+        "doces": "Doces & Confeitaria",
+        "culinaria-regional": "Culinária Regional",
+        "sustentabilidade": "Sustentabilidade"
+      }
+    }
+  }
+}

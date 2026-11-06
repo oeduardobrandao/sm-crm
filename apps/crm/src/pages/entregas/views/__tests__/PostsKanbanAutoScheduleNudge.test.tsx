@@ -23,6 +23,9 @@ vi.mock('sonner', () => ({
 // below therefore carries a real `allEtapas` array -- the gate-input object in
 // PostsKanbanView's onSuccess is built (and calls this function) eagerly for any
 // drop that resolves a card, even when the target status isn't aprovado_cliente.
+// The suggestion move guard reads this by path (no pending suggestion here).
+vi.mock('@/store/posts', () => ({ hasPendingEditSuggestion: vi.fn(async () => false) }));
+
 vi.mock('@/store', async () => {
   const { isFinalClientApprovalCycle, cardAutoScheduleGates } = await import('@/store/workflows');
   return {
@@ -70,6 +73,7 @@ vi.mock('@dnd-kit/core', () => ({
   },
   DragOverlay: ({ children }: { children?: React.ReactNode }) => <>{children ?? null}</>,
   PointerSensor: class {},
+  MouseSensor: class {},
   TouchSensor: class {},
   useSensor: () => ({}),
   useSensors: (...sensors: unknown[]) => sensors,
@@ -118,6 +122,10 @@ import type { ActivePost } from '@/store';
 import type { WorkflowEtapa } from '@/store/workflows';
 import type { BoardCard } from '../../hooks/useEntregasData';
 import { ACTIVE_POSTS_KEY } from '../../hooks/useUpdatePostStatus';
+
+// Desktop layout: the phone branch (below 768px, what jsdom's matchMedia reports)
+// has its own suites.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 
 const mockUpdate = vi.mocked(updateWorkflowPost);
 const mockReorder = vi.mocked(reorderBoardPosts);

@@ -3,6 +3,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PERMISSION_MODULES } from '@/lib/permissions';
 
+// jsdom's matchMedia reports false (phone); this suite covers the desktop list + Dialog.
+// The phone screens have their own suite (PapeisTab.phone.test.tsx).
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 const { useAuthMock, storeMock } = vi.hoisted(() => ({
   useAuthMock: vi.fn(),
   storeMock: {

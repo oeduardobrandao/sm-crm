@@ -166,7 +166,11 @@ interface ProcessCtx {
 interface ProcessArgs {
   eventRowId: string;
   eventName: string;
+  /** The link used for publish events (token, username): the active one when there is one. */
   account: TikTokAccountRow;
+  /** Every tiktok_accounts row with this open_id. The same TikTok account can be linked to
+   * clients in different workspaces, and authorization.removed applies to all of them. */
+  accounts: TikTokAccountRow[];
   contentRaw: string | undefined;
 }
 
@@ -333,26 +337,30 @@ async function handleNoLongerPubliclyAvailable(
  * event is NOT marked processed and stays a candidate for reconciliation) then best-effort
  * audit-logs it (insertAuditLog never throws — see its own module comment). */
 async function handleAuthRemoved(ctx: ProcessCtx, args: ProcessArgs): Promise<void> {
-  // Our own disconnect calls TikTok's /oauth/revoke/, and TikTok echoes this event a few seconds
-  // later. That echo must not turn 'disconnected' into 'revoked': the CRM then sees a revoked,
-  // never-synced row instead of no account. The .neq covers a disconnect landing mid-event.
-  if (args.account.authorization_status === "disconnected") return;
-  const { error } = await ctx.svc
-    .from("tiktok_accounts")
-    .update({ authorization_status: "revoked" })
-    .eq("id", args.account.id)
-    .neq("authorization_status", "disconnected");
-  if (error) {
-    throw new Error(`tiktok-webhook: failed to revoke tiktok_accounts ${args.account.id}: ${error.message}`);
-  }
+  // The user removed the app on TikTok's side, which ends the grant for every client linked to
+  // that TikTok account, so every link is revoked. Our own disconnect calls TikTok's
+  // /oauth/revoke/, and TikTok echoes this event a few seconds later. That echo must not turn
+  // 'disconnected' into 'revoked': the CRM then sees a revoked, never-synced row instead of no
+  // account. The .neq covers a disconnect landing mid-event.
+  for (const account of args.accounts) {
+    if (account.authorization_status === "disconnected") continue;
+    const { error } = await ctx.svc
+      .from("tiktok_accounts")
+      .update({ authorization_status: "revoked" })
+      .eq("id", account.id)
+      .neq("authorization_status", "disconnected");
+    if (error) {
+      throw new Error(`tiktok-webhook: failed to revoke tiktok_accounts ${account.id}: ${error.message}`);
+    }
 
-  const contaId = await resolveContaId(ctx.svc, args.account.client_id);
-  await insertAuditLog(ctx.svc, {
-    conta_id: contaId,
-    action: "tiktok-auth-removed",
-    resource_type: "tiktok_account",
-    resource_id: String(args.account.id),
-  });
+    const contaId = await resolveContaId(ctx.svc, account.client_id);
+    await insertAuditLog(ctx.svc, {
+      conta_id: contaId,
+      action: "tiktok-auth-removed",
+      resource_type: "tiktok_account",
+      resource_id: String(account.id),
+    });
+  }
 }
 
 async function routeEvent(ctx: ProcessCtx, args: ProcessArgs): Promise<void> {
@@ -438,15 +446,19 @@ export function createTikTokWebhookHandler(deps: TikTokWebhookDeps) {
 
     // (a2) user_openid must resolve to a known account — unknown -> 200 + drop (no insert).
     const userOpenid = payload.user_openid ?? "";
-    const { data: account, error: accountError } = await svc
+    // Not .maybeSingle(): one TikTok account can be linked to several clients (other
+    // workspaces), and maybeSingle errors on more than one row, which 500'd every event for
+    // that account and left TikTok retrying for 72h.
+    const { data: accountRows, error: accountError } = await svc
       .from("tiktok_accounts")
       .select("id, username, client_id, authorization_status")
-      .eq("tiktok_open_id", userOpenid)
-      .maybeSingle();
+      .eq("tiktok_open_id", userOpenid);
     if (accountError) {
       console.error("[tiktok-webhook] account lookup failed:", accountError.message);
       return new Response(null, { status: 500, headers: corsHeaders });
     }
+    const accounts = (accountRows ?? []) as TikTokAccountRow[];
+    const account = accounts.find((a) => a.authorization_status === "active") ?? accounts[0];
     if (!account) {
       return new Response(null, { status: 200, headers: corsHeaders });
     }
@@ -472,7 +484,8 @@ export function createTikTokWebhookHandler(deps: TikTokWebhookDeps) {
         {
           eventRowId,
           eventName: payload.event ?? "",
-          account: account as TikTokAccountRow,
+          account,
+          accounts,
           contentRaw: payload.content,
         },
       ),

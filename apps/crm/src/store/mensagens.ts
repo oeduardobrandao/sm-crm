@@ -2,7 +2,7 @@ import type { ContentFormat } from '@mesaas/platforms';
 import { supabase, getContaId, getUserId } from './core';
 
 export interface MensagemFeedItem {
-  source: 'post_feedback' | 'edit_suggestion' | 'mensagem';
+  source: 'post_feedback' | 'edit_suggestion' | 'mensagem' | 'media_note' | 'media_note_reply';
   item_id: number;
   cliente_id: number;
   cliente_nome: string;

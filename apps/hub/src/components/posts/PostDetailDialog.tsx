@@ -19,27 +19,45 @@ import {
   ImageOff,
   Lock,
   PencilLine,
+  Users,
   X,
 } from 'lucide-react';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
-import type { CorrectionReason, HubPost, InstagramProfile, PostApproval } from '../../types';
+import type {
+  CorrectionReason,
+  HubMediaNote,
+  HubPost,
+  InstagramProfile,
+  PostApproval,
+} from '../../types';
 import { submitApproval } from '../../api';
+import { isNoLongerPendingError } from '../../lib/approvalErrors';
+import { createMediaNote, replyMediaNote } from '../../services/mediaNotes';
+import { canWriteNotes, notesForPost, openNoteCount } from '../../lib/mediaNotes';
 import { useEditSuggestion } from '../../hooks/useEditSuggestion';
 import { computePostNavigation, usePostNavigation } from '../../hooks/usePostNavigation';
 import { usePostAdvance, type ConfirmFlash, type SlideDir } from '../../hooks/usePostAdvance';
 import { usePostReferences } from '../../hooks/usePostReferences';
 import type { ReferenceItem } from '../../types/postReferences';
 import {
+  autoPublishDestinations,
   deriveCaption,
+  destinationCaptions,
   getPostPublishState,
+  groupCaptions,
   getTipoLabel,
   hasDistinctPostText,
   isInProduction,
   pickPostCardKind,
+  resolvePostTargets,
   suggestionAwareCaption,
+  suggestionAwareRawCaptions,
 } from '../../lib/postView';
+import { canDownloadGeral } from '../../lib/geralDownload';
+import { GeralDownload } from './GeralDownload';
 import { sanitizeExternalUrl } from '../../lib/security';
 import { HubDialog } from '../ui/HubDialog';
+import { HubConfirmDialog } from '../ui/HubConfirmDialog';
 import { formatDate, getPlatformLabel } from '../PostCard';
 import { PostHistoryPanel } from '../PostHistoryPanel';
 import { PostMediaLightbox } from '../PostMediaLightbox';
@@ -47,6 +65,9 @@ import { preloadRichText, RichTextContent } from '../RichTextContent';
 import { SharePostButton } from '../SharePostButton';
 import { StatusTag } from './StatusTag';
 import { PostMediaPane } from './PostMediaPane';
+import { PlatformCaptions, usePlatformNames } from './PlatformCaptions';
+import { MediaNoteComposer } from './mediaNotes/MediaNoteComposer';
+import { MediaNotesList } from './mediaNotes/MediaNotesList';
 import { InProductionNotice } from './InProductionNotice';
 import { SuggestionDiff } from './SuggestionDiff';
 import { PostReferencesPanel } from './references/PostReferencesPanel';
@@ -65,6 +86,8 @@ interface PostDetailDialogProps {
   currentId: number | null;
   token: string;
   approvals: PostApproval[];
+  /** Client-visible media notes for every post in `posts` (merged across history pages). */
+  mediaNotes: HubMediaNote[];
   instagramProfile: InstagramProfile | null;
   workspaceName?: string;
   isAutoPublish: (post: HubPost) => boolean;
@@ -248,6 +271,7 @@ function PostDetailContent({
   nav,
   token,
   approvals,
+  mediaNotes,
   isAutoPublish,
   onNavigate,
   onApprovalSubmitted,
@@ -263,6 +287,7 @@ function PostDetailContent({
 }: ContentProps) {
   const { t, i18n } = useTranslation('hubPosts');
   const { t: tCard } = useTranslation('hubPostCard');
+  const platformNames = usePlatformNames();
   const dateLang = i18n.language === 'en' ? 'en-US' : 'pt-BR';
   const kind = pickPostCardKind(post);
   const isPending = post.status === 'enviado_cliente';
@@ -305,6 +330,77 @@ function PostDetailContent({
     [],
   );
   const overlayOpen = viewerItem !== null || overlayDepth > 0;
+
+  // Media notes: pin placement is an explicit mode so a plain tap still opens the lightbox.
+  const postNotes = useMemo(() => notesForPost(mediaNotes, post.id), [mediaNotes, post.id]);
+  const noteCount = openNoteCount(postNotes);
+  const [placing, setPlacing] = useState(false);
+  const [pending, setPending] = useState<{ x: number; y: number } | null>(null);
+  const [composer, setComposer] = useState<{
+    linkId: number;
+    point: { x: number; y: number } | null;
+  } | null>(null);
+  const [slideIdx, setSlideIdx] = useState(0);
+  const [jumpTo, setJumpTo] = useState<{ linkId: number; seq: number } | null>(null);
+  const [confirmApprove, setConfirmApprove] = useState(false);
+  // Where the lightbox seeks on open (a video note's moment); a plain open never seeks.
+  const [lightboxSeek, setLightboxSeek] = useState<number | undefined>(undefined);
+  const openLightbox = useCallback((i: number) => {
+    setLightboxSeek(undefined);
+    setLightboxIdx(i);
+  }, []);
+  const slideMedia = post.media[slideIdx];
+  const slideWritable = canWriteNotes(post) && !!slideMedia && !slideMedia.media_lost_at;
+  // Image: pin a spot or the whole slide here. Video: the moment is picked in the lightbox,
+  // so Comentar only opens it on this slide.
+  const canComment = slideWritable && slideMedia.kind === 'image';
+  const canCommentVideo = slideWritable && slideMedia.kind === 'video';
+  const placingNow = placing && canComment;
+  useEffect(() => {
+    if (!confirmApprove) return;
+    handleOverlayChange(true);
+    return () => handleOverlayChange(false);
+  }, [confirmApprove, handleOverlayChange]);
+
+  // One write path for both composers (slide/spot here, moment/spot in the lightbox).
+  async function writeNote(input: {
+    link_id: number;
+    t_seconds?: number;
+    x?: number;
+    y?: number;
+    body: string;
+  }) {
+    await createMediaNote(token, { post_id: post.id, ...input });
+    onApprovalSubmitted();
+  }
+  async function sendNote(body: string) {
+    if (!composer) return;
+    await writeNote({
+      link_id: composer.linkId,
+      ...(composer.point ? { x: composer.point.x, y: composer.point.y } : {}),
+      body,
+    });
+    setComposer(null);
+    setPending(null);
+    setPlacing(false);
+  }
+  async function sendReply(noteId: number, body: string) {
+    await replyMediaNote(token, noteId, body);
+    onApprovalSubmitted();
+  }
+  function jumpToNote(note: HubMediaNote) {
+    const index = post.media.findIndex((mm) => mm.id === note.link_id);
+    if (index < 0) return;
+    if (post.media[index].kind === 'video') {
+      setLightboxSeek(note.t_seconds ?? undefined);
+      setLightboxIdx(index);
+    } else setJumpTo({ linkId: post.media[index].id, seq: Date.now() });
+  }
+  const composerTitle = composer
+    ? composer.point
+      ? t('mediaNotes.composerPoint', { n: slideIdx + 1 })
+      : t('mediaNotes.composerSlide', { n: slideIdx + 1 })
+    : '';
   const waitHintId = useId();
   // Unsent-edit lock for navigation controls: while a save is queued/in flight, through the
   // confirmation hold after an action, and while a reference upload runs (moving would
@@ -327,6 +423,35 @@ function PostDetailContent({
     ? post.conteudo_plain
     : (suggestion?.suggested_conteudo_plain ?? post.conteudo_plain);
   const textCaption = showOriginal ? post.ig_caption : (draftIgCaption ?? post.ig_caption);
+  // Each destination's caption. Null = keep the single Instagram-style block (Instagram-only
+  // post, or a payload too old to carry the other captions). The raw Instagram caption feeds
+  // TikTok when it has none of its own, and follows the pending suggestion like the IG block.
+  const captionTargets = resolvePostTargets(post);
+  const multiCaption =
+    captionTargets !== null && !(captionTargets.length === 1 && captionTargets[0] === 'instagram');
+  const igRawShown =
+    !showOriginal &&
+    edit.isEditable &&
+    suggestion?.suggested_ig_caption != null &&
+    suggestion.changed_fields?.includes('ig_caption')
+      ? suggestion.suggested_ig_caption
+      : post.ig_caption;
+  // TikTok and Geral follow the pending suggestion the same way (only the columns it changed).
+  const captionPost =
+    !showOriginal && edit.isEditable
+      ? { ...post, ...suggestionAwareRawCaptions(post, suggestion) }
+      : post;
+  const mediaCaptionGroups = multiCaption
+    ? groupCaptions(destinationCaptions(captionPost, captionTargets, caption, igRawShown))
+    : null;
+  const textCaptionGroups = multiCaption
+    ? groupCaptions(
+        destinationCaptions(captionPost, captionTargets, textCaption ?? '', textCaption),
+      )
+    : null;
+  const hasTextCaptions = textCaptionGroups
+    ? textCaptionGroups.some((g) => g.text !== '')
+    : Boolean(textCaption);
   // Media layouts show only the caption; the full text gets its own read-only tab. Computed
   // from the DISPLAYED version (bodyPlain/textCaption), not the original post: a pending
   // suggestion can add body text beyond its caption (no tab on the original post would give
@@ -496,8 +621,15 @@ function PostDetailContent({
             : 'approved',
         nav.nextPending,
       );
-    } catch {
-      setError(t('posts.submitError', 'Não foi possível enviar. Tente novamente.'));
+    } catch (err) {
+      if (isNoLongerPendingError(err)) {
+        // The team (or another tab) already moved the post on: say so and refetch so the
+        // footer stops offering Aprovar.
+        setError(err.message);
+        onApprovalSubmitted();
+      } else {
+        setError(t('posts.submitError', 'Não foi possível enviar. Tente novamente.'));
+      }
     } finally {
       setSubmitting(false);
     }
@@ -540,6 +672,9 @@ function PostDetailContent({
         : post.media.length > 1
           ? `${getTipoLabel(t, post.tipo)} · ${t('posts.slides', '{{count}} slides', { count: post.media.length })}`
           : getTipoLabel(t, post.tipo);
+  // Collab post: a stale cached payload may lack the field, so null/undefined reads as [].
+  const collaborators = post.ig_collaborators ?? [];
+  const collaboratorNames = formatCollaboratorNames(collaborators, i18n.language);
   const dot = (
     <span aria-hidden="true" className="mx-1.5 hub-tx3">
       ·
@@ -561,8 +696,26 @@ function PostDetailContent({
       <p className="text-[13px] leading-snug hub-tx2">
         {typeLabel}
         {dot}
-        {getPlatformLabel(tCard, post.platform ?? 'instagram')}
+        {captionTargets
+          ? platformNames(captionTargets)
+          : getPlatformLabel(tCard, post.platform ?? 'instagram')}
       </p>
+      {collaborators.length > 0 && (
+        <div className="space-y-0.5">
+          <p className="flex items-start gap-1.5 text-[12.5px] leading-snug hub-tx2">
+            <Users size={13} aria-hidden="true" className="shrink-0 mt-[2px] hub-tx3" />
+            <span>
+              {t('collab.partnership', 'Em parceria com {{names}}', { names: collaboratorNames })}
+            </span>
+          </p>
+          <p className="pl-[19px] text-[12px] leading-snug hub-tx3">
+            {t(
+              'collab.note',
+              'No Instagram, o post vai aparecer também no perfil dessas contas, se elas aceitarem o convite.',
+            )}
+          </p>
+        </div>
+      )}
       <p className="flex items-center gap-1.5 text-[12.5px] hub-tx2">
         <CalendarDays size={13} aria-hidden="true" className="shrink-0 hub-tx3" />
         {formatDate(post.scheduled_at, dateLang)}
@@ -578,6 +731,23 @@ function PostDetailContent({
     </div>
   );
 
+  // Every published destination's link (a post on both platforms gets both).
+  const publishedLinks =
+    post.status === 'postado'
+      ? [
+          post.instagram_permalink && {
+            href: post.instagram_permalink,
+            label: t('shared.viewOnInstagram', 'Ver no Instagram'),
+          },
+          post.tiktok_post_url && {
+            href: post.tiktok_post_url,
+            label: t('shared.viewOnTikTok', 'Ver no TikTok'),
+          },
+        ].filter((l): l is { href: string; label: string } => !!l)
+      : [];
+
+  const geralDownload = canDownloadGeral(post);
+
   const autocleanedLink = post.media_autocleaned_at
     ? post.instagram_permalink
       ? { href: post.instagram_permalink, label: t('shared.viewOnInstagram', 'Ver no Instagram') }
@@ -585,6 +755,27 @@ function PostDetailContent({
         ? { href: post.tiktok_post_url, label: t('shared.viewOnTikTok', 'Ver no TikTok') }
         : null
     : null;
+
+  // A text post's caption, under its body. One destination keeps today's "Legenda do Instagram"
+  // block; several get the per-platform captions under a plain "Legenda" title.
+  const textCaptionSection = hasTextCaptions && (
+    <div className="border-t hub-border pt-3">
+      <p className="text-[12px] font-semibold uppercase tracking-[0.06em] hub-tx3 mb-1">
+        {textCaptionGroups
+          ? t('textCard.captionLabel', 'Legenda')
+          : t('textCard.instagramCaptionLabel', 'Legenda do Instagram')}
+      </p>
+      {textCaptionGroups ? (
+        <PlatformCaptions
+          key={post.id}
+          groups={textCaptionGroups}
+          textClassName="text-[13px] hub-tx2 leading-relaxed"
+        />
+      ) : (
+        <p className="text-[13px] hub-tx2 leading-relaxed whitespace-pre-wrap">{textCaption}</p>
+      )}
+    </div>
+  );
 
   const readingBody =
     kind === 'text' ? (
@@ -622,26 +813,28 @@ function PostDetailContent({
             {bodyPlain}
           </p>
         )}
-        {textCaption && (
-          <div className="border-t hub-border pt-3">
-            <p className="text-[12px] font-semibold uppercase tracking-[0.06em] hub-tx3 mb-1">
-              {t('textCard.instagramCaptionLabel', 'Legenda do Instagram')}
-            </p>
-            <p className="text-[13px] hub-tx2 leading-relaxed whitespace-pre-wrap">{textCaption}</p>
-          </div>
-        )}
+        {textCaptionSection}
       </div>
+    ) : mediaCaptionGroups ? (
+      <PlatformCaptions
+        key={post.id}
+        groups={mediaCaptionGroups}
+        textClassName="text-[14px] hub-txt leading-[1.55]"
+      />
     ) : (
       <p className="text-[14px] hub-txt leading-[1.55] whitespace-pre-wrap">{caption}</p>
     );
 
-  const autoPublishNote = isPending && isAutoPublish(post) && (
+  // Only destinations that publish on their own: a post that is only Geral is never scheduled.
+  const autoTargets = autoPublishDestinations(post);
+  const autoPublishNote = isPending && isAutoPublish(post) && autoTargets.length > 0 && (
     <p className="text-[12px] hub-tx3 mt-4">
       {post.scheduled_at
         ? t(
             'instagramCard.autoPublishScheduled',
-            'Ao aprovar, este post será publicado automaticamente no Instagram em {{date}}.',
+            'Ao aprovar, este post será publicado automaticamente no {{platforms}} em {{date}}.',
             {
+              platforms: platformNames(autoTargets),
               date: new Date(post.scheduled_at).toLocaleDateString(dateLang, {
                 day: '2-digit',
                 month: 'short',
@@ -652,7 +845,8 @@ function PostDetailContent({
           )
         : t(
             'instagramCard.autoPublishUnscheduled',
-            'Ao aprovar, este post será agendado para publicação automática no Instagram.',
+            'Ao aprovar, este post será agendado para publicação automática no {{platforms}}.',
+            { platforms: platformNames(autoTargets) },
           )}
     </p>
   );
@@ -732,7 +926,66 @@ function PostDetailContent({
                 })}
               </span>
             )}
-            <PostMediaPane post={post} onOpenLightbox={setLightboxIdx} priority />
+            <PostMediaPane
+              post={post}
+              onOpenLightbox={openLightbox}
+              priority
+              notes={postNotes}
+              placing={placingNow}
+              pending={pending}
+              onPlace={(linkId, p) => {
+                setPending(p);
+                setComposer({ linkId, point: p });
+              }}
+              currentIndexChange={setSlideIdx}
+              jumpTo={jumpTo}
+            />
+            {/* Phones: centered in the band between the post arrows (left-2/right-2, w-10,
+                at mid-dialog height, near the bottom of the 55svh media) and above the dots;
+                the pair wraps onto two rows when the band is too narrow. The open badge moves
+                to the top there. md+: bottom right, as the arrows sit outside the card. */}
+            {(canComment || canCommentVideo) && !ghost && (
+              <div className="absolute bottom-8 inset-x-14 z-30 flex flex-col items-center gap-1.5 md:inset-x-auto md:right-3 md:bottom-10 md:items-end">
+                {placingNow && (
+                  <p
+                    role="status"
+                    className="rounded-full bg-black/65 px-3 py-1 text-[12px] text-white"
+                  >
+                    {t('mediaNotes.tapHint')}
+                  </p>
+                )}
+                {canCommentVideo ? (
+                  <button
+                    type="button"
+                    onClick={() => openLightbox(slideIdx)}
+                    className="min-h-[44px] rounded-full bg-white/90 px-3 text-[12px] font-semibold text-neutral-900 shadow"
+                  >
+                    {t('mediaNotes.comment')}
+                  </button>
+                ) : (
+                  <div className="flex flex-wrap justify-center gap-1.5 md:justify-end">
+                    <button
+                      type="button"
+                      aria-pressed={placingNow}
+                      onClick={() => setPlacing((v) => !v)}
+                      className="min-h-[44px] whitespace-nowrap rounded-full bg-white/90 px-3 text-[12px] font-semibold text-neutral-900 shadow aria-pressed:bg-neutral-900 aria-pressed:text-white"
+                    >
+                      {t('mediaNotes.comment')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPending(null);
+                        setComposer({ linkId: slideMedia.id, point: null });
+                      }}
+                      className="min-h-[44px] whitespace-nowrap rounded-full bg-white/90 px-3 text-[12px] font-semibold text-neutral-900 shadow"
+                    >
+                      {t('mediaNotes.commentWholeSlide')}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -845,16 +1098,7 @@ function PostDetailContent({
                       {bodyPlain}
                     </p>
                   )}
-                  {textCaption && (
-                    <div className="border-t hub-border pt-3">
-                      <p className="text-[12px] font-semibold uppercase tracking-[0.06em] hub-tx3 mb-1">
-                        {t('textCard.instagramCaptionLabel', 'Legenda do Instagram')}
-                      </p>
-                      <p className="text-[13px] hub-tx2 leading-relaxed whitespace-pre-wrap">
-                        {textCaption}
-                      </p>
-                    </div>
-                  )}
+                  {textCaptionSection}
                 </div>
               )}
               {showReferencesTab && referencesVisited && (
@@ -890,6 +1134,7 @@ function PostDetailContent({
                       <div className="mb-3">
                         <SuggestionPendingNotice
                           changedFields={suggestion?.changed_fields}
+                          multiDestination={multiCaption}
                           view={suggestionView}
                           onViewChange={suggestion ? setSuggestionView : undefined}
                         />
@@ -903,15 +1148,31 @@ function PostDetailContent({
                       readingBody
                     )}
                     {autoPublishNote}
+                    {post.media.length > 0 && postNotes.length > 0 && (
+                      <section className="mt-4 space-y-2">
+                        <h3 className="text-[13px] font-semibold hub-txt">
+                          {t('mediaNotes.title')}
+                          {noteCount > 0 && (
+                            <span className="ml-2 font-normal hub-tx3">
+                              {t('mediaNotes.openCount', { count: noteCount })}
+                            </span>
+                          )}
+                        </h3>
+                        <MediaNotesList
+                          notes={postNotes}
+                          canReply={canWriteNotes(post)}
+                          onJump={jumpToNote}
+                          onReply={sendReply}
+                        />
+                      </section>
+                    )}
                   </>
                 )}
               </div>
             </div>
           </div>
 
-          {(isPending ||
-            inProduction ||
-            (post.status === 'postado' && post.instagram_permalink)) && (
+          {(isPending || inProduction || publishedLinks.length > 0 || geralDownload) && (
             <div className="px-4 py-3 border-t hub-border hub-bg-soft shrink-0 space-y-2">
               {error && (
                 <p className="text-[12px] text-rose-700 bg-rose-50 dark:bg-rose-950/50 dark:text-rose-300 rounded-lg px-3 py-2">
@@ -961,7 +1222,9 @@ function PostDetailContent({
                     ) : (
                       <button
                         type="button"
-                        onClick={() => submit('aprovado')}
+                        onClick={() =>
+                          noteCount > 0 ? setConfirmApprove(true) : submit('aprovado')
+                        }
                         disabled={
                           submitting ||
                           locked ||
@@ -986,18 +1249,27 @@ function PostDetailContent({
                     </p>
                   )}
                 </>
-              ) : post.status === 'postado' && post.instagram_permalink ? (
-                // The status already sits in the header chips; only the permalink lives here.
-                <div className="flex items-center justify-end">
-                  <a
-                    href={sanitizeExternalUrl(post.instagram_permalink)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[12px] font-semibold"
-                    style={{ color: 'var(--hub-acc)' }}
-                  >
-                    {t('shared.viewOnInstagram', 'Ver no Instagram')}
-                  </a>
+              ) : publishedLinks.length > 0 || geralDownload ? (
+                // The status already sits in the header chips; only the Geral download and the
+                // permalinks live here.
+                <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
+                  {geralDownload && (
+                    <div className="mr-auto">
+                      <GeralDownload post={post} />
+                    </div>
+                  )}
+                  {publishedLinks.map((link) => (
+                    <a
+                      key={link.href}
+                      href={sanitizeExternalUrl(link.href)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[12px] font-semibold"
+                      style={{ color: 'var(--hub-acc)' }}
+                    >
+                      {link.label}
+                    </a>
+                  ))}
                 </div>
               ) : inProduction ? (
                 <p className="flex items-center justify-center gap-1.5 text-[12.5px] hub-tx3">
@@ -1010,12 +1282,43 @@ function PostDetailContent({
         </div>
       </div>
 
+      {!ghost && (
+        <MediaNoteComposer
+          open={composer !== null}
+          title={composerTitle}
+          onSubmit={sendNote}
+          onCancel={() => {
+            setComposer(null);
+            setPending(null);
+          }}
+          onOverlayChange={handleOverlayChange}
+        />
+      )}
+      {!ghost && (
+        <HubConfirmDialog
+          open={confirmApprove}
+          title={t('mediaNotes.approveConfirmTitle', { count: noteCount })}
+          description={t('mediaNotes.approveConfirmBody')}
+          confirmLabel={t('mediaNotes.approveConfirm')}
+          cancelLabel={t('mediaNotes.cancel')}
+          onConfirm={() => {
+            setConfirmApprove(false);
+            void submit('aprovado');
+          }}
+          onCancel={() => setConfirmApprove(false)}
+        />
+      )}
       {!ghost && lightboxIdx !== null && post.media.length > 0 && (
         <PostMediaLightbox
           media={post.media}
           initialIndex={lightboxIdx}
           onClose={() => setLightboxIdx(null)}
           onStaleUrl={onApprovalSubmitted}
+          notes={postNotes}
+          canWrite={canWriteNotes(post)}
+          onCreateNote={writeNote}
+          initialSeek={lightboxSeek}
+          onOverlayChange={handleOverlayChange}
         />
       )}
       {!ghost && viewerItem && (
@@ -1023,4 +1326,15 @@ function PostDetailContent({
       )}
     </>
   );
+}
+
+/** "@a, @b e @c" no idioma do Hub. Intl.ListFormat falta em Safari < 14.5: cai para vírgulas. */
+function formatCollaboratorNames(collaborators: string[], language: string): string {
+  if (collaborators.length === 0) return '';
+  const handles = collaborators.map((name) => `@${name}`);
+  try {
+    return new Intl.ListFormat(language, { style: 'long', type: 'conjunction' }).format(handles);
+  } catch {
+    return handles.join(', ');
+  }
 }

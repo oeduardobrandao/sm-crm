@@ -67,6 +67,9 @@ Deno.serve(createNotificationDeadlineCronHandler({
               p_workspace_id:    c.conta_id,
               p_responsavel_id:  c.responsavel_id,
               p_roles_filter:    ["owner", "admin"],
+              // Admin restrito só recebe o prazo de cliente que ele vê
+              // (migration 20261117000011); o responsável recebe sempre.
+              p_cliente_id:      c.cliente_id,
             });
 
           if (targetsErr) throw targetsErr;
@@ -88,6 +91,7 @@ Deno.serve(createNotificationDeadlineCronHandler({
               deadline_date:  c.deadline_date,
             },
             p_exclude_actor: null,
+            p_cliente_id:    c.cliente_id,
           });
 
           if (insertErr) throw insertErr;

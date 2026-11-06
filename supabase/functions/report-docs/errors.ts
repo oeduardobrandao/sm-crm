@@ -2,7 +2,12 @@
 // circular quando snapshot-source.ts (Task 4) também precisar deles.
 export class GenerateError extends Error {
   constructor(
-    public code: "not_found" | "bad_month" | "feature_disabled" | "invalid_template",
+    public code:
+      | "not_found"
+      | "bad_month"
+      | "feature_disabled"
+      | "invalid_template"
+      | "invalid_platforms",
     msg?: string,
   ) {
     super(msg ?? code);

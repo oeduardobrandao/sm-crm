@@ -41,6 +41,26 @@ describe('consent store', () => {
     expect(getConsent()).toBeNull();
   });
 
+  it('keeps a decision stored before the marketing category existed, with marketing declined', async () => {
+    const { getConsent, CONSENT_STORAGE_KEY } = await import('../consent');
+    localStorage.setItem(
+      CONSENT_STORAGE_KEY,
+      JSON.stringify({ analytics: true, support: true, decidedAt: '2026-10-01T00:00:00.000Z' }),
+    );
+    expect(getConsent()).toEqual({
+      analytics: true,
+      support: true,
+      marketing: false,
+      decidedAt: '2026-10-01T00:00:00.000Z',
+    });
+  });
+
+  it('stores marketing as false when a choice omits it', async () => {
+    const { getConsent, setConsent } = await import('../consent');
+    setConsent({ analytics: true, support: true });
+    expect(getConsent()?.marketing).toBe(false);
+  });
+
   it('ignores a previous-version key so a category change re-prompts', async () => {
     const { getConsent } = await import('../consent');
     localStorage.setItem(

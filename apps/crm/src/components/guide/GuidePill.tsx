@@ -2,8 +2,9 @@ import { Compass } from 'lucide-react';
 import { useGuide, type GuideOpenSource } from './GuideContext';
 
 /** Reentrada fixa do guia. Visibilidade responsiva 100% via CSS (.guide-pill):
- *  display none por padrão, visível só >=1101px. jsdom não avalia media
- *  queries: a visibilidade responsiva se verifica no browser, não em teste. */
+ *  display none por padrão, visível só >=768px com a sidebar estática (não no
+ *  drawer do tablet clássico). jsdom não avalia media queries: a visibilidade
+ *  responsiva se verifica no browser, não em teste. */
 export function GuidePill() {
   const g = useGuide();
   if (!g || !g.showEntryPoint) return null;
@@ -19,8 +20,8 @@ export function GuidePill() {
   );
 }
 
-/** Reentrada em navegação: sidebar em modo drawer (tablet) e sheet Mais do
- *  MobileNav (telefone). */
+/** Reentrada em navegação: sidebar em modo drawer (tablet no visual clássico)
+ *  e sheet Mais do MobileNav (telefone). */
 export function GuideNavItem({
   source,
   className,

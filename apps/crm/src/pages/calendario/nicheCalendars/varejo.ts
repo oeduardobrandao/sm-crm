@@ -1,17 +1,36 @@
+import { i18n } from '@mesaas/i18n';
 import type { NicheCalendarDef } from './types';
 
 export const varejoDef: NicheCalendarDef = {
   key: 'varejo',
-  label: 'Varejo',
-  title: 'Calendário de Varejo',
-  subtitle: 'Brasil & Mundial — Datas de Consumo & Comércio',
+  get label() {
+    return i18n.t('calendario:niches.varejo.label');
+  },
+  get title() {
+    return i18n.t('calendario:niches.varejo.title');
+  },
+  get subtitle() {
+    return i18n.t('calendario:niches.varejo.subtitle');
+  },
   filterLabels: {
-    sazonal: 'Sazonal / Liquidação',
-    ecommerce: 'E-commerce',
-    consumidor: 'Consumidor',
-    moda: 'Moda',
-    pet: 'Pet',
-    casa: 'Casa & Decoração',
+    get sazonal() {
+      return i18n.t('calendario:niches.varejo.filterLabels.sazonal');
+    },
+    get ecommerce() {
+      return i18n.t('calendario:niches.varejo.filterLabels.ecommerce');
+    },
+    get consumidor() {
+      return i18n.t('calendario:niches.varejo.filterLabels.consumidor');
+    },
+    get moda() {
+      return i18n.t('calendario:niches.varejo.filterLabels.moda');
+    },
+    get pet() {
+      return i18n.t('calendario:niches.varejo.filterLabels.pet');
+    },
+    get casa() {
+      return i18n.t('calendario:niches.varejo.filterLabels.casa');
+    },
   },
   data: [
     {

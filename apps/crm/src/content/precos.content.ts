@@ -1,6 +1,6 @@
 export const PRECOS = {
   h1: 'Planos e preços do Mesaas',
-  sub: 'Comece grátis, sem cartão de crédito. Mude de plano quando quiser — sem fidelidade e sem multa de cancelamento.',
+  sub: 'Teste qualquer plano pago por 30 dias. O Free não pede cartão. Mude de plano quando quiser, sem fidelidade e sem multa de cancelamento.',
   plans: [
     { name: 'Free', description: 'Para conhecer a plataforma.' },
     { name: 'Start', description: 'Para freelancers montando a carteira.' },
@@ -14,7 +14,7 @@ export const PRECOS = {
     },
     {
       q: 'Existe cobrança por cliente atendido?',
-      a: 'Não. Diferente de ferramentas que cobram por cliente, os planos do Mesaas são por workspace, com limites claros de contas de Instagram e recursos.',
+      a: 'Não. Os planos do Mesaas são por workspace e se diferenciam pelo número de clientes e de usuários, sem cobrança extra por cliente atendido.',
     },
     {
       q: 'Tem desconto no plano anual?',
@@ -22,7 +22,7 @@ export const PRECOS = {
     },
     {
       q: 'Quais formas de pagamento são aceitas?',
-      a: 'Cartão de crédito, processado pela Stripe. A nota e o recibo chegam no seu e-mail a cada cobrança.',
+      a: 'Cartão de crédito, pela Stripe. O plano anual também pode ser pago em 12x no cartão, pela Pagar.me.',
     },
   ],
 } as const;

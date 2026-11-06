@@ -1,14 +1,18 @@
 import { z } from 'zod';
+import { i18n } from '@mesaas/i18n';
+
+/** Messages resolve at validation time, so they follow the current UI language. */
+const msg = (key: string) => () => i18n.t(`team:membroForm.${key}`);
 
 export const membroSchema = z
   .object({
-    nome: z.string().min(1, 'Nome obrigatório'),
-    cargo: z.string().min(1, 'Cargo obrigatório'),
+    nome: z.string().min(1, { error: msg('nameRequired') }),
+    cargo: z.string().min(1, { error: msg('roleRequired') }),
     tipo: z.enum(['clt', 'freelancer_mensal', 'freelancer_demanda']),
     custo: z.string(),
-    diaPag: z
-      .string()
-      .refine((v) => v === '' || (Number(v) >= 1 && Number(v) <= 31), 'Dia deve ser entre 1 e 31'),
+    diaPag: z.string().refine((v) => v === '' || (Number(v) >= 1 && Number(v) <= 31), {
+      error: msg('dayRange'),
+    }),
     crmUserId: z.string().optional(),
     // Papel of the linked CRM account: '' = leave as is, otherwise
     // 'admin' | 'agent' | 'custom:<uuid>' (same encoding as inviteRole).
@@ -25,7 +29,7 @@ export const membroSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['inviteEmail'],
-        message: 'Email inválido',
+        message: i18n.t('team:membroForm.emailInvalid'),
       });
     }
   });

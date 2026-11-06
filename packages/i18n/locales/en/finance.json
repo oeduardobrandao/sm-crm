@@ -1,0 +1,114 @@
+{
+  "shared": {
+    "title": "Finance",
+    "description": "Overview of finances, projected revenue and expenses.",
+    "searchPlaceholder": "Search by description or category...",
+    "income": "Income",
+    "expense": "Expense",
+    "recurring": "Recurring",
+    "month": "Month",
+    "repeatMonthly": "Repeat every month",
+    "repeatMonthlyHint": "Shows up every month as scheduled, on the same day, for you to confirm.",
+    "kpis": {
+      "received": "Received",
+      "toReceive": "Receivable",
+      "toPay": "Payable",
+      "currentBalance": "Current balance",
+      "projectedBalance": "Projected balance"
+    },
+    "filters": {
+      "all": "All",
+      "income": "Income",
+      "expenses": "Expenses"
+    },
+    "csvHelp": "CSV columns: descricao*, valor*, data* (YYYY-MM-DD), tipo (entrada|saida), categoria, detalhe. Valid categories: Mensalidade, Produção, Tráfego, Salário, Imposto, Ferramenta, Outro."
+  },
+  "form": {
+    "groupLabel": "Transaction",
+    "description": "Description",
+    "amount": "Amount (R$)",
+    "date": "Date",
+    "category": "Category",
+    "selectPlaceholder": "Select...",
+    "errors": {
+      "descriptionRequired": "Description is required",
+      "amountRequired": "Amount is required",
+      "amountPositive": "Amount must be positive",
+      "dateRequired": "Date is required",
+      "categoryRequired": "Category is required"
+    }
+  },
+  "page": {
+    "editTitle": "Edit transaction",
+    "addIncomeTitle": "Record income",
+    "addExpenseTitle": "Record expense",
+    "confirmPaymentTitle": "Confirm payment?",
+    "bulkConfirmTitle_zero": "Confirm {{count}} payments?",
+    "bulkConfirmTitle_one": "Confirm {{count}} payment?",
+    "bulkConfirmTitle_other": "Confirm {{count}} payments?",
+    "deleteTitle": "Remove this transaction?",
+    "csvHelpColumns": "<b>CSV columns:</b> descricao*, valor*, data* (YYYY-MM-DD), tipo (entrada|saida), categoria, detalhe",
+    "csvHelpCategories": "<b>Valid categories:</b> Mensalidade, Produção, Tráfego, Salário, Imposto, Ferramenta, Outro",
+    "confirmSelected": "Confirm selected ({{n}})",
+    "selectAllScheduled": "Select all scheduled",
+    "selectTransaction": "Select transaction",
+    "columns": {
+      "amount": "Amount",
+      "actions": "Actions"
+    },
+    "toasts": {
+      "updated": "Transaction updated",
+      "createdRecurring": "Transaction recorded. It repeats every month.",
+      "created": "Transaction recorded",
+      "paymentConfirmed": "Payment confirmed",
+      "confirmError": "Couldn't confirm the payment",
+      "bulkConfirmed_one": "{{count}} payment confirmed",
+      "bulkConfirmed_other": "{{count}} payments confirmed",
+      "bulkFailed_one": "{{count}} couldn't be confirmed",
+      "bulkFailed_other": "{{count}} couldn't be confirmed",
+      "removed": "Transaction removed",
+      "imported_zero": "{{count}} transactions imported successfully!",
+      "imported_one": "{{count}} transaction imported successfully!",
+      "imported_other": "{{count}} transactions imported successfully!"
+    }
+  },
+  "phone": {
+    "summaryAria": "Monthly summary",
+    "select": "Select",
+    "selected_one": "{{count}} selected",
+    "selected_other": "{{count}} selected",
+    "selectAll": "Select all",
+    "deselectAll": "Deselect all",
+    "confirmPayment": "Confirm payment",
+    "typeAria": "Transaction type",
+    "addMenuWithRecurring": "Add: Income, Expense, Import CSV or Recurring",
+    "addMenu": "Add: Income, Expense or Import CSV",
+    "periodAria": "Period",
+    "empty": "No transactions found.",
+    "rowActions": "Actions for {{descricao}}",
+    "selectRow": "Select {{descricao}}",
+    "confirmN": "Confirm {{n}}",
+    "dayHeaderWithYear": "EEEE, MMMM d, yyyy"
+  },
+  "monthSheet": {
+    "monthsOf": "Months of {{year}}",
+    "allMonths": "All months"
+  },
+  "recorrentes": {
+    "title": "Recurring entries",
+    "description": "They show up every month as scheduled, on the chosen day, for you to confirm.",
+    "empty": "No recurring entries. When you record income or an expense, turn on \"Repeat every month\".",
+    "dayOfMonth": "Day of month",
+    "everyDay": "Every month on day {{dia}}",
+    "edit": "Edit {{descricao}}",
+    "end": "Stop",
+    "endAria": "Stop {{descricao}}",
+    "endTitle": "Stop \"{{descricao}}\"?",
+    "endHint": "It stops showing up from this month on. Entries already confirmed stay.",
+    "toasts": {
+      "updated": "Recurring entry updated",
+      "ended": "Recurring entry stopped",
+      "endError": "Couldn't stop the recurring entry"
+    }
+  }
+}

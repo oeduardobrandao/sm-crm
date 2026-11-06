@@ -38,6 +38,10 @@ const {
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
+// Desktop markup (centered dialog with Select / radios). The full-screen phone layout
+// has its own suite, AutomationFormDialog.phone.test.tsx.
+vi.mock('../../../hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 // Mesmo padrao do AutomacoesPage.test: t devolve a CHAVE (com vars serializadas).
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -216,7 +220,14 @@ vi.mock('@/components/ui/dialog', async () => {
     return <h2>{children}</h2>;
   }
 
-  return { Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle };
+  const useConfirmCloseCopy = () => ({
+    title: 'Fechar sem salvar?',
+    message: 'Você tem alterações não salvas. Deseja fechar mesmo assim?',
+    keepEditing: 'Continuar editando',
+    discard: 'Fechar mesmo assim',
+  });
+
+  return { Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, useConfirmCloseCopy };
 });
 
 import { toast } from 'sonner';

@@ -1,4 +1,6 @@
+import { lazyLabels } from './postLabels';
 import { entitlementMessage, mapEntitlementError } from '@/lib/entitlement-errors';
+import { clientScopeErrorMessage, isClientScopeError } from '@/lib/client-scope-errors';
 
 /**
  * Cópia em português para os códigos identificadores que as RPCs de processos
@@ -8,59 +10,65 @@ import { entitlementMessage, mapEntitlementError } from '@/lib/entitlement-error
  * "Códigos de erro". `feature_disabled:*` e `plan_limit_exceeded:*` passam
  * pelo mapeamento de entitlement existente, não por esta tabela.
  */
-export const POST_PROCESS_ERROR_MESSAGES: Record<string, string> = {
-  workspace_not_found: 'Workspace ativo não encontrado. Recarregue a página.',
-  permission_denied: 'Você não tem permissão para editar entregas neste workspace.',
-  invalid_arguments: 'Não foi possível salvar a ordem da coluna. Recarregue e tente de novo.',
-  post_ids_required: 'Selecione pelo menos um post.',
-  post_not_found: 'Um ou mais posts não foram encontrados.',
-  post_not_in_source_flow: 'Um dos posts já não está neste fluxo. Recarregue a lista.',
-  post_in_workflow: 'Este post já pertence a um fluxo. Recarregue para ver o estado atual.',
-  post_already_in_flow: 'Este post já pertence a um fluxo.',
-  post_has_active_process:
-    'Este post tem um processo individual em andamento. Use "Vincular a um fluxo" para encerrá-lo e vincular.',
-  post_belongs_to_another_client: 'Este post pertence a outro cliente.',
-  post_changed: 'O status do post mudou em outro lugar. Recarregue e tente de novo.',
-  workflow_not_found: 'Fluxo não encontrado.',
-  workflow_not_active: 'Este fluxo não está mais ativo.',
-  workflow_changed: 'O fluxo foi alterado em outro lugar. Recarregue e tente de novo.',
-  workflow_etapas_inconsistent:
-    'As etapas deste fluxo estão inconsistentes. Só é possível desmembrar como avulso sem etapas.',
-  template_not_found: 'Modelo de fluxo não encontrado.',
-  template_empty: 'Este modelo não tem etapas.',
-  template_invalid: 'Este modelo tem etapas inválidas. Corrija o modelo antes de aplicá-lo.',
-  template_changed:
-    'O modelo foi alterado depois que você abriu este diálogo. Recarregue e tente de novo.',
-  invalid_start_ordem: 'Etapa inicial inválida para este modelo.',
-  invalid_step_overrides: 'Responsáveis ou prazos inválidos. Revise os campos.',
-  invalid_step_deadlines: 'Prazos das etapas futuras inválidos. Revise os campos.',
-  start_deadline_required: 'A etapa inicial precisa de um prazo.',
-  step_deadline_required: 'Todas as etapas a partir da inicial precisam de uma data.',
-  data_entrega_requires_approval_step:
-    'No modo data de entrega é preciso haver uma etapa de aprovação do cliente a partir da etapa inicial.',
-  active_deadline_required: 'Não foi possível calcular o prazo da etapa atual.',
-  next_deadline_required: 'Não foi possível calcular o prazo da próxima etapa.',
-  expected_post_status_required:
-    'Não foi possível conferir o status do post. Recarregue e tente de novo.',
-  approval_choice_required: 'Escolha como prosseguir com a aprovação.',
-  invalid_approval_choice: 'Opção de aprovação inválida.',
-  invalid_command: 'Comando inválido.',
-  membro_not_found: 'Responsável não encontrado neste workspace.',
-  process_not_found: 'Processo não encontrado.',
-  process_changed: 'Este processo foi alterado em outro lugar. Recarregue e tente de novo.',
-  process_not_active: 'Este processo não está em andamento.',
-  process_not_concluded: 'Só um processo concluído pode ser reaberto.',
-  process_already_closed: 'Este processo já foi encerrado.',
-  step_not_found: 'Etapa não encontrada.',
-  step_not_editable: 'Só etapas pendentes ou em andamento podem ser editadas.',
-  tipo_prazo_invalido: 'Tipo de prazo inválido. Escolha úteis ou corridos.',
-  no_next_step: 'Não há próxima etapa. Use "Concluir processo".',
-  no_previous_step: 'Esta já é a primeira etapa.',
-  pending_steps_remaining: 'Ainda há etapas pendentes. Avance até a última antes de concluir.',
-  request_id_required: 'Não foi possível identificar a operação. Tente de novo.',
-  request_not_found: 'Não foi possível identificar a operação. Tente de novo.',
-  request_mismatch: 'A seleção mudou desde a última tentativa. Feche o diálogo e tente de novo.',
-};
+const POST_PROCESS_ERROR_CODES = [
+  'workspace_not_found',
+  'permission_denied',
+  'invalid_arguments',
+  'post_ids_required',
+  'post_not_found',
+  'post_not_in_source_flow',
+  'post_in_workflow',
+  'post_already_in_flow',
+  'post_has_active_process',
+  'post_belongs_to_another_client',
+  'post_changed',
+  'workflow_not_found',
+  'workflow_not_active',
+  'workflow_changed',
+  'workflow_etapas_inconsistent',
+  'template_not_found',
+  'template_empty',
+  'template_invalid',
+  'template_changed',
+  'invalid_start_ordem',
+  'invalid_step_overrides',
+  'invalid_step_deadlines',
+  'start_deadline_required',
+  'step_deadline_required',
+  'data_entrega_requires_approval_step',
+  'active_deadline_required',
+  'next_deadline_required',
+  'expected_post_status_required',
+  'approval_choice_required',
+  'invalid_approval_choice',
+  'invalid_command',
+  'membro_not_found',
+  'process_not_found',
+  'process_changed',
+  'process_not_active',
+  'process_not_concluded',
+  'process_already_closed',
+  'step_not_found',
+  'step_not_editable',
+  'tipo_prazo_invalido',
+  'no_next_step',
+  'no_previous_step',
+  'pending_steps_remaining',
+  'request_id_required',
+  'request_not_found',
+  'etapa_changed',
+  'not_approval_etapa',
+  'expected_counts_required',
+  'posts_changed',
+  'ciclo_changed',
+  'post_locked',
+  'request_mismatch',
+] as const;
+
+export const POST_PROCESS_ERROR_MESSAGES: Record<string, string> = lazyLabels(
+  POST_PROCESS_ERROR_CODES,
+  (code) => `entregas:postProcessErrors.${code}`,
+);
 
 /** Códigos que significam "seu estado local está velho": além do toast, refetch. */
 export const STALE_STATE_CODES: ReadonlySet<string> = new Set([
@@ -69,6 +77,12 @@ export const STALE_STATE_CODES: ReadonlySet<string> = new Set([
   'post_changed',
   'template_changed',
   'request_mismatch',
+  'etapa_changed',
+  'posts_changed',
+  'ciclo_changed',
+  'not_approval_etapa',
+  'expected_counts_required',
+  'workflow_not_active',
   'post_has_active_process',
   'post_in_workflow',
   'post_already_in_flow',
@@ -86,7 +100,10 @@ export function getPostProcessErrorToast(err: unknown, fallback: string): string
   const ent = mapEntitlementError(err);
   if (ent) return entitlementMessage(ent);
   const id = getErrorIdentifier(err);
-  return POST_PROCESS_ERROR_MESSAGES[id] ?? fallback;
+  const known = POST_PROCESS_ERROR_MESSAGES[id];
+  if (known) return known;
+  // After the known codes: `permission_denied` and friends keep their own copy.
+  return isClientScopeError(err) ? clientScopeErrorMessage() : fallback;
 }
 
 export function isStaleStateError(err: unknown): boolean {

@@ -80,6 +80,7 @@ function tree(posts: HubPost[], onNavigate: (id: number | null) => void) {
           currentId={posts[0].id}
           token="token-publico"
           approvals={[]}
+          mediaNotes={[]}
           instagramProfile={null}
           isAutoPublish={() => false}
           onNavigate={onNavigate}

@@ -1,5 +1,21 @@
 import { usePageMeta } from '../../lib/usePageMeta';
 import { CookiePreferencesLink } from '../../components/consent/CookiePreferencesLink';
+import { sanitizeUrl } from '../../utils/security';
+import { GOOGLE_LEGAL_TEXT_LIVE, legalNetworkList } from '../../lib/googleLegalLaunch';
+
+const YOUTUBE_TERMS_URL = 'https://www.youtube.com/t/terms';
+const GOOGLE_PRIVACY_URL = 'https://policies.google.com/privacy';
+const GOOGLE_PERMISSIONS_URL = 'https://myaccount.google.com/permissions';
+const GOOGLE_USER_DATA_POLICY_URL =
+  'https://developers.google.com/terms/api-services-user-data-policy';
+
+function ExternalLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <a href={sanitizeUrl(href)} target="_blank" rel="noopener noreferrer">
+      {children}
+    </a>
+  );
+}
 
 export default function PoliticaPage() {
   usePageMeta('/politica-de-privacidade');
@@ -52,7 +68,7 @@ export default function PoliticaPage() {
             ),
           },
           {
-            title: '3. Contas de redes sociais conectadas (Instagram e TikTok)',
+            title: `3. Contas de redes sociais conectadas (${legalNetworkList()})`,
             content: (
               <>
                 <p>
@@ -78,6 +94,38 @@ export default function PoliticaPage() {
                   comentários das publicações e o nome de usuário de quem comentou, para responder
                   conforme as regras que você configurou.
                 </p>
+                {GOOGLE_LEGAL_TEXT_LIVE && (
+                  <>
+                    <p>
+                      Quando você conecta um canal do YouTube, o Mesaas lê o perfil do canal, as
+                      estatísticas do canal e os vídeos com as métricas de cada um, e publica no
+                      canal os Shorts que você agendou. Quando você vincula uma unidade do Google
+                      Meu Negócio, o Mesaas lê o perfil da unidade, as métricas de desempenho, os
+                      termos de busca e as avaliações, incluindo o nome de exibição de quem avaliou.
+                    </p>
+                    <p>
+                      O Mesaas usa os Serviços de API do YouTube. Ao conectar um canal, você também
+                      concorda com os{' '}
+                      <ExternalLink href={YOUTUBE_TERMS_URL}>
+                        Termos de Serviço do YouTube
+                      </ExternalLink>
+                      , e o Google trata os seus dados conforme a{' '}
+                      <ExternalLink href={GOOGLE_PRIVACY_URL}>
+                        Política de Privacidade do Google
+                      </ExternalLink>
+                      .
+                    </p>
+                    <p>
+                      O uso e a transferência, pelo Mesaas, de informações recebidas das APIs do
+                      Google seguem a{' '}
+                      <ExternalLink href={GOOGLE_USER_DATA_POLICY_URL}>
+                        Política de Dados do Usuário dos Serviços de API do Google
+                      </ExternalLink>{' '}
+                      (Google API Services User Data Policy), incluindo os requisitos de Uso
+                      Limitado (Limited Use).
+                    </p>
+                  </>
+                )}
                 <p>
                   Usamos esses dados somente para mostrar o desempenho da conta ao seu workspace e
                   para publicar na conta conectada o conteúdo que você ou o seu cliente aprovou e
@@ -90,6 +138,20 @@ export default function PoliticaPage() {
                   configurações do próprio app do Instagram ou do TikTok. O histórico de métricas já
                   coletado pode ser excluído a pedido, pelo nosso suporte.
                 </p>
+                {GOOGLE_LEGAL_TEXT_LIVE && (
+                  <p>
+                    O acesso concedido ao Google (YouTube e Google Meu Negócio) pode ser revogado a
+                    qualquer momento em{' '}
+                    <ExternalLink href={GOOGLE_PERMISSIONS_URL}>
+                      myaccount.google.com/permissions
+                    </ExternalLink>
+                    . Ao desconectar (no Mesaas ou no Google), os dados do YouTube, inclusive os que
+                    estão em relatórios já gerados, são apagados em até 7 dias. O histórico do
+                    Google Meu Negócio é apagado 30 dias após a desconexão, mas os números e as
+                    avaliações em destaque que já estão em relatórios gerados permanecem nesses
+                    relatórios.
+                  </p>
+                )}
               </>
             ),
           },
@@ -121,6 +183,22 @@ export default function PoliticaPage() {
                     realizada em conformidade com a LGPD. Coletamos identificador de usuário,
                     workspace, plano e eventos de uso do produto. Não enviamos conteúdo de clientes,
                     mídias ou dados de pagamento.
+                  </li>
+                  <li>
+                    <strong>Google Ads</strong> · medição dos nossos anúncios (quais anúncios
+                    trouxeram visitas, cadastros e assinaturas) e exibição de anúncios a quem já
+                    visitou o site. Só é ativado com o seu consentimento. Os dados são processados
+                    nos Estados Unidos, o que constitui uma transferência internacional de dados
+                    pessoais para fora do Brasil, realizada em conformidade com a LGPD. Não enviamos
+                    conteúdo de clientes, mídias ou dados de pagamento.
+                  </li>
+                  <li>
+                    <strong>Meta Pixel</strong> · medição dos nossos anúncios no Instagram e no
+                    Facebook (quais anúncios trouxeram visitas, cadastros e assinaturas) e exibição
+                    de anúncios a quem já visitou o site. Só é ativado com o seu consentimento. Os
+                    dados são processados nos Estados Unidos, o que constitui uma transferência
+                    internacional de dados pessoais para fora do Brasil, realizada em conformidade
+                    com a LGPD. Não enviamos conteúdo de clientes, mídias ou dados de pagamento.
                   </li>
                   <li>
                     <strong>Loops</strong> · envio de e-mails de marketing e de ciclo de vida. Os
@@ -163,9 +241,10 @@ export default function PoliticaPage() {
             content: (
               <p>
                 Usamos armazenamento essencial e, com base em legítimo interesse, ferramentas de
-                monitoramento de erros e de medição agregada de acessos. Ferramentas de análise e de
-                chat de suporte só são ativadas com o seu consentimento. Veja a lista completa e
-                como retirar o consentimento na nossa <a href="/lgpd">página de LGPD</a>.
+                monitoramento de erros e de medição agregada de acessos. Ferramentas de análise, de
+                chat de suporte e de publicidade só são ativadas com o seu consentimento. Veja a
+                lista completa e como retirar o consentimento na nossa{' '}
+                <a href="/lgpd">página de LGPD</a>.
               </p>
             ),
           },

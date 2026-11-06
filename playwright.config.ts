@@ -37,12 +37,30 @@ export default defineConfig({
     {
       name: 'crm',
       testDir: './e2e/crm',
-      testIgnore: /auth\.setup\.ts/,
+      testIgnore: [/auth\.setup\.ts/, /\.phone\.spec\.ts$/],
       dependencies: ['crm-auth'],
       use: {
         ...devices['Desktop Chrome'],
         baseURL: CRM_BASE_URL,
         storageState: authFile,
+      },
+    },
+    // iPhone-sized viewport (390x844, the iPhone 13-15 width) for the phone layout (< 768px).
+    // Chromium with mobile emulation rather than devices['iPhone ...'], which defaults to
+    // WebKit: CI installs only chromium. Only `*.phone.spec.ts` runs here.
+    {
+      name: 'crm-phone',
+      testDir: './e2e/crm',
+      testMatch: /\.phone\.spec\.ts$/,
+      dependencies: ['crm-auth'],
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: CRM_BASE_URL,
+        storageState: authFile,
+        viewport: { width: 390, height: 844 },
+        deviceScaleFactor: 3,
+        isMobile: true,
+        hasTouch: true,
       },
     },
     // Screenshot captures run against a PRODUCTION workspace (see e2e/screenshots/safety.ts).

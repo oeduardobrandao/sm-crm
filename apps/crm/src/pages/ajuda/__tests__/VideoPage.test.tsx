@@ -10,6 +10,10 @@ vi.mock('@/store/kbVideos', () => ({
   saveVideoProgress: vi.fn(),
 }));
 
+// Desktop by default (jsdom's matchMedia reports a phone); the last case flips it.
+const viewport = vi.hoisted(() => ({ desktop: true }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => viewport.desktop }));
+
 import { getMyVideoProgress, getPublishedVideoSeries, saveVideoProgress } from '@/store/kbVideos';
 import VideoPage from '../VideoPage';
 
@@ -50,6 +54,7 @@ const SERIES = [
 ];
 
 beforeEach(() => {
+  viewport.desktop = true;
   HTMLMediaElement.prototype.canPlayType = vi.fn(() => 'probably') as unknown as (
     t: string,
   ) => CanPlayTypeResult;
@@ -144,5 +149,15 @@ describe('VideoPage', () => {
     fireEvent.click(screen.getByRole('link', { name: 'Ver relatório' }));
 
     expect(await screen.findByRole('heading', { name: 'Relatório mensal' })).toBeInTheDocument();
+  });
+
+  it('puts the player under the phone nav bar on phones', async () => {
+    viewport.desktop = false;
+    renderAt('relatorio-mensal');
+    expect(await screen.findByRole('heading', { name: 'Relatório mensal' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Voltar para Central de Ajuda' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Tutoriais em vídeo', { selector: 'span' })).toBeInTheDocument();
   });
 });

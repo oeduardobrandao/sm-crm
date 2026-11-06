@@ -7,9 +7,18 @@
     "aprovar": "Approve",
     "suggestionPendingReviewFull": "Suggestion sent for the team to review",
     "suggestionShowing": "Below is the version you suggested.",
-    "suggestionShowingText": "Below is the version you suggested. You changed the text.",
-    "suggestionShowingCaption": "Below is the version you suggested. You changed the caption.",
-    "suggestionShowingBoth": "Below is the version you suggested. You changed the text and the caption.",
+    "suggestionShowingFields": "Below is the version you suggested, with changes to {{fields}}.",
+    "suggestionFieldPhrase": {
+      "texto": "the text",
+      "legenda": "the caption",
+      "legendaInstagram": "the Instagram caption",
+      "legendaTiktok": "the TikTok caption",
+      "legendaGeral": "the Geral caption"
+    },
+    "saveErrorTargetGone": "This destination was removed from the post.",
+    "saveErrorRetry": "Could not save right now. Try again.",
+    "saveErrorCaptionTooLong": "The TikTok caption is over the {{max}} character limit.",
+    "saveErrorCaptionTooLongNoMax": "The TikTok caption is over the character limit.",
     "suggestionShowingOriginal": "You are viewing the original version, without your changes.",
     "suggestionCompareLabel": "Compare versions",
     "suggestionViewMine": "Your suggestion",
@@ -97,8 +106,8 @@
     "nextSlideAriaLabel": "Next slide",
     "captionAriaLabel": "Post caption",
     "postApprovedAndScheduled": "Post approved and scheduled for publication!",
-    "autoPublishScheduled": "Once approved, this post will be published automatically on Instagram at {{date}}.",
-    "autoPublishUnscheduled": "Once approved, this post will be scheduled for automatic publication on Instagram."
+    "autoPublishScheduled": "Once approved, this post will be published automatically on {{platforms}} at {{date}}.",
+    "autoPublishUnscheduled": "Once approved, this post will be scheduled for automatic publication on {{platforms}}."
   },
   "storyCard": {
     "prevAriaLabel": "Previous",
@@ -106,7 +115,12 @@
   },
   "textCard": {
     "mediaRemoved": "Media removed to free up space",
-    "instagramCaptionLabel": "Instagram caption"
+    "instagramCaptionLabel": "Instagram caption",
+    "captionLabel": "Caption"
+  },
+  "collab": {
+    "partnership": "In partnership with {{names}}",
+    "note": "On Instagram, the post will also appear on these accounts' profiles once they accept the invite."
   },
   "posts": {
     "select": "Select",
@@ -164,7 +178,9 @@
     "send": "Send",
     "sending": "Sending...",
     "sendError": "Could not send the comment.",
-    "motivoLabel": "Reason"
+    "motivoLabel": "Reason",
+    "openNotes_one": "{{count}} open media comment",
+    "openNotes_other": "{{count}} open media comments"
   },
   "correctionReason": {
     "title": "Correction reason",
@@ -264,5 +280,62 @@
       "rateLimited": "Too many attempts in a row. Wait a minute and try again.",
       "generic": "Something went wrong. Try again."
     }
+  },
+  "mediaNotes": {
+    "title": "Comments on the media",
+    "openCount": "{{count}} open",
+    "slide": "Slide {{n}}",
+    "point": "spot {{n}}",
+    "pointInScene": "spot in the scene",
+    "previousVersion": "previous version",
+    "statusOpen": "Open",
+    "statusResolved": "Resolved",
+    "comment": "Comment",
+    "commentWholeSlide": "Comment on the whole slide",
+    "markSpot": "Mark a spot",
+    "commentAtMoment": "Comment at {{time}}",
+    "tapHint": "Tap the image to mark a spot",
+    "composerPoint": "Comment on the marked spot of slide {{n}}",
+    "composerSlide": "Comment on the whole of slide {{n}}",
+    "composerMoment": "Comment at {{time}}",
+    "composerMomentPoint": "Comment at {{time}}, on the marked spot",
+    "placeholder": "What would you like to change here?",
+    "send": "Send comment",
+    "cancel": "Cancel",
+    "reply": "Reply",
+    "sendError": "Could not send. Please try again.",
+    "approveConfirmTitle_one": "You have {{count}} open comment",
+    "approveConfirmTitle_other": "You have {{count}} open comments",
+    "approveConfirmBody": "Approve anyway? The comments stay visible to the team.",
+    "approveConfirm": "Approve anyway",
+    "team": "Team",
+    "justNow": "just now",
+    "marker": "Comment at {{time}}"
+  },
+  "captions": {
+    "empty": "No caption",
+    "geralNote": "This caption is not published automatically. The team uses it to post manually.",
+    "sameFor": "Same caption for {{names}}",
+    "tablistLabel": "Caption for each platform",
+    "changedTab": "changed",
+    "fieldLabel": {
+      "instagram": "Instagram caption",
+      "tiktok": "TikTok caption",
+      "geral": "Geral caption"
+    },
+    "groupFieldLabel": "Caption for {{names}}",
+    "appliesTo": "This change applies to {{names}}.",
+    "withArticle": {
+      "instagram": "Instagram",
+      "tiktok": "TikTok",
+      "geral": "the Geral destination"
+    }
+  },
+  "geral": {
+    "download": "Download file",
+    "downloadAll": "Download content ({{count}} files)",
+    "copyCaption": "Copy caption",
+    "copied": "Copied!",
+    "downloadFailed": "Couldn't download right now. Try again."
   }
 }

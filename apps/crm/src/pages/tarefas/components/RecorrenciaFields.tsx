@@ -1,5 +1,6 @@
 import type { UseFormReturn } from 'react-hook-form';
-import { Repeat } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { Check, Repeat } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { DatePicker } from '@/components/ui/date-picker';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -11,6 +12,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Cell, GroupedList } from '@/components/mobile/GroupedList';
+import { FormRow } from '@/components/mobile/FormRow';
+import { PickerCell } from '@/components/mobile/PickerSheet';
+import { PhoneDateRow } from '../phone/PhoneDateRow';
 import {
   describeRecorrencia,
   modoLabel,
@@ -30,6 +35,8 @@ export interface RecorrenciaFieldsProps {
   disabled?: boolean;
   /** Shown under the select when disabled. */
   disabledHint?: string;
+  /** `phone`: grouped rows (picker row, native date, day chips) inside the phone form. */
+  layout?: 'default' | 'phone';
 }
 
 const REPETIR_ORDER: RepetirValor[] = ['never', 'daily', 'weekly', 'monthly', 'yearly'];
@@ -41,7 +48,9 @@ export function RecorrenciaFields({
   landing,
   disabled,
   disabledHint,
+  layout = 'default',
 }: RecorrenciaFieldsProps) {
+  const { t } = useTranslation('tasksForm');
   const repetir = form.watch('repetir');
   const intervalo = form.watch('intervalo');
   const diasSemana = form.watch('dias_semana');
@@ -64,6 +73,162 @@ export function RecorrenciaFields({
   // The summary only renders for a complete rule: an emptied interval would read
   // "A cada NaN dias" and a weekly rule with no chip selected "Toda " (dangling).
   const regraCompleta = !!regra && nValido && (repetir !== 'weekly' || diasSemana.length > 0);
+  const landingLabel = regra
+    ? repetir === 'monthly'
+      ? t((regra.dia_mes ?? 0) > 28 ? 'recorrencia.monthlyDayOrLast' : 'recorrencia.monthlyDay', {
+          day: regra.dia_mes,
+        })
+      : t('recorrencia.yearlyDate', {
+          day: String(regra.dia_mes).padStart(2, '0'),
+          month: String(regra.mes).padStart(2, '0'),
+        })
+    : '';
+
+  if (layout === 'phone') {
+    const errors = form.formState.errors;
+    return (
+      <>
+        <GroupedList header={t('recorrencia.sectionHeader')}>
+          <FormField
+            control={form.control}
+            name="repetir"
+            render={({ field }) => (
+              <PickerCell<RepetirValor>
+                label={t('recorrencia.repeat')}
+                icon={<Repeat aria-hidden="true" />}
+                options={REPETIR_ORDER.map((v) => ({ value: v, label: REPETIR_LABELS[v] }))}
+                value={field.value}
+                onChange={(v) => {
+                  if (v) field.onChange(v);
+                }}
+                disabled={disabled}
+                subtitle={disabled ? disabledHint : undefined}
+              />
+            )}
+          />
+          {repetir !== 'never' && (
+            <>
+              <FormRow
+                label={t('recorrencia.every')}
+                error={errors.intervalo?.message}
+                accessory={
+                  <span className="phone-tar-form__unit">
+                    {unidadeIntervalo(repetir, nValido ? n : 2)}
+                  </span>
+                }
+              >
+                {(fieldProps) => (
+                  <input
+                    {...fieldProps}
+                    {...form.register('intervalo')}
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={99}
+                    aria-label={t('recorrencia.interval')}
+                    className="phone-tar-form__interval"
+                  />
+                )}
+              </FormRow>
+              {repetir === 'weekly' && (
+                <FormField
+                  control={form.control}
+                  name="dias_semana"
+                  render={({ field }) => (
+                    <li className="phone-cell phone-form-row">
+                      <div
+                        role="group"
+                        aria-label={t('recorrencia.weekdays')}
+                        className="phone-tar-form__weekdays"
+                      >
+                        {WEEKDAY_CHIPS.map((letter, day) => {
+                          const on = field.value.includes(day);
+                          return (
+                            <button
+                              key={day}
+                              type="button"
+                              aria-label={WEEKDAY_NAMES[day]}
+                              aria-pressed={on}
+                              className="phone-tar-form__weekday"
+                              onClick={() =>
+                                field.onChange(
+                                  on ? field.value.filter((d) => d !== day) : [...field.value, day],
+                                )
+                              }
+                            >
+                              {letter}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {errors.dias_semana?.message && (
+                        <p className="phone-form-row__foot" role="alert">
+                          {errors.dias_semana.message}
+                        </p>
+                      )}
+                    </li>
+                  )}
+                />
+              )}
+              {(repetir === 'monthly' || repetir === 'yearly') && regra && (
+                <Cell label={landingLabel} />
+              )}
+              <FormField
+                control={form.control}
+                name="fim"
+                render={({ field }) => (
+                  <PhoneDateRow
+                    label={t('recorrencia.endsOn')}
+                    value={field.value}
+                    onChange={field.onChange}
+                    emptyLabel={t('recorrencia.never')}
+                    error={errors.fim?.message}
+                  />
+                )}
+              />
+            </>
+          )}
+        </GroupedList>
+
+        {repetir !== 'never' && (
+          <FormField
+            control={form.control}
+            name="modo"
+            render={({ field }) => (
+              <GroupedList header={t('recorrencia.modeHeader')} footer={t('recorrencia.modeHelp')}>
+                {(
+                  [
+                    ['ao_concluir', t('recorrencia.modeOnComplete')],
+                    ['calendario', t('recorrencia.modeCalendar')],
+                  ] as const
+                ).map(([value, label]) => (
+                  <Cell
+                    key={value}
+                    label={label}
+                    aria-pressed={field.value === value}
+                    accessory={
+                      field.value === value ? (
+                        <Check className="phone-check" aria-hidden="true" />
+                      ) : undefined
+                    }
+                    onClick={() => field.onChange(value)}
+                  />
+                ))}
+              </GroupedList>
+            )}
+          />
+        )}
+
+        {repetir !== 'never' && regra && regraCompleta && (
+          <p className="phone-tar-form__summary" data-testid="recorrencia-resumo">
+            {describeRecorrencia(regra)}
+            {' · '}
+            {modoLabel(modo)}
+          </p>
+        )}
+      </>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -74,7 +239,7 @@ export function RecorrenciaFields({
           <FormItem>
             <FormLabel className="flex items-center gap-1.5">
               <Repeat className="h-3.5 w-3.5" aria-hidden="true" />
-              Repetir
+              {t('recorrencia.repeat')}
             </FormLabel>
             <Select value={field.value} onValueChange={field.onChange} disabled={disabled}>
               <FormControl>
@@ -108,7 +273,7 @@ export function RecorrenciaFields({
             render={({ field }) => (
               <FormItem>
                 <div className="flex items-center gap-2 text-sm">
-                  <span>a cada</span>
+                  <span>{t('recorrencia.everyLower')}</span>
                   <FormControl>
                     <Input
                       type="number"
@@ -116,7 +281,7 @@ export function RecorrenciaFields({
                       min={1}
                       max={99}
                       className="w-16 h-8"
-                      aria-label="Intervalo"
+                      aria-label={t('recorrencia.interval')}
                       {...field}
                     />
                   </FormControl>
@@ -137,7 +302,7 @@ export function RecorrenciaFields({
                     <ToggleGroup
                       type="multiple"
                       variant="outline"
-                      aria-label="Dias da semana"
+                      aria-label={t('recorrencia.weekdays')}
                       className="justify-start"
                       value={field.value.map(String)}
                       onValueChange={(vals: string[]) => field.onChange(vals.map(Number))}
@@ -162,9 +327,7 @@ export function RecorrenciaFields({
 
           {(repetir === 'monthly' || repetir === 'yearly') && regra && (
             <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-              {repetir === 'monthly'
-                ? `Todo dia ${regra.dia_mes}${(regra.dia_mes ?? 0) > 28 ? ' (ou último dia)' : ''}`
-                : `Todo ano em ${String(regra.dia_mes).padStart(2, '0')}/${String(regra.mes).padStart(2, '0')}`}
+              {landingLabel}
             </p>
           )}
 
@@ -173,9 +336,13 @@ export function RecorrenciaFields({
             name="fim"
             render={({ field }) => (
               <FormItem className="flex flex-col">
-                <FormLabel>Termina em</FormLabel>
+                <FormLabel>{t('recorrencia.endsOn')}</FormLabel>
                 <FormControl>
-                  <DatePicker value={field.value} onChange={field.onChange} placeholder="Nunca" />
+                  <DatePicker
+                    value={field.value}
+                    onChange={field.onChange}
+                    placeholder={t('recorrencia.never')}
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -191,7 +358,7 @@ export function RecorrenciaFields({
                   <ToggleGroup
                     type="single"
                     variant="outline"
-                    aria-label="Modo de geração"
+                    aria-label={t('recorrencia.modeHeader')}
                     className="grid grid-cols-2 gap-2"
                     value={field.value}
                     onValueChange={(v: string) => {
@@ -202,19 +369,18 @@ export function RecorrenciaFields({
                       value="ao_concluir"
                       className="h-auto min-h-9 min-w-0 py-1.5 text-center"
                     >
-                      Criar a próxima ao concluir
+                      {t('recorrencia.modeOnComplete')}
                     </ToggleGroupItem>
                     <ToggleGroupItem
                       value="calendario"
                       className="h-auto min-h-9 min-w-0 py-1.5 text-center"
                     >
-                      Criar em toda data da regra
+                      {t('recorrencia.modeCalendar')}
                     </ToggleGroupItem>
                   </ToggleGroup>
                 </FormControl>
                 <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                  Ao concluir: a próxima tarefa só aparece quando esta for concluída. Toda data: a
-                  tarefa aparece na data, mesmo com a anterior aberta.
+                  {t('recorrencia.modeHelp')}
                 </p>
               </FormItem>
             )}

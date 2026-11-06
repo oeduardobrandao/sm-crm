@@ -1,5 +1,6 @@
 import { useEffect, useState, type MouseEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { MentionText } from '@/components/mentions/MentionText';
 import { mentionHref } from '@/components/mentions/mentionHref';
 import type { MentionEntityType } from '@/components/mentions/types';
@@ -16,6 +17,7 @@ export function TarefaDescriptionContent({
   richContent,
   plainText,
 }: TarefaDescriptionContentProps) {
+  const { t } = useTranslation('tasksForm');
   const navigate = useNavigate();
   const [resolvedContent, setResolvedContent] = useState<TarefaDescriptionDoc | null>(
     richContent ?? null,
@@ -49,7 +51,8 @@ export function TarefaDescriptionContent({
     };
   }, [richContent]);
 
-  if (!ready) return <div className="text-sm text-muted-foreground">Carregando descrição...</div>;
+  if (!ready)
+    return <div className="text-sm text-muted-foreground">{t('description.loading')}</div>;
   if (resolvedContent) {
     const handleMentionClick = (event: MouseEvent<HTMLDivElement>) => {
       const target = event.target;

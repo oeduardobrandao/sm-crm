@@ -201,7 +201,7 @@ describe('comment thread store', () => {
     await expect(store.saveIgCaption(10, 'x', [])).rejects.toBeTruthy();
   });
 
-  it('addPostComment inserts with author_id from profile', async () => {
+  it('addPostComment replies through post_discussao_enviar with the thread id', async () => {
     const comment = {
       id: 2,
       thread_id: 5,
@@ -210,11 +210,12 @@ describe('comment thread store', () => {
       created_at: '2026-04-23T00:00:00Z',
       updated_at: null,
     };
-    mockedSupabase.__queueSupabaseResult('post_comments', 'insert', { data: comment, error: null });
-    const result = await store.addPostComment(5, 'Agreed');
+    mockedSupabase.__queueSupabaseRpc('post_discussao_enviar', { data: comment, error: null });
+    const result = await store.addPostComment(10, 5, 'Agreed');
     expect(result.content).toBe('Agreed');
-    const call = getCalls('post_comments', 'insert').at(-1)!;
-    expect(call.payload).toMatchObject({ thread_id: 5, author_id: 'user-1' });
+    expect(getCalls('post_comments', 'insert')).toHaveLength(0);
+    const call = getCalls('rpc:post_discussao_enviar', 'rpc').at(-1)!;
+    expect(call.payload).toEqual({ p_post_id: 10, p_content: 'Agreed', p_thread_id: 5 });
   });
 
   it('resolveCommentThread updates status', async () => {
@@ -235,64 +236,23 @@ describe('comment thread store', () => {
   });
 
   describe('mention sync', () => {
-    it('addPostComment syncs the created comment id and extracted membro ids', async () => {
-      const comment = {
-        id: 2,
-        thread_id: 5,
-        author_id: 'user-1',
-        content: 'Olha isso @[Ana](membro:5)',
-        created_at: '2026-04-23T00:00:00Z',
-        updated_at: null,
-      };
-      mockedSupabase.__queueSupabaseResult('post_comments', 'insert', {
-        data: comment,
+    it('addPostComment never calls sync_mentions client side (the RPC does it in its transaction)', async () => {
+      mockedSupabase.__queueSupabaseRpc('post_discussao_enviar', {
+        data: { id: 2, thread_id: 5, author_id: 'user-1', content: 'Olha @[Ana](membro:5)' },
         error: null,
       });
-      mockedSupabase.__queueSupabaseRpc('sync_mentions', { data: null, error: null });
 
-      await store.addPostComment(5, 'Olha isso @[Ana](membro:5)');
+      await store.addPostComment(10, 5, 'Olha @[Ana](membro:5)');
 
-      const call = getCalls('rpc:sync_mentions', 'rpc').at(-1)!;
-      expect(call.payload).toEqual({
-        p_host_type: 'post_comment',
-        p_host_id: 2,
-        p_membro_ids: [5],
-      });
+      expect(getCalls('rpc:sync_mentions', 'rpc')).toHaveLength(0);
     });
 
-    it('addPostComment syncs an empty array when the content has no mention token', async () => {
-      mockedSupabase.__queueSupabaseResult('post_comments', 'insert', {
-        data: { id: 3, thread_id: 5, author_id: 'user-1', content: 'sem mencao', updated_at: null },
-        error: null,
-      });
-      mockedSupabase.__queueSupabaseRpc('sync_mentions', { data: null, error: null });
-
-      await store.addPostComment(5, 'sem mencao');
-
-      const call = getCalls('rpc:sync_mentions', 'rpc').at(-1)!;
-      expect(call.payload).toEqual({ p_host_type: 'post_comment', p_host_id: 3, p_membro_ids: [] });
-    });
-
-    it('addPostComment does not reject when sync_mentions fails', async () => {
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-      mockedSupabase.__queueSupabaseResult('post_comments', 'insert', {
-        data: {
-          id: 4,
-          thread_id: 5,
-          author_id: 'user-1',
-          content: '@[Ana](membro:5)',
-          updated_at: null,
-        },
-        error: null,
-      });
-      mockedSupabase.__queueSupabaseRpc('sync_mentions', {
+    it('addPostComment rejects when the RPC errors', async () => {
+      mockedSupabase.__queueSupabaseRpc('post_discussao_enviar', {
         data: null,
         error: { message: 'boom' },
       });
-
-      await expect(store.addPostComment(5, '@[Ana](membro:5)')).resolves.toMatchObject({ id: 4 });
-      expect(consoleSpy).toHaveBeenCalled();
-      consoleSpy.mockRestore();
+      await expect(store.addPostComment(10, 5, 'x')).rejects.toBeTruthy();
     });
 
     it('createCommentThread syncs mentions against the created comment id, not the thread id', async () => {
@@ -348,13 +308,13 @@ describe('comment thread store', () => {
     });
 
     it('ignores non-membro tokens (post/cliente/tarefa) when syncing', async () => {
-      mockedSupabase.__queueSupabaseResult('post_comments', 'insert', {
-        data: { id: 6, thread_id: 5, author_id: 'user-1', content: '', updated_at: null },
-        error: null,
-      });
+      mockedSupabase.__queueSupabaseResult('post_comments', 'update', { data: null, error: null });
       mockedSupabase.__queueSupabaseRpc('sync_mentions', { data: null, error: null });
 
-      await store.addPostComment(5, '@[Post](post:1:2) @[Cliente](cliente:3) @[Membro](membro:8)');
+      await store.updatePostComment(
+        6,
+        '@[Post](post:1:2) @[Cliente](cliente:3) @[Membro](membro:8)',
+      );
 
       const call = getCalls('rpc:sync_mentions', 'rpc').at(-1)!;
       expect(call.payload).toEqual({

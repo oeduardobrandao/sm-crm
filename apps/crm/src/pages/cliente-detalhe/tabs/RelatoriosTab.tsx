@@ -6,6 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/context/AuthContext';
 import { updateCliente } from '@/store';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { Cell, GroupedList } from '@/components/mobile/GroupedList';
+import '../phone/clienteDetalhePhone.css';
 import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
 
 /**
@@ -59,6 +62,7 @@ export default function RelatoriosTab() {
   // send_report_email carries the extra DB trigger guard on top of the
   // module permission, so it needs both to be true.
   const canEditReportEmail = canEditClients && isOwnerOrAdmin;
+  const isPhone = !useIsDesktop(768);
 
   const handleToggle = async (
     field: 'send_report_email' | 'include_ai_analysis',
@@ -79,6 +83,69 @@ export default function RelatoriosTab() {
       toast.error(t('detail.reportPrefUpdateError'));
     }
   };
+
+  if (isPhone) {
+    // Same switches, same gates, as grouped rows (PLAN F3.2).
+    return (
+      <>
+        <GroupedList
+          className="phone-cli-wrap"
+          header={t('detail.monthlyReportTitle')}
+          footer={
+            <>
+              {t('detail.monthlyReportDesc')}
+              {!canEditClients && <span className="block mt-1">{t('detail.readOnlyHint')}</span>}
+              {canEditClients && !isOwnerOrAdmin && (
+                <span className="block mt-1">{t('detail.sendReportEmailAgentNote')}</span>
+              )}
+            </>
+          }
+        >
+          <Cell
+            label={t('detail.sendReportEmailTitle')}
+            subtitle={t('detail.sendReportEmailDesc')}
+            disabled={!canEditReportEmail}
+            switch={{
+              checked: cliente.send_report_email ?? false,
+              onCheckedChange: (checked) => {
+                if (!canEditReportEmail) return;
+                handleToggle(
+                  'send_report_email',
+                  checked,
+                  'detail.sendReportEmailOn',
+                  'detail.sendReportEmailOff',
+                );
+              },
+            }}
+          />
+          <Cell
+            label={t('detail.includeAiAnalysisTitle')}
+            subtitle={t('detail.includeAiAnalysisDesc')}
+            disabled={!canEditClients}
+            switch={{
+              checked: cliente.include_ai_analysis ?? true,
+              onCheckedChange: (checked) => {
+                if (!canEditClients) return;
+                handleToggle(
+                  'include_ai_analysis',
+                  checked,
+                  'detail.includeAiAnalysisOn',
+                  'detail.includeAiAnalysisOff',
+                );
+              },
+            }}
+          />
+        </GroupedList>
+        <GroupedList aria-label={t('detail.viewFullAnalytics')}>
+          <Cell
+            label={t('detail.viewFullAnalytics')}
+            chevron
+            onClick={() => navigate(`/analytics/${clienteId}`)}
+          />
+        </GroupedList>
+      </>
+    );
+  }
 
   return (
     <div id="sec-relatorio" className="card animate-up" style={{ marginBottom: '1.5rem' }}>

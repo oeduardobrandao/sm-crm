@@ -3,6 +3,7 @@
   "tooltip": "Gerencie todos os clientes e contratos ativos.",
   "csvTooltip": "Colunas: nome*, email, telefone, plano, valor_mensal, notion_page_url, data_pagamento",
   "newClient": "Novo Cliente",
+  "scopedNotice": "Você vê os clientes atribuídos a você.",
   "searchPlaceholder": "Buscar por nome ou e-mail...",
   "sort": {
     "monthlyValue": "Valor Mensal",
@@ -20,7 +21,8 @@
     "monthlyValue": "Valor Mensal (R$)",
     "notionUrl": "URL do Notion",
     "paymentDay": "Dia de Pagamento (1-31)",
-    "status": "Status"
+    "status": "Status",
+    "statusNoFinanceiro": "A mensalidade e o status agora ficam na aba Financeiro."
   },
   "deleteConfirm": "Remover este cliente?",
   "toast": {
@@ -36,6 +38,19 @@
     "dayRange": "Dia deve ser entre 1 e 31"
   },
   "openNotion": "Abrir no Notion",
+  "phone": {
+    "count_one": "{{count}} cliente",
+    "count_other": "{{count}} clientes",
+    "addMenu": "Novo cliente ou importar CSV",
+    "menuLabel": "Ações do cliente",
+    "sortedBy": "Ordenado por {{field}}",
+    "holdHint": "Toque e segure um cliente para Editar ou Remover.",
+    "emptyTitle": "Nenhum cliente ainda",
+    "emptyText": "Cadastre o primeiro cliente ou importe uma planilha CSV.",
+    "emptyFilteredText": "Nenhum cliente com esses filtros ou essa busca.",
+    "clearFilters": "Limpar filtros",
+    "notion": "Notion"
+  },
   "instagram": {
     "connectTitle": "Conectar Instagram",
     "connectDescription": "Conecte a conta Business do Instagram deste cliente para visualizar métricas, crescimento de seguidores e performance de posts diretamente no CRM.",
@@ -102,6 +117,7 @@
   "tiktok": {
     "connectTitle": "Conectar TikTok",
     "connectDescription": "Conecte a conta TikTok deste cliente para visualizar métricas, crescimento de seguidores e performance de vídeos diretamente no CRM.",
+    "connectAccountHint": "O TikTok usa a conta que estiver logada neste navegador. Antes de conectar, confira em tiktok.com se é a conta deste cliente.",
     "connectButton": "Conectar com o TikTok",
     "connecting": "Conectando...",
     "connectError": "Erro ao iniciar conexão: {{error}}",
@@ -147,6 +163,123 @@
     "postsError": "Erro ao carregar vídeos: {{error}}",
     "unknownError": "Erro desconhecido"
   },
+  "youtube": {
+    "connectTitle": "Conectar YouTube",
+    "connectDescription": "Conecte o canal do cliente para ver inscritos, visualizações e tempo assistido dos Shorts e vídeos, e para publicar Shorts direto do Mesaas.",
+    "connectBullet1": "Entre com a conta Google dona do canal.",
+    "connectBullet2": "Se a conta tiver mais de um canal, o Google pede para escolher qual.",
+    "connectButton": "Conectar com o Google",
+    "connecting": "Conectando...",
+    "connectError": "Não foi possível iniciar a conexão com o Google. Tente de novo.",
+    "featureDisabled": "O YouTube não está disponível no seu plano.",
+    "title": "YouTube",
+    "connected": "Conectado",
+    "subscribers": "Inscritos",
+    "totalViews": "Visualizações totais",
+    "videos": "Vídeos",
+    "channelAvatarAlt": "Foto do canal {{name}}",
+    "delayNote": "O YouTube libera os números com 2 a 3 dias de atraso.",
+    "account": "Conta Google: {{email}}",
+    "disconnectTooltip": "Desconectar",
+    "disconnectTitle": "Desconectar YouTube?",
+    "disconnectBody": "O canal deixa de ser sincronizado e os dados dele são apagados do Mesaas em até 7 dias.",
+    "disconnectConfirm": "Desconectar",
+    "disconnectCancel": "Cancelar",
+    "disconnectSuccess": "YouTube desconectado.",
+    "disconnectError": "Não foi possível desconectar o YouTube. Tente de novo.",
+    "revokedBanner": "A autorização do Google expirou. Reconecte a conta para voltar a sincronizar.",
+    "reconnect": "Reconectar",
+    "loadError": "Não foi possível carregar o YouTube deste cliente."
+  },
+  "gmn": {
+    "title": "Google Meu Negócio",
+    "connectTitle": "Conectar Google Meu Negócio",
+    "connectDescription": "Veja quantas pessoas encontraram o perfil no Google e no Maps, quantas ligaram, pediram rota ou abriram o site, e acompanhe as avaliações de cada unidade.",
+    "connectBullet1": "Entre com uma conta Google que seja proprietária ou administradora do perfil.",
+    "connectBullet2": "Depois você escolhe quais unidades são deste cliente.",
+    "connectButton": "Conectar com o Google",
+    "connecting": "Conectando...",
+    "connectError": "Não foi possível iniciar a conexão com o Google. Tente de novo.",
+    "featureDisabled": "O Google Meu Negócio não está disponível no seu plano.",
+    "loadError": "Não foi possível carregar o Google Meu Negócio deste cliente.",
+    "unitsBadge_one": "{{count}} unidade",
+    "unitsBadge_other": "{{count}} unidades",
+    "account": "Conta Google: {{email}}",
+    "reviewsCount_one": "{{count}} avaliação",
+    "reviewsCount_other": "{{count}} avaliações",
+    "noUnits": "Nenhuma unidade vinculada a este cliente ainda.",
+    "chooseUnits": "Escolher unidades",
+    "noReviews": "Sem avaliações",
+    "manageUnits": "Gerenciar unidades",
+    "useOtherAccount": "Usar outra conta Google",
+    "revokedBanner": "A autorização do Google expirou. Reconecte a conta para voltar a sincronizar.",
+    "reconnect": "Reconectar",
+    "dialog": {
+      "title": "Quais unidades são da {{cliente}}?",
+      "intro_one": "Encontramos {{count}} perfil na conta {{email}}. Marque os que pertencem a este cliente. Dá para mudar depois em Gerenciar unidades.",
+      "intro_other": "Encontramos {{count}} perfis na conta {{email}}. Marque os que pertencem a este cliente. Dá para mudar depois em Gerenciar unidades.",
+      "account": "Conta Google",
+      "loading": "Buscando as unidades no Google...",
+      "empty": "Nenhum perfil encontrado nesta conta Google.",
+      "retry": "Tentar de novo",
+      "inUse": "Em uso",
+      "inUseHint": "Já vinculada ao cliente {{nome}}. Uma unidade pertence a um cliente só.",
+      "unverified": "Não verificado",
+      "unverifiedHint": "Perfil ainda não verificado pelo Google, que não libera métricas para ele.",
+      "otherAccountHint": "Vinculada por outra conta Google. Gerencie pela conta que a vinculou.",
+      "note": "Puxamos os últimos 18 meses de cada unidade marcada. Pode levar alguns minutos na primeira vez.",
+      "truncatedNote": "Mostramos só parte das unidades desta conta Google. As unidades já vinculadas a este cliente aparecem sempre.",
+      "cancel": "Cancelar",
+      "submit_one": "Vincular {{count}} unidade",
+      "submit_other": "Vincular {{count}} unidades",
+      "submitNone": "Desvincular todas",
+      "saving": "Salvando...",
+      "saved_one": "{{count}} unidade vinculada.",
+      "saved_other": "{{count}} unidades vinculadas.",
+      "savedNone": "Unidades desvinculadas.",
+      "errors": {
+        "feature_disabled": "O Google Meu Negócio não está disponível no seu plano.",
+        "gmn_not_approved": "O Google ainda não liberou o acesso ao Google Meu Negócio para o Mesaas.",
+        "reconnect": "A autorização do Google expirou. Reconecte a conta para continuar.",
+        "location_unavailable": "Uma das unidades marcadas não está mais disponível. A lista foi atualizada, confira a seleção.",
+        "rate_limited": "Muitas tentativas. Tente de novo em instantes.",
+        "unknown": "Não foi possível falar com o Google agora. Tente de novo.",
+        "revoked": "A autorização do Google expirou. Reconecte a conta para continuar.",
+        "not_connected": "Este cliente não está mais conectado ao Google. Atualize a página.",
+        "forbidden": "Você não tem permissão para isso neste workspace.",
+        "not_found": "Não encontramos este item. Atualize a página.",
+        "conflict": "Algo mudou enquanto salvávamos. Tente de novo."
+      }
+    },
+    "disconnectTitle": "Desconectar Google Meu Negócio?",
+    "disconnectBody": "As unidades deste cliente deixam de ser sincronizadas e os dados delas são apagados do Mesaas em até 30 dias.",
+    "disconnectConfirm": "Desconectar",
+    "disconnectCancel": "Cancelar",
+    "disconnectSuccess": "Google Meu Negócio desconectado.",
+    "disconnectError": "Não foi possível desconectar o Google Meu Negócio. Tente de novo."
+  },
+  "google": {
+    "manageAccounts": "Gerenciar contas",
+    "disconnectFromClient": "Desconectar deste cliente"
+  },
+  "googleOAuth": {
+    "ytConnected": "YouTube conectado.",
+    "ytError": {
+      "denied": "Conexão cancelada no Google.",
+      "missing_scope": "Marque todas as permissões pedidas pelo Google e tente de novo.",
+      "no_refresh_token": "O Google não liberou o acesso contínuo. Tente conectar de novo.",
+      "no_channel": "Esta conta Google não tem canal do YouTube.",
+      "channel_in_use": "Este canal já está vinculado ao cliente {{nome}}.",
+      "channel_in_use_unnamed": "Este canal já está vinculado a outro cliente deste workspace.",
+      "unknown": "Não foi possível conectar o YouTube."
+    },
+    "gmnError": {
+      "denied": "Conexão cancelada no Google.",
+      "missing_scope": "Marque todas as permissões pedidas pelo Google e tente de novo.",
+      "no_refresh_token": "O Google não liberou o acesso contínuo. Tente conectar de novo.",
+      "unknown": "Não foi possível conectar o Google Meu Negócio."
+    }
+  },
   "detail": {
     "igNotBusiness": "A conta Instagram não é uma conta Business. Reconecte com uma conta Business ou Creator.",
     "igError": "Ocorreu um erro ao conectar a conta Instagram. Tente novamente.",
@@ -165,6 +298,9 @@
     "igOffMetaOk": "Entendi",
     "ttConnected": "Conta do TikTok conectada.",
     "ttError": "Ocorreu um erro ao conectar a conta TikTok. Tente novamente.",
+    "ttAlreadyLinked": "A conta {{conta}} já está conectada ao cliente {{nome}}. O TikTok usou a conta que está logada neste navegador. Saia dela em tiktok.com, entre com a conta deste cliente e conecte de novo.",
+    "ttAlreadyLinkedUnnamed": "A conta {{conta}} já está conectada a outro cliente deste workspace. O TikTok usou a conta que está logada neste navegador. Saia dela em tiktok.com, entre com a conta deste cliente e conecte de novo.",
+    "ttAlreadyLinkedThisAccount": "escolhida",
     "ttSyncing": "Sincronizando dados do TikTok...",
     "noTitle": "Sem título",
     "standalonePost": "Post avulso",
@@ -261,8 +397,10 @@
     "posted": "Postado",
     "scheduled": "Agendado",
     "deliveryHistory": "Histórico de Entregas",
+    "postCount_zero": "{{count}} posts",
     "postCount_one": "{{count}} post",
     "postCount_other": "{{count}} posts",
+    "dayCount_zero": "{{count}} dias",
     "dayCount_one": "{{count}} dia",
     "dayCount_other": "{{count}} dias",
     "concluded": "Concluído",
@@ -398,7 +536,26 @@
       "revisao_interna": "Em revisão",
       "enviado_cliente": "Enviado",
       "correcao_cliente": "Correção"
-    }
+    },
+    "access": {
+      "noAccessTitle": "Sem acesso a este workspace",
+      "noAccessText": "Você não tem mais acesso a este workspace. Fale com o proprietário se acha que isso é um engano.",
+      "checkFailedTitle": "Não foi possível confirmar seu acesso",
+      "checkFailedText": "Houve um problema ao verificar seu acesso a este workspace. Isso costuma ser temporário — tente novamente.",
+      "retry": "Tentar novamente"
+    },
+    "addrCepValue": "CEP: {{cep}}",
+    "addressMenuLabel": "Ações do endereço {{address}}",
+    "dateMenuLabel": "Ações da data {{title}}",
+    "linkMenuLabel": "Ações do link {{title}}",
+    "contractRange": "{{start}} a {{end}}",
+    "railPrevious": "Ver anteriores",
+    "railNext": "Ver mais",
+    "calendarDayWithPosts_one": "{{day}} de {{month}}, {{count}} post",
+    "calendarDayWithPosts_other": "{{day}} de {{month}}, {{count}} posts",
+    "notInformed": "Não informado",
+    "fileOpenError": "Erro ao abrir arquivo",
+    "socialTabs": "Redes sociais"
   },
   "connect": {
     "title": "Conectar Instagram",
@@ -440,5 +597,85 @@
     "revokeConfirm": "Revogar este link? Quem já o recebeu não vai mais conseguir usá-lo.",
     "activeUntil": "Link de conexão ativo até {{date}}",
     "generateError": "Não foi possível gerar o link. Tente novamente."
+  },
+  "table": {
+    "client": "Cliente",
+    "contact": "Contato",
+    "status": "Status"
+  },
+  "emptyList": "Nenhum cliente encontrado.",
+  "filters": {
+    "title": "Filtros",
+    "description": "Filtre e ordene os clientes"
+  },
+  "avatar": {
+    "tooLarge": "Arquivo deve ser menor que 2MB.",
+    "updated": "Foto atualizada!",
+    "uploadError": "Erro ao enviar foto.",
+    "removed": "Foto removida.",
+    "removeError": "Erro ao remover foto.",
+    "changeAria": "Alterar foto do cliente",
+    "removeAria": "Remover foto do cliente",
+    "removeTitle": "Remover a foto do cliente?",
+    "removeDescription": "O Hub volta a mostrar o avatar do Instagram (se houver) ou as iniciais do cliente."
+  },
+  "editDialog": {
+    "standalonePlatforms": "Plataformas dos posts avulsos"
+  },
+  "mensalidadeDialog": {
+    "title": "Mensalidade",
+    "description": "Vale do período escolhido em diante.",
+    "periodsLoadError": "Não foi possível carregar os períodos.",
+    "valueError": "Informe um valor igual ou maior que zero.",
+    "dayError": "Informe um dia de 1 a 31.",
+    "periodRequired": "Escolha o período.",
+    "saved": "Mensalidade salva.",
+    "saveError": "Erro ao salvar a mensalidade.",
+    "valueLabel": "Valor mensal",
+    "dayLabel": "Dia de pagamento",
+    "statusLabel": "Status",
+    "closedHint": "As atribuições da equipe terminam neste período.",
+    "validFrom": "Vale a partir de"
+  },
+  "equipeCard": {
+    "saved": "Equipe atualizada.",
+    "saveError": "Erro ao salvar a equipe.",
+    "title": "Equipe neste cliente",
+    "totalCost": "Custo total",
+    "pausedHint": "Cliente pausado: a equipe fica guardada e volta a contar quando ele for reativado.",
+    "exclusive": "Só este cliente",
+    "swapAria": "Trocar {{name}}",
+    "swap": "Trocar",
+    "pickAria": "Escolher pessoa em {{role}}",
+    "pick": "+ Escolher pessoa",
+    "empty": "Ninguém nesta função."
+  },
+  "financeiroV2": {
+    "loadError": "Não foi possível carregar o financeiro deste cliente.",
+    "monthlyFee": "Mensalidade",
+    "dueDay": "Vence todo dia {{day}}",
+    "editMonthlyFee": "Editar mensalidade",
+    "teamCost": "Custo da equipe",
+    "peopleServing_zero": "{{count}} pessoas atendem",
+    "peopleServing_one": "{{count}} pessoa atende",
+    "peopleServing_other": "{{count}} pessoas atendem",
+    "monthlyProfit": "Lucro mensal",
+    "annualProfit": "LL anual {{value}}",
+    "margin": "Margem",
+    "agencyTarget": "Meta da agência: {{value}}%",
+    "closedInPeriod": "Cliente encerrado neste período.",
+    "notInPeriod": "Este cliente não entra no período atual."
+  },
+  "sectionsIndex": {
+    "payment": "Pagamento",
+    "delivery": "Entrega",
+    "moreActions": "Mais ações do cliente",
+    "summary": "Resumo do cliente"
+  },
+  "phoneRows": {
+    "actions": "Ações"
+  },
+  "phoneChrome": {
+    "backToClient": "Voltar para {{name}}"
   }
 }

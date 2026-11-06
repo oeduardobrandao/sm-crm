@@ -1,4 +1,9 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Desktop layout by default; the phone describe below flips it (jsdom's matchMedia is
+// false, so without a mock every suite would render the phone branch).
+const { desktop } = vi.hoisted(() => ({ desktop: { value: true } }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, Outlet } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -30,6 +35,10 @@ vi.mock('@/store', async (importOriginal) => ({
 }));
 
 vi.mock('@/context/AuthContext', () => ({ useAuth: vi.fn() }));
+// Financeiro v2 is off in this suite (the v2 tab has its own: FinanceiroTab.v2.test.tsx).
+vi.mock('@/hooks/useFinanceiroV2', () => ({
+  useFinanceiroV2: () => ({ ativo: false, isLoading: false }),
+}));
 
 import { useAuth } from '@/context/AuthContext';
 import FinanceiroTab from '../FinanceiroTab';
@@ -312,5 +321,42 @@ describe('FinanceiroTab', () => {
       .map((q) => q.queryKey[0])
       .sort();
     expect(keys).toEqual(['contratos', 'transacoes']);
+  });
+});
+
+describe('FinanceiroTab no celular', () => {
+  beforeEach(() => {
+    desktop.value = false;
+  });
+  afterEach(() => {
+    desktop.value = true;
+  });
+
+  it("lists this client's contracts and transactions as grouped rows, values formatted", async () => {
+    setAuth(true);
+    getContratosMock.mockResolvedValue(CONTRATOS);
+    getTransacoesMock.mockResolvedValue(TRANSACOES);
+    renderTab();
+
+    expect(await screen.findByText('Contrato Anual')).toBeInTheDocument();
+    expect(screen.queryByText('Contrato de outro cliente')).not.toBeInTheDocument();
+    expect(screen.queryByText('Transação de outro cliente')).not.toBeInTheDocument();
+    expect(await screen.findByText('Mensalidade Agosto')).toBeInTheDocument();
+    expect(screen.getByText('Reembolso')).toBeInTheDocument();
+    expect(screen.getByText('+R$ 300,00')).toBeInTheDocument();
+    expect(screen.getByText('-R$ 200,00')).toBeInTheDocument();
+    // No desktop tables on phones.
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  it('masks every value and fetches nothing when canSeeFinancials is false', async () => {
+    setAuth(false);
+    renderTab();
+
+    await waitFor(() => expect(screen.getAllByText(MASKED_BRL).length).toBe(3));
+    expect(getContratosMock).not.toHaveBeenCalled();
+    expect(getTransacoesMock).not.toHaveBeenCalled();
+    expect(screen.getByText('Nenhum contrato cadastrado')).toBeInTheDocument();
+    expect(screen.getByText('Nenhuma transação registrada')).toBeInTheDocument();
   });
 });

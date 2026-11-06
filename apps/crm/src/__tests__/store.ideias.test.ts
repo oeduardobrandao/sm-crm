@@ -304,6 +304,42 @@ describe('store ideias', () => {
       });
     });
 
+    it('createIdeia envia origem_sugestao_id', async () => {
+      mockedSupabase.__queueSupabaseResult('ideias', 'insert', {
+        data: { id: 'ideia-s' },
+        error: null,
+      });
+      await store.createIdeia({
+        cliente_id: 5,
+        titulo: 'T',
+        descricao: 'D',
+        links: [],
+        visivel_no_hub: false,
+        autor_membro_id: 9,
+        origem_sugestao_id: 'sug-1',
+      });
+      const call = getCalls('ideias', 'insert').at(-1)!;
+      expect((call.payload as Record<string, unknown>).origem_sugestao_id).toBe('sug-1');
+    });
+
+    it('23505 vira DuplicateSuggestionError', async () => {
+      mockedSupabase.__queueSupabaseResult('ideias', 'insert', {
+        data: null,
+        error: { message: 'duplicate key', code: '23505' },
+      });
+      await expect(
+        store.createIdeia({
+          cliente_id: 5,
+          titulo: 'T',
+          descricao: 'D',
+          links: [],
+          visivel_no_hub: false,
+          autor_membro_id: 9,
+          origem_sugestao_id: 'sug-1',
+        }),
+      ).rejects.toBeInstanceOf(store.DuplicateSuggestionError);
+    });
+
     it('throws on insert error', async () => {
       mockedSupabase.__queueSupabaseResult('ideias', 'insert', {
         data: null,
@@ -319,6 +355,28 @@ describe('store ideias', () => {
           autor_membro_id: null,
         }),
       ).rejects.toThrow('boom');
+    });
+  });
+
+  describe('getSavedSuggestionIds', () => {
+    it('consulta só os ids pedidos e devolve Set', async () => {
+      mockedSupabase.__queueSupabaseResult('ideias', 'select', {
+        data: [{ origem_sugestao_id: 'a' }, { origem_sugestao_id: null }],
+        error: null,
+      });
+      const set = await store.getSavedSuggestionIds(['a', 'b']);
+      expect([...set]).toEqual(['a']);
+      const call = getCalls('ideias', 'select').at(-1)!;
+      expect(call.modifiers).toContainEqual({
+        method: 'in',
+        args: ['origem_sugestao_id', ['a', 'b']],
+      });
+    });
+
+    it('lista vazia devolve Set vazio sem consulta', async () => {
+      const before = getCalls('ideias', 'select').length;
+      expect((await store.getSavedSuggestionIds([])).size).toBe(0);
+      expect(getCalls('ideias', 'select').length).toBe(before);
     });
   });
 

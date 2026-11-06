@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Outlet } from 'react-router-dom';
 import i18n from 'i18next';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -69,6 +69,29 @@ describe('App', () => {
     expect(
       await screen.findByRole('region', { name: i18n.t('cookies.banner.title') }),
     ).toBeInTheDocument();
+  });
+
+  it('switches to the saved language after the first render', async () => {
+    await i18n.changeLanguage('pt');
+    localStorage.setItem('mesaas-language', 'en');
+    try {
+      renderApp('/');
+      await waitFor(() => expect(i18n.language).toBe('en'));
+    } finally {
+      await i18n.changeLanguage('pt');
+    }
+  });
+
+  it('keeps the current language when it already matches the saved one', async () => {
+    await i18n.changeLanguage('pt');
+    const spy = vi.spyOn(i18n, 'changeLanguage');
+    try {
+      renderApp('/');
+      expect(await screen.findByText('Landing page')).toBeInTheDocument();
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('renders protected dashboard routes inside the app layout', async () => {

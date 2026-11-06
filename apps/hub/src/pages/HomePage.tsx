@@ -4,6 +4,7 @@ import { ChevronRight, CheckSquare, ArrowRight, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
+import { compactHubToken } from '../lib/hubLinks';
 import { hubAgendaPeriodoQuery, hubPostsQuery, hubPostsRangeQuery } from '../queries';
 import type { HubAgendaItem } from '../types';
 import { HubDialog } from '../components/ui/HubDialog';
@@ -40,7 +41,7 @@ export function HomePage() {
   const { workspace } = useParams<{ workspace: string }>();
   const navigate = useNavigate();
   const look = useHubLook();
-  const base = `/${workspace}/hub/${token}`;
+  const base = `/${workspace}/hub/${compactHubToken(token)}`;
 
   const { data, isLoading } = useQuery(hubPostsQuery(token));
 

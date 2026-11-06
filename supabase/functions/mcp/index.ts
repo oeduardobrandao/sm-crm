@@ -10,7 +10,9 @@ import { publicOrigin, resolveCtx } from "../_shared/mcp-oauth.ts";
 import { effectivePlanLimit } from "../_shared/entitlements-rpc.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
 import { headObject, signPutUrl } from "../_shared/r2.ts";
+import { appsEnabledFor, r2OriginFrom } from "./apps.ts";
 import { registerTools } from "./tools.ts";
+import { clientScopeGetter } from "./queries.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -80,7 +82,17 @@ Deno.serve(async (req) => {
   const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
-  const ctx = await resolveCtx(db, rawToken, new Date().toISOString());
+  // A failed lookup (e.g. the workspace_members role read) throws: fail closed with a generic 500.
+  let ctx: Awaited<ReturnType<typeof resolveCtx>>;
+  try {
+    ctx = await resolveCtx(db, rawToken, new Date().toISOString());
+  } catch (e) {
+    console.error("[mcp] auth lookup failed", e);
+    return new Response(JSON.stringify({ error: "Internal error." }), {
+      status: 500,
+      headers: { ...cors, "Content-Type": "application/json" },
+    });
+  }
   if (!ctx) {
     // RFC 9728 §5.1: advertise the resource metadata so OAuth clients can discover the AS.
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -125,6 +137,18 @@ Deno.serve(async (req) => {
     signPutUrl: (key: string, mime: string, size: number) => signPutUrl(key, mime, size),
     headObject: (key: string) => headObject(key),
     storageQuota: (contaId: string) => effectivePlanLimit(db as never, contaId, "storage_quota_bytes"),
+    apps: {
+      enabled: appsEnabledFor(ctx.conta_id, {
+        MCP_APPS: Deno.env.get("MCP_APPS"),
+        MCP_APPS_PILOT_CONTAS: Deno.env.get("MCP_APPS_PILOT_CONTAS"),
+      }),
+      oauth: ctx.key_id.startsWith("oauth:"),
+      r2Origin: r2OriginFrom(Deno.env.get("R2_ACCOUNT_ID")),
+    },
+    resolveDns: (hostname, recordType) => Deno.resolveDns(hostname, recordType),
+    fetchUrl: (url, init) => fetch(url, init),
+    // Acesso por cliente: loaded at most once per request, only by tools that touch clients.
+    clientScope: clientScopeGetter(db, ctx),
   });
 
   const transport = new WebStandardStreamableHTTPServerTransport();

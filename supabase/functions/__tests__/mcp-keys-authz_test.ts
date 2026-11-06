@@ -1,6 +1,12 @@
 import { assert, assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import { hasPermissionFor } from "../_shared/permissions.ts";
+import {
+  MCP_AGENT_PRESET,
+  MCP_ALLOWED_SCOPES,
+  ownerOnlyScopeViolation,
+  validateScopes,
+} from "../_shared/mcp-token.ts";
 
 // mcp-keys/index.ts wraps its handler in Deno.serve, which no test in this
 // suite invokes directly (it would bind a real network listener). This file
@@ -157,4 +163,41 @@ Deno.test("a role with NEITHER ver nor editar is refused even on 'list'", async 
   const svc = createSupabaseQueryMock();
   svc.queueRpc("has_permission_for", { data: false, error: null });
   assertEquals((await gate(svc, "u1", { active_workspace_id: "ws-a" }, "list")).status, 403);
+});
+
+// --- financeiro:* scopes: owner-only issuance (Task 7) ---
+
+Deno.test("financeiro scopes are allowlisted but never in the agent preset", () => {
+  for (const s of ["financeiro:read", "financeiro:write"]) {
+    assert((MCP_ALLOWED_SCOPES as readonly string[]).includes(s), `${s} in allowlist`);
+    assert(!(MCP_AGENT_PRESET as readonly string[]).includes(s), `${s} NOT in agent preset`);
+  }
+  assert(validateScopes(["financeiro:read", "financeiro:write"]), "validateScopes accepts them");
+});
+
+Deno.test("ownerOnlyScopeViolation: only the owner may hold a financeiro scope", () => {
+  for (const scopes of [["financeiro:read"], ["financeiro:write"], ["posts:read", "financeiro:read"]]) {
+    assertEquals(ownerOnlyScopeViolation(scopes, "admin"), true);
+    assertEquals(ownerOnlyScopeViolation(scopes, "agent"), true);
+    assertEquals(ownerOnlyScopeViolation(scopes, null), true);
+    assertEquals(ownerOnlyScopeViolation(scopes, undefined), true);
+    assertEquals(ownerOnlyScopeViolation(scopes, "owner"), false);
+  }
+  assertEquals(ownerOnlyScopeViolation(["posts:read", "clientes:write"], "agent"), false);
+  assertEquals(ownerOnlyScopeViolation(["posts:read"], null), false);
+});
+
+Deno.test("mcp-keys create: owner check uses the membership role of the SAME contaId, before the insert", () => {
+  assertMatch(source, /memberRole/);
+  assertMatch(source, /ownerOnlyScopeViolation/);
+  assertMatch(
+    source,
+    /ownerOnlyScopeViolation\(body\.scopes,\s*await memberRole\(svc,\s*user\.id,\s*contaId\)\)/,
+  );
+  assertMatch(source, /error:\s*["']owner_only_scope["'][^)]*400/);
+  const violationIdx = source.indexOf("ownerOnlyScopeViolation(body.scopes");
+  const insertIdx = source.indexOf('from("mcp_api_keys").insert');
+  const validateIdx = source.indexOf("validateScopes(body.scopes)");
+  assert(validateIdx > -1 && violationIdx > validateIdx, "owner check runs after scope validation");
+  assert(insertIdx > violationIdx, "owner check runs before the insert");
 });

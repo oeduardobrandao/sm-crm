@@ -1,5 +1,12 @@
 import { describe, expect, test } from 'vitest';
-import { parsePost, readingMinutes, splitFrontmatter } from '../blog.schema';
+import {
+  parseDbPost,
+  parsePost,
+  readingMinutes,
+  splitFrontmatter,
+  validateInfograficos,
+  extractInfograficos,
+} from '../blog.schema';
 import { blogPostRouteMeta, relatedPosts, sortPosts } from '../blog';
 
 const TITLE = 'Mesaas ou Aprova Post: qual usar na sua agência em 2026';
@@ -65,8 +72,12 @@ describe('parsePost', () => {
     expect(() => parsePost(raw({ title: 'Curto demais' }), 'curto')).toThrow(/curto\.md/);
   });
 
+  test('accepts the news category', () => {
+    expect(parsePost(raw({ category: 'noticia' }), 'x').category).toBe('noticia');
+  });
+
   test('rejects an unknown category', () => {
-    expect(() => parsePost(raw({ category: 'noticia' }), 'x')).toThrow(/x\.md/);
+    expect(() => parsePost(raw({ category: 'ia' }), 'x')).toThrow(/x\.md/);
   });
 
   test('prefixes a missing-frontmatter failure with the file path', () => {
@@ -150,5 +161,305 @@ describe('frontmatter contract strictness', () => {
     expect(parsePost(raw({ date: '2026-07-25', updated: '2026-08-02' }), 'x').updated).toBe(
       '2026-08-02',
     );
+  });
+});
+
+const DB_META = {
+  slug: 'instagram-muda-algoritmo',
+  status: 'publicado',
+  category: 'noticia',
+  title: TITLE,
+  h1: 'O Instagram mudou o algoritmo dos Reels',
+  description: DESC,
+  lede: 'O que muda para quem publica para clientes.',
+  date: '2026-10-20',
+  updated: '2026-10-21',
+  author: 'equipe',
+  cover: {
+    url: 'https://cdn.example.com/capa.jpg',
+    alt: 'Celular com o Instagram aberto',
+    credit: 'Fulano / Unsplash',
+    license: 'Unsplash License',
+    source_url: 'https://unsplash.com/photos/abc',
+  },
+  images: [
+    {
+      key: 'grafico-1',
+      url: 'https://cdn.example.com/grafico.jpg',
+      alt: 'Gráfico de alcance',
+      credit: 'Meta',
+      license: 'Uso editorial',
+      source_url: 'https://about.fb.com/news',
+    },
+  ],
+  sources: [
+    {
+      title: 'Anúncio oficial',
+      publisher: 'Meta',
+      url: 'https://about.fb.com/news/x',
+      published_at: '2026-10-19',
+    },
+  ],
+  featureSlug: 'aprovacao-de-post',
+  revision: 3,
+  readingMinutes: 4,
+};
+
+describe('parseDbPost', () => {
+  test('round-trips a fixture with every field', () => {
+    const post = parseDbPost(DB_META, 'Corpo.');
+    const { status: _status, ...rest } = DB_META;
+    expect(post).toEqual({ ...rest, body: 'Corpo.' });
+  });
+
+  test('keeps a null body (lazy) and defaults updated to date', () => {
+    const { updated: _u, ...meta } = DB_META;
+    const post = parseDbPost(meta, null);
+    expect(post.body).toBeNull();
+    expect(post.updated).toBe('2026-10-20');
+  });
+
+  test.each([
+    ['empty sources', { sources: [] }],
+    ['image without credit', { images: [{ ...DB_META.images[0], credit: '' }] }],
+    ['unknown featureSlug', { featureSlug: 'financeiro' }],
+    ['draft status', { status: 'rascunho' }],
+    ['non-http source url', { sources: [{ ...DB_META.sources[0], url: 'ftp://x.com/a' }] }],
+    ['non-http image url', { images: [{ ...DB_META.images[0], url: 'javascript:alert(1)' }] }],
+    ['relative image url', { images: [{ ...DB_META.images[0], url: '/x.jpg' }] }],
+    ['non-http cover url', { cover: { ...DB_META.cover, url: 'data:image/png;base64,AAAA' } }],
+    ['unknown key', { autor: 'equipe' }],
+    ['zero reading minutes', { readingMinutes: 0 }],
+  ])('rejects %s, naming the slug', (_label, override) => {
+    expect(() => parseDbPost({ ...DB_META, ...override }, 'x')).toThrow(
+      /^blog-db\/instagram-muda-algoritmo:/,
+    );
+  });
+
+  test('names an unknown slug when meta is not an object', () => {
+    expect(() => parseDbPost(null, 'x')).toThrow(/^blog-db\/\(desconhecido\):/);
+  });
+});
+
+function fence(value: unknown): string {
+  return '```infografico\n' + (typeof value === 'string' ? value : JSON.stringify(value)) + '\n```';
+}
+
+const BARRAS = {
+  tipo: 'barras',
+  titulo: 'Alcance por formato',
+  fonte: 1,
+  itens: [
+    { rotulo: 'Reels', valor: 42, exibicao: '42%' },
+    { rotulo: 'Carrossel', valor: 30 },
+  ],
+};
+
+describe('extractInfograficos', () => {
+  test('finds each fence in order, zero-based, tolerating CRLF', () => {
+    const body = `Texto\r\n\r\n${fence(BARRAS)}\r\n\nMais\n\n${fence('{nao e json')}\n`.replace(
+      '```infografico\n',
+      '```infografico  \r\n',
+    );
+    const found = extractInfograficos(body);
+    expect(found.map((f) => f.index)).toEqual([0, 1]);
+    expect(found[0].value).toEqual(BARRAS);
+    expect(found[1].error).toBeDefined();
+  });
+
+  test('an unclosed fence runs to the end of the body', () => {
+    expect(extractInfograficos(`Texto\n\n\`\`\`infografico\n${JSON.stringify(BARRAS)}\n`)).toEqual([
+      { index: 0, value: BARRAS },
+    ]);
+  });
+
+  test('does not see an infographic quoted inside another code block', () => {
+    const body = '````md\n```infografico\n{}\n```\n````';
+    expect(extractInfograficos(body)).toEqual([]);
+  });
+
+  test('a backtick info string with a backtick is not a fence', () => {
+    expect(extractInfograficos('```infografico `x`\n{}\n```')).toEqual([]);
+  });
+
+  test('ignores other code fences', () => {
+    expect(extractInfograficos('```json\n{}\n```')).toEqual([]);
+  });
+});
+
+describe('validateInfograficos', () => {
+  test('accepts a valid barras', () => {
+    expect(validateInfograficos(fence(BARRAS), 2)).toEqual([]);
+  });
+
+  test('accepts valid numeros and etapas', () => {
+    const numeros = {
+      tipo: 'numeros',
+      titulo: 'Em números',
+      fonte: 0,
+      itens: [
+        { valor: '2 bi', legenda: 'usuários ativos' },
+        { valor: '38%', legenda: 'do tempo em Reels' },
+      ],
+    };
+    const etapas = {
+      tipo: 'etapas',
+      titulo: 'Como aprovar',
+      itens: [{ rotulo: 'Envie o link' }, { rotulo: 'Cliente revisa' }, { rotulo: 'Aprovado' }],
+    };
+    expect(validateInfograficos(`${fence(numeros)}\n\n${fence(etapas)}`, 1)).toEqual([]);
+  });
+
+  test('flags fonte outside sources', () => {
+    expect(validateInfograficos(fence({ ...BARRAS, fonte: 3 }), 2)).toEqual([
+      'infografico[0].fonte: índice 3 fora de sources (0..1)',
+    ]);
+  });
+
+  test('indexes the second infographic as [1]', () => {
+    const body = `${fence(BARRAS)}\n\n${fence({ ...BARRAS, fonte: 3 })}`;
+    expect(validateInfograficos(body, 2)).toEqual([
+      'infografico[1].fonte: índice 3 fora de sources (0..1)',
+    ]);
+  });
+
+  test('flags fonte when the post has no sources', () => {
+    expect(validateInfograficos(fence({ ...BARRAS, fonte: 0 }), 0)).toEqual([
+      'infografico[0].fonte: índice 0 fora de sources (nenhuma fonte)',
+    ]);
+  });
+
+  test('flags empty itens', () => {
+    expect(validateInfograficos(fence({ ...BARRAS, itens: [] }), 2)).toEqual([
+      'infografico[0].itens: mínimo de 2 itens',
+    ]);
+  });
+
+  test('flags a text valor on barras', () => {
+    const bad = { ...BARRAS, itens: [{ rotulo: 'Reels', valor: 'dez' }, BARRAS.itens[1]] };
+    expect(validateInfograficos(fence(bad), 2)).toEqual([
+      'infografico[0].itens[0].valor: deve ser número',
+    ]);
+  });
+
+  test('flags invalid JSON inside the fence', () => {
+    expect(validateInfograficos(fence('{"tipo": "barras",'), 2)).toEqual([
+      'infografico[0]: JSON inválido',
+    ]);
+  });
+
+  test('flags an unknown tipo', () => {
+    expect(validateInfograficos(fence({ ...BARRAS, tipo: 'pizza' }), 2)).toEqual([
+      'infografico[0].tipo: deve ser barras, numeros, etapas ou svg',
+    ]);
+  });
+
+  test('flags an unknown key and a too-long title', () => {
+    const bad = { ...BARRAS, titulo: 'x'.repeat(91), cor: 'azul' };
+    expect(validateInfograficos(fence(bad), 2).sort()).toEqual([
+      'infografico[0].titulo: máximo de 90 caracteres',
+      'infografico[0]: chave desconhecida: cor',
+    ]);
+  });
+
+  test.each([
+    ['a tilde fence', (json: string) => `~~~infografico\n${json}\n~~~`],
+    ['4 backticks', (json: string) => `\`\`\`\`infografico\n${json}\n\`\`\`\``],
+    ['a 2-space indent', (json: string) => `  \`\`\`infografico\n${json}\n  \`\`\``],
+    ['an info string after the word', (json: string) => `\`\`\`infografico json\n${json}\n\`\`\``],
+    ['an unclosed fence', (json: string) => `Texto\n\n\`\`\`infografico\n${json}\n`],
+  ])('validates the block in %s', (_label, wrap) => {
+    expect(validateInfograficos(wrap(JSON.stringify(BARRAS)), 2)).toEqual([]);
+    expect(validateInfograficos(wrap(JSON.stringify({ ...BARRAS, fonte: 3 })), 2)).toEqual([
+      'infografico[0].fonte: índice 3 fora de sources (0..1)',
+    ]);
+  });
+
+  test('a longer closing fence closes; a shorter one does not', () => {
+    const body = `\`\`\`\`infografico\n${JSON.stringify(BARRAS)}\n\`\`\`\n\`\`\`\`\`\n\nDepois`;
+    // The 3-backtick line is content, so the JSON is followed by a stray line.
+    expect(validateInfograficos(body, 2)).toEqual(['infografico[0]: JSON inválido']);
+  });
+
+  test('flags an empty fence', () => {
+    expect(validateInfograficos('```infografico\n```', 2)).toEqual([
+      'infografico[0]: JSON inválido',
+    ]);
+    expect(validateInfograficos('```infografico\n   \n```', 2)).toEqual([
+      'infografico[0]: JSON inválido',
+    ]);
+  });
+
+  test('flags an unclosed fence with broken JSON', () => {
+    expect(validateInfograficos('```infografico\n{"tipo": "barras",\n', 2)).toEqual([
+      'infografico[0]: JSON inválido',
+    ]);
+  });
+
+  test('flags a non-integer fonte', () => {
+    expect(validateInfograficos(fence({ ...BARRAS, fonte: 0.5 }), 2)).toEqual([
+      'infografico[0].fonte: deve ser número inteiro',
+    ]);
+  });
+});
+
+describe('validateInfograficos: svg', () => {
+  const svg = (inner: string, root = '<svg viewBox="0 0 100 50">') => `${root}${inner}</svg>`;
+  const draw = (markup: string, extra: Record<string, unknown> = {}) =>
+    validateInfograficos(
+      fence({ tipo: 'svg', titulo: 'Funil', alt: 'Três barras', svg: markup, ...extra }),
+      1,
+    );
+
+  it('aceita formas e texto na lista permitida, com ou sem fonte', () => {
+    const ok = svg(
+      '<defs><linearGradient id="g1"><stop offset="0" stop-color="#ffbf30"/></linearGradient></defs>' +
+        '<rect x="0" y="0" width="40" height="10" rx="2" fill="url(#g1)"/>' +
+        '<path d="M0 40 L50 20 Q75 5 100 30" stroke="currentColor" fill="none" stroke-width="2"/>' +
+        '<text x="4" y="8" font-size="6" fill="var(--blog-r-ink)">Leads &amp; vendas</text>',
+    );
+    expect(draw(ok)).toEqual([]);
+    expect(draw(ok, { fonte: 0 })).toEqual([]);
+  });
+
+  it('exige que fonte exista em sources quando informada', () => {
+    expect(draw(svg(''), { fonte: 4 })).toEqual([
+      'infografico[0].fonte: índice 4 fora de sources (0..0)',
+    ]);
+  });
+
+  it.each([
+    ['script', svg('<script>alert(1)</script>')],
+    ['foreignObject', svg('<foreignObject><div/></foreignObject>')],
+    ['style', svg('<style>*{}</style>')],
+    ['image', svg('<image href="https://x.example/a.png"/>')],
+    ['use', svg('<use href="#a"/>')],
+    ['a', svg('<a href="javascript:alert(1)"><text>x</text></a>')],
+    ['handler', svg('<rect onload="alert(1)" width="1" height="1"/>')],
+    ['href', svg('<rect href="https://x.example" width="1" height="1"/>')],
+    ['style attr', svg('<rect style="fill:red" width="1" height="1"/>')],
+    ['url externa', svg('<rect fill="url(https://x.example/a.svg#b)" width="1" height="1"/>')],
+    ['javascript', svg('<rect fill="javascript:alert(1)" width="1" height="1"/>')],
+    ['comentário', svg('<!-- x --><rect width="1" height="1"/>')],
+    ['cdata', svg('<text><![CDATA[x]]></text>')],
+    ['doctype', '<!DOCTYPE svg><svg viewBox="0 0 1 1"></svg>'],
+    ['entidade', svg('<text>&copy;</text>')],
+    ['aspas simples', svg("<rect width='1' height='1'/>")],
+    ['sem viewBox', '<svg><rect width="1" height="1"/></svg>'],
+    ['raiz com width', svg('', '<svg viewBox="0 0 1 1" width="500">')],
+    ['dois svg', svg('') + svg('')],
+    ['svg aninhado', svg('<svg viewBox="0 0 1 1"></svg>')],
+    ['texto solto', svg('oi')],
+    ['tag aberta', '<svg viewBox="0 0 1 1"><g></svg>'],
+    ['lixo depois', svg('') + 'x'],
+  ])('recusa %s', (_name, markup) => {
+    const messages = draw(markup);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatch(/^infografico\[0\]\.svg: /);
+  });
+
+  it('recusa SVG acima do limite de caracteres e de elementos', () => {
+    expect(draw(svg(`<g>${'x'.repeat(20000)}</g>`))[0]).toMatch(/máximo de 20000 caracteres/);
+    expect(draw(svg('<g/>'.repeat(301)))[0]).toBe('infografico[0].svg: máximo de 300 elementos');
   });
 });

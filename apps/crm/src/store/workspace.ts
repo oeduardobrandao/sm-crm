@@ -1,14 +1,110 @@
 import { supabase, getCurrentProfile, clearProfileCache, getContaId } from './core';
 
+export type ClientScope = 'todos' | 'atribuidos';
+
+/**
+ * Normalizes a `workspace_members.client_scope` value read from the database
+ * or a realtime payload.
+ *
+ * - `'atribuidos'` -> `'atribuidos'`.
+ * - `'todos'` or `undefined` -> `'todos'`. `undefined` means the key is
+ *   ABSENT from the row: the column does not exist in the database this
+ *   client is talking to (pre-migration realtime payload / lower fallback
+ *   tier), which is exactly the pre-feature behaviour.
+ * - anything else (`null`, an unknown string) -> `'atribuidos'`. The column
+ *   is NOT NULL with a CHECK, so this never happens on a healthy database;
+ *   if it does, the client fails CLOSED (spec "Anti-objetivos": an escopo
+ *   nulo must never fall open to "todos").
+ */
+export function normalizeClientScope(value: unknown): ClientScope {
+  if (value === undefined || value === 'todos') return 'todos';
+  return 'atribuidos';
+}
+
+/** `client_scope_rev` is a bigint; PostgREST/realtime deliver it as a number. Absent -> 0. */
+export function normalizeClientScopeRev(value: unknown): number {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * True when the error says the CLIENT-SCOPE schema (acesso por cliente:
+ * `workspace_members.client_scope` / `client_scope_rev` or the
+ * `workspace_member_clientes` relationship) is missing from the database.
+ * Same codes as isMissingRolesSchemaError below; the message probe is what
+ * lets a caller step down ONE tier (drop the client-scope fields, keep the
+ * roles select) instead of jumping to the legacy select, which would zero
+ * `role_id`/`permissions` for a custom-role member.
+ */
+function isMissingClientScopeSchemaError(error: { code?: string; message?: string }): boolean {
+  const message = error.message ?? '';
+  // Code AND message: a permission error (42501) that merely mentions the
+  // column must throw, not step down to a tier that resolves 'todos'.
+  const schemaCode =
+    error.code === '42703' ||
+    error.code === '42P01' ||
+    error.code === 'PGRST200' ||
+    error.code === 'PGRST204';
+  return (
+    schemaCode &&
+    (message.includes('client_scope') || message.includes('workspace_member_clientes'))
+  );
+}
+
+/** The error message names the roles schema (role_id / workspace_roles) specifically. */
+function isRolesMention(error: { message?: string }): boolean {
+  const message = error.message ?? '';
+  return message.includes('workspace_roles') || message.includes('role_id');
+}
+
+/**
+ * True when a select error is any of the missing-schema shapes (roles or
+ * client scope), i.e. one we degrade from instead of throwing.
+ */
+function isMissingSchemaError(error: { code?: string; message?: string }): boolean {
+  return isMissingClientScopeSchemaError(error) || isMissingRolesSchemaError(error);
+}
+
+export interface WorkspaceUserRow {
+  id: string;
+  nome: string;
+  role: 'owner' | 'admin' | 'agent';
+  role_id: string | null;
+  papel_nome: string | null;
+  can_see_financials: boolean;
+  avatar_url: string | null;
+  created_at: string;
+  /** Pre-migration database (no column): every member reads as 'todos'. */
+  client_scope: ClientScope;
+}
+
+const WORKSPACE_USERS_ROLES_COLUMNS =
+  'user_id, role, role_id, joined_at, can_see_financials, workspace_roles(nome), profiles!inner(id, nome, avatar_url, created_at)';
+
+/**
+ * Rows have the WorkspaceUserRow shape. The return stays `any[]` because a
+ * dozen callers (agenda, drawers) type it locally with narrower shapes
+ * (`avatar_url: string`); cast to WorkspaceUserRow[] where the full shape
+ * matters (e.g. `client_scope` in Configuração > Membros).
+ */
 export async function getWorkspaceUsers(): Promise<any[]> {
   const conta_id = await getContaId();
-  const { data, error } = await supabase
-    .from('workspace_members')
-    .select(
-      'user_id, role, role_id, joined_at, can_see_financials, workspace_roles(nome), profiles!inner(id, nome, avatar_url, created_at)',
-    )
-    .eq('workspace_id', conta_id)
-    .order('joined_at', { ascending: true });
+  const selectUsers = (columns: string) =>
+    supabase
+      .from('workspace_members')
+      .select(columns)
+      .eq('workspace_id', conta_id)
+      .order('joined_at', { ascending: true });
+
+  // Tier 1: roles + client_scope (acesso por cliente).
+  let { data, error } = await selectUsers(`${WORKSPACE_USERS_ROLES_COLUMNS}, client_scope`);
+  if (error && isMissingSchemaError(error) && !isRolesMention(error)) {
+    // Tier 2: the database predates the client-scope migration (or the probe
+    // could not tell which schema is missing): same roles select as before
+    // the feature. Every member then reads as 'todos' (normalizeClientScope
+    // of an absent key), so Configuração > Membros never breaks.
+    ({ data, error } = await selectUsers(WORKSPACE_USERS_ROLES_COLUMNS));
+  }
   if (error) {
     if (!isMissingRolesSchemaError(error)) throw error;
     // Same pre-migration degradation as getMyMembership() below (hotfix
@@ -36,10 +132,11 @@ export async function getWorkspaceUsers(): Promise<any[]> {
       can_see_financials: m.can_see_financials,
       avatar_url: m.profiles.avatar_url,
       created_at: m.profiles.created_at,
+      client_scope: 'todos',
     }));
   }
   // Flatten the join result to match the expected shape
-  return (data || []).map((m: any) => ({
+  return ((data as any[] | null) || []).map((m: any) => ({
     id: m.profiles.id,
     nome: m.profiles.nome,
     role: m.role,
@@ -48,7 +145,41 @@ export async function getWorkspaceUsers(): Promise<any[]> {
     can_see_financials: m.can_see_financials,
     avatar_url: m.profiles.avatar_url,
     created_at: m.profiles.created_at,
+    client_scope: normalizeClientScope(m.client_scope),
   }));
+}
+
+/**
+ * Every client assignment of the active workspace, grouped by member, in ONE
+ * query (Configuração > Membros shows a per-member count; one read per row
+ * would be N+1 on large teams). Owner-only in practice: RLS lets a non-owner
+ * read only its own rows, so a non-owner caller would get a partial map. The
+ * UI never runs this for a non-owner viewer. Throws on error (fail closed: a
+ * failed read must not render as "0 clientes").
+ */
+export async function getWorkspaceMemberClienteIds(): Promise<Record<string, number[]>> {
+  const conta_id = await getContaId();
+  const { data, error } = await supabase
+    .from('workspace_member_clientes')
+    .select('user_id, cliente_id')
+    .eq('workspace_id', conta_id);
+  if (error) throw error;
+  const byUser: Record<string, number[]> = {};
+  for (const r of (data as { user_id: string; cliente_id: number | string }[] | null) ?? []) {
+    (byUser[r.user_id] ??= []).push(Number(r.cliente_id));
+  }
+  return byUser;
+}
+
+/**
+ * Login e-mails of the active workspace's members. profiles has no e-mail
+ * column, so this goes through a SECURITY DEFINER RPC over auth.users that
+ * answers only callers with equipe:editar (zero rows otherwise).
+ */
+export async function getWorkspaceMemberEmails(): Promise<{ user_id: string; email: string }[]> {
+  const { data, error } = await supabase.rpc('get_workspace_member_emails');
+  if (error) throw error;
+  return (data ?? []) as { user_id: string; email: string }[];
 }
 
 export async function getMyWorkspaces(): Promise<any[]> {
@@ -290,12 +421,39 @@ export async function setWorkspaceUserFinancialAccess(
   await callManageWorkspaceUser('set-financial-access', userId, { value });
 }
 
+/**
+ * Owner-only (enforced by the edge action): restricts `userId` to the given
+ * clientes (`'atribuidos'`) or lifts the restriction (`'todos'`). The action
+ * replaces the whole assignment list and bumps `client_scope_rev`, which is
+ * what fires the member's live revocation (AuthContext wm: channel).
+ */
+export async function setWorkspaceUserClientScope(
+  userId: string,
+  scope: ClientScope,
+  clienteIds: number[],
+): Promise<void> {
+  await callManageWorkspaceUser('set-client-scope', userId, { scope, clienteIds });
+}
+
 export interface MyMembership {
   role: 'owner' | 'admin' | 'agent';
   can_see_financials: boolean;
   role_id: string | null;
   /** permissions do papel custom; null quando role_id é null (fallback legado). */
   permissions: Record<string, string> | null;
+  /**
+   * Acesso por cliente. `'atribuidos'` (non-owner) = only `cliente_ids` are
+   * visible. Pre-migration database: `'todos'`, rev 0, `[]`.
+   */
+  client_scope: ClientScope;
+  /** Bumped by the server on every scope/list change; drives live revocation. */
+  client_scope_rev: number;
+  /**
+   * Assigned clientes (embed `workspace_member_clientes(cliente_id)`). Empty
+   * when the embed is missing or failed, never a stand-in for "all": with
+   * `'atribuidos'` an empty list means zero clientes.
+   */
+  cliente_ids: number[];
 }
 
 /**
@@ -334,6 +492,34 @@ function isMissingRolesSchemaError(error: { code?: string; message?: string }): 
   return message.includes('workspace_roles') || message.includes('role_id');
 }
 
+const MEMBERSHIP_ROLES_COLUMNS = 'role, can_see_financials, role_id, workspace_roles(permissions)';
+const MEMBERSHIP_SCOPE_COLUMNS = 'client_scope, client_scope_rev';
+const MEMBERSHIP_SCOPE_EMBED = 'workspace_member_clientes(cliente_id)';
+
+type MembershipRow = {
+  role: MyMembership['role'];
+  can_see_financials: boolean;
+  role_id?: string | null;
+  workspace_roles?: { permissions: Record<string, string> } | null;
+  client_scope?: unknown;
+  client_scope_rev?: unknown;
+  workspace_member_clientes?: { cliente_id: number | string }[] | null;
+};
+
+function toMyMembership(row: MembershipRow): MyMembership {
+  const embed = row.workspace_member_clientes;
+  return {
+    role: row.role,
+    can_see_financials: row.can_see_financials,
+    role_id: row.role_id ?? null,
+    permissions: row.workspace_roles?.permissions ?? null,
+    client_scope: normalizeClientScope(row.client_scope),
+    client_scope_rev: normalizeClientScopeRev(row.client_scope_rev),
+    // Missing/null embed -> [] (zero clientes under 'atribuidos'), never "all".
+    cliente_ids: Array.isArray(embed) ? embed.map((r) => Number(r.cliente_id)) : [],
+  };
+}
+
 export async function getMyMembership(): Promise<MyMembership | null> {
   const {
     data: { user },
@@ -345,12 +531,44 @@ export async function getMyMembership(): Promise<MyMembership | null> {
   // (getMyMembership() throws too), never as this function returning null.
   const conta_id = await getContaId();
 
-  const { data, error } = await supabase
-    .from('workspace_members')
-    .select('role, can_see_financials, role_id, workspace_roles(permissions)')
-    .eq('user_id', user.id)
-    .eq('workspace_id', conta_id)
-    .maybeSingle();
+  const selectMembership = (columns: string) =>
+    supabase
+      .from('workspace_members')
+      .select(columns)
+      .eq('user_id', user.id)
+      .eq('workspace_id', conta_id)
+      .maybeSingle();
+
+  // Fallback chain, one tier per schema the frontend can outrun (Vercel ships
+  // on merge, migrations are pushed by hand):
+  //   T1 roles + client_scope + client_scope_rev + workspace_member_clientes embed
+  //   T2 roles + client_scope + client_scope_rev (embed relationship missing:
+  //      PostgREST fails the WHOLE request on a bad embed, so this is the only
+  //      way to still read 'atribuidos'; cliente_ids is then [], never "all")
+  //   T3 roles only (client-scope migration not applied): 'todos', rev 0, []
+  //   T4 legacy (roles migration not applied either)
+  // A client-scope error must step down to T3 at most, NEVER straight to T4:
+  // T4 zeroes role_id/permissions, which for a custom-role member is the
+  // AGENT_ROLE_PRESET fail-open lib/permissions.ts warns about. A non-schema
+  // error (network, RLS) throws at the tier it happened on.
+  let { data, error } = await selectMembership(
+    `${MEMBERSHIP_ROLES_COLUMNS}, ${MEMBERSHIP_SCOPE_COLUMNS}, ${MEMBERSHIP_SCOPE_EMBED}`,
+  );
+  if (error && isMissingSchemaError(error) && !isRolesMention(error)) {
+    // Skip T2 when the message already says the client_scope column itself
+    // is missing (today's pre-migration prod): T2 would fail the same way.
+    const columnMissing =
+      (error.message ?? '').includes('client_scope') &&
+      !(error.message ?? '').includes('workspace_member_clientes');
+    if (!columnMissing) {
+      ({ data, error } = await selectMembership(
+        `${MEMBERSHIP_ROLES_COLUMNS}, ${MEMBERSHIP_SCOPE_COLUMNS}`,
+      ));
+    }
+    if (error && isMissingSchemaError(error) && !isRolesMention(error)) {
+      ({ data, error } = await selectMembership(MEMBERSHIP_ROLES_COLUMNS));
+    }
+  }
 
   if (error) {
     if (!isMissingRolesSchemaError(error)) throw error;
@@ -375,19 +593,11 @@ export async function getMyMembership(): Promise<MyMembership | null> {
       can_see_financials: legacyRow.can_see_financials,
       role_id: null,
       permissions: null,
+      client_scope: 'todos',
+      client_scope_rev: 0,
+      cliente_ids: [],
     };
   }
   if (!data) return null;
-  const row = data as unknown as {
-    role: MyMembership['role'];
-    can_see_financials: boolean;
-    role_id: string | null;
-    workspace_roles: { permissions: Record<string, string> } | null;
-  };
-  return {
-    role: row.role,
-    can_see_financials: row.can_see_financials,
-    role_id: row.role_id ?? null,
-    permissions: row.workspace_roles?.permissions ?? null,
-  };
+  return toMyMembership(data as unknown as MembershipRow);
 }

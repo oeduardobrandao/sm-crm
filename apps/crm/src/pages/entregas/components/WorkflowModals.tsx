@@ -1,6 +1,8 @@
-import { useId, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import { i18n, useIntlLocale } from '@mesaas/i18n';
 import type { PlatformId } from '@mesaas/platforms';
 import { Trash2, Edit2, FileText, Settings, ArrowRightLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -49,7 +51,13 @@ import {
   type TemplatePropertyDefinition,
 } from '../../../store';
 import type { BoardCard } from '../hooks/useEntregasData';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { PhoneConfirmSheet } from '../phone/PhoneConfirmSheet';
 import { PropertyDefinitionPanel } from './PropertyDefinitionPanel';
+import { Cell, GroupedList } from '@/components/mobile/GroupedList';
+import { FormRow } from '@/components/mobile/FormRow';
+import { PickerCell } from '@/components/mobile/PickerSheet';
+import './editWorkflowPhone.css';
 import { MigrateTemplateDialog } from './MigrateTemplateDialog';
 import {
   SortableEtapaList,
@@ -59,13 +67,15 @@ import {
   type EtapaFormData,
   type ModoPrazo,
 } from './SortableEtapaList';
+import { scopeErrorOr } from '@/lib/client-scope-errors';
 
 // ---- Edit Workflow Modal ----
 // feature_disabled:feature_multiplatform (quadro {geral} num workspace sem a flag)
 // e demais erros de plano viram texto legível em vez do código do banco.
 function saveErrorMessage(err: unknown): string {
   const entitlement = mapEntitlementError(err);
-  return entitlement ? entitlementMessage(entitlement) : (err as Error).message || 'Erro';
+  if (entitlement) return entitlementMessage(entitlement);
+  return scopeErrorOr(err, (err as Error).message || i18n.t('workflows:shared.genericError'));
 }
 
 export function EditWorkflowModal({
@@ -87,6 +97,8 @@ export function EditWorkflowModal({
   onDeleted: () => void;
   onOpenPosts?: () => void;
 }) {
+  const { t } = useTranslation('workflows');
+  const intlLocale = useIntlLocale();
   const w = card.workflow;
   const e = card.etapa;
   const modoPrazo: ModoPrazo = (w.modo_prazo as ModoPrazo) || 'padrao';
@@ -106,12 +118,13 @@ export function EditWorkflowModal({
   const activeClientes = clientes
     .filter((c) => c.status === 'ativo')
     .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  const isPhone = !useIsDesktop(768);
 
   const markDirty = () => setIsDirty(true);
 
   const handleSave = async () => {
     if (!fTitulo || !fClienteId) {
-      toast.error('Título e cliente são obrigatórios.');
+      toast.error(t('editWorkflowModal.requiredFields'));
       return;
     }
     setSaving(true);
@@ -132,7 +145,7 @@ export function EditWorkflowModal({
         etapaUpdate.data_limite = fDataLimite || null;
       }
       await updateWorkflowEtapa(e.id!, etapaUpdate);
-      toast.success('Fluxo atualizado!');
+      toast.success(t('editWorkflowModal.updated'));
       onSaved();
       onClose();
     } catch (err: unknown) {
@@ -145,11 +158,11 @@ export function EditWorkflowModal({
   const handleDelete = async () => {
     try {
       await removeWorkflow(w.id!);
-      toast.success('Fluxo excluído!');
+      toast.success(t('editWorkflowModal.deleted'));
       onDeleted();
       onClose();
     } catch {
-      toast.error('Erro ao excluir');
+      toast.error(t('editWorkflowModal.deleteError'));
     }
   };
 
@@ -163,238 +176,281 @@ export function EditWorkflowModal({
       >
         <DialogContent onConfirmClose={onClose} confirmClose={isDirty}>
           <DialogHeader>
-            <DialogTitle>Editar Fluxo</DialogTitle>
+            <DialogTitle>{t('editWorkflowModal.title')}</DialogTitle>
           </DialogHeader>
-          <div className="edit-modal-toolbar">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setMigrateOpen(true)}
-              disabled={isDirty}
-            >
-              <ArrowRightLeft className="h-4 w-4" /> Migrar template
-            </Button>
-            {onOpenPosts && (
-              <Button variant="outline" size="sm" onClick={onOpenPosts}>
-                <FileText className="h-4 w-4" /> Posts
-              </Button>
-            )}
-            {isDirty && (
-              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                Salve as alterações antes de migrar.
-              </span>
-            )}
-          </div>
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <Label>Título *</Label>
-              <Input
-                value={fTitulo}
-                onChange={(e) => {
-                  setFTitulo(e.target.value);
-                  markDirty();
-                }}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Cliente *</Label>
-              <Select
-                value={fClienteId}
-                onValueChange={(v) => {
-                  setFClienteId(v);
-                  markDirty();
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {activeClientes.map((c) => (
-                    <SelectItem key={c.id} value={String(c.id)}>
-                      {c.nome}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="recorrente-edit"
-                checked={fRecorrente}
-                onCheckedChange={(v) => {
-                  setFRecorrente(!!v);
-                  markDirty();
-                }}
-              />
-              <Label htmlFor="recorrente-edit">Fluxo recorrente</Label>
-            </div>
-            {showPlataformas && (
-              <div className="space-y-1">
-                <Label>Plataformas</Label>
-                <PlatformChips
-                  value={fPlataformas}
-                  onChange={(v) => {
-                    setFPlataformas(v);
-                    markDirty();
-                  }}
-                />
-                <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0 }}>
-                  Vale para os próximos posts. Posts já criados mantêm os destinos.
-                </p>
-              </div>
-            )}
-            <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: '0.75rem',
-                }}
-              >
-                <h4>Etapa Atual: {e.nome}</h4>
-                {modoPrazo !== 'padrao' && (
-                  <span
-                    style={{
-                      fontSize: '0.72rem',
-                      fontWeight: 600,
-                      padding: '2px 8px',
-                      borderRadius: 10,
-                      background: modoPrazo === 'data_entrega' ? '#dbeafe' : '#f3e8ff',
-                      color: modoPrazo === 'data_entrega' ? '#1d4ed8' : '#7e22ce',
-                    }}
-                  >
-                    {modoPrazo === 'data_entrega' ? 'Data de entrega' : 'Data fixa'}
+          {isPhone ? (
+            <EditWorkflowPhoneBody
+              {...{
+                card,
+                membros,
+                activeClientes,
+                modoPrazo,
+                isDirty,
+                saving,
+                showPlataformas,
+                fTitulo,
+                fClienteId,
+                fRecorrente,
+                fPlataformas,
+                fResponsavelId,
+                fPrazoDias,
+                fTipoPrazo,
+                fDataLimite,
+              }}
+              onChange={(patch) => {
+                if (patch.fTitulo !== undefined) setFTitulo(patch.fTitulo);
+                if (patch.fClienteId !== undefined) setFClienteId(patch.fClienteId);
+                if (patch.fRecorrente !== undefined) setFRecorrente(patch.fRecorrente);
+                if (patch.fPlataformas !== undefined) setFPlataformas(patch.fPlataformas);
+                if (patch.fResponsavelId !== undefined) setFResponsavelId(patch.fResponsavelId);
+                if (patch.fPrazoDias !== undefined) setFPrazoDias(patch.fPrazoDias);
+                if (patch.fTipoPrazo !== undefined) setFTipoPrazo(patch.fTipoPrazo);
+                if (patch.fDataLimite !== undefined) setFDataLimite(patch.fDataLimite);
+                markDirty();
+              }}
+              onMigrate={() => setMigrateOpen(true)}
+              onOpenPosts={onOpenPosts}
+              onSave={handleSave}
+              onDelete={() => setDeleteOpen(true)}
+            />
+          ) : (
+            <>
+              <div className="edit-modal-toolbar">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setMigrateOpen(true)}
+                  disabled={isDirty}
+                >
+                  <ArrowRightLeft className="h-4 w-4" /> {t('shared.migrateTemplate')}
+                </Button>
+                {onOpenPosts && (
+                  <Button variant="outline" size="sm" onClick={onOpenPosts}>
+                    <FileText className="h-4 w-4" /> {t('shared.posts')}
+                  </Button>
+                )}
+                {isDirty && (
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                    {t('shared.saveBeforeMigrate')}
                   </span>
                 )}
               </div>
-              <div className="space-y-1">
-                <Label>Responsável</Label>
-                <Select
-                  value={fResponsavelId || '__none__'}
-                  onValueChange={(val) => {
-                    setFResponsavelId(val === '__none__' ? '' : val);
-                    markDirty();
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sem responsável" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Sem responsável</SelectItem>
-                    {[...membros]
-                      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
-                      .map((m) => (
-                        <SelectItem key={m.id} value={String(m.id)}>
-                          {m.nome}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {modoPrazo === 'padrao' && (
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr',
-                    gap: '1rem',
-                    marginTop: '0.75rem',
-                  }}
-                >
-                  <div className="space-y-1">
-                    <Label>Prazo (dias)</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      value={fPrazoDias}
-                      onChange={(e) => {
-                        setFPrazoDias(e.target.value);
-                        markDirty();
-                      }}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Tipo de prazo</Label>
-                    <Select
-                      value={fTipoPrazo}
-                      onValueChange={(v) => {
-                        setFTipoPrazo(v as 'corridos' | 'uteis');
-                        markDirty();
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="corridos">Dias corridos</SelectItem>
-                        <SelectItem value="uteis">Dias úteis</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              )}
-              {modoPrazo === 'data_fixa' && (
-                <div className="space-y-1" style={{ marginTop: '0.75rem' }}>
-                  <Label>Data limite</Label>
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <Label>{t('shared.titleRequiredLabel')}</Label>
                   <Input
-                    type="date"
-                    value={fDataLimite}
-                    onChange={(ev) => {
-                      setFDataLimite(ev.target.value);
+                    value={fTitulo}
+                    onChange={(e) => {
+                      setFTitulo(e.target.value);
                       markDirty();
                     }}
                   />
                 </div>
-              )}
-              {modoPrazo === 'data_entrega' && e.data_limite && (
-                <div
-                  style={{
-                    marginTop: '0.75rem',
-                    padding: '0.5rem 0.75rem',
-                    background: '#eff6ff',
-                    borderRadius: 6,
-                    fontSize: '0.82rem',
-                    color: '#1d4ed8',
-                  }}
-                >
-                  Data limite calculada:{' '}
-                  <strong>
-                    {new Date(e.data_limite + 'T00:00:00').toLocaleDateString('pt-BR')}
-                  </strong>
+                <div className="space-y-1">
+                  <Label>{t('shared.clientRequiredLabel')}</Label>
+                  <Select
+                    value={fClienteId}
+                    onValueChange={(v) => {
+                      setFClienteId(v);
+                      markDirty();
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {activeClientes.map((c) => (
+                        <SelectItem key={c.id} value={String(c.id)}>
+                          {c.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              )}
-            </div>
-          </div>
-          <div className="edit-modal-footer">
-            <div className="edit-modal-footer-secondary">
-              <Button
-                variant="outline"
-                className="text-destructive"
-                onClick={() => setDeleteOpen(true)}
-              >
-                <Trash2 className="h-4 w-4" /> Excluir
-              </Button>
-            </div>
-            <div className="edit-modal-footer-primary">
-              <Button variant="outline" onClick={onClose}>
-                Cancelar
-              </Button>
-              <Button onClick={handleSave} disabled={saving}>
-                {saving && <Spinner size="sm" />} Salvar
-              </Button>
-            </div>
-          </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="recorrente-edit"
+                    checked={fRecorrente}
+                    onCheckedChange={(v) => {
+                      setFRecorrente(!!v);
+                      markDirty();
+                    }}
+                  />
+                  <Label htmlFor="recorrente-edit">{t('shared.recurringWorkflow')}</Label>
+                </div>
+                {showPlataformas && (
+                  <div className="space-y-1">
+                    <Label>{t('shared.platforms')}</Label>
+                    <PlatformChips
+                      value={fPlataformas}
+                      onChange={(v) => {
+                        setFPlataformas(v);
+                        markDirty();
+                      }}
+                    />
+                    <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0 }}>
+                      {t('shared.platformsHint')}
+                    </p>
+                  </div>
+                )}
+                <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: '0.75rem',
+                    }}
+                  >
+                    <h4>{t('editWorkflowModal.currentStage', { name: e.nome })}</h4>
+                    {modoPrazo !== 'padrao' && (
+                      <span
+                        style={{
+                          fontSize: '0.72rem',
+                          fontWeight: 600,
+                          padding: '2px 8px',
+                          borderRadius: 10,
+                          background: modoPrazo === 'data_entrega' ? '#dbeafe' : '#f3e8ff',
+                          color: modoPrazo === 'data_entrega' ? '#1d4ed8' : '#7e22ce',
+                        }}
+                      >
+                        {modoPrazo === 'data_entrega'
+                          ? t('shared.deliveryDate')
+                          : t('shared.fixedDate')}
+                      </span>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <Label>{t('shared.assignee')}</Label>
+                    <Select
+                      value={fResponsavelId || '__none__'}
+                      onValueChange={(val) => {
+                        setFResponsavelId(val === '__none__' ? '' : val);
+                        markDirty();
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={t('shared.noAssignee')} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">{t('shared.noAssignee')}</SelectItem>
+                        {[...membros]
+                          .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+                          .map((m) => (
+                            <SelectItem key={m.id} value={String(m.id)}>
+                              {m.nome}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {modoPrazo === 'padrao' && (
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: '1rem',
+                        marginTop: '0.75rem',
+                      }}
+                    >
+                      <div className="space-y-1">
+                        <Label>{t('shared.deadlineDays')}</Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={fPrazoDias}
+                          onChange={(e) => {
+                            setFPrazoDias(e.target.value);
+                            markDirty();
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>{t('shared.deadlineType')}</Label>
+                        <Select
+                          value={fTipoPrazo}
+                          onValueChange={(v) => {
+                            setFTipoPrazo(v as 'corridos' | 'uteis');
+                            markDirty();
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="corridos">{t('shared.calendarDays')}</SelectItem>
+                            <SelectItem value="uteis">{t('shared.businessDays')}</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  )}
+                  {modoPrazo === 'data_fixa' && (
+                    <div className="space-y-1" style={{ marginTop: '0.75rem' }}>
+                      <Label>{t('shared.dueDate')}</Label>
+                      <Input
+                        type="date"
+                        value={fDataLimite}
+                        onChange={(ev) => {
+                          setFDataLimite(ev.target.value);
+                          markDirty();
+                        }}
+                      />
+                    </div>
+                  )}
+                  {modoPrazo === 'data_entrega' && e.data_limite && (
+                    <div
+                      style={{
+                        marginTop: '0.75rem',
+                        padding: '0.5rem 0.75rem',
+                        background: '#eff6ff',
+                        borderRadius: 6,
+                        fontSize: '0.82rem',
+                        color: '#1d4ed8',
+                      }}
+                    >
+                      {t('editWorkflowModal.computedDueDate')}{' '}
+                      <strong>
+                        {new Date(e.data_limite + 'T00:00:00').toLocaleDateString(intlLocale)}
+                      </strong>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="edit-modal-footer">
+                <div className="edit-modal-footer-secondary">
+                  <Button
+                    variant="outline"
+                    className="text-destructive"
+                    onClick={() => setDeleteOpen(true)}
+                  >
+                    <Trash2 className="h-4 w-4" /> {t('shared.delete')}
+                  </Button>
+                </div>
+                <div className="edit-modal-footer-primary">
+                  <Button variant="outline" onClick={onClose}>
+                    {t('actions.cancel')}
+                  </Button>
+                  <Button onClick={handleSave} disabled={saving}>
+                    {saving && <Spinner size="sm" />} {t('actions.save')}
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
         </DialogContent>
       </Dialog>
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir fluxo "{w.titulo}"?</AlertDialogTitle>
-            <AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription>
+            <AlertDialogTitle>
+              {t('editWorkflowModal.deleteTitle', { title: w.titulo })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>{t('shared.irreversible')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>Excluir</AlertDialogAction>
+            <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete}>{t('shared.delete')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -414,6 +470,181 @@ export function EditWorkflowModal({
   );
 }
 
+interface EditWorkflowFields {
+  fTitulo: string;
+  fClienteId: string;
+  fRecorrente: boolean;
+  fPlataformas: PlatformId[];
+  fResponsavelId: string;
+  fPrazoDias: string;
+  fTipoPrazo: 'corridos' | 'uteis';
+  fDataLimite: string;
+}
+
+/**
+ * EditWorkflowModal's form below 768px: the same fields and actions as the desktop
+ * body, as grouped rows (pickers open sheets instead of popover selects). The dialog
+ * around it, its unsaved-changes guard and the delete confirm stay EditWorkflowModal's.
+ */
+function EditWorkflowPhoneBody({
+  card,
+  membros,
+  activeClientes,
+  modoPrazo,
+  isDirty,
+  saving,
+  showPlataformas,
+  onChange,
+  onMigrate,
+  onOpenPosts,
+  onSave,
+  onDelete,
+  ...f
+}: EditWorkflowFields & {
+  card: BoardCard;
+  membros: Membro[];
+  activeClientes: Cliente[];
+  modoPrazo: ModoPrazo;
+  isDirty: boolean;
+  saving: boolean;
+  showPlataformas: boolean;
+  onChange: (patch: Partial<EditWorkflowFields>) => void;
+  onMigrate: () => void;
+  onOpenPosts?: () => void;
+  onSave: () => void;
+  onDelete: () => void;
+}) {
+  const { t } = useTranslation('workflows');
+  const intlLocale = useIntlLocale();
+  const e = card.etapa;
+  const memberOptions = [...membros]
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+    .map((m) => ({ value: String(m.id), label: m.nome }));
+  const deadlineNote =
+    modoPrazo === 'data_entrega' && e.data_limite
+      ? t('editWorkflowModal.deliveryNote', {
+          date: new Date(e.data_limite + 'T00:00:00').toLocaleDateString(intlLocale),
+        })
+      : modoPrazo === 'data_fixa'
+        ? t('shared.fixedDate')
+        : undefined;
+
+  return (
+    <div className="phone-edit-wf">
+      <GroupedList
+        aria-label={t('editWorkflowModal.actionsAria')}
+        footer={isDirty ? t('shared.saveBeforeMigrate') : undefined}
+      >
+        {onOpenPosts && (
+          <Cell label={t('shared.posts')} icon={<FileText />} onClick={onOpenPosts} />
+        )}
+        <Cell
+          label={t('shared.migrateTemplate')}
+          icon={<ArrowRightLeft />}
+          disabled={isDirty}
+          onClick={onMigrate}
+        />
+      </GroupedList>
+
+      <GroupedList header={t('editWorkflowModal.groupWorkflow')} headerAs="h3">
+        <FormRow
+          label={t('shared.titleRequiredLabel')}
+          input={{ value: f.fTitulo, onChange: (ev) => onChange({ fTitulo: ev.target.value }) }}
+        />
+        <PickerCell
+          label={t('shared.clientRequiredLabel')}
+          searchable
+          options={activeClientes.map((c) => ({ value: String(c.id), label: c.nome }))}
+          value={f.fClienteId || null}
+          onChange={(v) => {
+            if (v) onChange({ fClienteId: v });
+          }}
+        />
+        <Cell
+          label={t('shared.recurringWorkflow')}
+          switch={{
+            checked: f.fRecorrente,
+            onCheckedChange: (v) => onChange({ fRecorrente: v }),
+          }}
+        />
+      </GroupedList>
+
+      {showPlataformas && (
+        <GroupedList
+          header={t('shared.platforms')}
+          headerAs="h3"
+          footer={t('shared.platformsHint')}
+        >
+          <li className="phone-cell phone-edit-wf__chips">
+            <PlatformChips value={f.fPlataformas} onChange={(v) => onChange({ fPlataformas: v })} />
+          </li>
+        </GroupedList>
+      )}
+
+      <GroupedList
+        header={t('editWorkflowModal.currentStagePhone', { name: e.nome })}
+        headerAs="h3"
+        footer={deadlineNote}
+      >
+        <PickerCell
+          label={t('shared.assignee')}
+          options={memberOptions}
+          emptyOption={{ label: t('shared.noAssignee') }}
+          value={f.fResponsavelId || null}
+          onChange={(v) => onChange({ fResponsavelId: v ?? '' })}
+        />
+        {modoPrazo === 'padrao' && (
+          <>
+            <FormRow
+              label={t('shared.deadlineDays')}
+              input={{
+                type: 'number',
+                min: 1,
+                inputMode: 'numeric',
+                value: f.fPrazoDias,
+                onChange: (ev) => onChange({ fPrazoDias: ev.target.value }),
+              }}
+            />
+            <PickerCell
+              label={t('shared.deadlineType')}
+              options={[
+                { value: 'corridos', label: t('shared.calendarDays') },
+                { value: 'uteis', label: t('shared.businessDays') },
+              ]}
+              value={f.fTipoPrazo}
+              onChange={(v) => {
+                if (v) onChange({ fTipoPrazo: v });
+              }}
+            />
+          </>
+        )}
+        {modoPrazo === 'data_fixa' && (
+          <FormRow
+            label={t('shared.dueDate')}
+            input={{
+              type: 'date',
+              value: f.fDataLimite,
+              onChange: (ev) => onChange({ fDataLimite: ev.target.value }),
+            }}
+          />
+        )}
+      </GroupedList>
+
+      <Button className="phone-edit-wf__save" onClick={onSave} disabled={saving}>
+        {saving && <Spinner size="sm" />} {t('actions.save')}
+      </Button>
+      <GroupedList aria-label={t('editWorkflowModal.deleteWorkflow')}>
+        <Cell
+          label={t('editWorkflowModal.deleteWorkflow')}
+          icon={<Trash2 />}
+          destructive
+          onClick={onDelete}
+        />
+      </GroupedList>
+    </div>
+  );
+}
+
 // ---- Templates Modal ----
 export function TemplatesModal({
   open,
@@ -428,6 +659,7 @@ export function TemplatesModal({
   membros: Membro[];
   onRefresh: () => void;
 }) {
+  const { t } = useTranslation('workflows');
   const [etapas, setEtapas] = useState<EtapaFormData[]>([defaultEtapa()]);
   const [saving, setSaving] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<WorkflowTemplate | null>(null);
@@ -455,10 +687,10 @@ export function TemplatesModal({
     if (!deletingDefId) return;
     try {
       await deletePropertyDefinition(deletingDefId);
-      toast.success('Propriedade excluída.');
+      toast.success(t('templatesModal.propertyDeleted'));
       qc.invalidateQueries({ queryKey: ['property-definitions', selectedTemplateId] });
     } catch {
-      toast.error('Erro ao excluir propriedade.');
+      toast.error(t('templatesModal.propertyDeleteError'));
     }
     setDeletingDefId(null);
   };
@@ -466,19 +698,19 @@ export function TemplatesModal({
   const handleSave = async () => {
     const nome = fNome.trim();
     if (!nome) {
-      toast.error('Nome do template é obrigatório.');
+      toast.error(t('templatesModal.nameRequired'));
       return;
     }
     const validEtapas = etapas.filter((e) => e.nome.trim());
     if (validEtapas.length === 0) {
-      toast.error('Adicione pelo menos uma etapa.');
+      toast.error(t('templatesModal.addOneStage'));
       return;
     }
     // apply_post_process rejeita prazo_dias > 999 (template_invalid) na hora de
     // aplicar o template a um post; barrar aqui evita salvar um template que
     // nunca vai aplicar.
     if (findInvalidPrazoEtapa(validEtapas)) {
-      toast.error(`Prazo (dias) não pode passar de ${MAX_PRAZO_DIAS}.`);
+      toast.error(t('shared.deadlineMax', { max: MAX_PRAZO_DIAS }));
       return;
     }
     setSaving(true);
@@ -497,7 +729,7 @@ export function TemplatesModal({
           modo_prazo: fModoPrazo,
           plataformas: fPlataformas,
         });
-        toast.success('Template atualizado!');
+        toast.success(t('templatesModal.updated'));
       } else {
         await addWorkflowTemplate({
           nome,
@@ -505,7 +737,7 @@ export function TemplatesModal({
           modo_prazo: fModoPrazo,
           plataformas: fPlataformas,
         });
-        toast.success('Template criado!');
+        toast.success(t('templatesModal.created'));
       }
       setFNome('');
       setEtapas([defaultEtapa()]);
@@ -543,10 +775,10 @@ export function TemplatesModal({
     if (deleteTemplateId == null) return;
     try {
       await removeWorkflowTemplate(deleteTemplateId);
-      toast.success('Template excluído.');
+      toast.success(t('templatesModal.deleted'));
       onRefresh();
     } catch {
-      toast.error('Erro ao excluir.');
+      toast.error(t('templatesModal.deleteError'));
     }
     setDeleteTemplateId(null);
   };
@@ -578,7 +810,7 @@ export function TemplatesModal({
           }}
         >
           <DialogHeader>
-            <DialogTitle>Gerenciar Templates</DialogTitle>
+            <DialogTitle>{t('templatesModal.title')}</DialogTitle>
           </DialogHeader>
           {/* Tab navigation */}
           <div
@@ -606,7 +838,7 @@ export function TemplatesModal({
                 marginBottom: -1,
               }}
             >
-              Templates
+              {t('templatesModal.tabTemplates')}
             </button>
             <button
               onClick={() => setActiveTab('properties')}
@@ -626,39 +858,41 @@ export function TemplatesModal({
               }}
             >
               <Settings className="h-3.5 w-3.5" style={{ display: 'inline', marginRight: 4 }} />
-              Propriedades
+              {t('templatesModal.tabProperties')}
             </button>
           </div>
           {activeTab === 'templates' && (
             <>
               <div ref={formTopRef} style={{ marginBottom: '1rem' }}>
                 <h4 style={{ marginBottom: '0.75rem' }}>
-                  {editingTemplate ? `Editar: ${editingTemplate.nome}` : 'Novo Template'}
+                  {editingTemplate
+                    ? t('templatesModal.editing', { name: editingTemplate.nome })
+                    : t('templatesModal.newTemplate')}
                 </h4>
                 <div className="space-y-1" style={{ marginBottom: '0.75rem' }}>
-                  <Label>Nome *</Label>
+                  <Label>{t('templatesModal.nameLabel')}</Label>
                   <Input
-                    placeholder="Ex: Fluxo Padrão de Post"
+                    placeholder={t('templatesModal.namePlaceholder')}
                     value={fNome}
                     onChange={(e) => setFNome(e.target.value)}
                   />
                 </div>
                 <div className="space-y-1" style={{ marginBottom: '0.75rem' }}>
-                  <Label>Modo de Prazo</Label>
+                  <Label>{t('templatesModal.deadlineMode')}</Label>
                   <Select value={fModoPrazo} onValueChange={(v) => setFModoPrazo(v as ModoPrazo)}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="padrao">Duração (padrão)</SelectItem>
-                      <SelectItem value="data_fixa">Data fixa por etapa</SelectItem>
-                      <SelectItem value="data_entrega">Data de entrega do cliente</SelectItem>
+                      <SelectItem value="padrao">{t('shared.modePadrao')}</SelectItem>
+                      <SelectItem value="data_fixa">{t('shared.modeDataFixa')}</SelectItem>
+                      <SelectItem value="data_entrega">{t('shared.modeDataEntrega')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 {showPlataformas && (
                   <div className="space-y-1" style={{ marginBottom: '0.75rem' }}>
-                    <Label>Plataformas</Label>
+                    <Label>{t('shared.platforms')}</Label>
                     <PlatformChips value={fPlataformas} onChange={setFPlataformas} />
                   </div>
                 )}
@@ -671,11 +905,11 @@ export function TemplatesModal({
               </div>
               <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
                 {templates.length === 0 ? (
-                  <p style={{ color: 'var(--text-muted)' }}>Nenhum template salvo.</p>
+                  <p style={{ color: 'var(--text-muted)' }}>{t('templatesModal.empty')}</p>
                 ) : (
-                  templates.map((t) => (
+                  templates.map((tpl) => (
                     <div
-                      key={t.id}
+                      key={tpl.id}
                       className="card"
                       style={{
                         marginBottom: '0.75rem',
@@ -683,7 +917,7 @@ export function TemplatesModal({
                         position: 'relative',
                       }}
                     >
-                      <strong>{t.nome}</strong>
+                      <strong>{tpl.nome}</strong>
                       <p
                         style={{
                           fontSize: '0.82rem',
@@ -691,8 +925,10 @@ export function TemplatesModal({
                           marginTop: '0.25rem',
                         }}
                       >
-                        {t.etapas.length} etapa{t.etapas.length !== 1 ? 's' : ''}:{' '}
-                        {t.etapas.map((e) => e.nome).join(' → ')}
+                        {t('templatesModal.stagesSummary', {
+                          count: tpl.etapas.length,
+                          names: tpl.etapas.map((e) => e.nome).join(' → '),
+                        })}
                       </p>
                       <div
                         style={{
@@ -706,8 +942,8 @@ export function TemplatesModal({
                         <Button
                           size="icon"
                           variant="ghost"
-                          aria-label={`Editar template ${t.nome}`}
-                          onClick={() => handleEdit(t)}
+                          aria-label={t('templatesModal.editTemplateAria', { name: tpl.nome })}
+                          onClick={() => handleEdit(tpl)}
                         >
                           <Edit2 className="h-4 w-4" />
                         </Button>
@@ -715,7 +951,7 @@ export function TemplatesModal({
                           size="icon"
                           variant="ghost"
                           className="text-destructive"
-                          onClick={() => setDeleteTemplateId(t.id!)}
+                          onClick={() => setDeleteTemplateId(tpl.id!)}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -730,7 +966,7 @@ export function TemplatesModal({
             <div>
               {/* Template selector for properties tab */}
               <div style={{ marginBottom: '1rem' }}>
-                <Label style={{ fontSize: '0.8rem' }}>Selecionar template</Label>
+                <Label style={{ fontSize: '0.8rem' }}>{t('templatesModal.selectTemplate')}</Label>
                 <select
                   className="drawer-select"
                   style={{ marginTop: 4, width: '100%' }}
@@ -739,10 +975,10 @@ export function TemplatesModal({
                     setSelectedTemplateId(e.target.value ? Number(e.target.value) : null)
                   }
                 >
-                  <option value="">Escolha um template…</option>
-                  {templates.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.nome}
+                  <option value="">{t('templatesModal.chooseTemplate')}</option>
+                  {templates.map((tpl) => (
+                    <option key={tpl.id} value={tpl.id}>
+                      {tpl.nome}
                     </option>
                   ))}
                 </select>
@@ -758,7 +994,7 @@ export function TemplatesModal({
                         marginBottom: '0.75rem',
                       }}
                     >
-                      Nenhuma propriedade definida neste template.
+                      {t('templatesModal.noProperties')}
                     </p>
                   ) : (
                     <div style={{ marginBottom: '0.75rem' }}>
@@ -809,7 +1045,7 @@ export function TemplatesModal({
                                   fontSize: '0.72rem',
                                 }}
                               >
-                                Portal
+                                {t('templatesModal.portal')}
                               </span>
                             )}
                             <Button
@@ -845,7 +1081,7 @@ export function TemplatesModal({
                       setShowDefPanel(true);
                     }}
                   >
-                    + Adicionar propriedade
+                    {t('templatesModal.addProperty')}
                   </Button>
                 </>
               )}
@@ -881,10 +1117,11 @@ export function TemplatesModal({
                 onClose();
               }}
             >
-              Fechar
+              {t('actions.close')}
             </Button>
             <Button onClick={handleSave} disabled={saving}>
-              {saving && <Spinner size="sm" />} {editingTemplate ? 'Salvar' : 'Salvar Template'}
+              {saving && <Spinner size="sm" />}{' '}
+              {editingTemplate ? t('actions.save') : t('templatesModal.saveTemplate')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -897,11 +1134,11 @@ export function TemplatesModal({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remover este template?</AlertDialogTitle>
+            <AlertDialogTitle>{t('templatesModal.removeTitle')}</AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Não</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteConfirm}>Sim</AlertDialogAction>
+            <AlertDialogCancel>{t('actions.no')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConfirm}>{t('actions.yes')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -913,19 +1150,18 @@ export function TemplatesModal({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir propriedade?</AlertDialogTitle>
+            <AlertDialogTitle>{t('templatesModal.deletePropertyTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Isso removerá os valores preenchidos em todos os posts deste template. Esta ação não
-              pode ser desfeita.
+              {t('templatesModal.deletePropertyDesc')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteDefinition}
               className="bg-destructive text-destructive-foreground"
             >
-              Excluir
+              {t('shared.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -945,6 +1181,20 @@ export function RecurringWorkflowDialog({
   onConfirm,
   onCancel,
 }: RecurringWorkflowDialogProps) {
+  const { t } = useTranslation('workflows');
+  const isPhone = !useIsDesktop(768);
+  if (isPhone) {
+    return (
+      <PhoneConfirmSheet
+        open={open}
+        title={t('recurringDialog.title')}
+        message={t('recurringDialog.message')}
+        actions={[{ label: t('recurringDialog.confirm'), onSelect: onConfirm }]}
+        cancelLabel={t('actions.no')}
+        onCancel={onCancel}
+      />
+    );
+  }
   return (
     <AlertDialog
       open={open}
@@ -954,14 +1204,12 @@ export function RecurringWorkflowDialog({
     >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Criar novo ciclo?</AlertDialogTitle>
-          <AlertDialogDescription>
-            Este fluxo é recorrente. Deseja criar um novo ciclo?
-          </AlertDialogDescription>
+          <AlertDialogTitle>{t('recurringDialog.title')}</AlertDialogTitle>
+          <AlertDialogDescription>{t('recurringDialog.message')}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={onCancel}>Não</AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm}>Criar novo ciclo</AlertDialogAction>
+          <AlertDialogCancel onClick={onCancel}>{t('actions.no')}</AlertDialogCancel>
+          <AlertDialogAction onClick={onConfirm}>{t('recurringDialog.confirm')}</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
@@ -981,6 +1229,19 @@ export function RevertConfirmDialog({
   onConfirm,
   onCancel,
 }: RevertConfirmDialogProps) {
+  const { t } = useTranslation('workflows');
+  const isPhone = !useIsDesktop(768);
+  if (isPhone) {
+    return (
+      <PhoneConfirmSheet
+        open={open}
+        title={t('revertDialog.title')}
+        message={t('revertDialog.message', { title: entityTitle })}
+        actions={[{ label: t('revertDialog.confirm'), onSelect: onConfirm }]}
+        onCancel={onCancel}
+      />
+    );
+  }
   return (
     <AlertDialog
       open={open}
@@ -990,15 +1251,14 @@ export function RevertConfirmDialog({
     >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Reverter etapa?</AlertDialogTitle>
+          <AlertDialogTitle>{t('revertDialog.title')}</AlertDialogTitle>
           <AlertDialogDescription>
-            Isso vai reverter "{entityTitle}" para a etapa anterior. Esta ação pode ser refeita
-            arrastando para frente novamente.
+            {t('revertDialog.message', { title: entityTitle })}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={onCancel}>Cancelar</AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm}>Reverter</AlertDialogAction>
+          <AlertDialogCancel onClick={onCancel}>{t('actions.cancel')}</AlertDialogCancel>
+          <AlertDialogAction onClick={onConfirm}>{t('revertDialog.confirm')}</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
@@ -1020,6 +1280,19 @@ export function ForwardConfirmDialog({
   onConfirm,
   onCancel,
 }: ForwardConfirmDialogProps) {
+  const { t } = useTranslation('workflows');
+  const isPhone = !useIsDesktop(768);
+  if (isPhone) {
+    return (
+      <PhoneConfirmSheet
+        open={open}
+        title={t('forwardDialog.title')}
+        message={t('forwardDialog.message', { title: entityTitle, next: nextEtapaName })}
+        actions={[{ label: t('forwardDialog.confirm'), onSelect: onConfirm }]}
+        onCancel={onCancel}
+      />
+    );
+  }
   return (
     <AlertDialog
       open={open}
@@ -1029,146 +1302,16 @@ export function ForwardConfirmDialog({
     >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Avançar etapa?</AlertDialogTitle>
+          <AlertDialogTitle>{t('forwardDialog.title')}</AlertDialogTitle>
           <AlertDialogDescription>
-            Isso vai mover "{entityTitle}" para a etapa "{nextEtapaName}". Deseja continuar?
+            {t('forwardDialog.message', { title: entityTitle, next: nextEtapaName })}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={onCancel}>Cancelar</AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm}>Avançar</AlertDialogAction>
+          <AlertDialogCancel onClick={onCancel}>{t('actions.cancel')}</AlertDialogCancel>
+          <AlertDialogAction onClick={onConfirm}>{t('forwardDialog.confirm')}</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
-  );
-}
-
-// ClientApprovalChoiceDialog — shown when completing an aprovacao_cliente step
-interface ClientApprovalChoiceDialogProps {
-  open: boolean;
-  /** Título do fluxo ou do post (spec §4.2: os diálogos recebem a entidade). */
-  entityTitle: string;
-  onApproveInternally: () => void;
-  onSendToPortal: () => void;
-  onAdvanceWithoutChanges: () => void;
-  onCancel: () => void;
-  /** Another client-approval etapa lies ahead — completing this one re-arms the posts. */
-  willRearm?: boolean;
-  /** Muda a cópia para o singular no processo individual. */
-  entityKind?: 'fluxo' | 'post';
-  /** Rótulo da terceira opção; o processo individual usa "Avançar sem aprovação"
-   *  ou "Concluir sem aprovação". */
-  withoutChangesLabel?: string;
-  /** Quando definido, desabilita "Enviar ao portal do cliente" e mostra o motivo
-   *  (spec §6.2: com n=1, botão desabilitado com o motivo, nunca sucesso vazio). */
-  sendToPortalDisabledReason?: string;
-}
-export function ClientApprovalChoiceDialog({
-  open,
-  entityTitle,
-  onApproveInternally,
-  onSendToPortal,
-  onAdvanceWithoutChanges,
-  onCancel,
-  willRearm,
-  entityKind,
-  withoutChangesLabel,
-  sendToPortalDisabledReason,
-}: ClientApprovalChoiceDialogProps) {
-  const isPost = entityKind === 'post';
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(open) => {
-        if (!open) onCancel();
-      }}
-    >
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>
-            {isPost
-              ? 'O cliente ainda não aprovou este post'
-              : 'O cliente ainda não aprovou todos os posts'}
-          </DialogTitle>
-        </DialogHeader>
-        <p className="text-sm text-muted-foreground">
-          "{entityTitle}" está numa etapa que pede a aprovação do cliente. Escolha como seguir:
-        </p>
-        <div className="flex flex-col gap-2">
-          <ApprovalChoiceOption
-            title="Aprovar internamente"
-            description={
-              isPost
-                ? 'O post fica aprovado pela equipe e a etapa é concluída.'
-                : 'Os posts ficam aprovados pela equipe e a etapa é concluída.'
-            }
-            onClick={onApproveInternally}
-          />
-          <ApprovalChoiceOption
-            title="Enviar para o cliente aprovar"
-            description={
-              sendToPortalDisabledReason ??
-              (isPost
-                ? 'O status muda para "Enviado ao cliente" e o post aparece no portal para aprovação. A etapa não avança.'
-                : 'Os posts aprovados internamente vão para o portal, aguardando o cliente. A etapa não avança.')
-            }
-            onClick={onSendToPortal}
-            disabled={!!sendToPortalDisabledReason}
-          />
-          <ApprovalChoiceOption
-            title={withoutChangesLabel ?? 'Avançar sem aprovação'}
-            description={
-              isPost
-                ? 'A etapa é concluída e o status do post não muda.'
-                : 'A etapa é concluída e o status dos posts não muda.'
-            }
-            onClick={onAdvanceWithoutChanges}
-          />
-        </div>
-        {willRearm && (
-          <p className="text-xs text-muted-foreground">
-            {isPost
-              ? 'A próxima etapa também é de aprovação: ao aprovar, o post volta para rascunho.'
-              : 'A próxima etapa também é de aprovação: ao aprovar, os posts voltam para rascunho.'}
-          </p>
-        )}
-        <DialogFooter>
-          <Button variant="ghost" onClick={onCancel}>
-            Cancelar
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function ApprovalChoiceOption({
-  title,
-  description,
-  onClick,
-  disabled,
-}: {
-  title: string;
-  description: string;
-  onClick: () => void;
-  disabled?: boolean;
-}) {
-  const id = useId();
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-labelledby={`${id}-title`}
-      aria-describedby={`${id}-desc`}
-      className="w-full rounded-lg border border-border bg-background px-4 py-3 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-background"
-    >
-      <span id={`${id}-title`} className="block text-sm font-medium text-foreground">
-        {title}
-      </span>
-      <span id={`${id}-desc`} className="mt-0.5 block text-xs text-muted-foreground">
-        {description}
-      </span>
-    </button>
   );
 }

@@ -1,3 +1,4 @@
+import { i18n } from '@mesaas/i18n';
 import { entitlementMessage, mapEntitlementError } from '../../lib/entitlement-errors';
 import { computeEffectiveInviteStatus } from '../configuracao/inviteHelpers';
 
@@ -65,6 +66,6 @@ export function membroInviteErrorMessage(err: unknown): string {
     ? entitlementMessage(mapped)
     : err instanceof Error && err.message
       ? err.message
-      : 'erro desconhecido';
-  return `Membro salvo, mas o convite falhou: ${detail}`;
+      : i18n.t('team:inviteSupport.unknownError');
+  return i18n.t('team:inviteSupport.inviteFailed', { detail });
 }

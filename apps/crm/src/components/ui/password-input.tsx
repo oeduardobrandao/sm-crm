@@ -1,10 +1,12 @@
 import * as React from 'react';
 import { Eye, EyeOff } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Input, type InputProps } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
 const PasswordInput = React.forwardRef<HTMLInputElement, InputProps>(
   ({ className, ...props }, ref) => {
+    const { t } = useTranslation();
     const [showPassword, setShowPassword] = React.useState(false);
 
     return (
@@ -26,7 +28,9 @@ const PasswordInput = React.forwardRef<HTMLInputElement, InputProps>(
           ) : (
             <Eye className="h-4 w-4" aria-hidden="true" />
           )}
-          <span className="sr-only">{showPassword ? 'Ocultar senha' : 'Mostrar senha'}</span>
+          <span className="sr-only">
+            {showPassword ? t('ui.hidePassword') : t('ui.showPassword')}
+          </span>
         </button>
       </div>
     );

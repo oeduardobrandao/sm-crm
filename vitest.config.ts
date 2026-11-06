@@ -9,6 +9,7 @@ export default defineConfig({
       '@': path.resolve(__dirname, 'apps/crm/src'),
       '@mesaas/i18n': path.resolve(__dirname, 'packages/i18n/index.ts'),
       '@mesaas/ui': path.resolve(__dirname, 'packages/ui'),
+      '@mesaas/ios-kit': path.resolve(__dirname, 'packages/ios-kit'),
       '@mesaas/report-blocks': path.resolve(__dirname, 'packages/report-blocks'),
       '@mesaas/import-parsers': path.resolve(__dirname, 'packages/import-parsers/index.ts'),
       '@mesaas/app-lifecycle': path.resolve(__dirname, 'packages/app-lifecycle/index.ts'),
@@ -20,6 +21,7 @@ export default defineConfig({
     },
   },
   define: {
+    __BUILD_YEAR__: JSON.stringify(String(new Date().getFullYear())),
     'import.meta.env.VITE_SUPABASE_URL': JSON.stringify('https://mesaas.supabase.co'),
     'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify('anon-key-for-tests'),
   },
@@ -52,6 +54,7 @@ export default defineConfig({
         'apps/crm/src/**/*.{ts,tsx}',
         'apps/hub/src/**/*.{ts,tsx}',
         'packages/import-parsers/src/**/*.{ts,tsx}',
+        'packages/ios-kit/src/**/*.{ts,tsx}',
       ],
       exclude: ['**/*.d.ts', '**/__tests__/**'],
     },

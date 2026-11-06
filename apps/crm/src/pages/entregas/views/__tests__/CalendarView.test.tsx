@@ -4,6 +4,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { CalendarView } from '../CalendarView';
 
+// These suites cover the desktop layout; the phone branch has its own *Phone suite.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 // Stub useScheduledPosts so tests don't hit real network / QueryClient internals
 vi.mock('../../hooks/useScheduledPosts', () => ({
   useScheduledPosts: () => ({

@@ -1,6 +1,6 @@
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render as rtlRender, screen, waitFor } from '@testing-library/react';
+import { render as rtlRender, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Workflow, WorkflowEvent } from '@/store';
 
@@ -21,9 +21,13 @@ vi.mock('@/store', async (importOriginal) => {
     getPostApprovals: vi.fn(),
     getPostCommentThreads: vi.fn(),
     getWorkflowEvents: vi.fn(),
+    getWorkspaceUsers: vi.fn(),
     getPostStatusDefinitions: vi.fn(),
   };
 });
+
+// The rich-text editor needs a Router and TipTap; this suite only cares about the sections around it.
+vi.mock('../PostEditor', () => ({ PostEditor: () => null }));
 
 function ev(partial: Partial<WorkflowEvent>): WorkflowEvent {
   return {
@@ -63,6 +67,7 @@ describe('HistoryDrawer — Histórico section', () => {
     (store.getPostCommentThreads as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
     (store.getPostStatusDefinitions as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
     (store.getWorkflowEvents as ReturnType<typeof vi.fn>).mockReset();
+    (store.getWorkspaceUsers as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
   });
 
   it('renders the Histórico section with event nodes when workflow_events exist', async () => {
@@ -97,5 +102,109 @@ describe('HistoryDrawer — Histórico section', () => {
       expect(screen.getByText('Posts (0)')).toBeInTheDocument();
     });
     expect(screen.queryByText('Histórico')).not.toBeInTheDocument();
+  });
+});
+
+describe('HistoryDrawer: discussão da equipe (somente leitura)', () => {
+  const post = { id: 7, titulo: 'Post com discussão', tipo: 'feed', status: 'rascunho' };
+  const geral = {
+    id: 1,
+    post_id: 7,
+    conta_id: 'conta-1',
+    quoted_text: '',
+    status: 'active',
+    created_by: 'user-1',
+    resolved_by: null,
+    created_at: '2026-06-01T10:00:00Z',
+    resolved_at: null,
+    field: 'geral',
+    anchor_start: null,
+    anchor_end: null,
+    orphaned: false,
+    post_comments: [
+      {
+        id: 100,
+        thread_id: 1,
+        author_id: 'user-1',
+        content: 'Vamos trocar a capa',
+        created_at: '2026-06-01T10:00:00Z',
+        updated_at: null,
+      },
+    ],
+  };
+
+  const anchored = {
+    ...geral,
+    id: 2,
+    quoted_text: 'Trecho citado da legenda',
+    field: 'ig_caption',
+    anchor_start: 0,
+    anchor_end: 10,
+    post_comments: [
+      {
+        id: 200,
+        thread_id: 2,
+        author_id: 'user-1',
+        content: 'Ajustar este trecho',
+        created_at: '2026-06-01T11:00:00Z',
+        updated_at: null,
+      },
+    ],
+  };
+
+  beforeEach(async () => {
+    const store = await import('@/store');
+    (store.getWorkflowEtapas as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
+    (store.getWorkflowPostsWithProperties as ReturnType<typeof vi.fn>)
+      .mockReset()
+      .mockResolvedValue([post]);
+    (store.getMembros as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
+    (store.getPostApprovals as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
+    (store.getPostCommentThreads as ReturnType<typeof vi.fn>)
+      .mockReset()
+      .mockResolvedValue([geral, anchored]);
+    (store.getPostStatusDefinitions as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
+    (store.getWorkflowEvents as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
+    (store.getWorkspaceUsers as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
+  });
+
+  it('shows the geral thread messages with no composer, bell or chat bridge, and keeps the summary free of it', async () => {
+    render(<HistoryDrawer workflow={workflow} onClose={() => {}} />);
+
+    fireEvent.click(await screen.findByText('Post com discussão'));
+
+    expect(await screen.findByText('Vamos trocar a capa')).toBeInTheDocument();
+    expect(screen.getByText('Discussão da equipe')).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/Escreva para a equipe/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Seguir|Seguindo/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Discutir no chat/)).not.toBeInTheDocument();
+    // The anchored thread stays out of the discussion block (geral-only filter)...
+    const discussao = screen.getByRole('region', { name: 'Discussão da equipe' });
+    expect(within(discussao).queryByText('Ajustar este trecho')).not.toBeInTheDocument();
+    expect(within(discussao).queryByText('Trecho citado da legenda')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Ver no texto/)).not.toBeInTheDocument();
+    // ...and the geral thread stays out of PostCommentSummary: it lists only the anchored one.
+    const summary = screen
+      .getByText('Comentários internos')
+      .closest('.comment-summary') as HTMLElement;
+    expect(within(summary).getByText('Ajustar este trecho')).toBeInTheDocument();
+    expect(within(summary).queryByText('Vamos trocar a capa')).not.toBeInTheDocument();
+    expect(within(summary).getByText('(1)')).toBeInTheDocument();
+  });
+
+  it('resolves authors that only exist in workspace users (no membros row)', async () => {
+    const store = await import('@/store');
+    (store.getWorkspaceUsers as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 'user-1', nome: 'Dona do Workspace', avatar_url: null },
+    ]);
+
+    render(<HistoryDrawer workflow={workflow} onClose={() => {}} />);
+    fireEvent.click(await screen.findByText('Post com discussão'));
+
+    const discussao = await screen.findByRole('region', { name: 'Discussão da equipe' });
+    await waitFor(() => {
+      expect(within(discussao).getAllByText('Dona do Workspace').length).toBeGreaterThan(0);
+    });
+    expect(within(discussao).queryByText('Membro')).not.toBeInTheDocument();
   });
 });

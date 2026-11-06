@@ -2,28 +2,35 @@
  * module is shared by the client loader and the prerender script, so it uses
  * relative imports only. */
 import { z } from 'zod';
+import {
+  BLOG_CATEGORIES,
+  BLOG_LIMITS,
+  BLOG_LIVE_STATUSES,
+  blogImageSchema,
+  blogSourceSchema,
+  isoDate,
+  type BlogImage,
+  type BlogSource,
+} from '../../../../packages/ui/blog/model';
+import { BLOG_FEATURE_SLUGS, type FeatureSlug } from './blog.features';
 
-export const BLOG_CATEGORIES = ['comparativo', 'guia'] as const;
-export type BlogCategory = (typeof BLOG_CATEGORIES)[number];
-
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
-
-/** The shape check alone lets `2026-02-30` and `2026-13-01` through, and
- * JavaScript then rolls them over in silence: the page would print "02 de
- * março" while the sitemap kept an impossible `lastmod`. Round-tripping the
- * parts through Date is what catches a typo the author would never see. */
-function isRealCalendarDate(value: string): boolean {
-  const [y, m, d] = value.split('-').map(Number);
-  const parsed = new Date(Date.UTC(y, m - 1, d));
-  return (
-    parsed.getUTCFullYear() === y && parsed.getUTCMonth() === m - 1 && parsed.getUTCDate() === d
-  );
-}
-
-const isoDate = z
-  .string()
-  .regex(DATE, 'must be YYYY-MM-DD')
-  .refine(isRealCalendarDate, 'must be a real calendar date');
+export {
+  BLOG_CATEGORIES,
+  BLOG_LIMITS,
+  BLOG_LIVE_STATUSES,
+  BLOG_STATUSES,
+  blogImageSchema,
+  blogSourceSchema,
+  extractInfograficos,
+  infograficoSchema,
+  validateInfograficos,
+  type BlogCategory,
+  type BlogImage,
+  type BlogSource,
+  type BlogStatus,
+  type ExtractedInfografico,
+  type Infografico,
+} from '../../../../packages/ui/blog/model';
 
 /** Ranges mirror the SERP limits enforced for static routes in site-meta.ts.
  * Strict on purpose: zod drops unknown keys silently, so a typo like `udpated`
@@ -31,9 +38,9 @@ const isoDate = z
  * article would ship a stale dateModified in its schema and its sitemap. */
 export const blogFrontmatterSchema = z
   .object({
-    title: z.string().min(50).max(60),
-    h1: z.string().min(10).max(120),
-    description: z.string().min(120).max(160),
+    title: z.string().min(BLOG_LIMITS.title[0]).max(BLOG_LIMITS.title[1]),
+    h1: z.string().min(BLOG_LIMITS.h1[0]).max(BLOG_LIMITS.h1[1]),
+    description: z.string().min(BLOG_LIMITS.description[0]).max(BLOG_LIMITS.description[1]),
     date: isoDate,
     updated: isoDate.optional(),
     category: z.enum(BLOG_CATEGORIES),
@@ -46,14 +53,73 @@ export const blogFrontmatterSchema = z
 
 export type BlogFrontmatter = z.infer<typeof blogFrontmatterSchema>;
 
+/** One shape for both origins: file posts (`blog/*.md`, hand-written) and DB
+ * posts (`blog-db/*.json`, written by scripts/seo/blog-sync.ts). The optional
+ * fields only DB posts carry today. */
 export interface BlogPost extends BlogFrontmatter {
   slug: string;
   updated: string;
-  body: string;
+  /** null = a DB post whose body is loaded lazily (client bundle). */
+  body: string | null;
   readingMinutes: number;
+  author?: 'equipe';
+  lede?: string;
+  cover?: Omit<BlogImage, 'key'> | null;
+  images?: BlogImage[];
+  sources?: BlogSource[];
+  featureSlug?: FeatureSlug | null;
+  revision?: number;
 }
 
+/** A synced DB post's metadata (`blog-db/<slug>.json`). Strict for the same
+ * reason as the frontmatter: a misspelt key must fail the build, not vanish.
+ * `readingMinutes` is computed by blog-sync from the body, so a post whose
+ * body loads lazily still shows its reading time. */
+export const dbPostSchema = z
+  .object({
+    slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'must be kebab-case'),
+    status: z.enum(BLOG_LIVE_STATUSES),
+    category: z.enum(BLOG_CATEGORIES),
+    title: z.string().min(BLOG_LIMITS.title[0]).max(BLOG_LIMITS.title[1]),
+    h1: z.string().min(BLOG_LIMITS.h1[0]).max(BLOG_LIMITS.h1[1]),
+    description: z.string().min(BLOG_LIMITS.description[0]).max(BLOG_LIMITS.description[1]),
+    lede: z.string().min(1).max(300),
+    date: isoDate,
+    updated: isoDate.optional(),
+    author: z.literal('equipe'),
+    cover: blogImageSchema.omit({ key: true }).nullable(),
+    images: z.array(blogImageSchema),
+    sources: z.array(blogSourceSchema).min(1),
+    featureSlug: z.enum(BLOG_FEATURE_SLUGS).nullable(),
+    revision: z.number().int().min(1),
+    readingMinutes: z.number().int().min(1),
+  })
+  .strict()
+  .refine((post) => !post.updated || post.updated >= post.date, {
+    path: ['updated'],
+    message: 'must not be earlier than date',
+  });
+
+export type DbPost = z.infer<typeof dbPostSchema>;
+
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
+
+function formatIssues(error: z.ZodError): string {
+  return error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; ');
+}
+
+/** `meta` is a `blog-db/<slug>.json` as read from disk; `body` is its
+ * Markdown, or null when the caller loads it lazily. */
+export function parseDbPost(meta: unknown, body: string | null): BlogPost {
+  const slugHint =
+    meta && typeof meta === 'object' && typeof (meta as { slug?: unknown }).slug === 'string'
+      ? (meta as { slug: string }).slug
+      : '(desconhecido)';
+  const parsed = dbPostSchema.safeParse(meta);
+  if (!parsed.success) throw new Error(`blog-db/${slugHint}: ${formatIssues(parsed.error)}`);
+  const { status: _status, ...post } = parsed.data;
+  return { ...post, updated: post.updated ?? post.date, body };
+}
 
 /** Minimal `key: value` frontmatter reader — one entry per line, value is
  * everything after the first colon (so titles may contain colons). No YAML
@@ -85,12 +151,7 @@ export function parsePost(raw: string, slug: string): BlogPost {
     throw new Error(`blog/${slug}.md: ${(err as Error).message}`);
   }
   const parsed = blogFrontmatterSchema.safeParse(data);
-  if (!parsed.success) {
-    const issues = parsed.error.issues
-      .map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)
-      .join('; ');
-    throw new Error(`blog/${slug}.md: ${issues}`);
-  }
+  if (!parsed.success) throw new Error(`blog/${slug}.md: ${formatIssues(parsed.error)}`);
   return {
     ...parsed.data,
     slug,

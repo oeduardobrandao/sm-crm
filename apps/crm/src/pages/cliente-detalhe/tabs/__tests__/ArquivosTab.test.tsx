@@ -1,4 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Desktop layout by default; the phone describe below flips it (jsdom's matchMedia is
+// false, so without a mock every suite would render the phone branch).
+const { desktop } = vi.hoisted(() => ({ desktop: { value: true } }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, Outlet } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -36,6 +41,7 @@ vi.mock('@/services/fileService', async (importOriginal) => ({
 // surfaces the `canEdit` prop this task threads through, so this suite can
 // assert on it without re-testing FileGrid/FileContextMenu's own rendering.
 vi.mock('@/pages/arquivos/components/FileGrid', () => ({
+  formatBytes: (n: number) => `${n} B`,
   FileGrid: ({
     files,
     subfolders,
@@ -50,6 +56,29 @@ vi.mock('@/pages/arquivos/components/FileGrid', () => ({
       {subfolders.map((f) => f.name).join(',')}
     </div>
   ),
+}));
+
+const { openExternalUrlMock } = vi.hoisted(() => ({ openExternalUrlMock: vi.fn() }));
+vi.mock('@/utils/security', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/utils/security')>()),
+  openExternalUrl: (...args: unknown[]) => openExternalUrlMock(...args),
+}));
+
+vi.mock('@/pages/entregas/components/PostMediaLightbox', () => ({
+  PostMediaLightbox: ({
+    media,
+    initialIndex,
+    open,
+  }: {
+    media: { original_filename: string }[];
+    initialIndex: number;
+    open: boolean;
+  }) =>
+    open ? (
+      <div role="dialog" aria-label="lightbox">
+        {media[initialIndex]?.original_filename}
+      </div>
+    ) : null,
 }));
 
 const { useAuthMock } = vi.hoisted(() => ({ useAuthMock: vi.fn() }));
@@ -321,5 +350,64 @@ describe('ArquivosTab', () => {
 
       expect(await screen.findByTestId('file-grid')).toHaveAttribute('data-can-edit', 'true');
     });
+  });
+});
+
+describe('ArquivosTab no celular', () => {
+  beforeEach(() => {
+    desktop.value = false;
+  });
+  afterEach(() => {
+    desktop.value = true;
+  });
+
+  function queueContents() {
+    __queueSupabaseResult('folders', 'select', { data: { id: 7 }, error: null });
+    getFolderContentsMock.mockResolvedValue({
+      folder: null,
+      subfolders: [makeFolder(9, 'Criativos')],
+      files: [
+        makeFile(1),
+        {
+          ...makeFile(2),
+          name: 'contrato.pdf',
+          kind: 'document',
+          url: 'https://cdn.x/contrato.pdf',
+        },
+      ],
+      breadcrumbs: [],
+    } satisfies FolderContents);
+  }
+
+  it('lists folders and files as rows instead of the grid', async () => {
+    queueContents();
+    renderTab();
+
+    expect(await screen.findByRole('button', { name: /arquivo-1\.png/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /contrato\.pdf/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Criativos/ })).toBeInTheDocument();
+    expect(screen.queryByTestId('file-grid')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Ver todos/ })).toHaveAttribute('href', '/arquivos');
+  });
+
+  it('tapping an image opens the lightbox; tapping a document opens it in a new tab', async () => {
+    queueContents();
+    renderTab();
+
+    fireEvent.click(await screen.findByRole('button', { name: /arquivo-1\.png/ }));
+    expect(await screen.findByRole('dialog', { name: 'lightbox' })).toHaveTextContent(
+      'arquivo-1.png',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /contrato\.pdf/ }));
+    expect(openExternalUrlMock).toHaveBeenCalledWith('https://cdn.x/contrato.pdf');
+  });
+
+  it('tapping a folder goes to Arquivos', async () => {
+    queueContents();
+    renderTab();
+
+    fireEvent.click(await screen.findByRole('button', { name: /Criativos/ }));
+    expect(navigateMock).toHaveBeenCalledWith('/arquivos');
   });
 });

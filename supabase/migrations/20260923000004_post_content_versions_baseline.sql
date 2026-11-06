@@ -17,6 +17,9 @@
 -- recover the true pre-suggestion content from
 -- post_edit_suggestions.original_*, which accept_edit_suggestion never
 -- touches after the suggestion's first submission.
+-- (That was true when this ran. Since 20261106000002, original_* is a
+-- per-field base that a later save can re-base, so this one-time backfill
+-- could not be repeated as-is today.)
 -- =====================================================================
 
 create or replace function record_post_content_version()
@@ -156,7 +159,7 @@ $$;
 -- is not null), meaning it was the first-ever content update on that post
 -- and no baseline was captured for it. Recover the true pre-suggestion
 -- state from post_edit_suggestions.original_* (untouched since the
--- suggestion's first submission) and insert it dated at the suggestion's
+-- suggestion's first submission at the time; see the header note) and insert it dated at the suggestion's
 -- own created_at, which is always strictly earlier than the accepted
 -- version's created_at. tiktok_caption has no original_* counterpart (the
 -- suggestion flow never offers it), so it's carried over unchanged from the

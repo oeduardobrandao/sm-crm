@@ -311,10 +311,14 @@ export default function LgpdPage() {
                   <strong>Sempre ativas:</strong> sessão de login, idioma, tema, a proteção contra
                   versões desatualizadas do app e o registro desta escolha (essenciais para o
                   funcionamento), além do monitoramento de erros (Sentry) e da medição agregada de
-                  acessos (Vercel Analytics), que se apoiam em legítimo interesse (art. 7º, IX).
-                  Preferências de interface (por exemplo, guias e tours já concluídos) ficam apenas
-                  no seu navegador e não são usadas para rastreamento. Você pode se opor ao
-                  tratamento baseado em legítimo interesse a qualquer momento escrevendo para{' '}
+                  acessos (Vercel Analytics), que se apoiam em legítimo interesse (art. 7º, IX). No
+                  blog, contamos leituras de forma anônima, sem cookies e sem guardar o IP: para não
+                  contar a mesma leitura duas vezes, guardamos um código embaralhado com uma chave
+                  do dia. A chave é apagada na virada do dia e, a partir daí, o código não pode mais
+                  ser ligado a um IP. Preferências de interface (por exemplo, guias e tours já
+                  concluídos) ficam apenas no seu navegador e não são usadas para rastreamento. Você
+                  pode se opor ao tratamento baseado em legítimo interesse a qualquer momento
+                  escrevendo para{' '}
                   <a
                     href="mailto:privacidade@mesaas.com.br"
                     style={{ color: 'var(--primary-color)', textDecoration: 'underline' }}
@@ -382,6 +386,42 @@ export default function LgpdPage() {
                           </>,
                           'Conversar com a nossa equipe de suporte.',
                           'Mensagens, e-mail e nome de quem está logado. Para manter a conversa, o chat guarda um cookie de sessão e registros no localStorage do navegador (as chaves crisp-client/session/… do Crisp, e a chave crisp_session_v1 do próprio Mesaas). As conversas ficam guardadas por até 1 ano.',
+                          'Consentimento (art. 7º, I).',
+                        ],
+                        [
+                          <>
+                            <strong>Google Ads</strong> (Estados Unidos). Categoria: publicidade.
+                            Depende do seu consentimento. Política:{' '}
+                            <a
+                              href="https://policies.google.com/privacy"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: 'var(--primary-color)', textDecoration: 'underline' }}
+                            >
+                              policies.google.com/privacy
+                            </a>
+                            .
+                          </>,
+                          'Saber quais anúncios trouxeram visitantes e cadastros ao Mesaas, e mostrar nossos anúncios de novo a quem já visitou o site.',
+                          'Páginas visitadas, o clique no anúncio que trouxe você (identificador gclid), cadastros e assinaturas feitos depois dele, e identificadores guardados no navegador (cookies _gcl_*, por até 90 dias). Não enviamos conteúdo de clientes, mídias ou dados de pagamento.',
+                          'Consentimento (art. 7º, I).',
+                        ],
+                        [
+                          <>
+                            <strong>Meta Pixel</strong> (Estados Unidos). Categoria: publicidade.
+                            Depende do seu consentimento. Política:{' '}
+                            <a
+                              href="https://www.facebook.com/privacy/policy/"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: 'var(--primary-color)', textDecoration: 'underline' }}
+                            >
+                              facebook.com/privacy/policy
+                            </a>
+                            .
+                          </>,
+                          'Saber quais anúncios no Instagram e no Facebook trouxeram visitantes e cadastros ao Mesaas, e mostrar nossos anúncios de novo a quem já visitou o site.',
+                          'Páginas visitadas, o clique no anúncio que trouxe você (identificador fbclid), cadastros e assinaturas feitos depois dele, e identificadores guardados no navegador (cookies _fbp e _fbc, por até 90 dias). Não enviamos conteúdo de clientes, mídias ou dados de pagamento.',
                           'Consentimento (art. 7º, I).',
                         ],
                         [

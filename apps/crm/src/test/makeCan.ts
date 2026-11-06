@@ -33,6 +33,9 @@ export function fakeMembership(overrides: Partial<MyMembership> = {}): MyMembers
     can_see_financials: false,
     role_id: null,
     permissions: null,
+    client_scope: 'todos',
+    client_scope_rev: 0,
+    cliente_ids: [],
     ...overrides,
   };
 }

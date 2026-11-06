@@ -1,0 +1,15 @@
+{
+  "card": "post_preview",
+  "v": 1,
+  "client": {
+    "id": 42,
+    "nome": "Dra. Marina Arrais"
+  },
+  "titulo": "Dia nublado também queima",
+  "tipo": "reels",
+  "roteiro": "0 a 3s, gancho: \"Tá nublado, então nem precisa de protetor, né?\"\n3 a 20s: a doutora mostra o índice UV no celular num dia cinza e explica por que a nuvem não bloqueia tudo.\n20 a 30s, CTA: \"Manda para aquela amiga que só passa na praia.\"",
+  "ig_caption": "Nublado não é desculpa. Salva este vídeo e manda para quem precisa ouvir isso. #protetorsolar",
+  "caption_len": 93,
+  "caption_max": 2200,
+  "body": "0 a 3s, gancho: \"Tá nublado, então nem precisa de protetor, né?\"\n3 a 20s: a doutora mostra o índice UV no celular num dia cinza e explica por que a nuvem não bloqueia tudo.\n20 a 30s, CTA: \"Manda para aquela amiga que só passa na praia.\""
+}

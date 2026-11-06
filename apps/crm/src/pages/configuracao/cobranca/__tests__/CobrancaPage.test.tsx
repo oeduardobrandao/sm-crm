@@ -4,6 +4,8 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('@/context/AuthContext', () => ({ useAuth: vi.fn() }));
+// jsdom's matchMedia reports false (phone); this suite asserts the desktop markup.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 // importOriginal keeps BillingApiError and the Pagar.me checkout/update-card calls real:
 // PagarmeCheckoutDialog (mounted by CobrancaPage) imports them from this same module, and
 // these tests never submit its form, so nothing here needs a dedicated mock for them.
@@ -58,6 +60,8 @@ const PRO_PLAN: BillingPlan = {
   feature_hub_portal: true,
   feature_analytics_reports: true,
   feature_brand_customization: true,
+  max_hub_tokens: null,
+  rate_report_generations_per_month: null,
   pagarme_12x_enabled: false,
   pagarme_installment_cents: null,
 };
@@ -122,7 +126,11 @@ beforeEach(() => {
   // so these tests exercise the resolved owner path, not the fallback.
   vi.mocked(useAuth).mockReturnValue({ role: 'owner', workspaceRole: 'owner' } as never);
   vi.mocked(listActivePlans).mockResolvedValue([PRO_PLAN]);
-  vi.mocked(getEffectivePlanWithSource).mockResolvedValue({ planId: 'free', planSource: 'system' });
+  vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
+    planId: 'free',
+    planSource: 'system',
+    wasDemo: false,
+  });
   vi.mocked(startCheckout).mockResolvedValue('https://checkout.stripe.com/abc');
   // UsagePanel is covered by its own test suite; keep it a no-op here (isUnlimited: true).
   vi.mocked(useWorkspaceLimits).mockReturnValue({
@@ -154,7 +162,46 @@ function renderPage() {
 
 const HINT = /Seus primeiros 30 dias são grátis/i;
 
+// The real Free row: scheduling is included, but 0 portal links and 0 reports a month.
+// feature_hub_portal / feature_analytics_reports stay true on it, which is exactly why the
+// card must read the limits and not the flags.
+const FREE_PLAN: BillingPlan = {
+  ...PRO_PLAN,
+  id: 'free',
+  name: 'Free',
+  price_brl: 0,
+  price_brl_annual: 0,
+  sort_order: 0,
+  max_clients: 2,
+  max_team_members: 1,
+  max_hub_tokens: 0,
+  rate_report_generations_per_month: 0,
+};
+
+const START_PLAN: BillingPlan = {
+  ...PRO_PLAN,
+  id: 'start',
+  name: 'Start',
+  sort_order: 1,
+  max_clients: 10,
+  max_team_members: 3,
+  max_hub_tokens: 5,
+  rate_report_generations_per_month: 5,
+};
+
 describe('CobrancaPage', () => {
+  it('lists portal and reports only on cards whose plan limits include them', async () => {
+    vi.mocked(listActivePlans).mockResolvedValue([FREE_PLAN, START_PLAN]);
+    vi.mocked(getWorkspaceSubscription).mockResolvedValue(subscription({}));
+    renderPage();
+
+    await screen.findByText('Free');
+    await screen.findByText('Start');
+    // Only the paid card shows either line; the Free card shows neither.
+    expect(screen.getAllByText('Portal de aprovação do cliente')).toHaveLength(1);
+    expect(screen.getAllByText('Relatórios de desempenho')).toHaveLength(1);
+  });
+
   it('shows "Começar teste de 30 dias" and the first-time hint for a workspace that never subscribed', async () => {
     // No active Stripe subscription and no subscription history at all: canUpgradeTo('pro',
     // 'free', hasActiveSub=false) is true, so the CTA renders and must read as a trial start.
@@ -166,6 +213,83 @@ describe('CobrancaPage', () => {
     const cta = await screen.findByRole('button', { name: 'Começar teste de 30 dias' });
     expect(cta).toBeInTheDocument();
     expect(screen.getByText(HINT)).toBeInTheDocument();
+  });
+
+  describe('demo workspace', () => {
+    const NOTE =
+      'Conta demo: você está usando o plano Pro sem custo. Para continuar depois, é só assinar um plano.';
+
+    function asDemo() {
+      vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
+        planId: 'pro',
+        planSource: 'demo',
+        wasDemo: true,
+      });
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(subscription({}));
+    }
+
+    it('shows "Assinar" on the current plan card and no trial copy', async () => {
+      asDemo();
+      renderPage();
+
+      expect(await screen.findByRole('button', { name: 'Assinar' })).toBeInTheDocument();
+      expect(screen.queryByText('Plano atual', { selector: '.plan-cta__static' })).toBeNull();
+      expect(screen.queryByText(HINT)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /teste de 30 dias/i })).toBeNull();
+    });
+
+    it('yearly 12x "Assinar" opens the Pagar.me dialog without the trial', async () => {
+      vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
+      vi.mocked(listActivePlans).mockResolvedValue([PRO_PLAN_PAGARME]);
+      asDemo();
+      renderPage();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Anual' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Assinar' }));
+
+      expect(await screen.findByText('Assinar o plano Pro')).toBeInTheDocument();
+      expect(startCheckout).not.toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: 'Confirmar assinatura' })).toBeInTheDocument();
+      expect(screen.queryByText(/30 dias grátis/)).toBeNull();
+    });
+
+    it('starts a no-trial checkout for the current plan from "Assinar"', async () => {
+      asDemo();
+      renderPage();
+      fireEvent.click(await screen.findByRole('button', { name: 'Assinar' }));
+      await waitFor(() => expect(startCheckout).toHaveBeenCalled());
+      expect(vi.mocked(startCheckout).mock.calls[0]?.[0]).toBe('pro');
+    });
+
+    it('shows the discreet demo note', async () => {
+      asDemo();
+      renderPage();
+      expect(await screen.findByText(NOTE)).toBeInTheDocument();
+    });
+
+    it.each(['manual', 'stripe'])('does not show the note for plan_source %s', async (src) => {
+      vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
+        planId: 'pro',
+        planSource: src,
+        wasDemo: false,
+      });
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(subscription({}));
+      renderPage();
+      await screen.findAllByText('Plano atual');
+      expect(screen.queryByText(/Conta demo/)).toBeNull();
+    });
+
+    it('an ex-demo on Free sees no trial copy even without a subscription row', async () => {
+      vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
+        planId: 'free',
+        planSource: 'system',
+        wasDemo: true,
+      });
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(subscription({}));
+      renderPage();
+      expect(await screen.findByRole('button', { name: 'Fazer upgrade' })).toBeInTheDocument();
+      expect(screen.queryByText(HINT)).not.toBeInTheDocument();
+    });
   });
 
   it('shows "Fazer upgrade" and hides the first-time hint for a workspace that subscribed before', async () => {
@@ -691,6 +815,7 @@ describe('CobrancaPage', () => {
       vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
         planId: 'pro',
         planSource: 'stripe',
+        wasDemo: false,
       });
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(MONTHLY_STRIPE_SUB);
       renderPage();
@@ -713,6 +838,7 @@ describe('CobrancaPage', () => {
       vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
         planId: 'start',
         planSource: 'stripe',
+        wasDemo: false,
       });
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(MONTHLY_STRIPE_SUB);
       renderPage();
@@ -733,6 +859,7 @@ describe('CobrancaPage', () => {
       vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
         planId: 'pro',
         planSource: 'stripe',
+        wasDemo: false,
       });
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(MONTHLY_STRIPE_SUB);
       renderPage();
@@ -756,6 +883,7 @@ describe('CobrancaPage', () => {
       vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
         planId: 'pro',
         planSource: 'manual',
+        wasDemo: false,
       });
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(MONTHLY_STRIPE_SUB);
       renderPage();
@@ -775,6 +903,7 @@ describe('CobrancaPage', () => {
       vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
         planId: 'pro',
         planSource: 'stripe',
+        wasDemo: false,
       });
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(MONTHLY_STRIPE_SUB);
       renderPage();
@@ -792,6 +921,7 @@ describe('CobrancaPage', () => {
       vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
         planId: 'pro',
         planSource: 'stripe',
+        wasDemo: false,
       });
 
       // 1) Já está no anual: billingInterval 'year' desqualifica o switch.

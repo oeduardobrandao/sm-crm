@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { useIntlLocale } from '@mesaas/i18n';
 import { useAuth } from '../../context/AuthContext';
 import { getWorkspaceSubscription } from '../../services/billing';
 
@@ -12,6 +14,8 @@ import { getWorkspaceSubscription } from '../../services/billing';
  * banner exists exactly while Stripe says the payment is failing.
  */
 export function DunningBanner() {
+  const { t } = useTranslation('billing');
+  const intlLocale = useIntlLocale();
   const { profile } = useAuth();
   const isOwner = profile?.role === 'owner';
 
@@ -25,7 +29,7 @@ export function DunningBanner() {
   if (!isOwner || data?.status !== 'past_due') return null;
 
   const retryLabel = data.next_payment_attempt
-    ? new Date(data.next_payment_attempt).toLocaleDateString('pt-BR', {
+    ? new Date(data.next_payment_attempt).toLocaleDateString(intlLocale, {
         day: '2-digit',
         month: 'long',
       })
@@ -42,10 +46,8 @@ export function DunningBanner() {
       }}
     >
       <div className="banner-content">
-        <strong>Não conseguimos processar seu pagamento.</strong>{' '}
-        {retryLabel
-          ? `Vamos tentar novamente em ${retryLabel}. Atualize sua forma de pagamento para manter o acesso.`
-          : 'Atualize sua forma de pagamento para não perder o acesso ao seu plano.'}
+        <strong>{t('dunningBanner.title')}</strong>{' '}
+        {retryLabel ? t('dunningBanner.retryOn', { date: retryLabel }) : t('dunningBanner.noRetry')}
       </div>
       <Link
         to="/configuracao/cobranca"
@@ -60,7 +62,7 @@ export function DunningBanner() {
           fontSize: '0.8rem',
         }}
       >
-        Regularizar
+        {t('dunningBanner.cta')}
       </Link>
     </div>
   );

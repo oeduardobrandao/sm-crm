@@ -1,20 +1,22 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { toast } from 'sonner';
+import { useRef } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { ArrowLeft, CheckCircle2, FilePen, Send, X } from 'lucide-react';
 import type { Cliente, MensagemConversa } from '@/store';
+import { useVidroShell } from '@/components/layout/PageToolbarContext';
+import { useCornerClearance } from '@/hooks/useCornerClearance';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SkeletonStatus } from '@/components/ui/skeletons';
 import type { useMensagensData } from '../hooks/useMensagensData';
 import { AutorAvatar, ClienteAvatar } from './Avatars';
 import { PostChip } from './PostChip';
+import { useConversationThread } from '../hooks/useConversationThread';
 import {
   eventLabel,
   feedItemKey,
   formatTime,
   isEventRow,
-  matchesTipo,
+  mediaNoteLabel,
   TIPO_FILTERS,
-  type MensagensTipoFilter,
 } from '../mensagensLogic';
 
 type MensagensData = ReturnType<typeof useMensagensData>;
@@ -37,60 +39,13 @@ export function ConversationThread({
   clientesById,
   onBack,
 }: ConversationThreadProps) {
-  const [tipo, setTipo] = useState<MensagensTipoFilter>('todas');
-  const [draft, setDraft] = useState('');
-  const [replyTo, setReplyTo] = useState<{
-    postId: number;
-    /** NULL = post avulso (fora de fluxo); replyToPostApproval keys on
-     *  postId alone, so a null workflowId still supports the reply. */
-    workflowId: number | null;
-    titulo: string;
-  } | null>(null);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  // Starts true so the very first settled render (including a cold deep
-  // link) snaps to the newest message; sending sets it again. "Carregar
-  // mensagens anteriores" never sets it, so that fetch doesn't force a
-  // snap-to-bottom — it does NOT compensate scrollTop for the newly
-  // prepended content's height either, so on a large older batch the
-  // previously-topmost message can still end up below the fold. Same gap
-  // as the pre-refactor code; real compensation is a follow-up, not part
-  // of this task.
-  const scrollPending = useRef(true);
-
-  const itens = useMemo(() => {
-    const all = (feed.data?.pages ?? []).flat().filter((i) => matchesTipo(i, tipo));
-    return [...all].sort((a, b) => a.created_at.localeCompare(b.created_at));
-  }, [feed.data, tipo]);
-
-  useEffect(() => {
-    if (!scrollPending.current || feed.isLoading) return;
-    const el = scrollRef.current;
-    if (el) {
-      el.scrollTop = el.scrollHeight;
-      scrollPending.current = false;
-    }
-  }, [feed.isLoading, itens.length]);
-
-  async function enviar() {
-    const text = draft.trim();
-    if (!text || sendGeneral.isPending || replyToPost.isPending) return;
-    try {
-      if (replyTo) {
-        await replyToPost.mutateAsync({
-          postId: replyTo.postId,
-          workflowId: replyTo.workflowId,
-          content: text,
-        });
-      } else {
-        await sendGeneral.mutateAsync({ cliente: conversa.cliente_id, content: text });
-      }
-      setDraft('');
-      setReplyTo(null);
-      scrollPending.current = true;
-    } catch {
-      toast.error('Não foi possível enviar a mensagem.');
-    }
-  }
+  const { t } = useTranslation('messages');
+  const { tipo, setTipo, draft, setDraft, replyTo, setReplyTo, itens, scrollRef, enviar } =
+    useConversationThread({ conversa, feed, sendGeneral, replyToPost });
+  const vidroShell = useVidroShell();
+  // The composer owns the bottom edge: the floating corner stacks above it.
+  const composerRef = useRef<HTMLDivElement>(null);
+  useCornerClearance(composerRef);
 
   return (
     <div className="flex-1 min-w-0 flex flex-col overflow-hidden mensagens-thread-root">
@@ -98,7 +53,7 @@ export function ConversationThread({
         {onBack && (
           <button
             onClick={onBack}
-            aria-label="Voltar para as conversas"
+            aria-label={t('shared.backToConversations')}
             className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-main)]"
             style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
           >
@@ -134,7 +89,7 @@ export function ConversationThread({
       <div
         ref={scrollRef}
         data-testid="thread-scroll"
-        className="flex flex-1 min-h-0 flex-col gap-3 overflow-y-auto p-4"
+        className="mensagens-thread-scroll flex flex-1 min-h-0 flex-col gap-3 overflow-y-auto p-4"
         style={{ background: 'var(--bg-color)' }}
       >
         {feed.hasNextPage && (
@@ -144,36 +99,35 @@ export function ConversationThread({
             className="self-center text-xs font-semibold text-[var(--text-muted)]"
             style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
           >
-            {feed.isFetchingNextPage ? 'Carregando…' : 'Carregar mensagens anteriores'}
+            {feed.isFetchingNextPage ? t('loading') : t('shared.loadOlder')}
           </button>
         )}
         {feed.isError && (
           <div className="flex flex-col items-center gap-2 self-center py-8 text-center">
-            <p className="text-sm text-[var(--text-muted)]">
-              Não foi possível carregar as mensagens.
-            </p>
+            <p className="text-sm text-[var(--text-muted)]">{t('shared.loadMessagesError')}</p>
             <button
               onClick={() => feed.refetch()}
               className="text-sm font-semibold text-[var(--text-main)] hover:underline"
               style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
             >
-              Tentar novamente
+              {t('shared.retry')}
             </button>
           </div>
         )}
         {!feed.isError && feed.isLoading && <ThreadSkeleton />}
         {!feed.isError && !feed.isLoading && itens.length === 0 && (
           <p className="self-center py-8 text-sm text-[var(--text-muted)]">
-            Nenhuma mensagem nesta conversa ainda.
+            {t('conversationThread.empty')}
           </p>
         )}
         {itens.map((m) => {
           const daEquipe = m.is_workspace_user;
+          const notaLabel = mediaNoteLabel(m);
           if (isEventRow(m)) {
             return (
               <div
                 key={feedItemKey(m)}
-                className="flex items-center gap-2 self-start text-xs text-[var(--text-muted)]"
+                className="mensagens-event-row flex max-w-full items-center gap-2 self-start text-xs text-[var(--text-muted)]"
               >
                 {m.source === 'edit_suggestion' ? (
                   <FilePen size={13} />
@@ -184,7 +138,9 @@ export function ConversationThread({
                 {m.post_id != null && (
                   <PostChip postId={m.post_id} workflowId={m.workflow_id} titulo={m.post_titulo} />
                 )}
-                <span>· {formatTime(m.created_at)}</span>
+                <span className="mensagens-event-row__time whitespace-nowrap">
+                  · {formatTime(m.created_at)}
+                </span>
               </div>
             );
           }
@@ -198,25 +154,38 @@ export function ConversationThread({
                 cliente={clientesById.get(m.cliente_id)}
                 clienteFotoUrl={conversa.cliente_foto_url}
               />
-              <div className={`flex flex-col gap-1 ${daEquipe ? 'items-end' : 'items-start'}`}>
+              <div
+                className={`flex min-w-0 flex-col gap-1 ${daEquipe ? 'items-end' : 'items-start'}`}
+              >
                 <div
-                  className="rounded-2xl px-3.5 py-2.5 text-sm"
-                  style={{
-                    background: daEquipe ? 'var(--surface-hover)' : 'var(--card-bg)',
-                    boxShadow: 'inset 0 0 0 1px var(--border-color)',
-                  }}
+                  className={`max-w-full rounded-2xl px-3.5 py-2.5 text-sm vidro-bubble ${daEquipe ? 'vidro-bubble--me' : 'vidro-bubble--them'}`}
+                  style={
+                    vidroShell
+                      ? undefined
+                      : {
+                          background: daEquipe ? 'var(--surface-hover)' : 'var(--card-bg)',
+                          boxShadow: 'inset 0 0 0 1px var(--border-color)',
+                        }
+                  }
                 >
                   {daEquipe && (
-                    <div className="mb-0.5 text-[11px] font-semibold text-[var(--text-muted)]">
-                      {m.author_name ?? 'Equipe'}
+                    <div className="vidro-bubble__meta mb-0.5 text-[11px] font-semibold text-[var(--text-muted)]">
+                      {m.author_name ?? t('shared.team')}
+                    </div>
+                  )}
+                  {notaLabel && (
+                    <div className="vidro-bubble__meta mb-0.5 text-[11px] font-semibold text-[var(--text-muted)]">
+                      {notaLabel}
                     </div>
                   )}
                   {m.action === 'correcao' && (
-                    <div className="mb-0.5 text-[11px] font-semibold text-[var(--text-muted)]">
-                      Pediu correção
+                    <div className="vidro-bubble__meta mb-0.5 text-[11px] font-semibold text-[var(--text-muted)]">
+                      {t('events.correction')}
                     </div>
                   )}
-                  {m.content && <p className="whitespace-pre-wrap">{m.content}</p>}
+                  {m.content && (
+                    <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">{m.content}</p>
+                  )}
                   {m.post_id != null && (
                     <div className="mt-2 text-xs">
                       <PostChip
@@ -241,7 +210,7 @@ export function ConversationThread({
                       className="font-semibold text-[var(--text-muted)] hover:text-[var(--text-main)]"
                       style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
                     >
-                      Responder
+                      {t('conversationThread.reply')}
                     </button>
                   )}
                 </div>
@@ -251,15 +220,23 @@ export function ConversationThread({
         })}
       </div>
 
-      <div className="flex flex-col gap-2 border-t border-[var(--border-color)] p-3.5">
+      <div
+        ref={composerRef}
+        className="flex flex-col gap-2 border-t border-[var(--border-color)] p-3.5"
+      >
         {replyTo && (
           <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
-            <span>
-              Respondendo sobre: <strong>{replyTo.titulo}</strong>
+            <span className="min-w-0 truncate">
+              <Trans
+                t={t}
+                i18nKey="conversationThread.replyingTo"
+                values={{ title: replyTo.titulo }}
+                components={{ b: <strong /> }}
+              />
             </span>
             <button
               onClick={() => setReplyTo(null)}
-              aria-label="Cancelar resposta"
+              aria-label={t('conversationThread.cancelReply')}
               style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
             >
               <X size={13} />
@@ -268,18 +245,23 @@ export function ConversationThread({
         )}
         <div className="flex gap-2">
           <input
+            data-variant="bare"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') enviar();
             }}
-            placeholder={replyTo ? 'Responder sobre o post…' : 'Enviar mensagem…'}
-            className="flex-1 rounded-full border border-[var(--border-color)] bg-[var(--card-bg)] px-4 py-2.5 text-sm outline-none"
+            placeholder={
+              replyTo
+                ? t('conversationThread.replyPlaceholder')
+                : t('conversationThread.messagePlaceholder')
+            }
+            className="min-w-0 flex-1 rounded-full border border-[var(--border-color)] bg-[var(--card-bg)] px-4 py-2.5 text-sm outline-none"
           />
           <button
             onClick={enviar}
             disabled={sendGeneral.isPending || replyToPost.isPending || !draft.trim()}
-            aria-label="Enviar mensagem"
+            aria-label={t('shared.sendMessage')}
             className="rounded-full px-4 py-2.5 text-sm font-semibold disabled:opacity-50 bg-[var(--primary-color)]"
             style={{ border: 'none', cursor: 'pointer' }}
           >
@@ -292,7 +274,7 @@ export function ConversationThread({
 }
 
 /** Alternating bubbles (client left, team right) while the first page of the thread loads. */
-function ThreadSkeleton() {
+export function ThreadSkeleton() {
   const bubbles: { mine: boolean; w: string; h: string }[] = [
     { mine: false, w: '52%', h: 'h-12' },
     { mine: true, w: '40%', h: 'h-9' },

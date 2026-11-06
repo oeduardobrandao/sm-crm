@@ -46,6 +46,7 @@ const REQUIRED_FUNCTIONS = [
   "hub-bootstrap",
   "hub-posts",
   "hub-approve",
+  "hub-media-notes",
   "hub-brand",
   "hub-pages",
   "hub-briefing",

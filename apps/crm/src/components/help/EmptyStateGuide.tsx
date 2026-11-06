@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useVidroShell } from '@/components/layout/PageToolbarContext';
 
 interface EmptyStateGuideProps {
   icon: React.ReactNode;
@@ -19,18 +20,31 @@ export function EmptyStateGuide({
   hint,
 }: EmptyStateGuideProps) {
   // Empty states are neutral facts, not alerts: quiet surface, ink link.
+  // Under the Vidro shell the surface and text colours come from cards.css (.vidro-empty).
+  const vidroShell = useVidroShell();
   return (
     <div
-      className="rounded-xl px-4 py-5 flex flex-col gap-2"
-      style={{ border: '1px solid var(--border-color)', background: 'var(--surface-hover)' }}
+      className={
+        vidroShell
+          ? 'rounded-xl px-4 py-5 flex flex-col gap-2 vidro-empty'
+          : 'rounded-xl px-4 py-5 flex flex-col gap-2'
+      }
+      style={
+        vidroShell
+          ? undefined
+          : { border: '1px solid var(--border-color)', background: 'var(--surface-hover)' }
+      }
     >
       <div className="flex items-center gap-2">
         <span className="text-xl">{icon}</span>
-        <span className="font-semibold text-sm" style={{ color: 'var(--text-main)' }}>
+        <span
+          className="font-semibold text-sm"
+          style={vidroShell ? undefined : { color: 'var(--text-main)' }}
+        >
           {title}
         </span>
       </div>
-      <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+      <p className="text-sm" style={vidroShell ? undefined : { color: 'var(--text-muted)' }}>
         {description}{' '}
         <Link
           to={actionHref}
@@ -41,7 +55,7 @@ export function EmptyStateGuide({
         </Link>
       </p>
       {hint && (
-        <p className="text-xs" style={{ color: 'var(--text-light)' }}>
+        <p className="text-xs" style={vidroShell ? undefined : { color: 'var(--text-light)' }}>
           {hint}
         </p>
       )}

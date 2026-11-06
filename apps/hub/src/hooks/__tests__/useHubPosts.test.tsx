@@ -65,6 +65,33 @@ describe('useHubPosts', () => {
     expect(result.current.hasOlder).toBe(false);
   });
 
+  it('older pages contribute their mediaNotes', async () => {
+    const mnote = (id: number, post_id: number) => ({ id, post_id, body: `n${id}` });
+    older.mockResolvedValueOnce({
+      posts: [oldPost(2)],
+      postApprovals: [],
+      mediaNotes: [mnote(1, 1), mnote(20, 2)],
+      nextCursor: null,
+    } as never);
+    const { result } = setup({
+      posts: [shellPost(1)],
+      postApprovals: [],
+      mediaNotes: [mnote(1, 1)],
+      olderCursor: 'c|0',
+    });
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    expect(result.current.mediaNotes.map((n) => n.id)).toEqual([1]);
+
+    act(() => result.current.loadOlder());
+    await waitFor(() => expect(result.current.mediaNotes.map((n) => n.id)).toEqual([1, 20]));
+  });
+
+  it('tolerates responses without mediaNotes (stale cache or old backend)', async () => {
+    const { result } = setup({ posts: [shellPost(1)], postApprovals: [] });
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    expect(result.current.mediaNotes).toEqual([]);
+  });
+
   it('keeps hasOlder after a failed first page and retries on the next loadOlder', async () => {
     older
       .mockRejectedValueOnce(new Error('x'))

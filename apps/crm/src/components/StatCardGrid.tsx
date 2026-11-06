@@ -1,4 +1,7 @@
 import { Children, type CSSProperties, type ReactNode } from 'react';
+import { cn } from '@/lib/utils';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { StatCardPhoneContext } from './StatCard';
 
 interface StatCardGridProps {
   children: ReactNode;
@@ -9,6 +12,12 @@ interface StatCardGridProps {
   style?: CSSProperties;
   /** Anchor id — the client page scroll-spy targets this grid. */
   id?: string;
+  /**
+   * Below 768px: `grid` lays the tiles two-up, `scroll` in one swipeable row. Defaults
+   * to `scroll` when `className` has `analytics-kpi-scroll` (the strip those pages
+   * already had on phones), else `grid`.
+   */
+  phoneLayout?: 'grid' | 'scroll';
 }
 
 /**
@@ -20,8 +29,40 @@ interface StatCardGridProps {
  * filler cells — otherwise the grid's divider colour would show through as a
  * solid slab where the missing cards would be.
  */
-export function StatCardGrid({ children, className, maxCols = 5, style, id }: StatCardGridProps) {
+export function StatCardGrid({
+  children,
+  className,
+  maxCols = 5,
+  style,
+  id,
+  phoneLayout,
+}: StatCardGridProps) {
+  const isDesktop = useIsDesktop(768);
   const items = Children.toArray(children).filter(Boolean);
+
+  if (!isDesktop) {
+    // Phones: separate compact tiles (StatCardPhoneContext switches the cards), no
+    // fused block and no fillers. Tablet and desktop keep the block below.
+    const scroll =
+      (phoneLayout ?? (className?.includes('analytics-kpi-scroll') ? 'scroll' : 'grid')) ===
+      'scroll';
+    return (
+      <StatCardPhoneContext.Provider value={true}>
+        <div
+          id={id}
+          className={cn(
+            'phone-kit phone-stat-grid',
+            scroll && 'phone-stat-grid--scroll',
+            className,
+          )}
+          style={style}
+        >
+          {items}
+        </div>
+      </StatCardPhoneContext.Provider>
+    );
+  }
+
   const cols = Math.min(items.length, maxCols) || 1;
   const fillerCount = (cols - (items.length % cols)) % cols;
 

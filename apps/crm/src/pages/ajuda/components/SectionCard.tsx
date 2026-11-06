@@ -12,7 +12,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 
-const SECTION_ICONS: Record<string, LucideIcon> = {
+export const SECTION_ICONS: Record<string, LucideIcon> = {
   'primeiros-passos': Rocket,
   clientes: Users,
   equipe: UsersRound,

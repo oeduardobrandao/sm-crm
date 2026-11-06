@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
   Check,
@@ -7,6 +8,7 @@ import {
   ExternalLink,
   FileText,
   FolderMinus,
+  MessageSquare,
   MoreHorizontal,
   Trash2,
 } from 'lucide-react';
@@ -19,15 +21,18 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { MediaUnavailable } from '@/components/MediaUnavailable';
 import { copyAppLink } from '@/lib/copyAppLink';
-import { avatarColorClass } from '@/lib/avatarColor';
+import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { getInitials } from '@/lib/initials';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
-import type { PostEntity } from '../boardEntity';
+import { publicacaoPill, type PostEntity } from '../boardEntity';
 import { TIPO_LABELS } from '../postLabels';
 import { PostStatusChip } from './PostStatusChip';
 import { DeadlinePill } from './DeadlinePill';
+import { PublicacaoPillContent } from './PublicacaoPillContent';
 import { progressColor } from '../progressColor';
+import { useVidroShell } from '@/components/layout/PageToolbarContext';
 import type { WorkflowPost } from '../../../store';
+import { ClienteFoto } from '@/components/ClienteFoto';
 
 interface PostProcessCardProps {
   entity: PostEntity;
@@ -36,7 +41,7 @@ interface PostProcessCardProps {
   onForwardClick?: () => void;
   onRevertClick?: () => void;
   dragHandle?: React.ReactNode;
-  forwardLabel?: 'Avançar etapa' | 'Concluir processo';
+  forwardLabel?: string;
   canRevert?: boolean;
   /** Encerra o processo individual: `remove_post_process` desliga o processo e
    *  mantém o post, não apaga nada -- daí o rótulo "Encerrar processo" (spec
@@ -50,6 +55,11 @@ interface PostProcessCardProps {
   onDeleteClick?: () => void;
   /** "Duplicar post": copia o post e o processo na mesma etapa. */
   onDuplicateClick?: () => void;
+  /** Unread discussion messages on this post. Badge only when > 0. */
+  discussaoNaoLidas?: number;
+  /** A coluna ordena por data de publicação: a pill mostra essa data no lugar
+   *  do prazo da etapa. */
+  showPublishDate?: boolean;
 }
 
 /**
@@ -81,8 +91,15 @@ export function PostProcessCard({
   onRemoveProcessClick,
   onDeleteClick,
   onDuplicateClick,
+  showPublishDate,
+  discussaoNaoLidas,
 }: PostProcessCardProps) {
+  const { t } = useTranslation('postPanels');
   const navigate = useNavigate();
+  // Under Vidro the board actions trade the `!important` .btn-edit-workflow for
+  // vidro-board-action and drop their inline radius/padding, so buttons.css can paint them.
+  const vidroShell = useVidroShell();
+  const boardAction = vidroShell ? 'vidro-board-action' : 'btn-edit-workflow';
   const registry = useStatusRegistry();
   const dl = entity.deadline;
   const deadlineClass = dl.estourado
@@ -94,16 +111,19 @@ export function PostProcessCard({
         : 'deadline-ok';
   const hasDeadline = entity.prazoEfetivo != null;
   const deadlineText = !hasDeadline
-    ? 'Sem prazo'
+    ? t('postProcessCard.noDeadline')
     : dl.estourado
-      ? `${Math.abs(dl.diasRestantes)}d atrasado`
+      ? t('postProcessCard.daysOverdue', { days: Math.abs(dl.diasRestantes) })
       : dl.diasRestantes === 0 && dl.horasRestantes === 0
-        ? 'Vence agora'
+        ? t('postProcessCard.dueNow')
         : dl.diasRestantes === 0
-          ? `${dl.horasRestantes}h restantes`
+          ? t('postProcessCard.hoursLeft', { hours: dl.horasRestantes })
           : dl.horasRestantes > 0
-            ? `${dl.diasRestantes}d ${dl.horasRestantes}h restantes`
-            : `${dl.diasRestantes}d restantes`;
+            ? t('postProcessCard.daysHoursLeft', {
+                days: dl.diasRestantes,
+                hours: dl.horasRestantes,
+              })
+            : t('postProcessCard.daysLeft', { days: dl.diasRestantes });
   const etapaIdx = entity.steps.findIndex((s) => s.ordem === entity.etapaOrdem);
   const total = entity.steps.length;
   const progressPct = total > 0 && etapaIdx >= 0 ? Math.round((etapaIdx / total) * 100) : 0;
@@ -111,6 +131,19 @@ export function PostProcessCard({
   const post = entity.process.post;
   const cliente = entity.cliente;
   const TipoIcon = TIPO_ICONS[post.tipo];
+  const publicacao = showPublishDate ? publicacaoPill(entity) : null;
+  const pillStyle: React.CSSProperties = {
+    fontSize: '0.66rem',
+    fontWeight: 700,
+    padding: '0.12rem 0.5rem',
+    borderRadius: '999px',
+    // Keeps its full width; ellipsizes only when wider than the card alone.
+    flexShrink: 0,
+    maxWidth: '100%',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  };
 
   // Copiar link do post está sempre disponível num card real; só o clone
   // efêmero do DragOverlay (sem props de ação) fica sem kebab.
@@ -167,7 +200,7 @@ export function PostProcessCard({
         <div style={{ minWidth: 0, flex: '1 1 auto', display: 'flex', flexDirection: 'column' }}>
           <div
             className="board-card-title"
-            title={entity.titulo || 'Post sem título'}
+            title={entity.titulo || t('postProcessCard.untitled')}
             style={{
               fontSize: '0.86rem',
               fontWeight: 700,
@@ -178,7 +211,7 @@ export function PostProcessCard({
               whiteSpace: 'nowrap',
             }}
           >
-            {entity.titulo || 'Post sem título'}
+            {entity.titulo || t('postProcessCard.untitled')}
           </div>
           <span
             className="board-card-client"
@@ -198,39 +231,36 @@ export function PostProcessCard({
           >
             {cliente ? (
               <>
-                {entity.clienteAvatarUrl ? (
-                  <img
-                    src={entity.clienteAvatarUrl}
-                    alt=""
-                    loading="lazy"
-                    decoding="async"
-                    style={{
-                      width: 14,
-                      height: 14,
-                      borderRadius: '50%',
-                      objectFit: 'cover',
-                      flexShrink: 0,
-                    }}
-                  />
-                ) : (
-                  <div
-                    style={{
-                      width: 14,
-                      height: 14,
-                      borderRadius: '50%',
-                      background: cliente.cor || '#6b7280',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '0.4rem',
-                      fontWeight: 800,
-                      color: '#fff',
-                      flexShrink: 0,
-                    }}
-                  >
-                    {getInitials(cliente.nome)}
-                  </div>
-                )}
+                <ClienteFoto
+                  srcs={[entity.clienteAvatarUrl, cliente.foto_url]}
+                  alt=""
+                  style={{
+                    width: 14,
+                    height: 14,
+                    borderRadius: '50%',
+                    objectFit: 'cover',
+                    flexShrink: 0,
+                  }}
+                  fallback={
+                    <div
+                      style={{
+                        width: 14,
+                        height: 14,
+                        borderRadius: '50%',
+                        background: cliente.cor || '#6b7280',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '0.4rem',
+                        fontWeight: 800,
+                        color: '#fff',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {getInitials(cliente.nome)}
+                    </div>
+                  }
+                />
                 <span
                   role="link"
                   tabIndex={0}
@@ -269,43 +299,58 @@ export function PostProcessCard({
             </span>
           </span>
         </div>
+        {discussaoNaoLidas != null && discussaoNaoLidas > 0 && (
+          <span
+            className="board-card-discussao-badge"
+            role="img"
+            aria-label={t('postProcessCard.newMessages', { count: discussaoNaoLidas })}
+            title={t('postProcessCard.newMessages', { count: discussaoNaoLidas })}
+          >
+            <MessageSquare className="h-3 w-3" aria-hidden="true" />
+            {discussaoNaoLidas}
+          </span>
+        )}
         <span
           className="post-fluxo-tag post-fluxo-tag--avulso post-fluxo-tag--individual post-fluxo-tag--icon-only"
           role="img"
-          aria-label="Processo individual"
-          title="Processo individual"
+          aria-label={t('postProcessCard.individualProcess')}
+          title={t('postProcessCard.individualProcess')}
           style={{ flexShrink: 0 }}
         >
           <FileText size={12} aria-hidden="true" />
         </span>
       </div>
 
+      {/* Wraps instead of squeezing: when both pills don't fit, the status chip
+          drops below rather than cutting the deadline off. */}
       <div
         style={{
           display: 'flex',
+          flexWrap: 'wrap',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: '0.4rem',
+          gap: '0.35rem 0.4rem',
         }}
       >
-        <DeadlinePill
-          className={`board-card-deadline board-card-deadline-pill ${hasDeadline ? deadlineClass : 'deadline-ok'}`}
-          style={{
-            fontSize: '0.66rem',
-            fontWeight: 700,
-            padding: '0.12rem 0.5rem',
-            borderRadius: '999px',
-            minWidth: 0,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-          relativeText={deadlineText}
-          dueDate={entity.prazoEfetivo}
-          estourado={dl.estourado}
-          tipoPrazo={entity.step.tipo_prazo}
-        />
-        <span className="board-card-type-status-chip" style={{ flexShrink: 0 }}>
+        {publicacao ? (
+          <span
+            className="board-card-deadline board-card-deadline-pill deadline-neutral"
+            title={publicacao.title}
+            style={pillStyle}
+          >
+            <PublicacaoPillContent pill={publicacao} />
+          </span>
+        ) : (
+          <DeadlinePill
+            className={`board-card-deadline board-card-deadline-pill ${hasDeadline ? deadlineClass : 'deadline-ok'}`}
+            style={pillStyle}
+            relativeText={deadlineText}
+            dueDate={entity.prazoEfetivo}
+            estourado={dl.estourado}
+            tipoPrazo={entity.step.tipo_prazo}
+          />
+        )}
+        <span style={{ display: 'inline-flex', flexShrink: 0 }}>
           <PostStatusChip post={post} registry={registry} />
         </span>
       </div>
@@ -332,7 +377,7 @@ export function PostProcessCard({
           aria-valuemax={total}
           aria-valuenow={etapaIdx + 1}
           aria-valuetext={`${entity.etapaNome} ${etapaIdx + 1}/${total}`}
-          aria-label="Progresso do processo"
+          aria-label={t('postProcessCard.progressAria')}
           title={`${entity.etapaNome} ${etapaIdx + 1}/${total}`}
           style={{
             flex: '1 1 auto',
@@ -389,18 +434,13 @@ export function PostProcessCard({
           >
             {entity.responsavel ? (
               <>
-                <div
-                  className={`avatar ${avatarColorClass(entity.responsavel.id ?? entity.responsavel.nome)}`}
-                  style={{
-                    width: 18,
-                    height: 18,
-                    fontSize: '0.5rem',
-                    fontWeight: 800,
-                    flexShrink: 0,
-                  }}
-                >
-                  {getInitials(entity.responsavel.nome)}
-                </div>
+                <PessoaAvatar
+                  nome={entity.responsavel.nome}
+                  fotoUrl={entity.responsavel.avatar_url}
+                  seed={entity.responsavel.id}
+                  size={18}
+                  className="!text-[0.5rem] !font-extrabold"
+                />
                 <span
                   style={{
                     fontSize: '0.7rem',
@@ -416,7 +456,7 @@ export function PostProcessCard({
               </>
             ) : (
               <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                Sem responsável
+                {t('postProcessCard.noAssignee')}
               </span>
             )}
           </div>
@@ -435,10 +475,14 @@ export function PostProcessCard({
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  className="btn-edit-workflow board-card-kebab"
-                  aria-label="Mais opções"
-                  title="Mais opções"
-                  style={{ height: 26, padding: '0 0.5rem', borderRadius: '8px', flexShrink: 0 }}
+                  className={`${boardAction} board-card-kebab`}
+                  aria-label={t('postProcessCard.moreOptions')}
+                  title={t('postProcessCard.moreOptions')}
+                  style={
+                    vidroShell
+                      ? { height: 26, flexShrink: 0 }
+                      : { height: 26, padding: '0 0.5rem', borderRadius: '8px', flexShrink: 0 }
+                  }
                   onClick={(e) => e.stopPropagation()}
                 >
                   <MoreHorizontal className="h-3.5 w-3.5" />
@@ -452,7 +496,7 @@ export function PostProcessCard({
                   }}
                 >
                   <Copy className="h-3.5 w-3.5" />
-                  Copiar link do post
+                  {t('postProcessCard.copyLink')}
                 </DropdownMenuItem>
                 {onClick && (
                   <DropdownMenuItem
@@ -462,7 +506,7 @@ export function PostProcessCard({
                     }}
                   >
                     <ExternalLink className="h-3.5 w-3.5" />
-                    Abrir
+                    {t('postProcessCard.open')}
                   </DropdownMenuItem>
                 )}
                 {onDuplicateClick && (
@@ -473,7 +517,7 @@ export function PostProcessCard({
                     }}
                   >
                     <CopyPlus className="h-3.5 w-3.5" />
-                    Duplicar post
+                    {t('postProcessCard.duplicate')}
                   </DropdownMenuItem>
                 )}
                 {canRevert && onRevertClick && (
@@ -484,7 +528,7 @@ export function PostProcessCard({
                     }}
                   >
                     <ArrowLeft className="h-3.5 w-3.5" />
-                    Voltar etapa
+                    {t('postProcessCard.revert')}
                   </DropdownMenuItem>
                 )}
                 {onRemoveProcessClick && (
@@ -495,7 +539,7 @@ export function PostProcessCard({
                     }}
                   >
                     <FolderMinus className="h-3.5 w-3.5" />
-                    Encerrar processo
+                    {t('postProcessCard.closeProcess')}
                   </DropdownMenuItem>
                 )}
                 {onDeleteClick && (
@@ -507,7 +551,7 @@ export function PostProcessCard({
                     }}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
-                    Excluir post
+                    {t('postProcessCard.deletePost')}
                   </DropdownMenuItem>
                 )}
               </DropdownMenuContent>
@@ -516,13 +560,12 @@ export function PostProcessCard({
 
           {onForwardClick && (
             <button
-              className="btn-edit-workflow btn-forward-etapa"
-              aria-label={forwardLabel ?? 'Avançar etapa'}
-              title={forwardLabel ?? 'Avançar etapa'}
+              className={`${boardAction} btn-forward-etapa`}
+              aria-label={forwardLabel ?? t('postProcessCard.forward')}
+              title={forwardLabel ?? t('postProcessCard.forward')}
               style={{
                 height: 26,
-                padding: '0 0.5rem',
-                borderRadius: '8px',
+                ...(vidroShell ? null : { padding: '0 0.5rem', borderRadius: '8px' }),
                 flexShrink: 0,
                 marginLeft: 'auto',
                 color: '#3ecf8e',

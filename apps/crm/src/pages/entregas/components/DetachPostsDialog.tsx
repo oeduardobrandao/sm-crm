@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import { Trans, useTranslation } from 'react-i18next';
+import { i18n } from '@mesaas/i18n';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -51,12 +53,12 @@ export function keepStepsAvailability(
   activeDeadline: string | null,
 ): { available: boolean; reason?: string } {
   if (card.workflow.status !== 'ativo')
-    return { available: false, reason: 'O fluxo não está ativo.' };
+    return { available: false, reason: i18n.t('workflows:detachDialog.notActive') };
   const ativas = card.allEtapas.filter((e) => e.status === 'ativo').length;
   if (ativas !== 1)
-    return { available: false, reason: 'As etapas deste fluxo estão inconsistentes.' };
+    return { available: false, reason: i18n.t('workflows:detachDialog.inconsistent') };
   if (!activeDeadline)
-    return { available: false, reason: 'Não foi possível calcular o prazo da etapa atual.' };
+    return { available: false, reason: i18n.t('workflows:detachDialog.noDeadline') };
   return { available: true };
 }
 
@@ -72,6 +74,7 @@ export function DetachPostsDialog({
   onDetachedWithoutProcess,
   onDetachedKeepingProcess,
 }: DetachPostsDialogProps) {
+  const { t } = useTranslation('workflows');
   const deadlines = useMemo(() => buildDetachDeadlines(card.allEtapas, card.etapa), [card]);
   const availability = keepStepsAvailability(card, deadlines.activeDeadline);
   const keepAvailable = keepStepsEnabled && availability.available;
@@ -112,7 +115,7 @@ export function DetachPostsDialog({
         onDetachedWithoutProcess(result, archiveFlag);
       }
     } catch (err) {
-      toast.error(getPostProcessErrorToast(err, 'Erro ao desmembrar posts'));
+      toast.error(getPostProcessErrorToast(err, t('detachDialog.error')));
       setRequestId(newRequestId());
     } finally {
       setBusy(false);
@@ -125,9 +128,9 @@ export function DetachPostsDialog({
         id="detach-archive-empty-flow"
         checked={archive}
         onCheckedChange={(c) => setArchive(c === true)}
-        aria-label="Arquivar o fluxo depois de desmembrar"
+        aria-label={t('detachDialog.archive')}
       />
-      <Label htmlFor="detach-archive-empty-flow">Arquivar o fluxo depois de desmembrar</Label>
+      <Label htmlFor="detach-archive-empty-flow">{t('detachDialog.archive')}</Label>
     </div>
   );
 
@@ -140,17 +143,18 @@ export function DetachPostsDialog({
     >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Desmembrar do fluxo?</AlertDialogTitle>
+          <AlertDialogTitle>{t('detachDialog.title')}</AlertDialogTitle>
           {keepStepsEnabled ? (
             <AlertDialogDescription>
-              {posts.length === 1 ? '1 publicação' : `${posts.length} publicações`} de{' '}
-              {card.cliente?.nome || '—'}, etapa atual: {card.etapa.nome}. Status, conteúdo e
-              aprovações são preservados.
+              {t('detachDialog.descKeep', {
+                count: posts.length,
+                client: card.cliente?.nome || '—',
+                stage: card.etapa.nome,
+              })}
             </AlertDialogDescription>
           ) : (
             <AlertDialogDescription>
-              Os posts selecionados viram publicações avulsas de {card.cliente?.nome || '—'}. Eles
-              continuam no quadro de Publicações e no portal do cliente, mas saem deste fluxo.
+              {t('detachDialog.descAvulso', { client: card.cliente?.nome || '—' })}
             </AlertDialogDescription>
           )}
         </AlertDialogHeader>
@@ -158,41 +162,47 @@ export function DetachPostsDialog({
           <>
             <ul className="text-sm max-h-32 overflow-y-auto" style={{ color: 'var(--text-muted)' }}>
               {posts.map((p) => (
-                <li key={p.id}>{p.titulo || 'Post sem título'}</li>
+                <li key={p.id}>{p.titulo || t('shared.postUntitled')}</li>
               ))}
             </ul>
-            <div role="radiogroup" aria-label="Como desmembrar" className="flex flex-col gap-2">
+            <div
+              role="radiogroup"
+              aria-label={t('detachDialog.modeAria')}
+              className="flex flex-col gap-2"
+            >
               <label className="flex items-start gap-2 text-sm">
                 <input
                   type="radio"
                   name="detach-mode"
-                  aria-label="Manter etapas"
+                  aria-label={t('detachDialog.keepSteps')}
                   checked={mode === 'manter'}
                   disabled={!keepAvailable}
                   onChange={() => setMode('manter')}
                 />
                 <span>
-                  <strong>Manter etapas</strong> (recomendado): o post segue as mesmas etapas, com
-                  responsável e prazo próprios, como card individual no quadro.
+                  <Trans
+                    t={t}
+                    i18nKey="detachDialog.keepStepsDesc"
+                    components={{ b: <strong /> }}
+                  />
                 </span>
               </label>
               {!keepAvailable && (
                 <p className="text-xs" style={{ color: 'var(--text-muted)', marginLeft: '1.5rem' }}>
-                  {availability.reason ?? 'Indisponível.'} Um processo pode ser aplicado depois, no
-                  drawer do post.
+                  {availability.reason ?? t('detachDialog.unavailable')}{' '}
+                  {t('detachDialog.applyLater')}
                 </p>
               )}
               <label className="flex items-start gap-2 text-sm">
                 <input
                   type="radio"
                   name="detach-mode"
-                  aria-label="Transformar em avulso sem etapas"
+                  aria-label={t('detachDialog.avulso')}
                   checked={mode === 'avulso'}
                   onChange={() => setMode('avulso')}
                 />
                 <span>
-                  <strong>Transformar em avulso sem etapas</strong>: o post continua em Publicações
-                  e no portal do cliente, só com status.
+                  <Trans t={t} i18nKey="detachDialog.avulsoDesc" components={{ b: <strong /> }} />
                 </span>
               </label>
             </div>
@@ -201,10 +211,10 @@ export function DetachPostsDialog({
         {archiveRow}
         <AlertDialogFooter>
           <AlertDialogCancel onClick={onClose} disabled={busy}>
-            Cancelar
+            {t('actions.cancel')}
           </AlertDialogCancel>
           <AlertDialogAction onClick={confirm} disabled={busy}>
-            {busy ? 'Desmembrando...' : 'Desmembrar'}
+            {busy ? t('detachDialog.detaching') : t('detachDialog.detach')}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

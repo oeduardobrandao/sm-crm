@@ -1,0 +1,113 @@
+{
+  "shared": {
+    "title": "Team",
+    "tipo": {
+      "clt": "Employee (CLT)",
+      "freelancer_mensal": "Monthly freelancer",
+      "freelancer_demanda": "On-demand freelancer"
+    },
+    "role": {
+      "owner": "owner",
+      "admin": "admin",
+      "agent": "agent"
+    },
+    "roleOption": {
+      "admin": "Admin",
+      "agent": "Agent"
+    },
+    "workspaceRole": "Workspace role",
+    "searchEditor": "Search by name, role or email...",
+    "searchViewer": "Search by name or role...",
+    "restrictedTitle": "Limited view",
+    "restrictedDescription": "Only admins and owners can add, edit or remove team members.",
+    "totalMembers": "Total members",
+    "totalCost": "Total monthly cost",
+    "csvHelp": "CSV columns: nome*, cargo*, tipo (clt|freelancer_mensal|freelancer_demanda), custo_mensal, data_pagamento",
+    "addMember": "Add member",
+    "importCsv": "Import CSV",
+    "filterType": "Type",
+    "filterAll": "All",
+    "sortName": "Name",
+    "sortCostDesc": "Cost (highest)",
+    "sortCostAsc": "Cost (lowest)",
+    "pendingInvite": "invite pending",
+    "noLinkedAccount": "no linked account",
+    "noMembers": "No members found."
+  },
+  "equipePage": {
+    "removed": "Member removed",
+    "removeError": "Could not remove",
+    "imported_zero": "{{count}} members imported successfully!",
+    "imported_one": "{{count}} member imported successfully!",
+    "imported_other": "{{count}} members imported successfully!",
+    "deleteTitle": "Remove this member?",
+    "helpMembers": "<b>Members</b> = people on your team (designers, copywriters, etc). Used for costs and task assignment in workflows.",
+    "helpUsers": "<b>Workspace users</b> = accounts with access to the CRM. Manage them in Settings → Workspace.",
+    "helpLink": "To give a member access to the CRM, link them to a workspace user in the edit form.",
+    "colMember": "Member",
+    "colRole": "Role",
+    "colType": "Type",
+    "colLink": "Account"
+  },
+  "equipePhone": {
+    "help": "Members are the people on your team (designers, copywriters, etc.): used for costs and task assignment in workflows. Workspace users are accounts with access to the CRM, managed in Settings → Workspace. To give a member access to the CRM, link them to a workspace user in the edit form.",
+    "viewMember": "View member",
+    "filtersLabel": "Filters: Type and Sort by",
+    "filtersLabelActive": "Filters: Type and Sort by, {{n}} active",
+    "addLabel": "Add: Add member or Import CSV",
+    "membersAria": "Members",
+    "rowActions": "Actions for {{name}}",
+    "filtersDescription": "Filter and sort the team",
+    "sortBy": "Sort by",
+    "addTitle": "Add"
+  },
+  "inviteSection": {
+    "title": "CRM access",
+    "loadingSeats": "Loading plan seats...",
+    "seatsUsed": "{{used}} of {{limit}} plan seats used",
+    "seatsAfterInvite": "{{used}} of {{limit}} seats after this invite",
+    "remaining_zero": "{{count}} left",
+    "remaining_one": "{{count}} left",
+    "remaining_other": "{{count}} left",
+    "pendingNotice": "Invite pending for <b>{{email}}</b> ({{role}})<time></time>. Resend or cancel in Settings → Workspace.",
+    "pendingFooter": "<time></time>. Resend or cancel in Settings → Workspace.",
+    "pendingCell": "Invite pending",
+    "inviteLabel": "Invite to the workspace",
+    "inviteOn": "They will get an email invite and take 1 plan seat. Once they accept, their account is linked to this member automatically.",
+    "inviteOff": "Without an invite, the member is used for costs and assignments but can't sign in to the CRM. You can invite them later.",
+    "email": "Email *",
+    "rolesRestricted": "Only owners and admins can invite with an elevated role or custom role.",
+    "seatsFull": "All plan seats are in use. You can still save the member; to invite them to the CRM, upgrade the plan or remove a user."
+  },
+  "inviteSupport": {
+    "unknownError": "unknown error",
+    "inviteFailed": "Member saved, but the invite failed: {{detail}}"
+  },
+  "membroForm": {
+    "nameRequired": "Name is required",
+    "roleRequired": "Role is required",
+    "dayRange": "Day must be between 1 and 31",
+    "emailInvalid": "Invalid email"
+  },
+  "membroFormDialog": {
+    "editTitle": "Edit member",
+    "membroAria": "Member",
+    "name": "Name *",
+    "role": "Role *",
+    "type": "Type",
+    "cost": "Monthly cost (R$)",
+    "costPlaceholder": "0.00",
+    "payDay": "Payment day (1-31)",
+    "crmAccount": "CRM account",
+    "notLinked": "Not linked",
+    "linkHelp": "Linking a member to a workspace user lets them access the CRM and see their assignments.",
+    "costInAgreement": "The cost now lives in this person's agreement.",
+    "openAgreement": "Open the agreement",
+    "saveAndInvite": "Save and invite",
+    "roleFailed": "Member saved, but the role could not be changed: {{message}}",
+    "updated": "Member updated",
+    "added": "Member added",
+    "alreadyLinked": "This CRM account is already linked to another member of this workspace",
+    "saveError": "Could not save"
+  }
+}

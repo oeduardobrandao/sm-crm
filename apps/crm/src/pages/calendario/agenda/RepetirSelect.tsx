@@ -6,6 +6,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { useTranslation } from 'react-i18next';
 import type { AgendaRegra } from '@/store/agenda';
 import { descreverRegra, opcoesRepetir, type RepetirOpcaoId } from './agendaLogic';
 
@@ -32,6 +33,7 @@ export function RepetirSelect({
   onPersonalizar,
   disabled,
 }: RepetirSelectProps) {
+  const { t } = useTranslation('agendaEvento');
   const opcoes = opcoesRepetir(inicio);
   const presets = opcoes.filter((o) => o.id !== 'personalizado');
   const custom = repetir === 'personalizado' && regra !== null;
@@ -50,7 +52,7 @@ export function RepetirSelect({
         if (op) onEscolher(op.id, op.regra);
       }}
     >
-      <SelectTrigger aria-label="Repetir" className="w-full sm:w-[300px]">
+      <SelectTrigger aria-label={t('repetirSelect.label')} className="w-full sm:w-[300px]">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -61,7 +63,7 @@ export function RepetirSelect({
         ))}
         {custom && <SelectItem value={REGRA_ATUAL}>{descreverRegra(regra, inicio)}</SelectItem>}
         <SelectSeparator />
-        <SelectItem value="personalizado">Personalizar…</SelectItem>
+        <SelectItem value="personalizado">{t('repetirSelect.customize')}</SelectItem>
       </SelectContent>
     </Select>
   );

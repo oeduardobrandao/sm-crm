@@ -10,12 +10,13 @@ export const ADMIN_MCP_ALLOWED_SCOPES = [
   "popups:read", "popups:write",
   "kb:read", "kb:write",
   "platform:read",
+  "blog:read", "blog:write",
 ] as const;
 export type AdminMcpScope = (typeof ADMIN_MCP_ALLOWED_SCOPES)[number];
 
 /** Preset de menor privilégio: só leitura. */
 export const ADMIN_MCP_READ_PRESET: AdminMcpScope[] = [
-  "banners:read", "popups:read", "kb:read", "platform:read",
+  "banners:read", "popups:read", "kb:read", "platform:read", "blog:read",
 ];
 
 /** True se `scopes` é um array não vazio só com escopos da allowlist do admin. */

@@ -1,5 +1,5 @@
 import { format, getDaysInMonth } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { getDateFnsLocale, i18n } from '@mesaas/i18n';
 import type {
   AgendaCor,
   AgendaEventoPayload,
@@ -7,7 +7,6 @@ import type {
   AgendaRegra,
   AgendaTipo,
 } from '../../../store/agenda';
-import { WEEKDAY_NAMES } from '../../tarefas/recorrenciaLogic';
 import { parseDateOnly } from '../../tarefas/tarefasLogic';
 
 // Pure helpers for the Agenda tab. No React. The database owns the date math
@@ -17,14 +16,29 @@ import { parseDateOnly } from '../../tarefas/tarefasLogic';
 
 // ---- Tipos e cores -----------------------------------------------------------
 
-export const TIPO_LABEL: Record<AgendaTipo, string> = {
-  reuniao: 'Reunião',
-  gravacao: 'Gravação',
-  captacao: 'Captação',
-  apresentacao: 'Apresentação',
-  interno: 'Interno',
-  outro: 'Outro',
-};
+const TIPOS: readonly AgendaTipo[] = [
+  'reuniao',
+  'gravacao',
+  'captacao',
+  'apresentacao',
+  'interno',
+  'outro',
+];
+
+/** Event type label in the UI language, resolved at call time. */
+export function tipoLabel(tipo: AgendaTipo): string {
+  return i18n.t(`agenda:tipo.${tipo}`);
+}
+
+/** Enumerable getters over the tipo keys: every read resolves through i18n, so the
+ *  map follows the UI language instead of freezing at module load. */
+export const TIPO_LABEL: Record<AgendaTipo, string> = (() => {
+  const o = {} as Record<AgendaTipo, string>;
+  for (const k of TIPOS) {
+    Object.defineProperty(o, k, { enumerable: true, get: () => tipoLabel(k) });
+  }
+  return o;
+})();
 
 export const TIPO_COR: Record<AgendaTipo, string> = {
   reuniao: '#3b82f6',
@@ -66,24 +80,42 @@ function ordenarDias(dias: number[]): number[] {
   return [...new Set(dias)].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7));
 }
 
+/** Weekday name as it appears inside a sentence ("segunda", "Monday"). */
+function nomeDoDia(dow: number): string {
+  return i18n.t(`agenda:logic.weekday.${dow}`);
+}
+
+/** Gender key for the pt articles (no/na); en uses the same text for both. */
+function generoDoDia(dow: number): 'masc' | 'fem' {
+  return masculino(dow) ? 'masc' : 'fem';
+}
+
 function juntar(itens: string[]): string {
   if (itens.length <= 1) return itens.join('');
-  return `${itens.slice(0, -1).join(', ')} e ${itens[itens.length - 1]}`;
+  return i18n.t('agenda:logic.listAnd', {
+    init: itens.slice(0, -1).join(', '),
+    last: itens[itens.length - 1],
+  });
 }
 
 /** "na segunda e na quarta", "no sábado e no domingo". */
 function diasComArtigo(dias: number[]): string {
-  return juntar(ordenarDias(dias).map((d) => `${masculino(d) ? 'no' : 'na'} ${WEEKDAY_NAMES[d]}`));
+  return juntar(
+    ordenarDias(dias).map((d) =>
+      i18n.t(`agenda:logic.dayWithArticle.${generoDoDia(d)}`, { day: nomeDoDia(d) }),
+    ),
+  );
 }
 
-const ORDINAL_FEM = { 1: 'primeira', 2: 'segunda', 3: 'terceira', 4: 'quarta', [-1]: 'última' };
-const ORDINAL_MASC = { 1: 'primeiro', 2: 'segundo', 3: 'terceiro', 4: 'quarto', [-1]: 'último' };
+const ORDINAL_KEY = { 1: '1', 2: '2', 3: '3', 4: '4', [-1]: 'last' } as const;
 
 /** "na segunda terça", "no último sábado". */
 function ordinalComArtigo(ordinal: 1 | 2 | 3 | 4 | -1, dow: number): string {
-  const masc = masculino(dow);
-  const palavra = (masc ? ORDINAL_MASC : ORDINAL_FEM)[ordinal];
-  return `${masc ? 'no' : 'na'} ${palavra} ${WEEKDAY_NAMES[dow]}`;
+  const genero = generoDoDia(dow);
+  return i18n.t(`agenda:logic.ordinalWithArticle.${genero}`, {
+    ordinal: i18n.t(`agenda:logic.ordinal.${genero}.${ORDINAL_KEY[ordinal]}`),
+    day: nomeDoDia(dow),
+  });
 }
 
 /** 1..5: which occurrence of its weekday the date is within its month. */
@@ -97,7 +129,7 @@ export function ehUltimaSemanaDoMes(d: Date): boolean {
 }
 
 function diaEMes(d: Date): string {
-  return format(d, "d 'de' MMMM", { locale: ptBR });
+  return format(d, i18n.t('agenda:logic.dayMonthFormat'), { locale: getDateFnsLocale() });
 }
 
 // ---- Opções do Repetir ---------------------------------------------------------
@@ -142,16 +174,16 @@ export function opcoesRepetir(inicio: Date): RepetirOpcao[] {
   const dow = inicio.getDay();
   const ordinal = ordinalDoDia(inicio);
   const ops: RepetirOpcao[] = [
-    { id: 'nao', label: 'Não se repete', regra: null },
-    { id: 'diario', label: 'Todos os dias', regra: base('daily') },
+    { id: 'nao', label: i18n.t('agenda:repetir.nao'), regra: null },
+    { id: 'diario', label: i18n.t('agenda:repetir.diario'), regra: base('daily') },
     {
       id: 'semanal',
-      label: `Semanal: cada ${WEEKDAY_NAMES[dow]}`,
+      label: i18n.t('agenda:repetir.semanal', { day: nomeDoDia(dow) }),
       regra: base('weekly', { dias_semana: [dow] }),
     },
     {
       id: 'mensal_dia',
-      label: `Mensal: no dia ${inicio.getDate()}`,
+      label: i18n.t('agenda:repetir.mensalDia', { day: inicio.getDate() }),
       regra: base('monthly', { mensal_modo: 'dia_mes' }),
     },
   ];
@@ -159,25 +191,29 @@ export function opcoesRepetir(inicio: Date): RepetirOpcao[] {
     const o = ordinal as 1 | 2 | 3 | 4;
     ops.push({
       id: 'mensal_ordinal',
-      label: `Mensal: ${ordinalComArtigo(o, dow)}`,
+      label: i18n.t('agenda:repetir.mensalOrdinal', { ordinal: ordinalComArtigo(o, dow) }),
       regra: base('monthly', { mensal_modo: 'dia_semana', mensal_ordinal: o }),
     });
   }
   if (ehUltimaSemanaDoMes(inicio)) {
     ops.push({
       id: 'mensal_ultima',
-      label: `Mensal: ${ordinalComArtigo(-1, dow)}`,
+      label: i18n.t('agenda:repetir.mensalOrdinal', { ordinal: ordinalComArtigo(-1, dow) }),
       regra: base('monthly', { mensal_modo: 'dia_semana', mensal_ordinal: -1 }),
     });
   }
   ops.push(
-    { id: 'anual', label: `Anual: em ${diaEMes(inicio)}`, regra: base('yearly') },
+    {
+      id: 'anual',
+      label: i18n.t('agenda:repetir.anual', { date: diaEMes(inicio) }),
+      regra: base('yearly'),
+    },
     {
       id: 'dias_uteis',
-      label: 'Todos os dias úteis (segunda a sexta)',
+      label: i18n.t('agenda:repetir.diasUteis'),
       regra: base('weekly', { dias_semana: DIAS_UTEIS }),
     },
-    { id: 'personalizado', label: 'Personalizar…', regra: null },
+    { id: 'personalizado', label: i18n.t('agenda:repetir.personalizado'), regra: null },
   );
   return ops;
 }
@@ -238,33 +274,42 @@ export function descreverRegra(regra: AgendaRegra, inicio: Date): string {
   let texto: string;
   switch (regra.freq) {
     case 'daily':
-      texto = n === 1 ? 'Todos os dias' : `A cada ${n} dias`;
+      texto = n === 1 ? i18n.t('agenda:regra.daily') : i18n.t('agenda:regra.everyNDays', { n });
       break;
     case 'weekly': {
       const dias = ordenarDias(regra.dias_semana?.length ? regra.dias_semana : [dow]);
       if (n === 1 && dias.join(',') === DIAS_UTEIS.join(',')) {
-        texto = 'Todos os dias úteis';
+        texto = i18n.t('agenda:regra.weekdays');
       } else {
-        texto = `${n === 1 ? 'Semanalmente' : `A cada ${n} semanas`} ${diasComArtigo(dias)}`;
+        const prefixo =
+          n === 1 ? i18n.t('agenda:regra.weekly') : i18n.t('agenda:regra.everyNWeeks', { n });
+        texto = `${prefixo} ${diasComArtigo(dias)}`;
       }
       break;
     }
     case 'monthly': {
-      const prefixo = n === 1 ? 'Mensalmente' : `A cada ${n} meses`;
+      const prefixo =
+        n === 1 ? i18n.t('agenda:regra.monthly') : i18n.t('agenda:regra.everyNMonths', { n });
       texto =
         regra.mensal_modo === 'dia_semana' && regra.mensal_ordinal !== null
           ? `${prefixo} ${ordinalComArtigo(regra.mensal_ordinal, dow)}`
-          : `${prefixo} no dia ${inicio.getDate()}`;
+          : i18n.t('agenda:regra.onDay', { prefix: prefixo, day: inicio.getDate() });
       break;
     }
     case 'yearly':
-      texto = `${n === 1 ? 'Anualmente' : `A cada ${n} anos`} em ${diaEMes(inicio)}`;
+      texto = i18n.t('agenda:regra.onDate', {
+        prefix: n === 1 ? i18n.t('agenda:regra.yearly') : i18n.t('agenda:regra.everyNYears', { n }),
+        date: diaEMes(inicio),
+      });
       break;
   }
   if (regra.ate) {
-    texto += `, até ${format(parseDateOnly(regra.ate), "d 'de' MMMM 'de' yyyy", { locale: ptBR })}`;
+    const ate = format(parseDateOnly(regra.ate), i18n.t('agenda:logic.fullDateFormat'), {
+      locale: getDateFnsLocale(),
+    });
+    texto += i18n.t('agenda:regra.until', { date: ate });
   } else if (regra.contagem !== null) {
-    texto += `, ${regra.contagem} ${regra.contagem === 1 ? 'vez' : 'vezes'}`;
+    texto += i18n.t('agenda:regra.times', { count: regra.contagem });
   }
   return texto;
 }
@@ -276,21 +321,25 @@ export const LEMBRETES_HORARIO: number[] = [0, 5, 10, 15, 30, 60, 1440];
 /** All-day: minutes before 00:00 of the first day ("no dia às 9h" = -540). */
 export const LEMBRETES_DIA_INTEIRO: number[] = [-540, 900, 9540];
 
-function plural(n: number, um: string, varios: string): string {
-  return `${n} ${n === 1 ? um : varios}`;
+type Unidade = 'weeks' | 'days' | 'hours' | 'minutes';
+
+function plural(n: number, unidade: Unidade): string {
+  return i18n.t(`agenda:lembrete.${unidade}`, { count: n });
 }
 
 function duracaoAntes(min: number): string {
-  if (min % 10080 === 0) return plural(min / 10080, 'semana', 'semanas');
-  if (min % 1440 === 0) return plural(min / 1440, 'dia', 'dias');
-  if (min % 60 === 0) return plural(min / 60, 'hora', 'horas');
-  return plural(min, 'minuto', 'minutos');
+  if (min % 10080 === 0) return plural(min / 10080, 'weeks');
+  if (min % 1440 === 0) return plural(min / 1440, 'days');
+  if (min % 60 === 0) return plural(min / 60, 'hours');
+  return plural(min, 'minutes');
 }
 
 export function rotuloLembrete(min: number, diaInteiro: boolean): string {
   if (!diaInteiro) {
-    if (min === 0) return 'Na hora';
-    return min > 0 ? `${duracaoAntes(min)} antes` : `${duracaoAntes(-min)} depois`;
+    if (min === 0) return i18n.t('agenda:lembrete.atStart');
+    return min > 0
+      ? i18n.t('agenda:lembrete.before', { duration: duracaoAntes(min) })
+      : i18n.t('agenda:lembrete.after', { duration: duracaoAntes(-min) });
   }
   // Reminder fires at (00:00 of the event day) - min.
   const t = -min;
@@ -298,13 +347,16 @@ export function rotuloLembrete(min: number, diaInteiro: boolean): string {
   const horaMin = t - dia * 1440;
   const h = Math.floor(horaMin / 60);
   const m = horaMin % 60;
-  const hora = m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, '0')}`;
-  if (dia === 0) return `No dia às ${hora}`;
-  if (dia > 0) return `${plural(dia, 'dia', 'dias')} depois às ${hora}`;
+  const hora =
+    m === 0
+      ? i18n.t('agenda:lembrete.hour', { h })
+      : i18n.t('agenda:lembrete.hourMin', { h, m: String(m).padStart(2, '0') });
+  if (dia === 0) return i18n.t('agenda:lembrete.onDayAt', { time: hora });
+  if (dia > 0)
+    return i18n.t('agenda:lembrete.afterAt', { duration: plural(dia, 'days'), time: hora });
   const antes = -dia;
-  const quando =
-    antes % 7 === 0 ? plural(antes / 7, 'semana', 'semanas') : plural(antes, 'dia', 'dias');
-  return `${quando} antes às ${hora}`;
+  const quando = antes % 7 === 0 ? plural(antes / 7, 'weeks') : plural(antes, 'days');
+  return i18n.t('agenda:lembrete.beforeAt', { duration: quando, time: hora });
 }
 
 // ---- FullCalendar ----------------------------------------------------------------

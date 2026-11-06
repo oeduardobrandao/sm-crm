@@ -12,11 +12,19 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const TOKEN_ENCRYPTION_KEY = Deno.env.get("TOKEN_ENCRYPTION_KEY") ?? (() => { throw new Error("TOKEN_ENCRYPTION_KEY environment variable is required"); })();
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") || '';
+// Workers AI (Cloudflare) para a leitura de comentários; sem os dois, as análises respondem 503.
+const WORKERS_AI_ACCOUNT_ID = Deno.env.get("WORKERS_AI_ACCOUNT_ID") || '';
+const WORKERS_AI_API_TOKEN = Deno.env.get("WORKERS_AI_API_TOKEN") || '';
 const INTERNAL_FUNCTION_SECRET = Deno.env.get('INTERNAL_FUNCTION_SECRET') ?? (() => { throw new Error('INTERNAL_FUNCTION_SECRET is required'); })();
 const CRON_SECRET = Deno.env.get('CRON_SECRET') ?? '';
 import { UUID_RE } from "./utils.ts";
 import { parseViewsRange, sumViewsRange } from "./views.ts";
 import { handleAccountMetrics, parseAccountMetricsRange } from "./account-metrics.ts";
+import { handleCommentsRoute } from "./comments-routes.ts";
+import { fetchMediaComments } from "./comments-graph.ts";
+import { callAi } from "./comments-ai.ts";
+import { verifyClientOwnership as verifyClientOwnershipIn, verifyPostOwnership as verifyPostOwnershipIn, visibleClients } from "./ownership.ts";
+import { type ClientScope, hasClientAccess, loadClientScope } from "../_shared/client-scope.ts";
 
 // --- Token Decryption ---
 async function getEncryptionKey(purpose: string, usage: KeyUsage[]): Promise<CryptoKey> {
@@ -148,31 +156,6 @@ async function getAccount(serviceClient: any, clientId: string) {
   return account;
 }
 
-// --- Helper: verify that clientId belongs to contaId ---
-async function verifyClientOwnership(serviceClient: any, clientId: string, contaId: string): Promise<void> {
-  const { data: clientRow } = await serviceClient
-    .from('clientes')
-    .select('conta_id')
-    .eq('id', clientId)
-    .single();
-  if (!clientRow || clientRow.conta_id !== contaId) {
-    throw new Error('Unauthorized');
-  }
-}
-
-// --- Helper: verify that a post's account belongs to contaId ---
-async function verifyPostOwnership(serviceClient: any, postId: string, contaId: string): Promise<void> {
-  const { data: post } = await serviceClient
-    .from('instagram_posts')
-    .select('instagram_account_id, instagram_accounts!inner(client_id, clientes!inner(conta_id))')
-    .eq('id', postId)
-    .single();
-  const postContaId = (post as any)?.instagram_accounts?.clientes?.conta_id;
-  if (!post || postContaId !== contaId) {
-    throw new Error('Unauthorized');
-  }
-}
-
 // --- Fetch daily insights for a period ---
 async function fetchDailyInsights(_igUserId: string, accessToken: string, since: number, until: number) {
   const [reachRes, viewsRes, engagedRes] = await Promise.allSettled([
@@ -235,11 +218,43 @@ Deno.serve(async (req) => {
     const contaId = profile?.conta_id;
     if (!contaId) throw new Error("User profile not found");
 
+    // Acesso por cliente: every client route answers a client outside the caller's scope exactly
+    // like a client of another workspace. A scope read error is answered here as a generic 500 so
+    // it never reaches the catch below (its "expired"/"Unauthorized" message sniffing).
+    let scope: ClientScope;
+    try {
+      scope = await loadClientScope(serviceClient, user.id, contaId);
+    } catch (scopeErr) {
+      return internalServerError(json, "instagram-analytics:client-scope", scopeErr);
+    }
+    const verifyClientOwnership = (_svc: unknown, clientId: string, conta: string) =>
+      verifyClientOwnershipIn(serviceClient, clientId, conta, scope);
+    const verifyPostOwnership = (_svc: unknown, postId: string, conta: string) =>
+      verifyPostOwnershipIn(serviceClient, postId, conta, scope);
+
     // Feature gate: check plan entitlement for this path before routing
     const requiredFlag = featureForPath(req.method, path);
     if (requiredFlag && !(await effectivePlanFeature(serviceClient, contaId, requiredFlag))) {
       return json({ error: "feature_disabled", feature: requiredFlag }, 403);
     }
+
+    // Comentários do Instagram + leitura por IA (comments-routes.ts). null = outra rota.
+    const commentsRoute = await handleCommentsRoute(req.method, path, {
+      svc: serviceClient,
+      contaId,
+      userId: user.id,
+      ai: WORKERS_AI_ACCOUNT_ID && WORKERS_AI_API_TOKEN
+        ? { accountId: WORKERS_AI_ACCOUNT_ID, token: WORKERS_AI_API_TOKEN }
+        : null,
+      lang: url.searchParams.get("lang") === "en" ? "en" : "pt",
+      now: Date.now,
+      decryptToken,
+      verifyClientOwnership: (clientId) => verifyClientOwnership(serviceClient, clientId, contaId),
+      rateLimit: (key, max, windowS) => checkRateLimit(serviceClient, key, max, windowS),
+      fetchComments: fetchMediaComments,
+      callAi,
+    });
+    if (commentsRoute) return json(commentsRoute.body, commentsRoute.status);
 
     // ==========================================
     // GET /overview/:clientId?days=30
@@ -634,11 +649,12 @@ Deno.serve(async (req) => {
     // ==========================================
     if (req.method === 'GET' && path === '/portfolio') {
       // Get all clients for this conta_id with their Instagram accounts
-      const { data: clients } = await serviceClient
+      const { data: workspaceClients } = await serviceClient
         .from('clientes')
         .select('id, nome, sigla, cor, especialidade, status')
         .eq('conta_id', contaId)
         .eq('status', 'ativo');
+      const clients = visibleClients(workspaceClients, scope);
 
       if (!clients || clients.length === 0) {
         return json({ accounts: [], summary: { total: 0, connected: 0, growing: 0, stagnant: 0, declining: 0 } });
@@ -865,6 +881,8 @@ Deno.serve(async (req) => {
     // ==========================================
     if (req.method === 'GET' && path.match(/^\/reports\/\d+$/)) {
       const clientId = path.split('/')[2];
+      // Same answer as a client of another workspace today: an empty list.
+      if (!hasClientAccess(scope, parseInt(clientId, 10), false)) return json({ reports: [] });
       const { data: reports } = await serviceClient
         .from('analytics_reports')
         .select('*')
@@ -882,12 +900,12 @@ Deno.serve(async (req) => {
       const reportId = path.split('/')[2];
       const { data: report } = await serviceClient
         .from('analytics_reports')
-        .select('storage_path, html_storage_path, conta_id')
+        .select('storage_path, html_storage_path, conta_id, client_id')
         .eq('id', reportId)
         .eq('conta_id', contaId)
         .single();
 
-      if (!report || !report.storage_path) {
+      if (!report || !report.storage_path || !hasClientAccess(scope, report.client_id, false)) {
         return json({ error: 'Report not found' }, 404);
       }
 
@@ -1160,10 +1178,11 @@ O campo actionPlan deve ter entre 3 e 5 ações. Pelo menos 1 deve ser uma açã
       if (!aiPortfolioAllowed) return json({ error: "Rate limit exceeded" }, 429);
 
       // Get all accounts for this conta
-      const { data: clients } = await serviceClient
+      const { data: workspaceClients } = await serviceClient
         .from('clientes')
         .select('id, nome, especialidade')
         .eq('conta_id', contaId);
+      const clients = visibleClients(workspaceClients, scope);
 
       if (!clients || clients.length === 0) {
         return json({ analysis: { error: true, raw: 'Nenhum cliente encontrado' } });
@@ -1321,7 +1340,7 @@ O campo priorityActions deve ter entre 3 e 5 ações distribuídas entre as cont
         .eq('conta_id', contaId)
         .single();
 
-      if (!report) return json({ error: 'Report not found' }, 404);
+      if (!report || !hasClientAccess(scope, report.client_id, false)) return json({ error: 'Report not found' }, 404);
       if (report.status !== 'ready') return json({ error: 'Report not ready' }, 400);
 
       // 2. Throttle: 24-hour cooldown

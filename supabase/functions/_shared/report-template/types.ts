@@ -1,3 +1,6 @@
+import type { TikTokKpiId } from "../tiktok-analytics/kpis.ts";
+import type { GbpKpiId, GbpSurface } from "../gbp-analytics/kpis.ts";
+
 export interface KpiValue {
   id: string;
   value: number;
@@ -89,6 +92,50 @@ export interface ReportData {
    * gerador legado nunca seta e segue byte-idêntico. null = mês anterior
    * sem outlier detectável (sem posts, ou nenhum post dominante). */
   comparison?: ReportDataComparison | null;
+  /** Opcional e aditivo (spec 2026-10-28 §B3): só o pipeline de blocos seta, e só com
+   * `false` (relatório sem Instagram). Ausente = Instagram presente, o prompt de hoje. */
+  instagram_connected?: boolean;
+  /** Opcional e aditivo: seção TikTok do relatório de blocos. Ausente = sem TikTok. */
+  tiktok?: ReportDataTikTok;
+  /** Opcional e aditivo: seção Google Meu Negócio do relatório de blocos. Ausente = sem GMN. */
+  google?: ReportDataGoogle;
+}
+
+/** Dados do Google Meu Negócio para a IA (spec 2026-11-04-gmn-report-section). Nunca nome de
+ * quem avaliou nem texto de avaliação: só números, superfícies e termos de busca. */
+export interface ReportDataGoogle {
+  /** Quantas unidades (perfis) somam os números. */
+  units: number;
+  /** Período coberto (YYYY-MM-DD) e quantos dias logo antes servem de comparação. null = sem dado. */
+  window: { start: string; end: string; compared_with_days: number } | null;
+  /** null = sem dados. avg_rating é nota de 1 a 5. */
+  kpis: Record<GbpKpiId, number | null>;
+  /** Valor do período anterior (mesmo número de dias logo antes), só onde existe. */
+  kpis_previous_period: Partial<Record<GbpKpiId, number>>;
+  /** Participação (%) de cada superfície nas visualizações do perfil. */
+  surfaces: { surface: GbpSurface; pct: number }[];
+  /** Até 5 termos. `at_most` = o Google só diz "menos de N pessoas". */
+  top_keywords: { keyword: string; people: number | null; at_most: number | null }[];
+  /** Estrelas das avaliações guardadas (últimas 200 por unidade). */
+  rating_distribution: Record<"1" | "2" | "3" | "4" | "5", number> | null;
+}
+
+/** Dados TikTok para a IA. Só o que a Display API dá: sem alcance, salvamentos nem audiência. */
+export interface ReportDataTikTok {
+  handle: string;
+  /** null = sem dados. engagement_rate é % por visualização. */
+  kpis: Record<TikTokKpiId, number | null>;
+  /** Valor do mês anterior, só dos KPIs que têm comparação. As somas (visualizações, curtidas,
+   * comentários, compartilhamentos) nunca aparecem aqui. */
+  kpis_previous_month: Partial<Record<TikTokKpiId, number>>;
+  top_videos: {
+    caption: string;
+    views: number;
+    likes: number;
+    comments: number;
+    shares: number;
+    date: string | null;
+  }[];
 }
 
 export interface Recommendation {

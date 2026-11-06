@@ -17,6 +17,25 @@ import { runStreamSweeps } from "./stream-steps.ts";
 import { runOrphanScan, type OrphanScanDeps } from "./orphan-scan.ts";
 import { runIntegrityCanary } from "./canary.ts";
 import { withWatchdog } from "./watchdog.ts";
+import { runEquipeChatCleanup } from "./equipe-chat-cleanup.ts";
+
+// equipe-chat's tmp/ prefix only holds presigned uploads still waiting for
+// finalize, swept every run, so a few listing pages cover it. The cap keeps a
+// runaway prefix from becoming another unbounded full listing (the shape the
+// paged, checkpointed orphan scan replaced); keys past it go on the next run.
+const EQUIPE_TMP_MAX_PAGES = 5;
+
+async function listEquipeTmpKeys(prefix: string, olderThanMs: number): Promise<string[]> {
+  const keys: string[] = [];
+  let token: string | null = null;
+  for (let page = 0; page < EQUIPE_TMP_MAX_PAGES; page++) {
+    const res = await listOrphanKeyPage(prefix, olderThanMs, token);
+    keys.push(...res.keys);
+    if (!res.nextToken) break;
+    token = res.nextToken;
+  }
+  return keys;
+}
 
 const CRON_NAME = "post-media-cleanup-cron";
 const PURGE_SCAN_KEY = "trash-purge:trash/";
@@ -36,6 +55,15 @@ const ORPHAN_SCAN_PAGES_PER_RUN = Math.max(
 // backlog faster once headroom allows it. No redeploy needed -- both are plain edge secrets.
 const STREAM_INGEST_BATCH = Math.max(1, parseInt(Deno.env.get("STREAM_INGEST_BATCH") || "20", 10) || 20);
 const STREAM_SETTLE_BATCH = Math.max(1, parseInt(Deno.env.get("STREAM_SETTLE_BATCH") || "50", 10) || 50);
+
+// Retention dials: a video stays in Stream only while a post it belongs to is in front of the
+// client. Release batch = Stream deletes per run; grace/idle days also feed the ingest
+// eligibility RPC (one shared predicate). Plain edge secrets, no redeploy needed.
+const STREAM_RELEASE_BATCH = Math.max(1, parseInt(Deno.env.get("STREAM_RELEASE_BATCH") || "50", 10) || 50);
+// Grace 0 is meaningful (release right at publish), so parse explicitly instead of `|| default`.
+const STREAM_RELEASE_GRACE_RAW = parseInt(Deno.env.get("STREAM_RELEASE_GRACE_DAYS") ?? "", 10);
+const STREAM_RELEASE_GRACE_DAYS = Number.isFinite(STREAM_RELEASE_GRACE_RAW) ? Math.max(0, STREAM_RELEASE_GRACE_RAW) : 7;
+const STREAM_RELEASE_IDLE_DAYS = Math.max(1, parseInt(Deno.env.get("STREAM_RELEASE_IDLE_DAYS") || "60", 10) || 60);
 
 // Hours between orphanReap runs (see stream-steps.ts:shouldRunReap). Reap lists the WHOLE
 // Stream account every time it runs, so this is the main lever on the account's Stream API
@@ -167,6 +195,7 @@ Deno.serve(createPostMediaCleanupCronHandler({
     let streamIngested = 0;
     let streamSettled = 0;
     let streamReaped = 0;
+    let streamReleased = 0;
     let streamErrors = 0;
     if (cleanupEnabled) {
       const sweep = await runStreamSweeps({
@@ -175,6 +204,9 @@ Deno.serve(createPostMediaCleanupCronHandler({
         listStreamVideos: () => listStreamVideos(fetch, undefined, streamRetryBudget),
         ingestBatchSize: STREAM_INGEST_BATCH,
         settleBatchSize: STREAM_SETTLE_BATCH,
+        releaseBatchSize: STREAM_RELEASE_BATCH,
+        releaseGraceDays: STREAM_RELEASE_GRACE_DAYS,
+        releaseIdleDays: STREAM_RELEASE_IDLE_DAYS,
         reapIntervalMs: STREAM_REAP_INTERVAL_HOURS * 60 * 60 * 1000,
         // Reuses cron_scan_state (migration 20260913000001): its schema is already a generic
         // '<key> -> last write' checkpoint (continuation_token/cycles_completed exist for the R2
@@ -210,8 +242,23 @@ Deno.serve(createPostMediaCleanupCronHandler({
       streamIngested = sweep.ingested;
       streamSettled = sweep.settled;
       streamReaped = sweep.reaped;
+      streamReleased = sweep.released;
       streamErrors = sweep.errors;
     }
+
+    // equipe-chat (team group chats): abandoned tmp uploads + staged attachments
+    // whose message was never sent. Independent of the R2 orphan scan below (own
+    // prefix, own table) — wrapped the same way so a failure here can't block
+    // purgeTrash/canary below, nor vice versa. Deliberately BEFORE the orphan scan,
+    // same relative position — and same reasoning — as the stream sweeps above:
+    // that full-bucket listing has hit WORKER_RESOURCE_LIMIT on prod, and dying
+    // there must not starve this small, bounded cleanup (staged attachments would
+    // otherwise keep their quota reserved indefinitely while never getting reaped).
+    const equipeChat = await runEquipeChatCleanup({
+      db: svc,
+      listOrphanKeys: listEquipeTmpKeys,
+      trashObject,
+    });
 
     // R2 orphan cleanup LAST: the most expensive, least urgent stage. A resource-limit
     // death here costs only this stage; everything above has already committed.
@@ -279,6 +326,9 @@ Deno.serve(createPostMediaCleanupCronHandler({
     }
     if (failed > 0) alerts.push({ error: `deletion drain: ${failed} rows failed this run` });
     if (streamErrors > 0) alerts.push({ error: `stream sweeps: ${streamErrors} step errors` });
+    if (equipeChat.failed > 0) {
+      alerts.push({ error: `equipe-chat cleanup: ${equipeChat.failed} steps failed this run` });
+    }
 
     // Dead-letter visibility: rows past their attempt cap are silently excluded
     // from the drains above forever (post_media_deletions: attempts < 6;
@@ -323,7 +373,10 @@ Deno.serve(createPostMediaCleanupCronHandler({
       orphanScanAborted: scan.aborted, orphanScanPages: scan.pages,
       orphanScanCyclesCompleted: scan.cyclesCompleted, trashPurged, canaryChecked,
       canaryMissing: canaryMissing.length,
-      streamIngested, streamSettled, streamReaped, streamErrors,
+      streamIngested, streamSettled, streamReaped, streamReleased, streamErrors,
+      equipeChatTmpTrashed: equipeChat.tmpTrashed,
+      equipeChatStagedReleased: equipeChat.stagedReleased,
+      equipeChatFailed: equipeChat.failed,
     });
   },
 }));

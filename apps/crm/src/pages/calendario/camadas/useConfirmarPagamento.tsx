@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import {
   AlertDialog,
@@ -52,6 +53,7 @@ export function useConfirmarPagamento(canSeeFinancials: FinancialAccess): {
   pedirConfirmacao: (p: PagamentoAConfirmar) => void;
   dialog: ReactNode;
 } {
+  const { t } = useTranslation('calendario');
   const qc = useQueryClient();
   const [confirmPayload, setConfirmPayload] = useState<PagamentoAConfirmar | null>(null);
 
@@ -69,10 +71,10 @@ export function useConfirmarPagamento(canSeeFinancials: FinancialAccess): {
         status: 'pago',
         referencia_agendamento: refId,
       });
-      toast.success('Pagamento confirmado!');
+      toast.success(t('confirmarPagamento.success'));
       qc.invalidateQueries({ queryKey: ['transacoes'] });
     } catch (err: unknown) {
-      toast.error((err as Error).message || 'Erro');
+      toast.error((err as Error).message || t('confirmarPagamento.error'));
     } finally {
       setConfirmPayload(null);
     }
@@ -87,15 +89,20 @@ export function useConfirmarPagamento(canSeeFinancials: FinancialAccess): {
     >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Confirmar Agendamento</AlertDialogTitle>
+          <AlertDialogTitle>{t('confirmarPagamento.title')}</AlertDialogTitle>
           <AlertDialogDescription>
             {confirmPayload &&
-              `Confirmar o recebimento/pagamento agendado de ${confirmPayload.desc} (${formatFinancialBRL(confirmPayload.val, canSeeFinancials)})?`}
+              t('confirmarPagamento.description', {
+                desc: confirmPayload.desc,
+                value: formatFinancialBRL(confirmPayload.val, canSeeFinancials),
+              })}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancelar</AlertDialogCancel>
-          <AlertDialogAction onClick={handleConfirmExecute}>Confirmar</AlertDialogAction>
+          <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
+          <AlertDialogAction onClick={handleConfirmExecute}>
+            {t('actions.confirm')}
+          </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

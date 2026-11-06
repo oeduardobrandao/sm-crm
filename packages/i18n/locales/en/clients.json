@@ -3,6 +3,7 @@
   "tooltip": "Manage all clients and active contracts.",
   "csvTooltip": "Columns: nome*, email, telefone, plano, valor_mensal, notion_page_url, data_pagamento",
   "newClient": "New Client",
+  "scopedNotice": "You see the clients assigned to you.",
   "searchPlaceholder": "Search by name or email...",
   "sort": {
     "monthlyValue": "Monthly Value",
@@ -20,7 +21,8 @@
     "monthlyValue": "Monthly Value (R$)",
     "notionUrl": "Notion URL",
     "paymentDay": "Payment Day (1-31)",
-    "status": "Status"
+    "status": "Status",
+    "statusNoFinanceiro": "The monthly fee and the status now live in the Financeiro tab."
   },
   "deleteConfirm": "Remove this client?",
   "toast": {
@@ -36,6 +38,19 @@
     "dayRange": "Day must be between 1 and 31"
   },
   "openNotion": "Open in Notion",
+  "phone": {
+    "count_one": "{{count}} client",
+    "count_other": "{{count}} clients",
+    "addMenu": "New client or import CSV",
+    "menuLabel": "Client actions",
+    "sortedBy": "Sorted by {{field}}",
+    "holdHint": "Touch and hold a client to Edit or Remove.",
+    "emptyTitle": "No clients yet",
+    "emptyText": "Add your first client or import a CSV spreadsheet.",
+    "emptyFilteredText": "No clients match these filters or this search.",
+    "clearFilters": "Clear filters",
+    "notion": "Notion"
+  },
   "instagram": {
     "connectTitle": "Connect Instagram",
     "connectDescription": "Connect this client's Instagram Business account to view metrics, follower growth, and post performance directly in the CRM.",
@@ -102,6 +117,7 @@
   "tiktok": {
     "connectTitle": "Connect TikTok",
     "connectDescription": "Connect this client's TikTok account to view metrics, follower growth, and video performance directly in the CRM.",
+    "connectAccountHint": "TikTok uses the account signed in on this browser. Before connecting, check on tiktok.com that it is this client's account.",
     "connectButton": "Connect with TikTok",
     "connecting": "Connecting...",
     "connectError": "Error starting connection: {{error}}",
@@ -147,6 +163,123 @@
     "postsError": "Error loading videos: {{error}}",
     "unknownError": "Unknown error"
   },
+  "youtube": {
+    "connectTitle": "Connect YouTube",
+    "connectDescription": "Connect the client's channel to see subscribers, views and watch time for Shorts and videos, and to publish Shorts straight from Mesaas.",
+    "connectBullet1": "Sign in with the Google account that owns the channel.",
+    "connectBullet2": "If the account has more than one channel, Google asks you to pick one.",
+    "connectButton": "Connect with Google",
+    "connecting": "Connecting...",
+    "connectError": "Could not start the Google connection. Try again.",
+    "featureDisabled": "YouTube is not available on your plan.",
+    "title": "YouTube",
+    "connected": "Connected",
+    "subscribers": "Subscribers",
+    "totalViews": "Total views",
+    "videos": "Videos",
+    "channelAvatarAlt": "{{name}} channel picture",
+    "delayNote": "YouTube releases the numbers with a 2 to 3 day delay.",
+    "account": "Google account: {{email}}",
+    "disconnectTooltip": "Disconnect",
+    "disconnectTitle": "Disconnect YouTube?",
+    "disconnectBody": "The channel stops syncing and its data is deleted from Mesaas within 7 days.",
+    "disconnectConfirm": "Disconnect",
+    "disconnectCancel": "Cancel",
+    "disconnectSuccess": "YouTube disconnected.",
+    "disconnectError": "Could not disconnect YouTube. Try again.",
+    "revokedBanner": "Google authorization expired. Reconnect the account to resume syncing.",
+    "reconnect": "Reconnect",
+    "loadError": "Could not load this client's YouTube."
+  },
+  "gmn": {
+    "title": "Google Business Profile",
+    "connectTitle": "Connect Google Business Profile",
+    "connectDescription": "See how many people found the profile on Google and Maps, how many called, asked for directions or opened the website, and follow the reviews of each location.",
+    "connectBullet1": "Sign in with a Google account that owns or manages the profile.",
+    "connectBullet2": "Then you choose which locations belong to this client.",
+    "connectButton": "Connect with Google",
+    "connecting": "Connecting...",
+    "connectError": "Could not start the Google connection. Try again.",
+    "featureDisabled": "Google Business Profile is not available on your plan.",
+    "loadError": "Could not load this client's Google Business Profile.",
+    "unitsBadge_one": "{{count}} location",
+    "unitsBadge_other": "{{count}} locations",
+    "account": "Google account: {{email}}",
+    "reviewsCount_one": "{{count}} review",
+    "reviewsCount_other": "{{count}} reviews",
+    "noUnits": "No locations linked to this client yet.",
+    "chooseUnits": "Choose locations",
+    "noReviews": "No reviews",
+    "manageUnits": "Manage locations",
+    "useOtherAccount": "Use another Google account",
+    "revokedBanner": "Google authorization expired. Reconnect the account to resume syncing.",
+    "reconnect": "Reconnect",
+    "dialog": {
+      "title": "Which locations belong to {{cliente}}?",
+      "intro_one": "We found {{count}} profile on the account {{email}}. Check the ones that belong to this client. You can change this later in Manage locations.",
+      "intro_other": "We found {{count}} profiles on the account {{email}}. Check the ones that belong to this client. You can change this later in Manage locations.",
+      "account": "Google account",
+      "loading": "Fetching locations from Google...",
+      "empty": "No profiles found on this Google account.",
+      "retry": "Try again",
+      "inUse": "In use",
+      "inUseHint": "Already linked to client {{nome}}. A location belongs to one client only.",
+      "unverified": "Not verified",
+      "unverifiedHint": "Profile not yet verified by Google, which does not release metrics for it.",
+      "otherAccountHint": "Linked through another Google account. Manage it from that account.",
+      "note": "We pull the last 18 months of each checked location. It may take a few minutes the first time.",
+      "truncatedNote": "We're showing only part of this Google account's locations. Locations already linked to this client always appear.",
+      "cancel": "Cancel",
+      "submit_one": "Link {{count}} location",
+      "submit_other": "Link {{count}} locations",
+      "submitNone": "Unlink all",
+      "saving": "Saving...",
+      "saved_one": "{{count}} location linked.",
+      "saved_other": "{{count}} locations linked.",
+      "savedNone": "Locations unlinked.",
+      "errors": {
+        "feature_disabled": "Google Business Profile isn't available on your plan.",
+        "gmn_not_approved": "Google has not yet granted Mesaas access to Google Business Profile.",
+        "reconnect": "Google authorization expired. Reconnect the account to continue.",
+        "location_unavailable": "One of the checked locations is no longer available. The list was refreshed, review the selection.",
+        "rate_limited": "Too many attempts. Try again in a moment.",
+        "unknown": "Could not reach Google right now. Try again.",
+        "revoked": "Google authorization expired. Reconnect the account to continue.",
+        "not_connected": "This client is no longer connected to Google. Refresh the page.",
+        "forbidden": "You don't have permission to do this in this workspace.",
+        "not_found": "We couldn't find this item. Refresh the page.",
+        "conflict": "Something changed while we were saving. Try again."
+      }
+    },
+    "disconnectTitle": "Disconnect Google Business Profile?",
+    "disconnectBody": "This client's locations stop syncing and their data is deleted from Mesaas within 30 days.",
+    "disconnectConfirm": "Disconnect",
+    "disconnectCancel": "Cancel",
+    "disconnectSuccess": "Google Business Profile disconnected.",
+    "disconnectError": "Could not disconnect Google Business Profile. Try again."
+  },
+  "google": {
+    "manageAccounts": "Manage accounts",
+    "disconnectFromClient": "Disconnect from this client"
+  },
+  "googleOAuth": {
+    "ytConnected": "YouTube connected.",
+    "ytError": {
+      "denied": "Connection cancelled on Google.",
+      "missing_scope": "Check all the permissions Google asks for and try again.",
+      "no_refresh_token": "Google did not grant ongoing access. Try connecting again.",
+      "no_channel": "This Google account has no YouTube channel.",
+      "channel_in_use": "This channel is already linked to client {{nome}}.",
+      "channel_in_use_unnamed": "This channel is already linked to another client in this workspace.",
+      "unknown": "Could not connect YouTube."
+    },
+    "gmnError": {
+      "denied": "Connection cancelled on Google.",
+      "missing_scope": "Check all the permissions Google asks for and try again.",
+      "no_refresh_token": "Google did not grant ongoing access. Try connecting again.",
+      "unknown": "Could not connect Google Business Profile."
+    }
+  },
   "detail": {
     "igNotBusiness": "The Instagram account is not a Business account. Reconnect with a Business or Creator account.",
     "igError": "There was an error connecting the Instagram account. Please try again.",
@@ -165,6 +298,9 @@
     "igOffMetaOk": "Got it",
     "ttConnected": "TikTok account connected.",
     "ttError": "There was an error connecting the TikTok account. Please try again.",
+    "ttAlreadyLinked": "The account {{conta}} is already connected to client {{nome}}. TikTok used the account signed in on this browser. Sign out of it on tiktok.com, sign in with this client's account and connect again.",
+    "ttAlreadyLinkedUnnamed": "The account {{conta}} is already connected to another client in this workspace. TikTok used the account signed in on this browser. Sign out of it on tiktok.com, sign in with this client's account and connect again.",
+    "ttAlreadyLinkedThisAccount": "you picked",
     "ttSyncing": "Syncing TikTok data...",
     "noTitle": "Untitled",
     "standalonePost": "Standalone post",
@@ -261,8 +397,10 @@
     "posted": "Posted",
     "scheduled": "Scheduled",
     "deliveryHistory": "Delivery History",
+    "postCount_zero": "{{count}} posts",
     "postCount_one": "{{count}} post",
     "postCount_other": "{{count}} posts",
+    "dayCount_zero": "{{count}} days",
     "dayCount_one": "{{count}} day",
     "dayCount_other": "{{count}} days",
     "concluded": "Completed",
@@ -398,7 +536,26 @@
       "revisao_interna": "In review",
       "enviado_cliente": "Sent",
       "correcao_cliente": "Correction"
-    }
+    },
+    "access": {
+      "noAccessTitle": "No access to this workspace",
+      "noAccessText": "You no longer have access to this workspace. Contact the owner if you think this is a mistake.",
+      "checkFailedTitle": "We couldn't confirm your access",
+      "checkFailedText": "There was a problem checking your access to this workspace. This is usually temporary, so please try again.",
+      "retry": "Try again"
+    },
+    "addrCepValue": "ZIP Code: {{cep}}",
+    "addressMenuLabel": "Actions for address {{address}}",
+    "dateMenuLabel": "Actions for date {{title}}",
+    "linkMenuLabel": "Actions for link {{title}}",
+    "contractRange": "{{start}} to {{end}}",
+    "railPrevious": "See previous",
+    "railNext": "See more",
+    "calendarDayWithPosts_one": "{{month}} {{day}}, {{count}} post",
+    "calendarDayWithPosts_other": "{{month}} {{day}}, {{count}} posts",
+    "notInformed": "Not provided",
+    "fileOpenError": "Error opening file",
+    "socialTabs": "Social networks"
   },
   "connect": {
     "title": "Connect Instagram",
@@ -440,5 +597,85 @@
     "revokeConfirm": "Revoke this link? Anyone who already has it will no longer be able to use it.",
     "activeUntil": "Connection link active until {{date}}",
     "generateError": "Could not generate the link. Please try again."
+  },
+  "table": {
+    "client": "Client",
+    "contact": "Contact",
+    "status": "Status"
+  },
+  "emptyList": "No clients found.",
+  "filters": {
+    "title": "Filters",
+    "description": "Filter and sort clients"
+  },
+  "avatar": {
+    "tooLarge": "File must be smaller than 2MB.",
+    "updated": "Photo updated!",
+    "uploadError": "Error uploading photo.",
+    "removed": "Photo removed.",
+    "removeError": "Error removing photo.",
+    "changeAria": "Change client photo",
+    "removeAria": "Remove client photo",
+    "removeTitle": "Remove the client photo?",
+    "removeDescription": "The Hub goes back to showing the Instagram avatar (if any) or the client's initials."
+  },
+  "editDialog": {
+    "standalonePlatforms": "Platforms for standalone posts"
+  },
+  "mensalidadeDialog": {
+    "title": "Monthly fee",
+    "description": "Applies from the chosen period onward.",
+    "periodsLoadError": "Couldn't load the periods.",
+    "valueError": "Enter a value of zero or more.",
+    "dayError": "Enter a day from 1 to 31.",
+    "periodRequired": "Choose the period.",
+    "saved": "Monthly fee saved.",
+    "saveError": "Error saving the monthly fee.",
+    "valueLabel": "Monthly amount",
+    "dayLabel": "Payment day",
+    "statusLabel": "Status",
+    "closedHint": "Team assignments end in this period.",
+    "validFrom": "Applies from"
+  },
+  "equipeCard": {
+    "saved": "Team updated.",
+    "saveError": "Error saving the team.",
+    "title": "Team on this client",
+    "totalCost": "Total cost",
+    "pausedHint": "Client paused: the team is kept and counts again when the client is reactivated.",
+    "exclusive": "This client only",
+    "swapAria": "Replace {{name}}",
+    "swap": "Replace",
+    "pickAria": "Choose a person for {{role}}",
+    "pick": "+ Choose person",
+    "empty": "No one in this role."
+  },
+  "financeiroV2": {
+    "loadError": "Couldn't load this client's finances.",
+    "monthlyFee": "Monthly fee",
+    "dueDay": "Due every month on day {{day}}",
+    "editMonthlyFee": "Edit monthly fee",
+    "teamCost": "Team cost",
+    "peopleServing_zero": "{{count}} people assigned",
+    "peopleServing_one": "{{count}} person assigned",
+    "peopleServing_other": "{{count}} people assigned",
+    "monthlyProfit": "Monthly profit",
+    "annualProfit": "Annual net profit {{value}}",
+    "margin": "Margin",
+    "agencyTarget": "Agency target: {{value}}%",
+    "closedInPeriod": "Client closed in this period.",
+    "notInPeriod": "This client isn't part of the current period."
+  },
+  "sectionsIndex": {
+    "payment": "Payment",
+    "delivery": "Delivery",
+    "moreActions": "More client actions",
+    "summary": "Client summary"
+  },
+  "phoneRows": {
+    "actions": "Actions"
+  },
+  "phoneChrome": {
+    "backToClient": "Back to {{name}}"
   }
 }

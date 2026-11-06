@@ -1,10 +1,11 @@
 import { Fragment, type ReactNode, useMemo, useState, useRef, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { useIntlLocale } from '@mesaas/i18n';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   AlertTriangle,
-  ArrowLeft,
   ArrowUpDown,
   Bookmark,
   ChevronRight,
@@ -22,11 +23,10 @@ import {
   MousePointerClick,
   Send,
   ChevronDown,
-  Trash2,
   UserPlus,
   type LucideIcon,
 } from 'lucide-react';
-import { StatCard, type StatTone, type StatDelta } from '@/components/StatCard';
+import { StatCard, type StatTone } from '@/components/StatCard';
 import { StatCardGrid } from '@/components/StatCardGrid';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -41,16 +41,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import {
   Sheet,
   SheetContent,
   SheetDescription,
@@ -58,7 +48,6 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { Chart, registerables } from 'chart.js';
-import { getClientes } from '../../store';
 import {
   getAnalyticsOverview,
   getAccountMetrics,
@@ -71,11 +60,9 @@ import {
   createTag,
   deleteTag,
   assignTagToPost,
-  getClientReports,
+  removeTagFromPost,
   getAccountAIAnalysis,
   upsertManualFollowerCount,
-  sendReportEmail,
-  getReportDownloadUrl,
   getClientRateBaseline,
   getStoriesAnalytics,
   type KpiDelta,
@@ -83,12 +70,11 @@ import {
   type PostTag,
   type AudienceDemographics,
   type BestPostingTimes,
-  type AnalyticsReport,
   type StoriesAnalyticsResponse,
+  type StoryInsight,
 } from '../../services/analytics';
 import { getInstagramSummary, syncInstagramData } from '../../services/instagram';
-import { deleteReportDoc, listReportDocs } from '../../services/reportDocs';
-import { openExternalUrl, sanitizeUrl } from '../../utils/security';
+import { sanitizeUrl } from '../../utils/security';
 import {
   formatRate,
   IG_RATE_WEIGHTS,
@@ -98,8 +84,16 @@ import {
 } from '../../lib/ig-rates';
 import { compareNullableNumber, type ActionSortKey } from '../../lib/post-action-metrics';
 import { InstagramPostCarousel } from '@/components/instagram/InstagramPostCarousel';
-import { NewReportDialog } from './components/NewReportDialog';
+import { NewReportDialog } from './reports/NewReportDialog';
+import { FollowerChart } from './FollowerChart';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useVidroShell } from '@/components/layout/PageToolbarContext';
+import { ContaPhone, ContaPhoneMessage } from './phone/ContaPhone';
+import { BEST_TIME_BUCKET_STARTS, bucketBestTimes, toStatDelta } from './contaFormat';
 import { ActionMetricValue, PostInsightsDetail } from './components/PostInsightsDetail';
+import { AccountCommentsCard } from './comments/AccountCommentsCard';
+import { PostCommentsPanel } from './comments/PostCommentsPanel';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 
 Chart.register(...registerables);
 
@@ -147,25 +141,6 @@ function formatMediaType(type: string): string {
     default:
       return type;
   }
-}
-
-function formatReportMonth(month: string): string {
-  const [y, m] = month.split('-');
-  const months = [
-    'Jan',
-    'Fev',
-    'Mar',
-    'Abr',
-    'Mai',
-    'Jun',
-    'Jul',
-    'Ago',
-    'Set',
-    'Out',
-    'Nov',
-    'Dez',
-  ];
-  return `${months[parseInt(m) - 1]} ${y}`;
 }
 
 function formatNumber(n: number): string {
@@ -484,99 +459,6 @@ function KpiCard({
   );
 }
 
-/** Builds a StatCard trend delta straight from a current/previous KPI pair --
- *  for cards that render via StatCard directly instead of through KpiCard
- *  (no period tab / previous-value footer needed). Mirrors the KpiDelta ->
- *  StatDelta mapping KpiCard does internally above. */
-function toStatDelta(
-  current: number | undefined,
-  previous: number | null | undefined,
-): StatDelta | undefined {
-  if (current == null || previous == null) return undefined;
-  const { direction, deltaPercent } = makeDelta(current, previous);
-  return { direction, percent: deltaPercent, caption: 'vs período anterior' };
-}
-
-// ---- Follower Chart ----
-function FollowerChart({ history, postDates }: { history: any[]; postDates: any[] }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    if (!canvasRef.current || history.length < 2) return;
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    const textColor = isDark ? '#e0e0e0' : '#333';
-    const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
-    const postDateSet = new Set(postDates.map((p: any) => p.date));
-    const chart = new Chart(canvasRef.current, {
-      type: 'line',
-      data: {
-        labels: history.map((h) =>
-          new Date(h.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
-        ),
-        datasets: [
-          {
-            label: 'Seguidores',
-            data: history.map((h) => h.follower_count),
-            borderColor: '#E1306C',
-            backgroundColor: 'rgba(225, 48, 108, 0.1)',
-            borderWidth: 2,
-            fill: true,
-            tension: 0.4,
-            pointRadius: 3,
-            pointStyle: 'circle',
-            pointBackgroundColor: '#E1306C',
-            pointBorderColor: '#fff',
-            pointHoverBackgroundColor: '#fff',
-            pointHoverBorderColor: '#E1306C',
-          },
-        ],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            backgroundColor: isDark ? '#1a1e26' : '#fff',
-            titleColor: isDark ? '#fff' : '#12151a',
-            bodyColor: isDark ? '#94a3b8' : '#4a5468',
-            borderColor: isDark ? '#1e2430' : 'rgba(0,0,0,0.1)',
-            borderWidth: 1,
-            padding: 10,
-            displayColors: false,
-            callbacks: {
-              label: (ctx: any) => ` ${ctx.parsed.y.toLocaleString('pt-BR')} Seguidores`,
-            },
-          },
-        },
-        scales: {
-          x: {
-            grid: { display: false },
-            ticks: { color: textColor, font: { size: 10 }, maxTicksLimit: 10 },
-          },
-          y: {
-            // @ts-ignore
-            grid: { color: gridColor, borderDash: [5, 5] },
-            ticks: { color: textColor, font: { size: 10 }, precision: 0 },
-            beginAtZero: false,
-          },
-        },
-      },
-    });
-    return () => chart.destroy();
-  }, [history, postDates]);
-  if (history.length < 2)
-    return (
-      <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>
-        Dados insuficientes. O histórico é construído diariamente.
-      </p>
-    );
-  return (
-    <div style={{ position: 'relative', height: 280, marginTop: '1rem' }}>
-      <canvas ref={canvasRef} />
-    </div>
-  );
-}
-
 // ---- Insight helpers ----
 const formatPct = (v: number) => v.toFixed(1).replace('.', ',');
 
@@ -675,30 +557,17 @@ function AgeChart({ demographics }: { demographics: AudienceDemographics }) {
 }
 
 // ---- Best Times Heatmap ----
-// The API returns a 7x24 grid but posts are sparse, so cells are aggregated into
-// 3h buckets (weighted by post count) — otherwise slots at e.g. 1h or 23h would
-// be invisible in a grid that samples only every 3rd hour.
-function BestTimesHeatmap({ data }: { data: BestPostingTimes }) {
-  const bucketStarts = [0, 3, 6, 9, 12, 15, 18, 21];
-  const cols = data.heatmap[0]?.length ?? 0;
-  const bucketSize = cols >= 24 ? 3 : 1;
-  const buckets = data.labels_days.map((_, d) =>
-    bucketStarts.map((start, b) => {
-      let eng = 0;
-      let n = 0;
-      for (let i = 0; i < bucketSize; i++) {
-        const h = bucketSize === 3 ? start + i : b;
-        eng += (data.heatmap[d]?.[h] ?? 0) * (data.counts[d]?.[h] ?? 0);
-        n += data.counts[d]?.[h] ?? 0;
-      }
-      return { value: n > 0 ? eng / n : 0, count: n };
-    }),
-  );
-  const max = Math.max(...buckets.flat().map((c) => c.value), 0.1);
-  const topSlot = data.topSlots[0];
-  const topCell = topSlot
-    ? { day: topSlot.day, bucket: bucketSize === 3 ? Math.floor(topSlot.hour / 3) : topSlot.hour }
-    : null;
+// Cells are 3h buckets weighted by post count (see bucketBestTimes).
+// Also drawn by the TikTok tab, which counts videos instead of posts.
+export function BestTimesHeatmap({
+  data,
+  countLabel = (n: number) => `${n} post${n !== 1 ? 's' : ''}`,
+}: {
+  data: BestPostingTimes;
+  countLabel?: (count: number) => string;
+}) {
+  const bucketStarts = BEST_TIME_BUCKET_STARTS;
+  const { buckets, bucketSize, max, topCell } = bucketBestTimes(data);
   return (
     <div>
       <div className="an-hm">
@@ -721,7 +590,7 @@ function BestTimesHeatmap({ data }: { data: BestPostingTimes }) {
                   style={{ background: `var(--an-heat-${Math.min(step, 8)})` }}
                   title={
                     cell.count > 0
-                      ? `${day} ${bucketStarts[b]}h–${bucketStarts[b] + bucketSize - 1}h: ${formatPct(cell.value)}% eng. (${cell.count} post${cell.count !== 1 ? 's' : ''})`
+                      ? `${day} ${bucketStarts[b]}h–${bucketStarts[b] + bucketSize - 1}h: ${formatPct(cell.value)}% eng. (${countLabel(cell.count)})`
                       : `${day} ${bucketStarts[b]}h: sem posts`
                   }
                 />
@@ -740,7 +609,39 @@ function BestTimesHeatmap({ data }: { data: BestPostingTimes }) {
 }
 
 // ---- AI Section ----
-function AISection({ clientId, days }: { clientId: number; days: number }) {
+export interface AIAnalysisResult {
+  analysis: any;
+  generatedAt: string;
+}
+
+/** The headings that name the content unit; TikTok says "vídeo" and "títulos". */
+export interface AISectionLabels {
+  topPerformer: string;
+  worstPerformer: string;
+  captionDiagnostic: string;
+}
+
+const AI_SECTION_LABELS: AISectionLabels = {
+  topPerformer: 'Melhor Post',
+  worstPerformer: 'Pior Post',
+  captionDiagnostic: 'Diagnóstico de Legendas',
+};
+
+// Also drawn by the TikTok tab: `load` fetches its analysis (same output shape) and throws an
+// Error whose message is the copy to show.
+export function AISection({
+  clientId,
+  days,
+  load,
+  title = 'Análise Inteligente',
+  labels = AI_SECTION_LABELS,
+}: {
+  clientId: number;
+  days: number;
+  load?: (days: number) => Promise<AIAnalysisResult>;
+  title?: string;
+  labels?: AISectionLabels;
+}) {
   const [loading, setLoading] = useState(false);
   const [analysis, setAnalysis] = useState<any>(null);
   const [error, setError] = useState('');
@@ -749,7 +650,7 @@ function AISection({ clientId, days }: { clientId: number; days: number }) {
     setLoading(true);
     setError('');
     try {
-      const result = await getAccountAIAnalysis(clientId, days);
+      const result = await (load ? load(days) : getAccountAIAnalysis(clientId, days));
       if (result.analysis.error) {
         setError('Não foi possível gerar a análise.');
         return;
@@ -776,7 +677,7 @@ function AISection({ clientId, days }: { clientId: number; days: number }) {
   return (
     <div className="card animate-up">
       <div className="dashboard-hub-card-header" style={{ marginBottom: '1rem' }}>
-        <h3>Análise Inteligente</h3>
+        <h3>{title}</h3>
         <Button size="sm" variant="outline" disabled={loading} onClick={handleGenerate}>
           {loading ? <Spinner size="sm" /> : <Zap className="h-3 w-3" />} Gerar Análise IA
         </Button>
@@ -857,7 +758,7 @@ function AISection({ clientId, days }: { clientId: number; days: number }) {
                 <h4
                   style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}
                 >
-                  Melhor Post
+                  {labels.topPerformer}
                 </h4>
                 <BulletText text={analysis.performanceMap.topPerformer} />
               </div>
@@ -865,7 +766,7 @@ function AISection({ clientId, days }: { clientId: number; days: number }) {
                 <h4
                   style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}
                 >
-                  Pior Post
+                  {labels.worstPerformer}
                 </h4>
                 <BulletText text={analysis.performanceMap.worstPerformer} />
               </div>
@@ -895,7 +796,7 @@ function AISection({ clientId, days }: { clientId: number; days: number }) {
                 <h4
                   style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}
                 >
-                  Diagnóstico de Legendas
+                  {labels.captionDiagnostic}
                 </h4>
                 <BulletText text={analysis.captionDiagnostic} />
               </div>
@@ -1022,18 +923,114 @@ function TagPill({ tag, onRemove }: { tag: PostTag; onRemove: () => void }) {
   );
 }
 
+/** The expanded row of the posts table. With `feature_instagram_comments_ai` it gets
+ *  "Insights" / "Comentários · N" tabs; the comments panel mounts (and fetches) only once
+ *  its tab is opened. Without the flag the row is exactly the insights it always was. */
+function ExpandedPostDetail({
+  clientId,
+  post: p,
+  commentsEnabled,
+}: {
+  clientId: number;
+  post: PostAnalytics;
+  commentsEnabled: boolean;
+}) {
+  const [tab, setTab] = useState<'insights' | 'comments'>('insights');
+  const { t } = useTranslation('analyticsComments');
+  const intlLocale = useIntlLocale();
+  const insights = (
+    <>
+      <p
+        style={{
+          fontSize: '0.85rem',
+          whiteSpace: 'pre-wrap',
+          marginBottom: '0.5rem',
+        }}
+      >
+        {p.caption || 'Sem legenda'}
+      </p>
+      <div
+        style={{
+          display: 'flex',
+          gap: '1rem',
+          alignItems: 'center',
+          fontSize: '0.8rem',
+        }}
+      >
+        <a
+          href={sanitizeUrl(p.permalink)}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: 'var(--primary-color)' }}
+        >
+          ↗ Ver no Instagram
+        </a>
+      </div>
+      <PostInsightsDetail post={p} />
+    </>
+  );
+  if (!commentsEnabled) return insights;
+
+  const tabId = (t: string) => `post-${p.id}-tab-${t}`;
+  const panelId = (t: string) => `post-${p.id}-panel-${t}`;
+  const tabs: { key: 'insights' | 'comments'; label: string }[] = [
+    { key: 'insights', label: t('common.tabInsights') },
+    {
+      key: 'comments',
+      label: t('common.tabComments', { n: (p.comments || 0).toLocaleString(intlLocale) }),
+    },
+  ];
+  return (
+    <>
+      <div
+        className="page-tabs page-tabs--inline igc-detail-tabs"
+        role="tablist"
+        aria-label={t('common.tabsAriaLabel')}
+      >
+        {tabs.map((tb) => (
+          <button
+            key={tb.key}
+            type="button"
+            role="tab"
+            id={tabId(tb.key)}
+            aria-selected={tab === tb.key}
+            aria-controls={tab === tb.key ? panelId(tb.key) : undefined}
+            className={`page-tab${tab === tb.key ? ' active' : ''}`}
+            onClick={() => setTab(tb.key)}
+          >
+            {tb.label}
+          </button>
+        ))}
+      </div>
+      <div role="tabpanel" id={panelId(tab)} aria-labelledby={tabId(tab)}>
+        {tab === 'insights' ? (
+          insights
+        ) : (
+          <PostCommentsPanel key={p.id} clientId={clientId} post={p} />
+        )}
+      </div>
+    </>
+  );
+}
+
 // ---- Main Content ----
 function AnalyticsContent({
   clientId,
   cliente,
   account,
+  tabs,
 }: {
   clientId: number;
   cliente: any;
   account: any;
+  /** The shell's platform tabs, shown under the phone identity (desktop renders them itself). */
+  tabs?: ReactNode;
 }) {
   const qc = useQueryClient();
-  const navigate = useNavigate();
+  const isPhone = !useIsDesktop(768);
+  // Under the Vidro shell the four inline var(--card-bg) surfaces below drop their background so
+  // the Vidro family rules paint them (spec: inline-style escapes).
+  const vidroShell = useVidroShell();
 
   const [days, setDays] = useState(30);
   const [overviewDays, setOverviewDays] = useState(30);
@@ -1045,6 +1042,7 @@ function AnalyticsContent({
     dir: 'desc',
   });
   const [expandedPostId, setExpandedPostId] = useState<number | null>(null);
+  const commentsAiEnabled = useWorkspaceLimits().features?.feature_instagram_comments_ai === true;
   const [syncing, setSyncing] = useState(false);
   // Collapsed by default on phones, where the callout ate most of a screen
   const [savesOpen, setSavesOpen] = useState(
@@ -1060,11 +1058,7 @@ function AnalyticsContent({
   const [rankedFormatFilter, setRankedFormatFilter] = useState('all');
   const [rankedDateFrom, setRankedDateFrom] = useState('');
   const [rankedDateTo, setRankedDateTo] = useState('');
-  const [emailReportTarget, setEmailReportTarget] = useState<AnalyticsReport | null>(null);
-  const [sendingEmail, setSendingEmail] = useState(false);
   const [newReportOpen, setNewReportOpen] = useState(false);
-  // Which report row is currently being downloaded, so only that row spins.
-  const [downloadingReportId, setDownloadingReportId] = useState<number | null>(null);
 
   const dateRange = periodStart && periodEnd ? { start: periodStart, end: periodEnd } : undefined;
   // account-metrics has no "days" shorthand -- always resolve an explicit
@@ -1105,19 +1099,6 @@ function AnalyticsContent({
     queryFn: () => getFollowerHistory(clientId, days, dateRange),
   });
   const { data: tagsData = [] } = useQuery({ queryKey: ['analytics-tags'], queryFn: getTags });
-  const { data: reportsData = [] } = useQuery({
-    queryKey: ['analytics-reports', clientId],
-    queryFn: () => getClientReports(clientId),
-    refetchInterval: (query) => {
-      const reports = query.state.data;
-      if (reports?.some((r) => r.status === 'pending' || r.status === 'generating')) return 10000;
-      return false;
-    },
-  });
-  const { data: reportDocs = [] } = useQuery({
-    queryKey: ['report-docs', clientId],
-    queryFn: () => listReportDocs(clientId),
-  });
   const { data: demoRes } = useQuery({
     queryKey: ['analytics-demo', clientId],
     queryFn: () => getAudienceDemographics(clientId).catch(() => null),
@@ -1416,28 +1397,52 @@ function AnalyticsContent({
     }
   };
 
-  const handleAddTag = async () => {
-    const name = prompt('Nome da nova tag (ex: Educativo, Procedimento, Bastidores):');
-    if (!name || !name.trim()) return;
+  // Resolves true when the tag was created. The phone's "Nova tag" sheet calls it
+  // directly; desktop asks for the name with prompt() first.
+  const createTagNamed = async (name: string): Promise<boolean> => {
     const colors = ['#3ecf8e', '#f5a342', '#42c8f5', '#f542c8', '#eab308', '#f55a42', '#8b5cf6'];
     const color = colors[Math.floor(Math.random() * colors.length)];
     try {
       await createTag(name.trim(), color);
       toast.success('Tag criada!');
       qc.invalidateQueries({ queryKey: ['analytics-tags'] });
+      return true;
     } catch (err: any) {
       toast.error(err.message || 'Erro ao criar tag');
+      return false;
     }
   };
 
-  const handleRemoveTag = async (tagId: number) => {
-    if (!confirm('Remover esta tag?')) return;
+  const handleAddTag = async () => {
+    const name = prompt('Nome da nova tag (ex: Educativo, Procedimento, Bastidores):');
+    if (!name || !name.trim()) return;
+    await createTagNamed(name);
+  };
+
+  const deleteTagConfirmed = async (tagId: number) => {
     try {
       await deleteTag(tagId);
       toast.success('Tag removida');
       qc.invalidateQueries({ queryKey: ['analytics-tags'] });
     } catch (err: any) {
       toast.error(err.message || 'Erro');
+    }
+  };
+
+  const handleRemoveTag = async (tagId: number) => {
+    if (!confirm('Remover esta tag?')) return;
+    await deleteTagConfirmed(tagId);
+  };
+
+  // Phone tag toggles in the post sheet: assigning is the desktop "+ tag" chip;
+  // un-assigning uses removeTagFromPost, which the desktop table doesn't offer.
+  const handleToggleTag = async (post: PostAnalytics, tag: PostTag, assigned: boolean) => {
+    try {
+      if (assigned) await removeTagFromPost(post.id, tag.id);
+      else await assignTagToPost(post.id, tag.id);
+      await qc.invalidateQueries({ queryKey: ['analytics-posts', clientId] });
+    } catch (err: any) {
+      toast.error(err.message || (assigned ? 'Erro ao remover tag' : 'Erro ao atribuir tag'));
     }
   };
 
@@ -1450,39 +1455,11 @@ function AnalyticsContent({
     }
   };
 
-  const handleConfirmSendEmail = async () => {
-    if (!emailReportTarget) return;
-    setSendingEmail(true);
-    try {
-      const result = await sendReportEmail(emailReportTarget.id);
-      if (result.warning) {
-        toast.warning(result.warning);
-      } else {
-        toast.success('E-mail enviado com sucesso!');
-      }
-      qc.invalidateQueries({ queryKey: ['analytics-reports', clientId] });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao enviar e-mail');
-    } finally {
-      setSendingEmail(false);
-      setEmailReportTarget(null);
-    }
-  };
-
-  const handleDownloadReport = async (reportId: number) => {
-    // Signing the URL takes a moment; without feedback the row looks inert and
-    // gets clicked again. Every download button locks so the spinner on the
-    // active row is the only thing that looks clickable.
-    if (downloadingReportId !== null) return;
-    setDownloadingReportId(reportId);
-    try {
-      const url = await getReportDownloadUrl(reportId);
-      openExternalUrl(url);
-    } catch {
-      toast.error('Erro ao baixar relatório');
-    } finally {
-      setDownloadingReportId(null);
-    }
+  const applyCustomDays = (val: number) => {
+    setOverviewDays(val);
+    setPeriodStart(undefined);
+    setPeriodEnd(undefined);
+    setPeriodLabel(undefined);
   };
 
   const periodTag = periodLabel || `${overviewDays}d`;
@@ -1519,12 +1496,6 @@ function AnalyticsContent({
     ? followersWindow.start.toLocaleString('pt-BR')
     : undefined;
 
-  // The overview returns before the page header renders, so its placeholder carries the header
-  // too: the outer route skeleton hands over to this one without the header blinking out.
-  if (isLoading) return <PageSkeleton body="report" />;
-
-  if (!overview) return null;
-
   const cacheNote = overviewRes?.fromCache ? (
     <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
       Dados de{' '}
@@ -1532,110 +1503,48 @@ function AnalyticsContent({
     </span>
   ) : null;
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      <header className="header header--flush animate-up">
-        <div className="header-title">
-          {(() => {
-            const avatarUrl =
-              account.profile_picture_url && account.profile_picture_url.startsWith('https://')
-                ? account.profile_picture_url
-                : null;
-            return (
-              <div className={`conta-identity${avatarUrl ? ' conta-identity--avatar' : ''}`}>
-                <div className="conta-identity__row">
-                  {avatarUrl && <img src={avatarUrl} alt="" className="conta-identity__avatar" />}
-                  <h1>{cliente.nome}</h1>
-                </div>
-                <p className="conta-identity__handle">
-                  <a
-                    href={sanitizeUrl(
-                      `https://instagram.com/${encodeURIComponent(account.username)}`,
-                    )}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="conta-identity__handle-link"
-                  >
-                    @{account.username}
-                  </a>{' '}
-                  {cacheNote}
-                </p>
-              </div>
-            );
-          })()}
-        </div>
-        <div className="header-actions">
-          <Button variant="outline" onClick={() => navigate(-1)}>
-            <ArrowLeft className="h-4 w-4" /> Voltar
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            disabled={syncing}
-            onClick={handleSync}
-            title="Sincronizar Dados"
-          >
-            {syncing ? <Spinner size="sm" /> : <RefreshCw className="h-4 w-4" />}
-          </Button>
-          <Button onClick={() => setNewReportOpen(true)}>
-            <FileText className="h-4 w-4" /> Gerar Relatório
-          </Button>
-        </div>
-      </header>
+  const handleLink = (
+    <a
+      href={sanitizeUrl(`https://instagram.com/${encodeURIComponent(account.username)}`)}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="conta-identity__handle-link"
+    >
+      @{account.username}
+    </a>
+  );
+  // The client's name and photo live in the shell's header; the Instagram-only header actions
+  // (sync, Gerar Relatório) and the handle sit at the top of this tab.
+  const headerActions = (
+    <>
+      <Button
+        variant="outline"
+        size="icon"
+        disabled={syncing}
+        onClick={handleSync}
+        title="Sincronizar Dados"
+      >
+        {syncing ? <Spinner size="sm" /> : <RefreshCw className="h-4 w-4" />}
+      </Button>
+    </>
+  );
+  const primaryAction = (
+    <Button onClick={() => setNewReportOpen(true)}>
+      <FileText className="h-4 w-4" /> Gerar Relatório
+    </Button>
+  );
 
-      {/* Filter bar */}
-      <div className="flex flex-wrap items-center gap-3 animate-up">
-        <div className="page-tabs page-tabs--inline" role="tablist">
-          {[7, 30, 90].map((d) => (
-            <button
-              key={d}
-              type="button"
-              role="tab"
-              aria-selected={!periodStart && overviewDays === d}
-              className={`page-tab${!periodStart && overviewDays === d ? ' active' : ''}`}
-              onClick={() => handleDaysChange(d)}
-            >
-              {d} dias
-            </button>
-          ))}
-          <button
-            type="button"
-            role="tab"
-            aria-selected={!!periodStart}
-            className={`page-tab${periodStart ? ' active' : ''}`}
-            onClick={handleLastMonth}
-          >
-            Último mês
-          </button>
-        </div>
-        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>ou</span>
-        <Input
-          type="number"
-          min={1}
-          max={730}
-          placeholder="Dias..."
-          aria-label="Período personalizado em dias"
-          className="!rounded-full !text-xs h-9 w-[110px] mb-0"
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              const val = parseInt((e.target as HTMLInputElement).value, 10);
-              if (isNaN(val) || val < 1 || val > 730) {
-                toast.error('Insira um valor entre 1 e 730 dias');
-                return;
-              }
-              setOverviewDays(val);
-              setPeriodStart(undefined);
-              setPeriodEnd(undefined);
-              setPeriodLabel(undefined);
-            }
-          }}
-        />
-      </div>
+  // Below the shell's header and tabs: no header bars in this placeholder.
+  if (isLoading) return <PageSkeleton body="report" header={false} />;
 
+  if (!overview) return null;
+
+  const kpiGrid = (
+    <>
       {/* KPI Cards */}
       {/* 8 metrics as two clean rows of 4: eight-up squeezes the cards until
-          labels wrap into the icon bubbles */}
-      <StatCardGrid className="animate-up" maxCols={4}>
+      labels wrap into the icon bubbles */}
+      <StatCardGrid className="animate-up" maxCols={4} phoneLayout="scroll">
         <KpiCard
           label="Visualizações"
           icon={Play}
@@ -1710,6 +1619,210 @@ function AnalyticsContent({
           prevFormatted={String(overview.postsPublished.previous)}
         />
       </StatCardGrid>
+    </>
+  );
+
+  // Rendered by both layouts (F0c turns the dialogs into sheets on phones).
+  const dialogs = (
+    <>
+      {/* Manual follower modal */}
+      <Dialog
+        open={manualFollowerOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setManualFollowerOpen(false);
+            setManualCount('');
+          }
+        }}
+      >
+        <DialogContent
+          onConfirmClose={() => {
+            setManualFollowerOpen(false);
+            setManualCount('');
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Inserir Seguidores Manualmente</DialogTitle>
+          </DialogHeader>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+            Insira a contagem de seguidores para uma data específica. Dados manuais não serão
+            sobrescritos pela sincronização automática.
+          </p>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label>Data</Label>
+              <Input
+                type="date"
+                value={manualDate}
+                max={new Date().toISOString().split('T')[0]}
+                onChange={(e) => setManualDate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Número de seguidores</Label>
+              <Input
+                type="number"
+                min={0}
+                placeholder="Ex: 15432"
+                value={manualCount}
+                onChange={(e) => setManualCount(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setManualFollowerOpen(false);
+                setManualCount('');
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveManualFollower}>Salvar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <NewReportDialog open={newReportOpen} onOpenChange={setNewReportOpen} clientId={clientId} />
+    </>
+  );
+
+  if (isPhone) {
+    const typeHeadline =
+      typeTop && typeSecond && typeRatio !== null && typeRatio >= 1.3
+        ? `${typeTop.type} engaja ${formatPct(typeRatio)}× mais que ${typeSecond.type}`
+        : typeTop
+          ? `${typeTop.type} é o formato que mais engaja`
+          : null;
+    const demoHeadline = !demographicsData
+      ? 'Indisponível'
+      : demoHotAge && demoAgeTotal > 0
+        ? `${demoFemaleDominant ? 'Mulheres' : 'Homens'} de ${demoHotAge.age_range} são o núcleo da audiência`
+        : null;
+    return (
+      <>
+        <ContaPhone
+          clientId={clientId}
+          clienteNome={cliente.nome}
+          account={account}
+          cachedAt={overviewRes?.fromCache ? overviewRes.fetchedAt : null}
+          syncing={syncing}
+          onSync={handleSync}
+          onNewReport={() => setNewReportOpen(true)}
+          overviewDays={overviewDays}
+          days={days}
+          periodStart={periodStart}
+          periodTag={periodTag}
+          onDays={handleDaysChange}
+          onLastMonth={handleLastMonth}
+          onCustomDays={applyCustomDays}
+          kpis={kpiGrid}
+          history={history}
+          onManualFollower={() => setManualFollowerOpen(true)}
+          posts={posts}
+          rankedPosts={rankedPosts}
+          matureRankedPosts={matureRankedPosts}
+          drawer={{
+            mode: rankedDrawer,
+            open: openRankedDrawer,
+            close: resetRankedDrawer,
+            posts: rankedDrawerPosts,
+            total: rankedDrawer === 'worst' ? matureRankedPosts.length : posts.length,
+            orderBy: rankedOrderBy,
+            setOrderBy: (v) => setRankedOrderBy(v as RankedPostOrderBy),
+            asc: rankedAsc,
+            setAsc: setRankedAsc,
+            format: rankedFormatFilter,
+            setFormat: setRankedFormatFilter,
+            formats: rankedPostFormats,
+            dateFrom: rankedDateFrom,
+            setDateFrom: setRankedDateFrom,
+            dateTo: rankedDateTo,
+            setDateTo: setRankedDateTo,
+          }}
+          sort={sort}
+          onSort={setSort}
+          showAllPosts={showAllPosts}
+          onToggleShowAll={() => setShowAllPosts((v) => !v)}
+          tags={tagsData}
+          onToggleTag={handleToggleTag}
+          onCreateTag={createTagNamed}
+          onDeleteTag={deleteTagConfirmed}
+          topSaved={topSaved}
+          typeBreakdown={typeBreakdown}
+          topicStats={topicStats}
+          typeHeadline={typeHeadline}
+          demographics={demographicsData}
+          demoHeadline={demoHeadline}
+          bestTimes={bestTimesData}
+          stories={storiesQuery.data ?? null}
+          baseline={baselineQuery.data?.baseline ?? null}
+          tabs={tabs}
+        />
+        {dialogs}
+      </>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      <div className="flex flex-wrap items-center justify-between gap-3 animate-up">
+        <p className="flex flex-wrap items-center gap-2" style={{ margin: 0 }}>
+          {handleLink} {cacheNote}
+        </p>
+        <div className="header-actions">
+          {headerActions}
+          {primaryAction}
+        </div>
+      </div>
+
+      {/* Filter bar */}
+      <div className="flex flex-wrap items-center gap-3 animate-up">
+        <div className="page-tabs page-tabs--inline" role="tablist">
+          {[7, 30, 90].map((d) => (
+            <button
+              key={d}
+              type="button"
+              role="tab"
+              aria-selected={!periodStart && overviewDays === d}
+              className={`page-tab${!periodStart && overviewDays === d ? ' active' : ''}`}
+              onClick={() => handleDaysChange(d)}
+            >
+              {d} dias
+            </button>
+          ))}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={!!periodStart}
+            className={`page-tab${periodStart ? ' active' : ''}`}
+            onClick={handleLastMonth}
+          >
+            Último mês
+          </button>
+        </div>
+        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>ou</span>
+        <Input
+          type="number"
+          min={1}
+          max={730}
+          placeholder="Dias..."
+          aria-label="Período personalizado em dias"
+          className="!rounded-full !text-xs h-9 w-[110px] mb-0"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              const val = parseInt((e.target as HTMLInputElement).value, 10);
+              if (isNaN(val) || val < 1 || val > 730) {
+                toast.error('Insira um valor entre 1 e 730 dias');
+                return;
+              }
+              applyCustomDays(val);
+            }
+          }}
+        />
+      </div>
+
+      {kpiGrid}
 
       {/* Top Saved callout */}
       {topSaved.length > 0 && (
@@ -1963,34 +2076,18 @@ function AnalyticsContent({
                     </tr>
                     {expandedPostId === p.id && (
                       <tr key={`detail-${p.id}`} className="post-detail-row">
-                        <td colSpan={12} style={{ padding: '1rem', background: 'var(--card-bg)' }}>
-                          <p
-                            style={{
-                              fontSize: '0.85rem',
-                              whiteSpace: 'pre-wrap',
-                              marginBottom: '0.5rem',
-                            }}
-                          >
-                            {p.caption || 'Sem legenda'}
-                          </p>
-                          <div
-                            style={{
-                              display: 'flex',
-                              gap: '1rem',
-                              alignItems: 'center',
-                              fontSize: '0.8rem',
-                            }}
-                          >
-                            <a
-                              href={sanitizeUrl(p.permalink)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={{ color: 'var(--primary-color)' }}
-                            >
-                              ↗ Ver no Instagram
-                            </a>
-                          </div>
-                          <PostInsightsDetail post={p} />
+                        <td
+                          colSpan={12}
+                          style={{
+                            padding: '1rem',
+                            background: vidroShell ? undefined : 'var(--card-bg)',
+                          }}
+                        >
+                          <ExpandedPostDetail
+                            clientId={clientId}
+                            post={p}
+                            commentsEnabled={commentsAiEnabled}
+                          />
                         </td>
                       </tr>
                     )}
@@ -2022,6 +2119,8 @@ function AnalyticsContent({
           </div>
         )}
       </div>
+
+      <AccountCommentsCard clientId={clientId} posts={posts} />
 
       {/* AI Analysis */}
       <AISection clientId={clientId} days={days} />
@@ -2274,282 +2373,7 @@ function AnalyticsContent({
         </div>
       </div>
 
-      {/* Reports */}
-      <div className="card animate-up">
-        <div
-          className="dashboard-hub-card-header"
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
-        >
-          <h3>Relatórios Gerados</h3>
-          <Button variant="outline" size="sm" onClick={() => setNewReportOpen(true)}>
-            <Plus className="h-3.5 w-3.5" /> Gerar
-          </Button>
-        </div>
-        <div style={{ marginTop: '1rem' }}>
-          {reportDocs.length === 0 && reportsData.length === 0 && (
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-              Nenhum relatório gerado ainda. Clique em "Gerar" para criar o primeiro.
-            </p>
-          )}
-          {reportDocs.map((doc) => (
-            <div
-              key={doc.id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '0.5rem 0',
-                borderBottom: '1px solid var(--border-color,rgba(0,0,0,0.06))',
-              }}
-            >
-              <div>
-                <strong>{doc.title}</strong>
-                <span
-                  style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}
-                >
-                  {new Date(doc.created_at).toLocaleDateString('pt-BR')}
-                </span>
-              </div>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => navigate(`/relatorios/${doc.id}`)}
-                >
-                  Abrir
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  aria-label="Excluir relatório"
-                  onClick={async () => {
-                    if (
-                      !window.confirm('Excluir este relatório? O PDF exportado também é removido.')
-                    )
-                      return;
-                    try {
-                      await deleteReportDoc(doc.id);
-                      qc.invalidateQueries({ queryKey: ['report-docs', clientId] });
-                      toast.success('Relatório excluído.');
-                    } catch (err) {
-                      toast.error(err instanceof Error ? err.message : 'Erro ao excluir relatório');
-                    }
-                  }}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </div>
-          ))}
-          {reportsData.length > 0 && (
-            <p
-              style={{
-                fontSize: '0.75rem',
-                color: 'var(--text-muted)',
-                marginTop: reportDocs.length > 0 ? '1.25rem' : 0,
-                marginBottom: '0.25rem',
-              }}
-            >
-              Formato anterior
-            </p>
-          )}
-          {reportsData.map((r) => (
-            <div
-              key={r.id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '0.5rem 0',
-                borderBottom: '1px solid var(--border-color,rgba(0,0,0,0.06))',
-              }}
-            >
-              <div>
-                <strong>{formatReportMonth(r.report_month)}</strong>
-                {r.generated_at && (
-                  <span
-                    style={{
-                      fontSize: '0.75rem',
-                      color: 'var(--text-muted)',
-                      marginLeft: '0.5rem',
-                    }}
-                  >
-                    {new Date(r.generated_at).toLocaleDateString('pt-BR')}
-                  </span>
-                )}
-                {r.include_ai && (
-                  <span className="badge badge-neutral badge--sm" style={{ marginLeft: '0.5rem' }}>
-                    IA
-                  </span>
-                )}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                {r.status === 'pending' && <span className="badge badge-warning">Pendente</span>}
-                {r.status === 'generating' && (
-                  <span className="badge badge-info">
-                    <Spinner size="sm" /> Gerando...
-                  </span>
-                )}
-                {r.status === 'failed' && (
-                  <span
-                    className="badge badge-danger"
-                    title={r.generation_error || 'Erro desconhecido'}
-                    style={{ cursor: 'help' }}
-                  >
-                    Falha
-                  </span>
-                )}
-                {r.status === 'skipped' && (
-                  <span
-                    className="badge badge-neutral"
-                    title="Não gerado: o plano do workspace não incluía relatórios de analytics no momento da geração."
-                    style={{ cursor: 'help' }}
-                  >
-                    Fora do plano
-                  </span>
-                )}
-                {r.status === 'ready' && (
-                  <>
-                    <span className="badge badge-success">Pronto</span>
-                    {r.storage_path && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={downloadingReportId !== null}
-                        onClick={() => handleDownloadReport(r.id)}
-                      >
-                        {downloadingReportId === r.id ? (
-                          <>
-                            <Spinner size="sm" /> Baixando…
-                          </>
-                        ) : (
-                          '↓ Baixar PDF'
-                        )}
-                      </Button>
-                    )}
-                    <Button variant="outline" size="sm" onClick={() => setEmailReportTarget(r)}>
-                      Enviar
-                    </Button>
-                  </>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Send report email confirmation dialog */}
-      <AlertDialog
-        open={emailReportTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) setEmailReportTarget(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Enviar relatório por e-mail</AlertDialogTitle>
-            <AlertDialogDescription>
-              {emailReportTarget && (
-                <>
-                  Enviar o relatório de{' '}
-                  <strong>{formatReportMonth(emailReportTarget.report_month)}</strong> por e-mail
-                  para o cliente <strong>{cliente.nome}</strong>?
-                  {cliente.send_report_email === false && (
-                    <span
-                      style={{
-                        display: 'block',
-                        marginTop: '0.5rem',
-                        color: 'var(--warning)',
-                        fontWeight: 600,
-                      }}
-                    >
-                      Atenção: este cliente tem o envio de relatórios por e-mail desativado.
-                    </span>
-                  )}
-                  {emailReportTarget.last_emailed_at && (
-                    <span
-                      style={{
-                        display: 'block',
-                        marginTop: '0.25rem',
-                        fontSize: '0.8rem',
-                        color: 'var(--text-muted)',
-                      }}
-                    >
-                      Último envio:{' '}
-                      {new Date(emailReportTarget.last_emailed_at).toLocaleString('pt-BR')}
-                    </span>
-                  )}
-                </>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={sendingEmail}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction disabled={sendingEmail} onClick={handleConfirmSendEmail}>
-              {sendingEmail ? 'Enviando...' : 'Enviar'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Manual follower modal */}
-      <Dialog
-        open={manualFollowerOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            setManualFollowerOpen(false);
-            setManualCount('');
-          }
-        }}
-      >
-        <DialogContent
-          onConfirmClose={() => {
-            setManualFollowerOpen(false);
-            setManualCount('');
-          }}
-        >
-          <DialogHeader>
-            <DialogTitle>Inserir Seguidores Manualmente</DialogTitle>
-          </DialogHeader>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-            Insira a contagem de seguidores para uma data específica. Dados manuais não serão
-            sobrescritos pela sincronização automática.
-          </p>
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <Label>Data</Label>
-              <Input
-                type="date"
-                value={manualDate}
-                max={new Date().toISOString().split('T')[0]}
-                onChange={(e) => setManualDate(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Número de seguidores</Label>
-              <Input
-                type="number"
-                min={0}
-                placeholder="Ex: 15432"
-                value={manualCount}
-                onChange={(e) => setManualCount(e.target.value)}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setManualFollowerOpen(false);
-                setManualCount('');
-              }}
-            >
-              Cancelar
-            </Button>
-            <Button onClick={handleSaveManualFollower}>Salvar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {dialogs}
 
       <Sheet
         open={rankedDrawer !== null}
@@ -2604,7 +2428,7 @@ function AnalyticsContent({
                   height: 36,
                   borderRadius: 8,
                   border: '1px solid var(--border-color)',
-                  background: 'var(--card-bg)',
+                  background: vidroShell ? undefined : 'var(--card-bg)',
                   color: 'var(--text-main)',
                   padding: '0 0.6rem',
                   fontSize: '0.85rem',
@@ -2645,7 +2469,7 @@ function AnalyticsContent({
                   height: 36,
                   borderRadius: 8,
                   border: '1px solid var(--border-color)',
-                  background: 'var(--card-bg)',
+                  background: vidroShell ? undefined : 'var(--card-bg)',
                   color: 'var(--text-main)',
                   padding: '0 0.6rem',
                   fontSize: '0.85rem',
@@ -2730,7 +2554,7 @@ function AnalyticsContent({
                     padding: '0.65rem 0.75rem',
                     borderRadius: 10,
                     border: '1px solid var(--border-color)',
-                    background: 'var(--card-bg)',
+                    background: vidroShell ? undefined : 'var(--card-bg)',
                     textDecoration: 'none',
                     color: 'inherit',
                   }}
@@ -2857,15 +2681,49 @@ function AnalyticsContent({
           </div>
         </SheetContent>
       </Sheet>
-
-      <NewReportDialog open={newReportOpen} onOpenChange={setNewReportOpen} clientId={clientId} />
     </div>
   );
 }
 
 // ---- Stories Section ----
+type StorySortCol =
+  | 'posted_at'
+  | 'reach'
+  | 'impressions'
+  | 'retention_rate'
+  | 'taps_forward'
+  | 'taps_back'
+  | 'exits'
+  | 'replies';
+
+const STORY_COLUMNS: { col: StorySortCol; label: string }[] = [
+  { col: 'posted_at', label: 'Data' },
+  { col: 'reach', label: 'Alcance' },
+  { col: 'impressions', label: 'Impressões' },
+  { col: 'retention_rate', label: 'Retenção' },
+  { col: 'taps_forward', label: 'Avançaram' },
+  { col: 'taps_back', label: 'Voltaram' },
+  { col: 'exits', label: 'Saídas' },
+  { col: 'replies', label: 'Respostas' },
+];
+
 function StoriesSection({ data }: { data: StoriesAnalyticsResponse }) {
   const { current, previous } = data.kpis;
+  const [sort, setSort] = useState<{ col: StorySortCol; dir: 'asc' | 'desc' }>({
+    col: 'posted_at',
+    dir: 'desc',
+  });
+
+  const sortedStories = useMemo(() => {
+    const value = (s: StoryInsight) =>
+      sort.col === 'posted_at' ? new Date(s.posted_at).getTime() : s[sort.col];
+    const sign = sort.dir === 'asc' ? 1 : -1;
+    return [...data.stories].sort((a, b) => (value(a) - value(b)) * sign);
+  }, [data.stories, sort]);
+
+  const handleSort = (col: StorySortCol) => {
+    setSort((s) => ({ col, dir: s.col === col ? (s.dir === 'asc' ? 'desc' : 'asc') : 'desc' }));
+  };
 
   return (
     <section className="animate-up" style={{ animationDelay: '0.4s' }}>
@@ -2916,58 +2774,34 @@ function StoriesSection({ data }: { data: StoriesAnalyticsResponse }) {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                  <th
-                    className="text-left py-2 px-2 font-medium"
-                    style={{ color: 'var(--text-muted)' }}
-                  >
-                    Data
-                  </th>
-                  <th
-                    className="text-right py-2 px-2 font-medium"
-                    style={{ color: 'var(--text-muted)' }}
-                  >
-                    Alcance
-                  </th>
-                  <th
-                    className="text-right py-2 px-2 font-medium"
-                    style={{ color: 'var(--text-muted)' }}
-                  >
-                    Impressões
-                  </th>
-                  <th
-                    className="text-right py-2 px-2 font-medium"
-                    style={{ color: 'var(--text-muted)' }}
-                  >
-                    Retenção
-                  </th>
-                  <th
-                    className="text-right py-2 px-2 font-medium"
-                    style={{ color: 'var(--text-muted)' }}
-                  >
-                    Avançaram
-                  </th>
-                  <th
-                    className="text-right py-2 px-2 font-medium"
-                    style={{ color: 'var(--text-muted)' }}
-                  >
-                    Voltaram
-                  </th>
-                  <th
-                    className="text-right py-2 px-2 font-medium"
-                    style={{ color: 'var(--text-muted)' }}
-                  >
-                    Saídas
-                  </th>
-                  <th
-                    className="text-right py-2 px-2 font-medium"
-                    style={{ color: 'var(--text-muted)' }}
-                  >
-                    Respostas
-                  </th>
+                  {STORY_COLUMNS.map(({ col, label }) => (
+                    <th
+                      key={col}
+                      className={`${col === 'posted_at' ? 'text-left' : 'text-right'} py-2 px-2 font-medium`}
+                      style={{ color: 'var(--text-muted)' }}
+                      aria-sort={
+                        sort.col === col
+                          ? sort.dir === 'asc'
+                            ? 'ascending'
+                            : 'descending'
+                          : 'none'
+                      }
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleSort(col)}
+                        className="font-medium"
+                        style={{ cursor: 'pointer', color: 'inherit' }}
+                      >
+                        {label}
+                        {sort.col === col && (sort.dir === 'asc' ? ' ↑' : ' ↓')}
+                      </button>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {data.stories.map((story) => {
+                {sortedStories.map((story) => {
                   const retPct = (story.retention_rate * 100).toFixed(1);
                   // --danger fails AA as text on a light card (see
                   // DESIGN_SYSTEM.md); keep it for the fill and swap in
@@ -3153,18 +2987,23 @@ function BaselineCard({ baseline }: { baseline: Baseline }) {
   );
 }
 
-// ---- Main Page ----
-export default function AnalyticsContaPage() {
-  const { id } = useParams<{ id: string }>();
+// ---- Instagram tab ----
+/**
+ * The Instagram tab of the client analytics page (`/analytics/:id/instagram`). The shell
+ * (AnalyticsClientShell) owns the client lookup, the header and the tabs; this tab renders
+ * its connection states below them, never replacing them.
+ */
+export function InstagramAnalyticsTab({
+  clientId,
+  cliente,
+  tabs,
+}: {
+  clientId: number;
+  cliente: any;
+  /** Phone only: the shell's tab control, rendered under ContaPhone's identity. */
+  tabs?: ReactNode;
+}) {
   const navigate = useNavigate();
-  const clientId = parseInt(id || '', 10);
-
-  const { data: clientes = [], isLoading: loadingClientes } = useQuery({
-    queryKey: ['clientes'],
-    queryFn: getClientes,
-  });
-
-  const cliente = clientes.find((c) => c.id === clientId);
 
   const {
     data: igSummary,
@@ -3175,41 +3014,42 @@ export default function AnalyticsContaPage() {
     queryFn: () => getInstagramSummary(clientId),
     enabled: !!clientId && !isNaN(clientId) && !!cliente,
   });
+  const isPhone = !useIsDesktop(768);
 
-  if (isNaN(clientId) || clientId <= 0) {
-    return (
-      <div className="card">
-        <p style={{ color: 'var(--danger)' }}>ID de cliente inválido.</p>
-      </div>
-    );
-  }
-
-  if (loadingClientes || loadingIg) {
-    return <PageSkeleton body="report" />;
-  }
-
-  if (!cliente) {
-    return (
-      <div className="card">
-        <p style={{ color: 'var(--danger)' }}>Cliente não encontrado.</p>
-      </div>
-    );
+  if (loadingIg) {
+    return <PageSkeleton body="report" header={false} />;
   }
 
   if (igError) {
     const msg = igError instanceof Error ? igError.message : 'Erro';
     if (msg === 'TOKEN_EXPIRED') {
+      if (isPhone) {
+        return (
+          <ContaPhoneMessage
+            title="Token do Instagram expirado"
+            message="Reconecte a conta Instagram para continuar visualizando os analytics."
+            action={{ label: 'Reconectar conta', to: `/clientes/${clientId}/redes-sociais` }}
+            tabs={tabs}
+          />
+        );
+      }
       return (
         <div className="card animate-up" style={{ textAlign: 'center', padding: '3rem' }}>
           <h3>Token do Instagram expirado</h3>
           <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem' }}>
             Reconecte a conta Instagram para continuar visualizando os analytics.
           </p>
-          <Button style={{ marginTop: '1rem' }} onClick={() => navigate(`/cliente/${clientId}`)}>
+          <Button
+            style={{ marginTop: '1rem' }}
+            onClick={() => navigate(`/clientes/${clientId}/redes-sociais`)}
+          >
             Reconectar Conta
           </Button>
         </div>
       );
+    }
+    if (isPhone) {
+      return <ContaPhoneMessage title="Erro ao carregar analytics" message={msg} tabs={tabs} />;
     }
     return (
       <div className="card">
@@ -3219,30 +3059,41 @@ export default function AnalyticsContaPage() {
   }
 
   if (!igSummary) {
+    if (isPhone) {
+      return (
+        <ContaPhoneMessage
+          title="Instagram não conectado"
+          message="Conecte a conta Instagram deste cliente para acessar os analytics."
+          action={{
+            label: 'Ir para o perfil do cliente',
+            to: `/clientes/${clientId}/redes-sociais`,
+          }}
+          tabs={tabs}
+        />
+      );
+    }
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-        <header className="header header--flush animate-up">
-          <div className="header-title">
-            <h1>Analytics</h1>
-          </div>
-          <div className="header-actions">
-            <Button variant="outline" onClick={() => navigate(-1)}>
-              <ArrowLeft className="h-4 w-4" /> Voltar
-            </Button>
-          </div>
-        </header>
-        <div className="card animate-up" style={{ textAlign: 'center', padding: '3rem' }}>
-          <h3>Instagram não conectado</h3>
-          <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-            Conecte a conta Instagram deste cliente para acessar os analytics.
-          </p>
-          <Button style={{ marginTop: '1rem' }} onClick={() => navigate(`/cliente/${clientId}`)}>
-            Ir para o perfil do cliente
-          </Button>
-        </div>
+      <div className="card animate-up" style={{ textAlign: 'center', padding: '3rem' }}>
+        <h3>Instagram não conectado</h3>
+        <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+          Conecte a conta Instagram deste cliente para acessar os analytics.
+        </p>
+        <Button
+          style={{ marginTop: '1rem' }}
+          onClick={() => navigate(`/clientes/${clientId}/redes-sociais`)}
+        >
+          Ir para o perfil do cliente
+        </Button>
       </div>
     );
   }
 
-  return <AnalyticsContent clientId={clientId} cliente={cliente} account={igSummary.account} />;
+  return (
+    <AnalyticsContent
+      clientId={clientId}
+      cliente={cliente}
+      account={igSummary.account}
+      tabs={tabs}
+    />
+  );
 }

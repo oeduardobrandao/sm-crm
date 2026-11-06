@@ -10,6 +10,7 @@ import {
   deadlineFromPrazoEfetivo,
   type DeadlineInfo,
 } from './etapaPrazo';
+import { lazyLabels } from './postLabels';
 
 // Pure logic for the "Minha fila" view and the dashboard teaser. No React, no
 // fetching. Spec: docs/superpowers/specs/2026-09-23-minha-fila-design.md.
@@ -32,26 +33,15 @@ export const FILA_BUCKET_ORDER: FilaBucket[] = [
  *  'publicacao' usa a data de publicação do post (scheduled_at). */
 export type FilaOrdem = 'prazo' | 'publicacao';
 
-export const FILA_BUCKET_LABELS: Record<FilaBucket, string> = {
-  atrasado: 'Atrasado',
-  hoje: 'Hoje',
-  amanha: 'Amanhã',
-  proximos7: 'Próximos 7 dias',
-  depois: 'Depois',
-  sem_prazo: 'Sem prazo',
-};
+export const FILA_BUCKET_LABELS: Record<FilaBucket, string> = lazyLabels(
+  FILA_BUCKET_ORDER,
+  (k) => `entregas:fila.prazo.${k}`,
+);
 
 /** Mesmos rótulos do "Data de postagem" da Lista (listGrouping.ts). */
 export const FILA_BUCKET_LABELS_BY_ORDEM: Record<FilaOrdem, Record<FilaBucket, string>> = {
   prazo: FILA_BUCKET_LABELS,
-  publicacao: {
-    atrasado: 'Data passada',
-    hoje: 'Hoje',
-    amanha: 'Amanhã',
-    proximos7: 'Próximos 7 dias',
-    depois: 'Depois',
-    sem_prazo: 'Sem data',
-  },
+  publicacao: lazyLabels(FILA_BUCKET_ORDER, (k) => `entregas:fila.publicacao.${k}`),
 };
 
 export type FilaMargem =

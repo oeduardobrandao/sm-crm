@@ -1,0 +1,100 @@
+/* Configurações > Relatórios (and its Modelos list) on phones. phone-* classes and
+   --phone-* tokens only: the Hub imports the CRM stylesheet. */
+
+.phone-kit .phone-relatorios-readonly {
+  font-weight: 600;
+}
+
+.phone-kit .phone-relatorios-hex {
+  font-family: var(--font-mono);
+  font-size: var(--phone-text-subhead);
+  text-transform: uppercase;
+}
+
+.phone-kit .phone-relatorios-swatch {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--phone-separator);
+  border-radius: 6px;
+}
+
+.phone-kit .phone-relatorios-thumb {
+  display: block;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  object-fit: cover;
+  transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.phone-kit .phone-relatorios-thumb[data-busy] {
+  opacity: 0.5;
+}
+
+.phone-kit .phone-relatorios-alert {
+  margin: -8px 16px 20px;
+  color: var(--phone-destructive);
+  font-size: var(--phone-text-footnote);
+  line-height: 1.45;
+}
+
+.phone-relatorios-preview {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 16px;
+}
+
+/* Template rows: a tappable cell plus the explicit "…" menu trigger. */
+.phone-kit .phone-reltpl-row__inner {
+  display: flex;
+  align-items: stretch;
+}
+.phone-kit .phone-reltpl-row__main {
+  flex: 1;
+  min-width: 0;
+}
+.phone-kit .phone-reltpl-row__main .phone-cell__body {
+  padding-right: 4px;
+}
+.phone-kit .phone-reltpl-row__more {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  padding: 0 8px 0 0;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label-secondary);
+  cursor: pointer;
+}
+.phone-kit .phone-reltpl-row__more svg {
+  width: 20px;
+  height: 20px;
+}
+.phone-kit .phone-reltpl-row__more:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: -4px;
+  border-radius: 10px;
+}
+/* The inset separator continues under the "…" trigger. */
+.phone-kit .phone-cell + .phone-cell .phone-reltpl-row__more {
+  border-top: 1px solid var(--phone-separator);
+}
+
+.phone-kit .phone-reltpl-badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--phone-fill);
+  color: var(--phone-label-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.phone-kit .phone-reltpl-action .phone-cell__label {
+  font-weight: 600;
+}
+.phone-kit .phone-reltpl-action .phone-cell__icon {
+  color: var(--phone-label);
+}

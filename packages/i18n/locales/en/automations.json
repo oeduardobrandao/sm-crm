@@ -241,5 +241,27 @@
     "viewContacts": "View contacts ({{count}})",
     "sectionTitle": "Automation contacts",
     "viewAll": "View all"
+  },
+  "phone": {
+    "activeCount_one": "{{count}} active",
+    "activeCount_other": "{{count}} active",
+    "sectionsAria": "Automation sections",
+    "clientChip": "Client: {{name}}",
+    "allShort": "All",
+    "filters": "Filters",
+    "moreActions": "More actions",
+    "sendsHeader": "Sends",
+    "statsHeader": "Performance",
+    "dmHeader": "Direct",
+    "actionsHeader": "Actions",
+    "preview": "Preview",
+    "previewValue": "DM and reply",
+    "mediaPick": "Upload image",
+    "mediaLimit": "up to 8 MB",
+    "post": "Post",
+    "choose": "Choose",
+    "pickPostTitle": "Choose post",
+    "periodClear": "Clear period",
+    "showAllContacts": "All contacts"
   }
 }

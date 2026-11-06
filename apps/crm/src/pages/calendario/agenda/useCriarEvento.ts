@@ -1,6 +1,7 @@
 import { useCallback, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { i18n } from '@mesaas/i18n';
 import { AGENDA_QUERY_KEY, criarEvento, formatAgendaError } from '@/store/agenda';
 import { toDateOnlyString } from '../../tarefas/tarefasLogic';
 import { fusoDoNavegador } from './agendaLogic';
@@ -20,11 +21,11 @@ export function useCriarEvento({ onCriado }: { onCriado: () => void }) {
     // card's draft chip would otherwise leave the slot empty for a moment).
     onSuccess: async (res, valores) => {
       await qc.invalidateQueries({ queryKey: [AGENDA_QUERY_KEY] });
-      toast.success('Evento criado');
+      toast.success(i18n.t('agenda:mutations.criado'));
       // ocorrencia_id may be null (one-off beyond the horizon); dtstart is always there.
       const dtstart = res?.dtstart ?? null;
       if (dtstart && dtstart.slice(0, 10) !== toDateOnlyString(valores.data_inicio)) {
-        toast(`A série começa em ${rotuloDtstart(dtstart)}.`);
+        toast(i18n.t('agenda:mutations.serieComeca', { data: rotuloDtstart(dtstart) }));
       }
       onCriado();
     },

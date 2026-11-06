@@ -2,6 +2,21 @@
 // `@mesaas/tiktok-messages` alias (same wiring as `@mesaas/platforms`). Spec
 // 2026-10-08-tiktok-audit-readiness A6/A10.
 
+/** Limites que o Mesaas aplica ao publicar no TikTok. Fonte única: tiktok-publish-utils.ts
+ * valida com eles no agendamento e o CRM mostra e confere os mesmos valores no editor. */
+export const TIKTOK_LIMITS = {
+  /** Unidades UTF-16 (String.length), o que o TikTok chama de "runes". */
+  captionVideoMax: 2200,
+  captionPhotoMax: 4000,
+  titlePhotoMax: 90,
+  /** Teto do app para carrossel só TikTok; o do próprio TikTok é 35. */
+  carouselMaxTikTokOnly: 20,
+  /** Com Instagram junto vale o teto da Graph API do Instagram. */
+  carouselMaxWithInstagram: 10,
+  photoMimes: ["image/jpeg", "image/webp"] as readonly string[],
+  photoMaxBytes: 20 * 1024 * 1024,
+} as const;
+
 export const TIKTOK_CANNOT_POST_CODES = [
   "spam_risk_too_many_posts",
   "spam_risk_user_banned_from_posting",

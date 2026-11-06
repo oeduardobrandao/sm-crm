@@ -1,7 +1,9 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { i18n } from '@mesaas/i18n';
 import { updateWorkflowPost, type ActivePost, type WorkflowPost } from '../../../store';
 import { statusKeyToPatch, type StatusKey } from '../statusRegistry';
+import { scopeErrorOr } from '@/lib/client-scope-errors';
 
 export interface UpdatePostStatusVars {
   id: number;
@@ -58,9 +60,9 @@ export function useUpdatePostStatus() {
     // per-mutation snapshot/restore shape already used elsewhere in the
     // codebase (see markAsRead in apps/crm/src/hooks/useNotifications.ts), so
     // this is not being special-cased here.
-    onError: (_err, _vars, context) => {
+    onError: (err, _vars, context) => {
       if (context?.previous) qc.setQueryData(ACTIVE_POSTS_KEY, context.previous);
-      toast.error('Erro ao atualizar status');
+      toast.error(scopeErrorOr(err, i18n.t('entregasPhone:updatePostStatus.error')));
     },
 
     onSettled: (_data, _err, vars: UpdatePostStatusVars) => {

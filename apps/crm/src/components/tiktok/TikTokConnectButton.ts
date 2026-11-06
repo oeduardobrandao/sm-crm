@@ -17,8 +17,11 @@ export function renderTikTokConnectButton(container: HTMLElement, clientId: numb
     <div class="card animate-up" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3rem; text-align: center; border: 1px dashed var(--border-color); background: var(--surface-hover);">
       <div style="font-size: 3rem; color: var(--text-muted); margin-bottom: 1rem;"><i class="ph ph-tiktok-logo" aria-hidden="true"></i></div>
       <h3 class="text-xl font-bold tracking-tight mb-2 text-foreground">${escapeHTML(t('tiktok.connectTitle'))}</h3>
-      <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem; max-width: 400px;">
+      <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 0.75rem; max-width: 400px;">
         ${escapeHTML(t('tiktok.connectDescription'))}
+      </p>
+      <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 1.5rem; max-width: 400px;">
+        ${escapeHTML(t('tiktok.connectAccountHint'))}
       </p>
       <button id="btn-tt-connect" class="btn-primary" style="background: #000000; color: white; border: none;">
         <i class="ph ph-tiktok-logo" aria-hidden="true"></i> ${escapeHTML(t('tiktok.connectButton'))}

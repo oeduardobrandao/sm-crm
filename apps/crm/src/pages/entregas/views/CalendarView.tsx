@@ -1,7 +1,9 @@
 import { useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
+import { useIntlLocale } from '@mesaas/i18n';
 import { useQueryClient } from '@tanstack/react-query';
 import { isSameDay } from 'date-fns';
-import type { ActivePost } from '@/store';
+import type { ActivePost, Cliente } from '@/store';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { computeDeadlineDate, computeWorkflowDeadlineDate } from '../hooks/useEntregasData';
 import { MonthGrid } from '@/components/ui/month-grid';
@@ -9,11 +11,16 @@ import { useScheduledPosts } from '../hooks/useScheduledPosts';
 import { dateDayKey, summarizeDay } from '../hooks/scheduledPostsUtils';
 import { PublicacoesPanel } from '../components/PublicacoesPanel';
 import { type EntregasMode } from '../components/ModeToggle';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useClienteAvatars } from '@/hooks/useClienteAvatars';
+import { CalendarViewPhone, type CalendarDeadlineEvent } from '../phone/CalendarViewPhone';
 
 export type CalendarMode = EntregasMode;
 
 interface CalendarViewProps {
   cards: BoardCard[];
+  /** For the client photos on the phone's post rows. */
+  clientes?: Cliente[];
   onCardClick: (card: BoardCard) => void;
   mode: CalendarMode;
   openableWorkflowIds: Set<number>;
@@ -25,29 +32,13 @@ interface CalendarViewProps {
   onGoToKanban?: () => void;
 }
 
-interface CalendarEvent {
-  card: BoardCard;
-  type: 'etapa' | 'workflow';
-  date: Date;
-}
+type CalendarEvent = CalendarDeadlineEvent;
 
-const monthNames = [
-  'Janeiro',
-  'Fevereiro',
-  'Março',
-  'Abril',
-  'Maio',
-  'Junho',
-  'Julho',
-  'Agosto',
-  'Setembro',
-  'Outubro',
-  'Novembro',
-  'Dezembro',
-];
+const NO_CLIENTES: Cliente[] = [];
 
 export function CalendarView({
   cards,
+  clientes = NO_CLIENTES,
   onCardClick,
   mode,
   openableWorkflowIds,
@@ -55,7 +46,11 @@ export function CalendarView({
   postProcessesEnabled,
   onGoToKanban,
 }: CalendarViewProps) {
+  const { t } = useTranslation('entregasViews');
+  const intlLocale = useIntlLocale();
+  const isPhone = !useIsDesktop(768);
   const qc = useQueryClient();
+  const { fotosDe } = useClienteAvatars(clientes);
   const today = new Date();
   const [currentDate, setCurrentDate] = useState(
     new Date(today.getFullYear(), today.getMonth(), 1),
@@ -102,7 +97,10 @@ export function CalendarView({
   } = useScheduledPosts(currentDate, mode === 'publicacoes');
   const selectedPosts =
     selectedDay != null ? (byDay.get(`${year}-${month}-${selectedDay}`) ?? []) : [];
-  const selectedLabel = selectedDay ? `${selectedDay} de ${monthNames[month]}, ${year}` : null;
+  const monthName = t(`common:months.${month}`);
+  const selectedLabel = selectedDay
+    ? t('calendarView.dayLabel', { day: selectedDay, month: monthName, year })
+    : null;
 
   const handleStatusChange = () => {
     qc.invalidateQueries({ queryKey: ['scheduled-posts'] });
@@ -111,6 +109,36 @@ export function CalendarView({
     qc.invalidateQueries({ queryKey: ['workflow-posts-with-props'] });
   };
 
+  if (isPhone) {
+    return (
+      <CalendarViewPhone
+        mode={mode}
+        currentDate={currentDate}
+        onMonthChange={(d) => {
+          setCurrentDate(d);
+          setSelectedDay(null);
+        }}
+        selectedDay={selectedDay}
+        onSelectDay={setSelectedDay}
+        events={events}
+        // The desktop grid can't place these (no started etapa, so no deadline);
+        // the phone lists them behind a "Sem data" chip.
+        undatedCards={cards.filter((c) => !c.etapa.iniciado_em)}
+        noCards={cards.length === 0}
+        byDay={byDay}
+        igStatuses={igStatuses}
+        fotosDe={fotosDe}
+        postsLoading={postsLoading}
+        openableWorkflowIds={openableWorkflowIds}
+        onCardClick={onCardClick}
+        onPostClick={onPostClick}
+        onStatusChange={handleStatusChange}
+        postProcessesEnabled={postProcessesEnabled}
+        onGoToKanban={onGoToKanban}
+      />
+    );
+  }
+
   if (mode === 'entregas' && cards.length === 0) {
     return (
       <div className="animate-up" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -118,15 +146,23 @@ export function CalendarView({
           className="card"
           style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}
         >
-          <p>Nenhuma entrega encontrada. Ajuste os filtros.</p>
+          <p>{t('shared.noEntregasFiltered')}</p>
         </div>
         {postProcessesEnabled && (
           <p className="entregas-somente-fluxos">
-            Somente fluxos. Posts individuais aparecem no{' '}
-            <button type="button" className="entregas-somente-fluxos-link" onClick={onGoToKanban}>
-              quadro
-            </button>
-            .
+            <Trans
+              t={t}
+              i18nKey="shared.somenteFluxos"
+              components={{
+                btn: (
+                  <button
+                    type="button"
+                    className="entregas-somente-fluxos-link"
+                    onClick={onGoToKanban}
+                  />
+                ),
+              }}
+            />
           </p>
         )}
       </div>
@@ -137,11 +173,19 @@ export function CalendarView({
     <div className="animate-up" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       {postProcessesEnabled && mode === 'entregas' && (
         <p className="entregas-somente-fluxos">
-          Somente fluxos. Posts individuais aparecem no{' '}
-          <button type="button" className="entregas-somente-fluxos-link" onClick={onGoToKanban}>
-            quadro
-          </button>
-          .
+          <Trans
+            t={t}
+            i18nKey="shared.somenteFluxos"
+            components={{
+              btn: (
+                <button
+                  type="button"
+                  className="entregas-somente-fluxos-link"
+                  onClick={onGoToKanban}
+                />
+              ),
+            }}
+          />
         </p>
       )}
       <div className="calendar-layout">
@@ -172,7 +216,7 @@ export function CalendarView({
                     <div className="day-events">
                       {etapaCount > 0 && (
                         <div className="event-pill deadline">
-                          ⚑ {etapaCount} Etapa{etapaCount > 1 ? 's' : ''}
+                          {t('calendarView.etapaPill', { count: etapaCount })}
                         </div>
                       )}
                       {wfCount > 0 && (
@@ -184,7 +228,7 @@ export function CalendarView({
                             fontWeight: 600,
                           }}
                         >
-                          ◎ {wfCount} Conclus.
+                          {t('calendarView.workflowPill', { count: wfCount })}
                         </div>
                       )}
                     </div>
@@ -210,7 +254,7 @@ export function CalendarView({
                           fontWeight: 600,
                         }}
                       >
-                        📷 {total} post{total > 1 ? 's' : ''}
+                        {t('calendarView.postsPill', { count: total })}
                       </div>
                     )}
                     {postados > 0 && (
@@ -247,17 +291,19 @@ export function CalendarView({
         {mode === 'entregas' ? (
           <div className="scheduled-panel">
             <div className="scheduled-header">
-              <h3>Fluxos</h3>
+              <h3>{t('calendarView.workflowsTitle')}</h3>
               <p>
                 {selectedDay
-                  ? `${selectedDay} de ${monthNames[month]}, ${year}`
-                  : `${monthNames[month]} ${year}`}
+                  ? selectedLabel
+                  : t('calendarView.monthLabel', { month: monthName, year })}
               </p>
             </div>
             <div className="scheduled-list">
               {selectedEvents.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '2rem 0', color: 'var(--text-muted)' }}>
-                  <p>{selectedDay ? 'Nenhuma entrega neste dia.' : 'Selecione um dia.'}</p>
+                  <p>
+                    {selectedDay ? t('calendarView.noEntregasDay') : t('calendarView.selectDay')}
+                  </p>
                 </div>
               ) : (
                 selectedEvents.map((ev, i) => (
@@ -273,15 +319,18 @@ export function CalendarView({
                         style={{ background: ev.type === 'etapa' ? '#a855f7' : '#f97316' }}
                       />
                       <span className="badge badge-neutral badge--sm">
-                        {ev.type === 'etapa' ? '⚑ Prazo da etapa' : '◎ Conclusão prevista'}
+                        {ev.type === 'etapa'
+                          ? `⚑ ${t('calendarView.stageDeadline')}`
+                          : `◎ ${t('calendarView.expectedCompletion')}`}
                       </span>
                     </div>
                     <div className="item-title">{ev.card.workflow.titulo}</div>
                     <div className="item-subtitle">
-                      {ev.card.cliente?.nome || '—'} · ETAPA: {ev.card.etapa.nome}
+                      {ev.card.cliente?.nome || '—'} ·{' '}
+                      {t('calendarView.etapaLabel', { name: ev.card.etapa.nome })}
                     </div>
                     <div className="item-divider" />
-                    <div className="item-meta">{ev.date.toLocaleDateString('pt-BR')}</div>
+                    <div className="item-meta">{ev.date.toLocaleDateString(intlLocale)}</div>
                   </div>
                 ))
               )}
@@ -319,7 +368,7 @@ export function CalendarView({
                 display: 'inline-block',
               }}
             />{' '}
-            Prazo da etapa
+            {t('calendarView.stageDeadline')}
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
             <span
@@ -331,7 +380,7 @@ export function CalendarView({
                 display: 'inline-block',
               }}
             />{' '}
-            Conclusão prevista
+            {t('calendarView.expectedCompletion')}
           </span>
         </div>
       )}

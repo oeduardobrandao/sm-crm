@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { History } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { i18n, getIntlLocale } from '@mesaas/i18n';
 import { getPostContentVersions, type PostApproval, type PostStatusEvent } from '../../../store';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ListSkeleton } from '@/components/ui/skeletons';
+import { BottomSheet } from '@/components/mobile';
 import { ReadOnlyTipTap } from './ReadOnlyTipTap';
 import { DiffView } from './DiffView';
 import { computeWordDiff } from '@/utils/textDiff';
@@ -21,20 +24,23 @@ interface PostVersionHistorySheetProps {
   onOpenChange: (open: boolean) => void;
   statusEvents: PostStatusEvent[];
   approvals: PostApproval[];
+  /** `phone`: a bottom sheet (C0bVersoes mockup); the selected version's diff opens
+   *  under its row instead of in a side pane. Read-only either way. */
+  layout?: 'default' | 'phone';
 }
 
 function actorLabelFor(source: 'workspace_user' | 'client' | 'system', actorName: string | null) {
-  if (source === 'client') return 'Cliente';
-  if (source === 'system') return 'Sistema';
+  if (source === 'client') return i18n.t('postPanels:shared.actor.client');
+  if (source === 'system') return i18n.t('postPanels:shared.actor.system');
   return actorName ?? '—';
 }
 
 function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  return new Date(iso).toLocaleTimeString(getIntlLocale(), { hour: '2-digit', minute: '2-digit' });
 }
 
 function formatDateTime(iso: string) {
-  return new Date(iso).toLocaleDateString('pt-BR', {
+  return new Date(iso).toLocaleDateString(getIntlLocale(), {
     day: '2-digit',
     month: 'short',
     hour: '2-digit',
@@ -59,7 +65,9 @@ export function PostVersionHistorySheet({
   onOpenChange,
   statusEvents,
   approvals,
+  layout = 'default',
 }: PostVersionHistorySheetProps) {
+  const { t } = useTranslation('postPanels');
   const { data: versions = [], isLoading } = useQuery({
     queryKey: ['post-content-versions', String(postId)],
     queryFn: () => getPostContentVersions([postId]),
@@ -157,6 +165,143 @@ export function PostVersionHistorySheet({
   const showTiktokCaption = !!(
     selectedNode?.version.tiktok_caption || precedingVersion?.tiktok_caption
   );
+  // Geral: NULL = not recorded (no Geral row, or a version from before the column existed),
+  // '' = an empty Geral caption. A version that did not record it shows nothing; one whose
+  // predecessor did not record it shows its text without a diff (it was not added then).
+  const selectedGeral = selectedNode?.version.geral_caption ?? null;
+  const precedingGeral = precedingVersion ? (precedingVersion.geral_caption ?? null) : null;
+  const showGeralCaption = selectedGeral != null && !!(selectedGeral || precedingGeral);
+  const geralBaseUnrecorded = !!precedingVersion && precedingGeral == null;
+
+  const renderNode = (node: VersionTimelineNode) =>
+    node.kind === 'version' ? (
+      <button
+        key={node.key}
+        onClick={() => setSelectedKey(node.key)}
+        className={`block w-full border-b px-4 py-3 text-left transition-colors hover:bg-muted/50 ${
+          node.key === selectedKey ? 'bg-muted' : ''
+        }`}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[13px] font-medium">
+            {actorLabelFor(node.version.source, node.version.actor_name)}
+          </span>
+          <span className="text-[11px] text-muted-foreground">{formatVersionAt(node)}</span>
+        </div>
+        {node.version.suggestion_id != null && (
+          <span className="mt-1 inline-block text-[11px] text-muted-foreground">
+            {t('versionHistory.viaSuggestion')}
+          </span>
+        )}
+      </button>
+    ) : (
+      <div key={node.key} className="border-b bg-muted/30 px-4 py-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[12px] font-medium text-muted-foreground">{node.label}</span>
+          <span className="text-[11px] text-muted-foreground">{formatDateTime(node.at)}</span>
+        </div>
+        <span className="text-[11px] text-muted-foreground">{node.actorLabel}</span>
+        {node.comment && (
+          <p className="mt-1 text-[12px] italic text-muted-foreground">“{node.comment}”</p>
+        )}
+      </div>
+    );
+
+  const diffPanel = !selectedNode ? null : (
+    <div className="space-y-4">
+      {!precedingVersion && (
+        <p className="text-[12px] font-medium text-muted-foreground">
+          {t('versionHistory.initialVersion')}
+        </p>
+      )}
+      {selectedNode.version.conteudo && resolvedCurrent && (
+        <ReadOnlyTipTap
+          key={resolvedKey}
+          content={
+            precedingVersion && resolvedPrevious
+              ? computeTipTapDiff(resolvedPrevious, resolvedCurrent)
+              : resolvedCurrent
+          }
+        />
+      )}
+      {showIgCaption && (
+        <div className="border-t pt-3">
+          <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">
+            {t('versionHistory.igCaption')}
+          </p>
+          <DiffView
+            segments={computeWordDiff(
+              (precedingVersion ? precedingVersion.ig_caption : selectedNode.version.ig_caption) ??
+                '',
+              selectedNode.version.ig_caption ?? '',
+            )}
+          />
+        </div>
+      )}
+      {showTiktokCaption && (
+        <div className="border-t pt-3">
+          <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">
+            {t('versionHistory.tiktokCaption')}
+          </p>
+          <DiffView
+            segments={computeWordDiff(
+              (precedingVersion
+                ? precedingVersion.tiktok_caption
+                : selectedNode.version.tiktok_caption) ?? '',
+              selectedNode.version.tiktok_caption ?? '',
+            )}
+          />
+        </div>
+      )}
+      {showGeralCaption && (
+        <div className="border-t pt-3">
+          <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">
+            {t('versionHistory.geralCaption')}
+          </p>
+          {geralBaseUnrecorded && (
+            <p className="mb-1.5 text-[11px] text-muted-foreground">
+              {t('versionHistory.geralNotRecordedBefore')}
+            </p>
+          )}
+          <DiffView
+            segments={computeWordDiff(
+              geralBaseUnrecorded ? (selectedGeral ?? '') : (precedingGeral ?? selectedGeral ?? ''),
+              selectedGeral ?? '',
+            )}
+          />
+        </div>
+      )}
+    </div>
+  );
+
+  if (layout === 'phone') {
+    return (
+      <BottomSheet
+        open={open}
+        onOpenChange={onOpenChange}
+        title={t('versionHistory.title')}
+        detents={['large']}
+      >
+        {isLoading ? (
+          <ListSkeleton rows={5} />
+        ) : versions.length === 0 ? (
+          <p className="phone-sheet-note">{t('versionHistory.empty')}</p>
+        ) : (
+          <div className="phone-versions">
+            {nodes.map((node) => (
+              <div key={node.key} className="phone-versions__item">
+                {renderNode(node)}
+                {node.kind === 'version' && node.key === selectedKey && diffPanel && (
+                  <div className="phone-versions__diff">{diffPanel}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="phone-sheet-note">{t('versionHistory.readOnly')}</p>
+      </BottomSheet>
+    );
+  }
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -167,7 +312,7 @@ export function PostVersionHistorySheet({
       >
         <SheetHeader className="border-b px-5 py-4 text-left">
           <SheetTitle className="flex items-center gap-2 text-[15px]">
-            <History className="h-4 w-4" /> Histórico de versões
+            <History className="h-4 w-4" /> {t('versionHistory.title')}
           </SheetTitle>
         </SheetHeader>
 
@@ -175,110 +320,20 @@ export function PostVersionHistorySheet({
           <ListSkeleton rows={5} className="flex-1 px-5 py-6" />
         ) : versions.length === 0 ? (
           <div className="flex-1 px-5 py-6 text-[13px] text-muted-foreground">
-            Sem histórico registrado ainda. Versões passam a ser guardadas a partir da próxima
-            edição de conteúdo deste post.
+            {t('versionHistory.empty')}
           </div>
         ) : (
           <div className="flex flex-1 overflow-hidden">
             <div className="w-[288px] shrink-0 overflow-y-auto border-r">
-              {nodes.map((node) =>
-                node.kind === 'version' ? (
-                  <button
-                    key={node.key}
-                    onClick={() => setSelectedKey(node.key)}
-                    className={`block w-full border-b px-4 py-3 text-left transition-colors hover:bg-muted/50 ${
-                      node.key === selectedKey ? 'bg-muted' : ''
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[13px] font-medium">
-                        {actorLabelFor(node.version.source, node.version.actor_name)}
-                      </span>
-                      <span className="text-[11px] text-muted-foreground">
-                        {formatVersionAt(node)}
-                      </span>
-                    </div>
-                    {node.version.suggestion_id != null && (
-                      <span className="mt-1 inline-block text-[11px] text-muted-foreground">
-                        via sugestão aceita
-                      </span>
-                    )}
-                  </button>
-                ) : (
-                  <div key={node.key} className="border-b bg-muted/30 px-4 py-2.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[12px] font-medium text-muted-foreground">
-                        {node.label}
-                      </span>
-                      <span className="text-[11px] text-muted-foreground">
-                        {formatDateTime(node.at)}
-                      </span>
-                    </div>
-                    <span className="text-[11px] text-muted-foreground">{node.actorLabel}</span>
-                    {node.comment && (
-                      <p className="mt-1 text-[12px] italic text-muted-foreground">
-                        “{node.comment}”
-                      </p>
-                    )}
-                  </div>
-                ),
-              )}
+              {nodes.map(renderNode)}
             </div>
 
-            <div className="flex-1 overflow-y-auto px-5 py-4">
-              {!selectedNode ? null : (
-                <div className="space-y-4">
-                  {!precedingVersion && (
-                    <p className="text-[12px] font-medium text-muted-foreground">Versão inicial</p>
-                  )}
-                  {selectedNode.version.conteudo && resolvedCurrent && (
-                    <ReadOnlyTipTap
-                      key={resolvedKey}
-                      content={
-                        precedingVersion && resolvedPrevious
-                          ? computeTipTapDiff(resolvedPrevious, resolvedCurrent)
-                          : resolvedCurrent
-                      }
-                    />
-                  )}
-                  {showIgCaption && (
-                    <div className="border-t pt-3">
-                      <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">
-                        Legenda do Instagram
-                      </p>
-                      <DiffView
-                        segments={computeWordDiff(
-                          (precedingVersion
-                            ? precedingVersion.ig_caption
-                            : selectedNode.version.ig_caption) ?? '',
-                          selectedNode.version.ig_caption ?? '',
-                        )}
-                      />
-                    </div>
-                  )}
-                  {showTiktokCaption && (
-                    <div className="border-t pt-3">
-                      <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">
-                        Legenda do TikTok
-                      </p>
-                      <DiffView
-                        segments={computeWordDiff(
-                          (precedingVersion
-                            ? precedingVersion.tiktok_caption
-                            : selectedNode.version.tiktok_caption) ?? '',
-                          selectedNode.version.tiktok_caption ?? '',
-                        )}
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+            <div className="flex-1 overflow-y-auto px-5 py-4">{diffPanel}</div>
           </div>
         )}
 
         <div className="border-t px-5 py-2.5 text-[11px] text-muted-foreground">
-          Somente leitura. Nenhuma versão pode ser restaurada por aqui.
+          {t('versionHistory.readOnly')}
         </div>
       </SheetContent>
     </Sheet>

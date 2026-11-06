@@ -1,0 +1,658 @@
+/* ===== AUTOMAÇÕES ON PHONES (PLAN F4.6, mockups FAutomacoes / FAutomacaoForm) ===========
+   The list, detail sheet, Contatos and the full-screen form below 768px. Rendered only
+   by the phone branches (pages/automacoes/phone). Every class is `phone-auto-*` or
+   `phone-af*` and reads the kit's `--phone-*` tokens; nothing here redefines a shared
+   token or styles a bare element. The form and sheets portal to <body>, so their roots
+   carry `.phone-kit` for the tokens. */
+
+/* ---- Page ---- */
+.phone-auto {
+  color: var(--phone-label);
+  font-family: var(--font-main);
+}
+.phone-auto__segments {
+  margin: 0 0 12px;
+}
+.phone-auto__locked {
+  margin: 0 0 12px;
+}
+.phone-auto__panel {
+  min-width: 0;
+}
+.phone-auto__checklist {
+  margin: 0 0 4px;
+}
+.phone-auto__chips {
+  margin: 0 0 14px;
+}
+.phone-auto__empty {
+  margin: 24px 0 8px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-subhead);
+  text-align: center;
+}
+.phone-auto__hint {
+  margin: 0 16px 20px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  line-height: 1.35;
+}
+
+/* Inset separator for the feature's own rows inside a GroupedList (Cells draw theirs on
+   .phone-cell__body; these rows have none). */
+.phone-group__list > li + .phone-auto-li {
+  position: relative;
+}
+.phone-group__list > li + .phone-auto-li::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: var(--phone-gutter, 16px);
+  border-top: 1px solid var(--phone-separator);
+}
+
+/* ---- Automation rows ---- */
+.phone-auto-row:not(:last-child) {
+  border-bottom: 1px solid var(--phone-separator);
+}
+.phone-auto-row__inner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-right: 16px;
+}
+.phone-auto-row__hold {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+.phone-auto-row__main {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  padding: 10px 0 10px 16px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.phone-auto-row__main:active {
+  background: var(--phone-cell-pressed);
+}
+.phone-auto-row__main:focus-visible,
+.phone-auto-row__more:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+.phone-auto-row__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.phone-auto-row__title {
+  overflow: hidden;
+  font-size: var(--phone-text-body);
+  font-weight: 600;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-auto-row__subtitle,
+.phone-auto-row__meta {
+  overflow: hidden;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-auto-row__pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 6px 0 4px;
+}
+.phone-auto-row__switch {
+  flex-shrink: 0;
+}
+/* The menu trigger: keyboard and screen readers only; touch has the hold and swipe. */
+.phone-auto-row__more {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-fill);
+  color: var(--phone-label);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+.phone-auto-row__more:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.phone-auto-row__more svg {
+  width: 18px;
+  height: 18px;
+}
+.phone-auto-row__preview {
+  padding: 12px 16px;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+  color: var(--phone-label);
+  font-family: var(--font-main);
+}
+
+/* ---- Pills (keywords, counts, states) ---- */
+.phone-auto-pill {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  max-width: 100%;
+  padding: 2px 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-auto-pill--keyword {
+  border-radius: 6px;
+  background: var(--phone-fill);
+  color: var(--phone-label);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--phone-text-footnote);
+}
+.phone-auto-pill--neutral {
+  background: var(--phone-fill);
+  color: var(--phone-label-secondary);
+}
+.phone-auto-pill--info {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+.phone-auto-pill--success {
+  background: #dcfce7;
+  color: #15803d;
+}
+.phone-auto-pill--warning {
+  background: #fef3c7;
+  color: #b45309;
+}
+.phone-auto-pill--danger {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+[data-theme='dark'] .phone-auto-pill--info {
+  background: rgba(59, 130, 246, 0.2);
+  color: #93c5fd;
+}
+[data-theme='dark'] .phone-auto-pill--success {
+  background: rgba(34, 197, 94, 0.18);
+  color: #86efac;
+}
+[data-theme='dark'] .phone-auto-pill--warning {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fcd34d;
+}
+[data-theme='dark'] .phone-auto-pill--danger {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+}
+
+/* ---- Detail sheet ---- */
+.phone-auto-detail {
+  padding-top: 4px;
+}
+.phone-auto-detail__target {
+  padding-right: 16px;
+}
+.phone-auto-detail__target-text {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 0;
+}
+.phone-auto-detail__target-caption {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.phone-auto-detail__pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 16px;
+}
+.phone-auto-detail__message {
+  margin: 0;
+  padding: 10px 16px;
+  font-size: var(--phone-text-body);
+  line-height: 1.35;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.phone-auto-detail__note {
+  margin: 0;
+  padding: 12px 16px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-subhead);
+}
+.phone-auto-send {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 16px;
+}
+.phone-auto-send__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.phone-auto-send__user {
+  font-size: var(--phone-text-subhead);
+  font-weight: 600;
+}
+.phone-auto-send__meta,
+.phone-auto-send__comment {
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  overflow-wrap: anywhere;
+}
+
+/* ---- Contatos ---- */
+.phone-auto-contacts__intro {
+  margin-top: 0;
+}
+.phone-auto-contacts__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.phone-auto-contacts__search {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: var(--phone-fill);
+  color: var(--phone-label-secondary);
+}
+.phone-auto-contacts__search svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+.phone-auto-contacts__search input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  /* 16px keeps iOS from zooming into the field. */
+  font-size: 16px;
+  outline: none;
+}
+.phone-auto-contacts__state {
+  padding: 24px 0;
+  color: var(--phone-label-secondary);
+  text-align: center;
+}
+.phone-auto-contacts__state p {
+  margin: 0 0 12px;
+}
+.phone-auto-contacts__paging {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: -12px 4px 20px 16px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+}
+.phone-auto-contacts__paging-buttons {
+  display: flex;
+  gap: 8px;
+}
+.phone-auto-contacts__period {
+  padding: 8px 16px;
+}
+.phone-auto-contacts__period-button {
+  width: 100%;
+}
+.phone-auto-contact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 16px;
+  min-width: 0;
+}
+.phone-auto-contact__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.phone-auto-contact__user {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--phone-label);
+  font-size: var(--phone-text-body);
+  font-weight: 600;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-auto-contact__user--muted {
+  color: var(--phone-label-secondary);
+  font-weight: 400;
+}
+.phone-auto-contact__meta,
+.phone-auto-contact__comment {
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+  overflow-wrap: anywhere;
+}
+
+/* ---- Full-screen form (AutomationFormDialog, layout="fullscreen") ---- */
+/* Outranks the fullscreen DialogContent's bg utility (two classes against one). */
+.phone-kit.phone-af {
+  background: var(--phone-bg);
+  color: var(--phone-label);
+  font-family: var(--font-main);
+}
+/* The one scroll container, and TourOverlay's containing block (data-dialog-scroll). */
+.phone-af__scroll {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  padding: 0 var(--phone-gutter) 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.phone-af__bar {
+  position: sticky;
+  top: 0;
+  /* Under the tour overlay (z-index 20). */
+  z-index: 10;
+  margin: 0 calc(-1 * var(--phone-gutter));
+  padding: env(safe-area-inset-top, 0px) var(--phone-gutter) 0;
+  background: var(--phone-bg);
+}
+.phone-kit.phone-af .phone-af__title {
+  margin: 4px 0 14px;
+  font-family: var(--font-heading);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--phone-label);
+}
+.phone-af__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 16px;
+}
+.phone-af__row-label {
+  flex: 1;
+  font-size: var(--phone-text-body);
+  white-space: nowrap;
+}
+.phone-af__segments {
+  flex: 1;
+  min-width: 0;
+}
+.phone-af__segments--compact {
+  flex: 0 1 190px;
+}
+.phone-af__warning {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 16px;
+  font-size: var(--phone-text-footnote);
+  line-height: 1.4;
+}
+.phone-af__warning > svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  color: #b45309;
+}
+.phone-af__warning > span {
+  flex: 1;
+  min-width: 0;
+}
+.phone-af__warning-cta {
+  flex-basis: 100%;
+  padding-left: 24px;
+  color: var(--phone-label);
+  font-weight: 600;
+  text-decoration: underline;
+}
+.phone-af__note {
+  margin: 0;
+  padding: 12px 16px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-subhead);
+}
+.phone-af__keywords {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+}
+.phone-af__keyword {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+  padding: 0 4px 0 10px;
+  border-radius: 999px;
+  background: var(--phone-fill);
+  font-size: var(--phone-text-subhead);
+  font-weight: 600;
+}
+.phone-af__keyword button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label-secondary);
+  cursor: pointer;
+}
+.phone-af__keyword button svg {
+  width: 12px;
+  height: 12px;
+}
+.phone-af__keyword-input,
+.phone-af__input,
+.phone-af__textarea {
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  /* 16px or more keeps iOS from zooming into the field. */
+  font-size: var(--phone-text-body);
+  outline: none;
+}
+.phone-af__keyword-input {
+  flex: 1 1 140px;
+  min-height: 32px;
+}
+.phone-af__textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 10px 16px;
+  line-height: 1.35;
+  resize: none;
+}
+.phone-af__keyword-input::placeholder,
+.phone-af__input::placeholder,
+.phone-af__textarea::placeholder {
+  color: var(--phone-label-secondary);
+  opacity: 0.7;
+}
+.phone-af__count {
+  flex-shrink: 0;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-footnote);
+}
+.phone-af__count--over {
+  color: var(--phone-destructive);
+  font-weight: 600;
+}
+.phone-af__media {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 6px 8px 6px 16px;
+}
+.phone-af__media-thumb {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+.phone-af__media-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--phone-text-subhead);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-af__pair {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 8px 16px;
+}
+.phone-af__pair-fields {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.phone-af__field-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.phone-af__input {
+  flex: 1;
+  width: 100%;
+  min-height: 28px;
+}
+.phone-af__input--strong {
+  font-weight: 600;
+}
+.phone-af__input--secondary {
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-subhead);
+}
+.phone-af__remove {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-fill);
+  color: var(--phone-label);
+  cursor: pointer;
+}
+.phone-af__remove svg {
+  width: 14px;
+  height: 14px;
+}
+.phone-af__remove:focus-visible,
+.phone-af__keyword button:focus-visible,
+.phone-af__action:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: 2px;
+}
+/* Under the tour overlay (z-index 20), so its sheet-mode card stays tappable. */
+.phone-kit.phone-af .phone-af__actions {
+  z-index: 10;
+}
+.phone-af__action {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 50px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--phone-fill);
+  color: var(--phone-label);
+  font: inherit;
+  font-size: var(--phone-text-body);
+  font-weight: 600;
+  cursor: pointer;
+}
+.phone-af__action--primary {
+  background: var(--phone-ink);
+  color: var(--phone-on-ink);
+}
+.phone-af__action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.phone-af-picker__body,
+.phone-af-preview__body {
+  padding-bottom: 8px;
+}
+
+/* Sheets opened from the form portal after it at the same z-index: lift their overlay
+   over the form so it dims like on any other screen. */
+.phone-kit.phone-af ~ .phone-sheet-overlay {
+  z-index: 9011;
+}

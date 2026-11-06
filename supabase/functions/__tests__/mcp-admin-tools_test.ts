@@ -13,12 +13,14 @@ function captureTools(deps: ReturnType<typeof makeDeps>) {
   return tools;
 }
 
-Deno.test("registerTools: registra as 18 tools do spec", () => {
+Deno.test("registerTools: registra as 23 tools do spec", () => {
   const tools = captureTools(makeDeps(makeFakeDb({}).db));
   assertEquals([...tools.keys()].sort(), [
-    "create_banner", "create_kb_article", "create_popup", "get_banner", "get_dashboard", "get_kb_article", "get_popup", "get_workspace",
-    "list_banners", "list_kb_articles", "list_plans", "list_popups", "list_workspaces",
-    "update_banner", "update_kb_article", "update_popup", "upload_kb_image", "upload_popup_image",
+    "create_banner", "create_blog_draft", "create_kb_article", "create_popup", "get_banner", "get_blog_post", "get_dashboard",
+    "get_kb_article", "get_popup", "get_workspace",
+    "list_banners", "list_blog_posts", "list_kb_articles", "list_plans", "list_popups", "list_workspaces",
+    "update_banner", "update_blog_draft", "update_kb_article", "update_popup", "upload_blog_image", "upload_kb_image",
+    "upload_popup_image",
   ]);
 });
 

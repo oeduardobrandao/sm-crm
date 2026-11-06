@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { AGENT_ROLE_PRESET, PERMISSION_MODULES, derivePermission } from '../permissions';
+import {
+  AGENT_ROLE_PRESET,
+  PERMISSION_MODULES,
+  computePermissionTransitions,
+  derivePermission,
+  isClientScoped,
+  isOutsideClientScope,
+} from '../permissions';
 import { deriveFinancialAccess } from '../financialAccess';
 import type { MyMembership } from '@/store/workspace';
 
@@ -8,12 +15,18 @@ const legacy = (role: MyMembership['role'], canFin = true): MyMembership => ({
   can_see_financials: canFin,
   role_id: null,
   permissions: null,
+  client_scope: 'todos',
+  client_scope_rev: 0,
+  cliente_ids: [],
 });
 const custom = (permissions: Record<string, string>): MyMembership => ({
   role: 'agent',
   can_see_financials: true,
   role_id: 'r-1',
   permissions,
+  client_scope: 'todos',
+  client_scope_rev: 0,
+  cliente_ids: [],
 });
 
 // Case ids TT-01..TT-16 are the verbatim ids from the task-2 brief, mirrored
@@ -164,6 +177,9 @@ it('role_id setado + permissions null (falha de embed) => tudo false, NUNCA o fa
     can_see_financials: true,
     role_id: 'r-1',
     permissions: null,
+    client_scope: 'todos',
+    client_scope_rev: 0,
+    cliente_ids: [],
   };
   for (const mod of PERMISSION_MODULES) {
     expect(derivePermission(m, mod, 'ver')).toBe(false);
@@ -294,4 +310,124 @@ it('AGENT_ROLE_PRESET snapshot (mudar aqui exige mudar public.has_permission_for
       "tarefas": "editar",
     }
   `);
+});
+
+// ---- Acesso por cliente ----
+
+const scoped = (
+  role: MyMembership['role'],
+  client_scope: MyMembership['client_scope'],
+  cliente_ids: number[] = [],
+  client_scope_rev = 1,
+): MyMembership => ({ ...legacy(role), client_scope, client_scope_rev, cliente_ids });
+
+describe('isClientScoped', () => {
+  it.each<[string, MyMembership | null, boolean]>([
+    ['null (membership não resolvida)', null, false],
+    ['owner + todos', scoped('owner', 'todos'), false],
+    ['owner + atribuidos (dono é sempre irrestrito)', scoped('owner', 'atribuidos', [1]), false],
+    ['admin + todos', scoped('admin', 'todos'), false],
+    ['admin + atribuidos', scoped('admin', 'atribuidos', [1]), true],
+    ['agent + todos', scoped('agent', 'todos'), false],
+    ['agent + atribuidos', scoped('agent', 'atribuidos', [1, 2]), true],
+    ['agent + atribuidos com zero clientes', scoped('agent', 'atribuidos', []), true],
+    [
+      'papel custom + atribuidos',
+      { ...custom({ clientes: 'editar' }), client_scope: 'atribuidos' },
+      true,
+    ],
+  ])('%s => %s', (_label, m, expected) => {
+    expect(isClientScoped(m)).toBe(expected);
+  });
+});
+
+const CLIENT_MODULES = [
+  'clientes',
+  'entregas',
+  'calendario',
+  'aprovacoes',
+  'arquivos',
+  'ideias',
+  'tarefas',
+  'analytics',
+  'financeiro',
+  'contratos',
+];
+
+describe('computePermissionTransitions: escopo de clientes', () => {
+  it('transitions_rev_only_change_downgrades_client_modules', () => {
+    const prev = scoped('agent', 'atribuidos', [1, 2], 3);
+    const next = scoped('agent', 'atribuidos', [1, 2], 4);
+    const { downgraded, upgraded } = computePermissionTransitions(prev, next);
+    expect([...downgraded].sort()).toEqual([...CLIENT_MODULES].sort());
+    expect(downgraded).not.toContain('leads');
+    expect(downgraded).not.toContain('equipe');
+    expect(upgraded).toEqual([]);
+  });
+
+  it('transitions_scope_change_downgrades_client_modules', () => {
+    const prev = scoped('agent', 'todos', [], 0);
+    const next = scoped('agent', 'atribuidos', [1], 0);
+    const { downgraded } = computePermissionTransitions(prev, next);
+    expect([...downgraded].sort()).toEqual([...CLIENT_MODULES].sort());
+  });
+
+  it('transitions_lost_id_downgrades', () => {
+    const prev = scoped('agent', 'atribuidos', [1, 2], 5);
+    const next = scoped('agent', 'atribuidos', [2], 5);
+    const { downgraded } = computePermissionTransitions(prev, next);
+    expect([...downgraded].sort()).toEqual([...CLIENT_MODULES].sort());
+  });
+
+  it('transitions_added_id_only_is_not_downgrade', () => {
+    const prev = scoped('agent', 'atribuidos', [1], 5);
+    const next = scoped('agent', 'atribuidos', [1, 2], 5);
+    const { downgraded, upgraded } = computePermissionTransitions(prev, next);
+    expect(downgraded).toEqual([]);
+    expect(upgraded).toEqual([]);
+  });
+
+  it('a module is never in both lists: an upgrade in a client module plus a rev change is a downgrade only', () => {
+    const prev: MyMembership = {
+      ...custom({ ideias: 'none', clientes: 'editar' }),
+      client_scope: 'atribuidos',
+      client_scope_rev: 1,
+      cliente_ids: [1],
+    };
+    const next: MyMembership = {
+      ...custom({ ideias: 'editar', clientes: 'editar' }),
+      client_scope: 'atribuidos',
+      client_scope_rev: 2,
+      cliente_ids: [1],
+    };
+    const { downgraded, upgraded } = computePermissionTransitions(prev, next);
+    expect(downgraded).toContain('ideias');
+    expect(upgraded).not.toContain('ideias');
+    // Ordem segue PERMISSION_MODULES.
+    expect(downgraded).toEqual(PERMISSION_MODULES.filter((m) => downgraded.includes(m)));
+  });
+
+  it('mesma membership com escopo atribuído: nenhuma transição', () => {
+    const m = scoped('agent', 'atribuidos', [1, 2], 3);
+    const { downgraded, upgraded } = computePermissionTransitions(m, {
+      ...m,
+      cliente_ids: [2, 1],
+    });
+    expect(downgraded).toEqual([]);
+    expect(upgraded).toEqual([]);
+  });
+});
+
+describe('isOutsideClientScope', () => {
+  it.each<[string, MyMembership | null, number | null, string | null, boolean]>([
+    ['restrito, cliente sem nome (oculto)', scoped('agent', 'atribuidos', [1]), 9, '', true],
+    ['restrito, nome nulo', scoped('agent', 'atribuidos', [1]), 9, null, true],
+    ['restrito, cliente visível', scoped('agent', 'atribuidos', [9]), 9, 'Clínica', false],
+    ['restrito, post sem cliente', scoped('agent', 'atribuidos', [1]), null, '', false],
+    ['irrestrito, nome vazio', scoped('agent', 'todos'), 9, '', false],
+    ['dono', scoped('owner', 'atribuidos'), 9, '', false],
+    ['membership nula', null, 9, '', false],
+  ])('%s => %s', (_label, m, id, nome, expected) => {
+    expect(isOutsideClientScope(m, id, nome)).toBe(expected);
+  });
 });

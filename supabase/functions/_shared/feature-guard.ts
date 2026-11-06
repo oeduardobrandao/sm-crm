@@ -2,6 +2,9 @@
 export function featureForPath(method: string, path: string): string | null {
   if (/^\/demographics\//.test(path)) return "feature_audience_demographics";
   if (/^\/best-times\//.test(path)) return "feature_best_times";
+  if (/^\/post-comments\//.test(path) || /^\/comments-analysis(-account)?\//.test(path)) {
+    return "feature_instagram_comments_ai";
+  }
   if (/^\/ai-analysis(\/|-portfolio$)/.test(path)) return "feature_instagram_ai";
   if (
     /^\/generate-report\//.test(path) || /^\/reports\//.test(path) ||

@@ -1,7 +1,9 @@
 // Imagens do mcp-admin (spec §7): artigos → bucket público kb-images; popups → R2 sob o
-// workspace pessoal do admin + linha em files (senão o orphan-scan recolhe o objeto).
+// workspace pessoal do admin + linha em files (senão o orphan-scan recolhe o objeto); blog →
+// bucket público blog-images, só por source_url (spec 2026-10-23-blog-automatico §2).
 import { McpInputError } from "../_shared/mcp-token.ts";
 import { fetchImageSafely, type SafeFetchFailReason } from "../_shared/safe-image-fetch.ts";
+import { parseImageDims } from "../_shared/image-dimensions.ts";
 import { adminContaId } from "../_shared/admin-popups.ts";
 import { SLUG_RE } from "../_shared/admin-kb.ts";
 import type { Deps } from "./deps.ts";
@@ -10,6 +12,7 @@ import type { TiptapNode } from "./markdown.ts";
 export const IMAGE_MIMES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const KB_BUCKET = "kb-images";
+export const BLOG_BUCKET = "blog-images";
 const EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif" };
 const FETCH_TIMEOUT_MS = 20_000;
 const PROBE_BYTES = 64 * 1024;
@@ -28,45 +31,8 @@ const FAIL_MESSAGES: Record<SafeFetchFailReason, string> = {
   too_large: "Imagem maior que 10 MB.",
 };
 
-// ---------------------------------------------------------------------------
-// Dimensões (header parsing; sem decodificar)
-// ---------------------------------------------------------------------------
-
-export function parseImageDims(b: Uint8Array): { width: number; height: number } | null {
-  const u16be = (i: number) => (b[i] << 8) | b[i + 1];
-  const u16le = (i: number) => b[i] | (b[i + 1] << 8);
-  const u24le = (i: number) => b[i] | (b[i + 1] << 8) | (b[i + 2] << 16);
-  const u32be = (i: number) => ((b[i] << 24) | (b[i + 1] << 16) | (b[i + 2] << 8) | b[i + 3]) >>> 0;
-  const ascii = (from: number, to: number) => String.fromCharCode(...b.slice(from, to));
-  const ok = (width: number, height: number) => (width > 0 && height > 0 ? { width, height } : null);
-
-  if (b.length >= 24 && b[0] === 0x89 && ascii(1, 4) === "PNG") return ok(u32be(16), u32be(20));
-  if (b.length >= 10 && (ascii(0, 6) === "GIF87a" || ascii(0, 6) === "GIF89a")) return ok(u16le(6), u16le(8));
-  if (b.length >= 30 && ascii(0, 4) === "RIFF" && ascii(8, 12) === "WEBP") {
-    const chunk = ascii(12, 16);
-    if (chunk === "VP8X") return ok(1 + u24le(24), 1 + u24le(27));
-    if (chunk === "VP8L") {
-      const b0 = b[21], b1 = b[22], b2 = b[23], b3 = b[24];
-      return ok(1 + (((b1 & 0x3f) << 8) | b0), 1 + (((b3 & 0x0f) << 10) | (b2 << 2) | ((b1 & 0xc0) >> 6)));
-    }
-    if (chunk === "VP8 ") return ok(u16le(26) & 0x3fff, u16le(28) & 0x3fff);
-    return null;
-  }
-  if (b.length >= 4 && b[0] === 0xff && b[1] === 0xd8) {
-    let i = 2;
-    while (i + 9 < b.length) {
-      if (b[i] !== 0xff) return null;
-      const marker = b[i + 1];
-      if (marker === 0xff) { i++; continue; }
-      if ((marker >= 0xd0 && marker <= 0xd7) || marker === 0x01) { i += 2; continue; }
-      const isSof = marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
-      if (isSof) return ok(u16be(i + 7), u16be(i + 5));
-      i += 2 + u16be(i + 2);
-    }
-    return null;
-  }
-  return null;
-}
+// Dimensões: o parser mora em _shared/image-dimensions.ts (também usado pelo mcp).
+export { parseImageDims };
 
 export async function probeImageDims(d: Deps, url: string): Promise<{ width: number; height: number } | null> {
   const r = await fetchImageSafely({ resolveDns: d.resolveDns, fetchUrl: d.fetchUrl }, url, {
@@ -95,18 +61,18 @@ export async function fillImageDims(d: Deps, doc: TiptapNode): Promise<TiptapNod
 // Nomes
 // ---------------------------------------------------------------------------
 
-function safeName(filename: string): string {
+export function safeName(filename: string): string {
   const base = filename.replace(/\.[a-z0-9]+$/i, "").normalize("NFD").replace(/[̀-ͯ]/g, "")
     .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
   return base || "imagem";
 }
 
-function requireMime(mime: string): string {
+export function requireMime(mime: string): string {
   if (!IMAGE_MIMES.includes(mime)) throw new McpInputError(`mime_type deve ser um de: ${IMAGE_MIMES.join(", ")}`);
   return mime;
 }
 
-async function fetchImage(d: Deps, sourceUrl: string) {
+export async function fetchImage(d: Deps, sourceUrl: string) {
   const r = await fetchImageSafely({ resolveDns: d.resolveDns, fetchUrl: d.fetchUrl }, sourceUrl, {
     maxBytes: MAX_IMAGE_BYTES, timeoutMs: FETCH_TIMEOUT_MS,
   });
@@ -142,6 +108,46 @@ export async function uploadKbImage(
   const { data, error } = await bucket.createSignedUploadUrl(path);
   if (error || !data) throw error ?? new Error("createSignedUploadUrl returned nothing");
   return { path, public_url: publicUrl(path), upload_url: data.signedUrl as string, expires_in: 7200 };
+}
+
+// ---------------------------------------------------------------------------
+// Blog: bucket público blog-images, pasta drafts/<yyyy-mm>/
+// ---------------------------------------------------------------------------
+
+/** Prefixo público do bucket blog-images (a url de toda imagem de post começa com ele). */
+export function blogImageUrlPrefix(d: Deps): string {
+  const probe = d.db.storage.from(BLOG_BUCKET).getPublicUrl("x").data.publicUrl as string;
+  return probe.slice(0, -1);
+}
+
+function requireText(field: string, value: unknown, max: number): string {
+  if (typeof value !== "string" || value.trim() === "") throw new McpInputError(`${field}: não pode ficar vazio.`);
+  if (value.length > max) throw new McpInputError(`${field}: ${value.length} caracteres; máximo de ${max}.`);
+  return value.trim();
+}
+
+export async function uploadBlogImage(
+  d: Deps,
+  args: { source_url: string; filename: string; mime_type: string; alt: string; credit: string; license: string; page_url: string },
+) {
+  requireMime(args.mime_type);
+  requireText("alt", args.alt, 200);
+  requireText("credit", args.credit, 200);
+  requireText("license", args.license, 120);
+  if (typeof args.page_url !== "string" || !/^https?:\/\//i.test(args.page_url) || !URL.canParse(args.page_url)) {
+    throw new McpInputError("page_url: precisa ser a URL http(s) da página onde a imagem foi encontrada.");
+  }
+  const img = await fetchImage(d, args.source_url);
+  const path = `drafts/${d.now().slice(0, 7)}/${d.randomUUID().slice(0, 8)}-${safeName(args.filename)}.${img.ext}`;
+  const bucket = d.db.storage.from(BLOG_BUCKET);
+  const { error } = await bucket.upload(path, img.bytes, { contentType: img.mime, upsert: false });
+  if (error) throw error;
+  const dims = parseImageDims(img.bytes);
+  return {
+    url: bucket.getPublicUrl(path).data.publicUrl as string,
+    width: dims?.width ?? null,
+    height: dims?.height ?? null,
+  };
 }
 
 // ---------------------------------------------------------------------------

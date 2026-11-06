@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PlatformChips, usePlatformChipsVisible } from '@/components/PlatformChips';
@@ -15,11 +16,15 @@ export function StepBasics({
   state,
   patch,
   clientes,
+  clienteLocked = false,
 }: {
   state: WizardState;
   patch: (p: Partial<WizardState>) => void;
   clientes: Cliente[];
+  /** The client comes from a linha editorial and cannot change. */
+  clienteLocked?: boolean;
 }) {
+  const { t } = useTranslation('workflows');
   const activeClientes = clientes
     .filter((c) => c.status === 'ativo')
     .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
@@ -27,13 +32,13 @@ export function StepBasics({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      <h3 style={{ margin: 0 }}>O básico</h3>
+      <h3 style={{ margin: 0 }}>{t('wizard.basicsTitle')}</h3>
 
       <div className="space-y-1">
-        <Label htmlFor="wizard-cliente">Cliente</Label>
+        <Label htmlFor="wizard-cliente">{t('wizard.client')}</Label>
         <Select value={state.clienteId} onValueChange={(v) => patch({ clienteId: v })}>
-          <SelectTrigger id="wizard-cliente">
-            <SelectValue placeholder="Selecione o cliente" />
+          <SelectTrigger id="wizard-cliente" disabled={clienteLocked}>
+            <SelectValue placeholder={t('wizard.selectClient')} />
           </SelectTrigger>
           <SelectContent>
             {activeClientes.map((c) => (
@@ -43,24 +48,29 @@ export function StepBasics({
             ))}
           </SelectContent>
         </Select>
+        {clienteLocked && (
+          <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0 }}>
+            {t('wizard.clientFromLinha')}
+          </p>
+        )}
       </div>
 
       <div className="space-y-1">
-        <Label htmlFor="wizard-nome">Nome do fluxo</Label>
+        <Label htmlFor="wizard-nome">{t('wizard.flowName')}</Label>
         <Input
           id="wizard-nome"
           value={state.nome}
-          placeholder="Ex: Conteúdo Março 2026"
+          placeholder={t('wizard.flowNamePlaceholder')}
           onChange={(e) => patch({ nome: e.target.value, nomeEdited: true })}
         />
         <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0 }}>
-          Sugerido a partir do modelo e do próximo mês. Pode editar.
+          {t('wizard.flowNameHint')}
         </p>
       </div>
 
       {showPlataformas && (
         <div className="space-y-1">
-          <Label htmlFor="wizard-plataformas">Plataformas deste fluxo</Label>
+          <Label htmlFor="wizard-plataformas">{t('wizard.flowPlatforms')}</Label>
           <PlatformChips
             id="wizard-plataformas"
             value={state.plataformas}
@@ -101,10 +111,10 @@ export function StepBasics({
         </button>
         <div>
           <span id="wizard-recorrente-label" style={{ fontSize: '0.85rem', fontWeight: 600 }}>
-            Fluxo recorrente
+            {t('shared.recurringWorkflow')}
           </span>
           <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0 }}>
-            Ao concluir todas as etapas, o Mesaas oferece criar o próximo ciclo automaticamente.
+            {t('wizard.recurringHint')}
           </p>
         </div>
       </div>

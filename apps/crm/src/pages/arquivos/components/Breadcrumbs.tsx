@@ -1,4 +1,5 @@
 import { ChevronRight } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface BreadcrumbsProps {
   breadcrumbs: { id: number; name: string }[];
@@ -7,13 +8,14 @@ interface BreadcrumbsProps {
 }
 
 export function Breadcrumbs({ breadcrumbs, onNavigate, isLoading }: BreadcrumbsProps) {
+  const { t } = useTranslation('files');
   return (
     <nav className="flex items-center gap-1 text-sm flex-wrap">
       <button
         onClick={() => onNavigate(null)}
         className="text-[var(--text-muted)] hover:text-[var(--primary-color)] transition-colors duration-150 font-medium"
       >
-        Todos os Arquivos
+        {t('shared.allFiles')}
       </button>
 
       {isLoading && breadcrumbs.length === 0 && (

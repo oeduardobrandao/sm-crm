@@ -12,10 +12,19 @@ const { mockUseAuth } = vi.hoisted(() => ({
 vi.mock('@/context/AuthContext', () => ({
   useAuth: mockUseAuth,
 }));
+vi.mock('sonner', () => ({
+  toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), info: vi.fn() }),
+}));
+
+import { toast } from 'sonner';
+import { DISCUSSAO_MAX_CHARS } from '@/store/comments';
 
 import PostCommentPopover from '../PostCommentPopover';
+import { editorOf, setEditorText } from '@/test/mentionEditor';
 
-// PostCommentPopover's comment/reply textareas render MentionTextarea (Task 5 of the
+const replyInput = () => screen.getByRole('textbox', { name: 'Responder...' });
+
+// PostCommentPopover's comment/reply inputs render MentionEditor (Task 5 of the
 // at-mentions feature), which pulls membros/clientes/tarefas through useMentionSearch
 // -> useQuery -- so every render here needs a QueryClient ancestor. Shadowing `render`
 // with a wrapped version (rather than touching each of this file's many call sites)
@@ -47,6 +56,7 @@ const membros: Membro[] = [
     id: 1,
     conta_id: 'conta-1',
     user_id: 'user-1',
+    crm_user_id: 'user-1',
     nome: 'Eduardo Souza',
     email: 'edu@test.com',
     papel: 'owner',
@@ -57,6 +67,7 @@ const membros: Membro[] = [
     id: 2,
     conta_id: 'conta-1',
     user_id: 'user-2',
+    crm_user_id: 'user-2',
     nome: 'Ana Costa',
     email: 'ana@test.com',
     papel: 'agent',
@@ -119,7 +130,7 @@ describe('PostCommentPopover', () => {
     mockUseAuth.mockReturnValue({ can: makeCan(fakeMembership({ role: 'owner' })) });
   });
 
-  // Re-arms the mocks MentionTextarea's useMentionSearch depends on -- the
+  // Re-arms the mocks MentionEditor's useMentionSearch depends on -- the
   // `vi.restoreAllMocks()` above (and the global one in vitest.setup.ts) strips a
   // bare `vi.fn()`'s resolved value back to "returns undefined" between tests.
   beforeEach(async () => {
@@ -159,6 +170,61 @@ describe('PostCommentPopover', () => {
     expect(img).toBeInTheDocument();
     expect(img.tagName).toBe('IMG');
     expect(img).toHaveAttribute('src', 'https://example.com/ana.jpg');
+  });
+
+  // `membros.user_id` is whoever created the row (usually the owner);
+  // `crm_user_id` is the login the membro belongs to. Comment authors are logins.
+  const comentarioDe = (authorId: string) =>
+    makeThread({
+      post_comments: [
+        {
+          id: 102,
+          thread_id: 1,
+          author_id: authorId,
+          content: 'Comentário',
+          created_at: '2026-04-20T11:00:00Z',
+          updated_at: null,
+        },
+      ],
+    });
+
+  it('PostCommentPopover resolves the membro by crm_user_id', () => {
+    const doLogin = {
+      id: 4,
+      conta_id: 'conta-1',
+      user_id: 'owner-1',
+      crm_user_id: 'autor-x',
+      nome: 'Autora Real',
+      avatar_url: 'https://x.test/real.jpg',
+    } as Membro;
+    render(
+      <PostCommentPopover thread={comentarioDe('autor-x')} {...defaultProps} membros={[doLogin]} />,
+    );
+
+    const img = screen.getByAltText('Autora Real');
+    expect(img).toHaveAttribute('src', 'https://x.test/real.jpg');
+  });
+
+  it('does not resolve the author through the membro creator (user_id)', () => {
+    const criadoPeloAutor = {
+      id: 3,
+      conta_id: 'conta-1',
+      user_id: 'autor-x',
+      crm_user_id: 'outra-pessoa',
+      nome: 'Outra Pessoa',
+      avatar_url: 'https://x.test/outra.jpg',
+    } as Membro;
+    render(
+      <PostCommentPopover
+        thread={comentarioDe('autor-x')}
+        {...defaultProps}
+        membros={[criadoPeloAutor]}
+      />,
+    );
+
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    expect(screen.queryByAltText('Outra Pessoa')).not.toBeInTheDocument();
+    expect(screen.queryByText('Outra Pessoa')).not.toBeInTheDocument();
   });
 
   it('shows author name and date in the header', () => {
@@ -273,12 +339,19 @@ describe('PostCommentPopover', () => {
     expect(screen.queryByTitle('Resolver')).not.toBeInTheDocument();
   });
 
+  it('shows no reply box on a resolved thread (the RPC rejects replies to it)', () => {
+    const thread = makeThread({ status: 'resolved' });
+    render(<PostCommentPopover thread={thread} {...defaultProps} />);
+
+    expect(screen.queryByRole('textbox', { name: 'Responder...' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Enviar')).not.toBeInTheDocument();
+  });
+
   it('calls onReply when submitting a reply', async () => {
     const thread = makeThread();
     render(<PostCommentPopover thread={thread} {...defaultProps} />);
 
-    const input = screen.getByPlaceholderText('Responder...');
-    fireEvent.change(input, { target: { value: 'New reply' } });
+    setEditorText(replyInput(), 'New reply');
     fireEvent.click(screen.getByText('Enviar'));
 
     await waitFor(() => {
@@ -290,9 +363,8 @@ describe('PostCommentPopover', () => {
     const thread = makeThread();
     render(<PostCommentPopover thread={thread} {...defaultProps} />);
 
-    const input = screen.getByPlaceholderText('Responder...');
-    fireEvent.change(input, { target: { value: 'Enter reply' } });
-    fireEvent.keyDown(input, { key: 'Enter', shiftKey: false });
+    setEditorText(replyInput(), 'Enter reply');
+    fireEvent.keyDown(replyInput(), { key: 'Enter', shiftKey: false });
 
     await waitFor(() => {
       expect(defaultProps.onReply).toHaveBeenCalledWith(1, 'Enter reply');
@@ -303,9 +375,8 @@ describe('PostCommentPopover', () => {
     const thread = makeThread();
     render(<PostCommentPopover thread={thread} {...defaultProps} />);
 
-    const input = screen.getByPlaceholderText('Responder...');
-    fireEvent.change(input, { target: { value: 'Multiline' } });
-    fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
+    setEditorText(replyInput(), 'Multiline');
+    fireEvent.keyDown(replyInput(), { key: 'Enter', shiftKey: true });
 
     expect(defaultProps.onReply).not.toHaveBeenCalled();
   });
@@ -343,10 +414,10 @@ describe('PostCommentPopover', () => {
 
     fireEvent.click(screen.getByTitle('Editar'));
 
-    const editInput = screen.getByDisplayValue('First comment');
-    expect(editInput.tagName).toBe('TEXTAREA');
+    const editInput = document.querySelector('.comment-edit-input') as HTMLElement;
+    expect(editInput).toHaveTextContent('First comment');
 
-    fireEvent.change(editInput, { target: { value: 'Edited comment' } });
+    setEditorText(editInput, 'Edited comment');
     fireEvent.click(screen.getByText('Salvar'));
 
     await waitFor(() => {
@@ -439,6 +510,52 @@ describe('PostCommentPopover', () => {
 
     const sendBtn = screen.getByText('Enviar');
     expect(sendBtn).toBeDisabled();
+  });
+
+  it('toasts and keeps the typed reply when the send fails', async () => {
+    defaultProps.onReply.mockRejectedValueOnce(new Error('thread_resolved'));
+    render(<PostCommentPopover thread={makeThread()} {...defaultProps} />);
+
+    setEditorText(replyInput(), 'Resposta que falha');
+    fireEvent.click(screen.getByText('Enviar'));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('Não foi possível enviar. Tente novamente.');
+    });
+    expect(editorOf(replyInput()).getText()).toBe('Resposta que falha');
+    await waitFor(() => expect(screen.getByText('Enviar')).not.toBeDisabled());
+  });
+
+  it('blocks a reply above the limit, by button and by Enter, with a visible hint', () => {
+    render(<PostCommentPopover thread={makeThread()} {...defaultProps} />);
+
+    setEditorText(replyInput(), 'a'.repeat(DISCUSSAO_MAX_CHARS + 1));
+
+    expect(screen.getByText('Enviar')).toBeDisabled();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      `Mensagem muito longa. O limite é de ${DISCUSSAO_MAX_CHARS} caracteres.`,
+    );
+    fireEvent.keyDown(replyInput(), { key: 'Enter', shiftKey: false });
+    expect(defaultProps.onReply).not.toHaveBeenCalled();
+  });
+
+  it('sends a reply exactly at the limit', async () => {
+    render(<PostCommentPopover thread={makeThread()} {...defaultProps} />);
+
+    const text = 'a'.repeat(DISCUSSAO_MAX_CHARS);
+    setEditorText(replyInput(), text);
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('Enviar'));
+    await waitFor(() => expect(defaultProps.onReply).toHaveBeenCalledWith(1, text));
+  });
+
+  it('keeps send disabled for a whitespace-only reply', () => {
+    render(<PostCommentPopover thread={makeThread()} {...defaultProps} />);
+
+    setEditorText(replyInput(), '   ');
+
+    expect(screen.getByText('Enviar')).toBeDisabled();
   });
 
   it('falls back to "Membro" when author is not in membros list', () => {

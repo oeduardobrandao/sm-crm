@@ -7,8 +7,13 @@ import { describe, expect, it } from 'vitest';
  * npm dependency, no @import in style.css. A `fa-brands fa-instagram` class
  * therefore renders as an empty box of whatever size its inline style asks for
  * (a 3rem blank gap above "Conectar Instagram" shipped that way). The icon font
- * the CRM does load is Phosphor (`<i class="ph ph-...">`, apps/crm/index.html);
- * React components use lucide-react.
+ * the CRM does load is Phosphor (`<i class="ph ph-...">`): self-hosted from the
+ * `@phosphor-icons/web` package (regular, bold and fill only), imported by
+ * apps/crm/src/styles/app-shell.ts so it rides the authenticated shell's lazy
+ * chunk, not the public pages. React components use lucide-react.
+ *
+ * So Phosphor only exists inside ProtectedRoute: an `<i class="ph ...">` on a
+ * public page (landing, login, pricing) renders blank.
  *
  * Phosphor also ships no spin helper, so `ph-spin` only animates because
  * apps/crm/style.css defines it.

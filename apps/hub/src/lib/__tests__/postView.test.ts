@@ -20,9 +20,10 @@ import {
   sortPostsNewestFirst,
   sortPostsByScheduled,
   STATUS_COLORS,
+  suggestionAwareCaption,
   VISIBLE_STATUSES,
 } from '../postView';
-import type { HubPost, HubPostMedia } from '../../types';
+import type { HubPost, HubPostMedia, PendingEditSuggestion } from '../../types';
 
 function media(over: Partial<HubPostMedia> = {}): HubPostMedia {
   return {
@@ -120,6 +121,44 @@ describe('deriveCaption', () => {
   });
   it('falls back to the whole conteudo_plain', () => {
     expect(deriveCaption(post({ conteudo_plain: 'só texto' }), '')).toBe('só texto');
+  });
+});
+
+describe('suggestionAwareCaption', () => {
+  function sugg(over: Partial<PendingEditSuggestion> = {}): PendingEditSuggestion {
+    return {
+      id: 9,
+      suggested_conteudo: null,
+      suggested_conteudo_plain: 'corpo',
+      suggested_ig_caption: 'legenda antiga',
+      changed_fields: [],
+      updated_at: '2026-09-28T10:00:00.000Z',
+      ...over,
+    };
+  }
+
+  it('returns the live-derived caption when the suggestion did not change the caption', () => {
+    const p = post({ ig_caption: 'legenda nova' });
+    expect(suggestionAwareCaption(p, sugg({ changed_fields: ['conteudo_plain'] }))).toBe(
+      'legenda nova',
+    );
+  });
+
+  it('derives from the body LEGENDA marker when the live post has no ig_caption', () => {
+    const p = post({ ig_caption: null, conteudo_plain: 'Roteiro LEGENDA: derivada' });
+    expect(suggestionAwareCaption(p, sugg({ changed_fields: ['conteudo_plain'] }))).toBe(
+      'derivada',
+    );
+  });
+
+  it("returns the suggestion's caption, even empty, when it changed the caption", () => {
+    const p = post({ ig_caption: 'legenda nova' });
+    expect(suggestionAwareCaption(p, sugg({ changed_fields: ['ig_caption'] }))).toBe(
+      'legenda antiga',
+    );
+    expect(
+      suggestionAwareCaption(p, sugg({ changed_fields: ['ig_caption'], suggested_ig_caption: '' })),
+    ).toBe('');
   });
 });
 

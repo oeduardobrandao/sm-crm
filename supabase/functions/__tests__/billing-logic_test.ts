@@ -256,3 +256,12 @@ Deno.test("getDefaultPlanId: throws on a read error (never silently downgrades t
   }
   assert(threw, "expected getDefaultPlanId to throw");
 });
+
+Deno.test("hasEverSubscribed is true for a never-subscribed workspace with demo_created_at", () => {
+  assertEquals(hasEverSubscribed(null, { demo_created_at: "2026-10-01T00:00:00Z" }), true);
+});
+
+Deno.test("hasEverSubscribed is false with no row and no demo marker", () => {
+  assertEquals(hasEverSubscribed(null, { demo_created_at: null }), false);
+  assertEquals(hasEverSubscribed(null, null), false);
+});

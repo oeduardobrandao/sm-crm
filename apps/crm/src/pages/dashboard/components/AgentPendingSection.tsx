@@ -1,14 +1,9 @@
-import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowRight, ClipboardList } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ListSkeleton } from '@/components/ui/skeletons';
-import { getTarefas, type TarefaWithRelations } from '../../../store';
-import { useCurrentMembro } from '../../../hooks/useCurrentMembro';
-import { dueBadge, sortTarefas } from '../../tarefas/tarefasLogic';
-
-const MAX_ROWS = 8;
+import { useAgentPending } from '../useAgentPending';
 
 function SectionLabel({
   icon,
@@ -133,14 +128,8 @@ function Row({
  */
 export function AgentPendingSection() {
   const { t } = useTranslation('dashboard');
-  const { membro, isLoading: membroLoading } = useCurrentMembro();
-  const membroId = membro?.id ?? null;
-
-  const { data: tarefas = [], isLoading: tarefasLoading } = useQuery({
-    queryKey: ['tarefas'],
-    queryFn: getTarefas,
-    enabled: membroId != null,
-  });
+  const { membro, membroLoading, tarefasLoading, minhasTarefas, nothingPending, badgeOf } =
+    useAgentPending();
 
   if (membroLoading) {
     return (
@@ -152,14 +141,6 @@ export function AgentPendingSection() {
   }
 
   if (!membro) return null;
-
-  const now = new Date();
-  const minhasTarefas = tarefas
-    .filter((task) => task.responsavel_id === membroId && task.status !== 'concluida')
-    .sort(sortTarefas)
-    .slice(0, MAX_ROWS);
-  const nothingPending = !tarefasLoading && minhasTarefas.length === 0;
-  const tarefaBadgeOf = (task: TarefaWithRelations) => dueBadge(task, now);
 
   return (
     <div className="card animate-up" style={{ padding: '1.25rem', borderRadius: '12px' }}>
@@ -191,7 +172,7 @@ export function AgentPendingSection() {
                 to={`/tarefas?tarefa=${task.id}`}
                 title={task.titulo}
                 context={task.cliente_nome ?? undefined}
-                badge={tarefaBadgeOf(task)}
+                badge={badgeOf(task)}
               />
             ))}
           </div>

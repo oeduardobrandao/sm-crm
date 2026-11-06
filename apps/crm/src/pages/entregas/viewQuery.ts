@@ -6,7 +6,7 @@ import { isStatusKeyToken } from './statusRegistry';
 import type { StatusKey } from './statusRegistry';
 import { PRAZO_PRESET_ORDER } from './etapaPrazo';
 
-export type ActiveView = 'kanban' | 'chart' | 'calendar' | 'list' | 'concluded' | 'fila';
+export type ActiveView = 'kanban' | 'chart' | 'calendar' | 'list' | 'concluded' | 'fila' | 'linha';
 
 /** Spec §4.1: filtro de entidade do quadro de Fluxos. `fluxos` é o default do
  *  parser/serializador para que vistas salvas antigas continuem casando por
@@ -28,7 +28,15 @@ export const LIST_GROUP_BYS: readonly ListGroupBy[] = [
 ];
 export const DEFAULT_LIST_GROUP_BY: ListGroupBy = 'prazo';
 
-const VIEWS: readonly ActiveView[] = ['kanban', 'chart', 'calendar', 'list', 'concluded', 'fila'];
+const VIEWS: readonly ActiveView[] = [
+  'kanban',
+  'chart',
+  'calendar',
+  'list',
+  'concluded',
+  'fila',
+  'linha',
+];
 const STATUS_VALUES: readonly StatusFilter[] = ['atrasado', 'urgente', 'em_dia'];
 
 export interface EntregasViewState {
@@ -46,10 +54,14 @@ export interface EntregasViewState {
   /** Only meaningful for the Publicações Lista: posts já postados ficam ocultos
    *  por padrão e `postados=1` os mostra. */
   showPostados: boolean;
+  /** Only meaningful for view 'linha' (Linha editorial): the month being edited, `YYYY-MM`.
+   *  The client reuses `filters.filterClientes` (first value only). */
+  mes?: string;
   filters: FilterState;
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const MES_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 /**
  * Serializes the page state into a shareable query string. Defaults are omitted
@@ -63,6 +75,7 @@ export function serializeEntregasQuery(state: EntregasViewState): string {
   if (state.mode !== 'entregas') p.set('mode', state.mode);
   if (state.entidade !== 'fluxos') p.set('entidade', state.entidade);
   if (state.view === 'fila' && state.filaMembro != null) p.set('membro', String(state.filaMembro));
+  if (state.view === 'linha' && state.mes && MES_RE.test(state.mes)) p.set('mes', state.mes);
   if (state.view === 'list' && state.listGroupBy !== DEFAULT_LIST_GROUP_BY)
     p.set('agrupar', state.listGroupBy);
   if (state.view === 'list' && state.mode === 'publicacoes' && state.showPostados)
@@ -108,6 +121,9 @@ export function parseEntregasQuery(p: URLSearchParams): EntregasViewState {
       : DEFAULT_LIST_GROUP_BY;
   const showPostados = view === 'list' && mode === 'publicacoes' && p.get('postados') === '1';
 
+  const rawMes = p.get('mes') ?? '';
+  const mes = view === 'linha' && MES_RE.test(rawMes) ? rawMes : undefined;
+
   const nums = (key: string) =>
     p
       .getAll(key)
@@ -138,5 +154,14 @@ export function parseEntregasQuery(p: URLSearchParams): EntregasViewState {
     filterPrazoTo: day('ate'),
   };
 
-  return { view, mode, entidade, filaMembro, listGroupBy, showPostados, filters };
+  return {
+    view,
+    mode,
+    entidade,
+    filaMembro,
+    listGroupBy,
+    showPostados,
+    ...(mes ? { mes } : {}),
+    filters,
+  };
 }

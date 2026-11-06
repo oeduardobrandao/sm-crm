@@ -1,58 +1,41 @@
 import { driver, type DriveStep } from 'driver.js';
 import 'driver.js/dist/driver.css';
 import './tour.css';
+import { i18n } from '@mesaas/i18n';
 
-export const TOUR_STEP_DEFS = [
-  {
-    selector: '[data-tour="wf-card"]',
-    title: 'Card de fluxo',
-    description:
-      'Isto é um card de fluxo: um ciclo de trabalho de um cliente. Ele avança pelas colunas (etapas) até a entrega.',
+interface TourStepDef {
+  readonly selector: string;
+  readonly title: string;
+  readonly description: string;
+}
+
+/** title/description são getters: resolvem no idioma atual a cada leitura, nunca no load. */
+const tourStep = (selector: string, key: string, descriptionKey = key): TourStepDef => ({
+  selector,
+  get title() {
+    return i18n.t(`entregasPhone:tour.${key}.title`);
   },
-  {
-    selector: '[data-tour="wf-deadline"]',
-    title: 'Prazo e etapa',
-    description:
-      'Aqui você acompanha o prazo da etapa atual — verde em dia, amarelo urgente, vermelho atrasado.',
+  get description() {
+    return i18n.t(`entregasPhone:tour.${descriptionKey}.description`);
   },
-  {
-    selector: '[data-tour="wf-posts"]',
-    title: 'Posts vivem no card',
-    description: 'Os posts ficam dentro do card. Clique no card para abrir o painel e criar posts.',
-  },
-  {
-    selector: '[data-tour="wf-card"]',
-    title: 'Arraste para avançar',
-    description: 'Arraste o card para a próxima coluna para avançar a etapa.',
-  },
-  {
-    selector: '[data-tour="wf-col-aprovacao"]',
-    title: 'Aprovação do cliente',
-    description:
-      'Quando o card chega nesta coluna, os posts podem ser enviados ao portal do cliente para aprovação — sem login.',
-  },
-  {
-    selector: '[data-tour="novo-fluxo-btn"]',
-    title: 'Crie seu primeiro fluxo',
-    description: 'Clique em Novo e escolha Novo fluxo para começar. Há modelos prontos.',
-  },
+});
+
+export const TOUR_STEP_DEFS: TourStepDef[] = [
+  tourStep('[data-tour="wf-card"]', 'card'),
+  tourStep('[data-tour="wf-deadline"]', 'deadline'),
+  tourStep('[data-tour="wf-posts"]', 'posts'),
+  tourStep('[data-tour="wf-card"]', 'drag'),
+  tourStep('[data-tour="wf-col-aprovacao"]', 'approval'),
+  tourStep('[data-tour="novo-fluxo-btn"]', 'firstFluxo'),
 ];
 
 /** Variante com feature_post_processes: mesmos seletores, sem afirmar que só
  *  fluxos são cards (spec §3). */
-export const TOUR_STEP_DEFS_POST_PROCESSES = TOUR_STEP_DEFS.map((s, i) =>
+export const TOUR_STEP_DEFS_POST_PROCESSES: TourStepDef[] = TOUR_STEP_DEFS.map((s, i) =>
   i === 0
-    ? {
-        ...s,
-        description:
-          'Isto é um card de fluxo: um ciclo de trabalho de um cliente. Posts individuais com processo próprio também viram cards aqui.',
-      }
+    ? tourStep(s.selector, 'card', 'cardPostProcesses')
     : i === 2
-      ? {
-          ...s,
-          description:
-            'Os posts de um fluxo ficam dentro do card. Clique no card para abrir o painel e criar posts.',
-        }
+      ? tourStep(s.selector, 'posts', 'postsPostProcesses')
       : s,
 );
 
@@ -97,10 +80,14 @@ export function startEntregasTour(opts: {
   const d = driver({
     steps,
     showProgress: true,
-    progressText: '{{current}} de {{total}}',
-    nextBtnText: 'Próximo →',
-    prevBtnText: '← Voltar',
-    doneBtnText: 'Concluir',
+    progressText: i18n.t('entregasPhone:tour.progress', {
+      interpolation: { skipOnVariables: true },
+      current: '{{current}}',
+      total: '{{total}}',
+    }),
+    nextBtnText: i18n.t('entregasPhone:tour.next'),
+    prevBtnText: i18n.t('entregasPhone:tour.prev'),
+    doneBtnText: i18n.t('entregasPhone:tour.done'),
     onDoneClick: () => {
       if (!settled) {
         settled = true;

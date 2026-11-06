@@ -2,10 +2,50 @@
 // EDIÇÃO do CRM mostrar um placeholder explicativo em vez de uma célula vazia
 // e muda (a razão de "Cliques no link" parecer inutilizável). View, Hub e
 // print seguem omitindo o bloco — contrato do KpiEntry e dos widgets.
-import type { ReportBlock, ReportDocSnapshot, ReportKpiId } from './types';
+import type { GbpKpiId, ReportBlock, ReportDocSnapshot, ReportKpiId, ReportSection } from './types';
+import { BLOCK_TYPES, GBP_BLOCK_PREFIX, TIKTOK_BLOCK_PREFIX, blockPlatform } from './types';
+import { instagramAbsent, tiktokBlockView } from './platform';
+
+/** gbp_*: lê só snapshot.google (sem seção = sem dado), nunca a raiz do Instagram. */
+function gbpHasData(type: string, snapshot: ReportDocSnapshot): boolean {
+  const g = snapshot.google;
+  // Sem janela = nada sincronizado no mês: o loader zera as linhas por unidade, que não podem
+  // virar uma tabela de zeros nem manter a seção visível.
+  if (!g || g.window === null) return false;
+  if (type.startsWith('gbp_kpi_')) {
+    const entry = g.kpis[type.slice('gbp_kpi_'.length) as GbpKpiId];
+    return Boolean(entry) && entry.value !== null;
+  }
+  switch (type) {
+    case 'gbp_surfaces':
+      return g.surfaces.reduce((sum, s) => sum + s.value, 0) > 0;
+    case 'gbp_rating':
+      return Boolean(g.kpis.avg_rating) && g.kpis.avg_rating.value !== null;
+    case 'gbp_actions_chart':
+      return g.daily.some((d) => d.calls + d.directions + d.websiteClicks + d.messages > 0);
+    case 'gbp_keywords':
+      return g.keywords.rows.length > 0;
+    case 'gbp_review_highlight':
+      return g.highlight !== null;
+    case 'gbp_units':
+      // Comparar só faz sentido com duas ou mais unidades.
+      return g.unit_rows.length > 1;
+    default:
+      return false;
+  }
+}
 
 export function blockHasData(block: ReportBlock, snapshot: ReportDocSnapshot): boolean {
   const t = block.type;
+  // Antes do instagramAbsent e do 'kpi_': gbp_* nunca cai no caminho do Instagram.
+  if (t.startsWith(GBP_BLOCK_PREFIX)) return gbpHasData(t, snapshot);
+  if (t.startsWith(TIKTOK_BLOCK_PREFIX)) {
+    // tiktok_*: sem seção TikTok = sem dado; com ela, a mesma checagem do tipo
+    // base contra a visão (tiktok_kpi_likes -> kpis.likes da seção TikTok).
+    const view = tiktokBlockView(block, snapshot);
+    return view ? blockHasData(view.block, view.snapshot) : false;
+  }
+  if (instagramAbsent(t, snapshot)) return false;
   if (t.startsWith('kpi_')) {
     // Snapshot antigo pode nem ter a chave (ex.: views pré-2026-08).
     const entry = snapshot.kpis[t.replace(/^kpi_/, '') as ReportKpiId];
@@ -40,4 +80,21 @@ export function blockHasData(block: ReportBlock, snapshot: ReportDocSnapshot): b
       // próprio no modo edição, não placeholder).
       return true;
   }
+}
+
+/** View e print (spec 2026-10-28 seções §Rendering): uma seção de plataforma com título
+ * visível some inteira (título, subtítulos e texto) quando nenhum widget de plataforma dela
+ * tem dado; neutros (section_header, text, divider...) não contam, então uma seção vazia
+ * também some. Geral e seções com hideHeader (todo legado convertido) sempre aparecem e
+ * seguem a regra por bloco de hoje. */
+export function sectionVisibleInView(section: ReportSection, snapshot: ReportDocSnapshot): boolean {
+  if (section.kind === 'general') return true;
+  if (section.marker.config?.hideHeader === true) return true;
+  // Tipo desconhecido (bloco de um bundle mais novo) não conta: este renderer não o desenha.
+  return section.blocks.some(
+    (b) =>
+      (BLOCK_TYPES as readonly string[]).includes(b.type) &&
+      blockPlatform(b.type) !== null &&
+      blockHasData(b, snapshot),
+  );
 }

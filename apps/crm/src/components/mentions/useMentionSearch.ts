@@ -48,9 +48,9 @@ export function filterAndCapMentions<T extends { label: string }>(
 }
 
 /**
- * Search data + fetcher for the @-mention dropdown (Task 4) and, later, the plain-text
- * MentionTextarea (Task 5). Both consume the same `search(query)` fetcher so results and
- * caches (membros/clientes/tarefas) stay identical across the editor and the textarea.
+ * Search data + fetcher for the @-mention dropdown, in PostEditor and in the comment
+ * inputs (MentionEditor). Both consume the same `search(query)` fetcher so results and
+ * caches (membros/clientes/tarefas) stay identical across them.
  *
  * Reuses the EXISTING TanStack Query keys ['membros'] / ['clientes'] / ['tarefas'] (see
  * useTarefasData.ts) so this hook shares cache with the rest of the app instead of
@@ -65,7 +65,12 @@ export function useMentionSearch() {
     () =>
       (membrosQuery.data ?? [])
         .filter((m): m is typeof m & { id: number } => typeof m.id === 'number')
-        .map((m) => ({ entityType: 'membro', id: m.id, label: m.nome, avatarUrl: m.avatar_url })),
+        .map((m) => ({
+          entityType: 'membro',
+          id: m.id,
+          label: m.nome,
+          avatarUrl: m.avatar_url ?? undefined,
+        })),
     [membrosQuery.data],
   );
 

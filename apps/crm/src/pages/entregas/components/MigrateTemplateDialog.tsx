@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { format, parseISO } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { useTranslation } from 'react-i18next';
+import { useDateFnsLocale } from '@mesaas/i18n';
 import { ArrowRightLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -46,11 +47,6 @@ import {
 } from '../../../store';
 import { getNextDeliveryDate } from '../hooks/useEntregasData';
 
-const TIPO_PRAZO_LABEL: Record<'uteis' | 'corridos', string> = {
-  uteis: 'dias úteis',
-  corridos: 'dias corridos',
-};
-
 export function MigrateTemplateDialog({
   workflow,
   cliente,
@@ -64,17 +60,19 @@ export function MigrateTemplateDialog({
   onClose: () => void;
   onMigrated: () => void;
 }) {
+  const { t } = useTranslation('workflows');
+  const dateLocale = useDateFnsLocale();
   const [destinoId, setDestinoId] = useState<string>('');
   const [activeOrdem, setActiveOrdem] = useState(0);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const candidatos = useMemo(
-    () => templates.filter((t) => t.id !== workflow.template_id),
+    () => templates.filter((tpl) => tpl.id !== workflow.template_id),
     [templates, workflow.template_id],
   );
   const destino = useMemo(
-    () => candidatos.find((t) => String(t.id) === destinoId),
+    () => candidatos.find((tpl) => String(tpl.id) === destinoId),
     [candidatos, destinoId],
   );
 
@@ -141,7 +139,7 @@ export function MigrateTemplateDialog({
         expectedTemplateId: workflow.template_id ?? null,
         expectedEtapaAtual: workflow.etapa_atual,
       });
-      toast.success('Fluxo migrado para o novo template.');
+      toast.success(t('migrateTemplate.migrated'));
       onMigrated();
       onClose();
     } catch (err: unknown) {
@@ -163,31 +161,31 @@ export function MigrateTemplateDialog({
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <ArrowRightLeft className="h-4 w-4" /> Migrar template do fluxo
+              <ArrowRightLeft className="h-4 w-4" /> {t('migrateTemplate.title')}
             </DialogTitle>
             <DialogDescription>
-              Troque o template usado por "{workflow.titulo}" preservando o que for possível.
+              {t('migrateTemplate.desc', { title: workflow.titulo })}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             {/* 1. Select "Template de destino" */}
             <div className="space-y-1">
-              <Label htmlFor="destino-template">Template de destino</Label>
+              <Label htmlFor="destino-template">{t('migrateTemplate.target')}</Label>
               <Select value={destinoId} onValueChange={handleSelectDestino}>
-                <SelectTrigger id="destino-template" aria-label="Template de destino">
-                  <SelectValue placeholder="Selecione um template" />
+                <SelectTrigger id="destino-template" aria-label={t('migrateTemplate.target')}>
+                  <SelectValue placeholder={t('migrateTemplate.selectTemplate')} />
                 </SelectTrigger>
                 <SelectContent>
-                  {candidatos.map((t) => (
-                    <SelectItem key={t.id} value={String(t.id)}>
-                      {t.nome}
+                  {candidatos.map((tpl) => (
+                    <SelectItem key={tpl.id} value={String(tpl.id)}>
+                      {tpl.nome}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               {candidatos.length === 0 && (
-                <p className="text-sm text-muted-foreground">Nenhum outro template disponível.</p>
+                <p className="text-sm text-muted-foreground">{t('migrateTemplate.noOther')}</p>
               )}
             </div>
 
@@ -195,12 +193,15 @@ export function MigrateTemplateDialog({
               <>
                 {/* 2. Select "Em qual etapa este fluxo está agora?" */}
                 <div className="space-y-1">
-                  <Label htmlFor="etapa-atual">Em qual etapa este fluxo está agora?</Label>
+                  <Label htmlFor="etapa-atual">{t('migrateTemplate.currentStageQuestion')}</Label>
                   <Select
                     value={String(activeOrdem)}
                     onValueChange={(v) => setActiveOrdem(Number(v))}
                   >
-                    <SelectTrigger id="etapa-atual" aria-label="Etapa atual do fluxo">
+                    <SelectTrigger
+                      id="etapa-atual"
+                      aria-label={t('migrateTemplate.currentStageAria')}
+                    >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -215,13 +216,23 @@ export function MigrateTemplateDialog({
 
                 {/* 3. Prévia: etapas novas + propriedades */}
                 <div className="space-y-1">
-                  <Label>Novas etapas</Label>
+                  <Label>{t('migrateTemplate.newStages')}</Label>
                   <ul className="space-y-1 text-sm">
                     {etapasNovas.map((e, i) => (
                       <li key={i}>
-                        {i + 1}. {e.nome} · {e.prazo_dias} {TIPO_PRAZO_LABEL[e.tipo_prazo]}
+                        {i + 1}. {e.nome} ·{' '}
+                        {t(
+                          e.tipo_prazo === 'uteis'
+                            ? 'migrateTemplate.daysUteis'
+                            : 'migrateTemplate.daysCorridos',
+                          { n: e.prazo_dias },
+                        )}
                         {e.data_limite &&
-                          ` · prazo: ${format(parseISO(e.data_limite), 'dd/MM/yyyy', { locale: ptBR })}`}
+                          ` · ${t('migrateTemplate.deadline', {
+                            date: format(parseISO(e.data_limite), t('shared.dateShort'), {
+                              locale: dateLocale,
+                            }),
+                          })}`}
                       </li>
                     ))}
                   </ul>
@@ -229,26 +240,25 @@ export function MigrateTemplateDialog({
 
                 {defsOrigem.length > 0 && (
                   <div className="space-y-1">
-                    <Label>Propriedades</Label>
+                    <Label>{t('migrateTemplate.properties')}</Label>
                     <ul className="space-y-1 text-sm">
                       {migram.map((m) =>
                         temConflito(m) ? (
                           <li key={m.origem.id} className="text-amber-600">
-                            {m.origem.name} · campos de origem com o mesmo nome: um valor por post
-                            será mantido, os demais serão descartados.
+                            {m.origem.name} · {t('migrateTemplate.conflict')}
                           </li>
                         ) : (
                           <li key={m.origem.id} className="text-emerald-600">
-                            {m.origem.name} · valores preservados.
+                            {m.origem.name} · {t('migrateTemplate.preserved')}
                           </li>
                         ),
                       )}
                       {perdidas.map((m) => (
                         <li key={m.origem.id} className="text-red-600">
-                          {m.origem.name} · valores de {postsAfetados(m.origem.id!)} post(s) serão
-                          perdidos.
+                          {m.origem.name} ·{' '}
+                          {t('migrateTemplate.lost', { n: postsAfetados(m.origem.id!) })}
                           {OPTION_TYPES.has(m.origem.type) &&
-                            ' Opções de seleção não migram entre templates.'}
+                            ` ${t('migrateTemplate.optionsNoMigrate')}`}
                         </li>
                       ))}
                     </ul>
@@ -258,19 +268,16 @@ export function MigrateTemplateDialog({
             )}
 
             {/* 4. Aviso fixo */}
-            <p className="text-sm text-muted-foreground">
-              Os posts, aprovações e comentários deste fluxo não serão alterados. A troca de etapas
-              não pode ser desfeita automaticamente.
-            </p>
+            <p className="text-sm text-muted-foreground">{t('migrateTemplate.notice')}</p>
           </div>
 
           {/* 5. Rodapé */}
           <DialogFooter>
             <Button variant="outline" onClick={onClose}>
-              Cancelar
+              {t('actions.cancel')}
             </Button>
             <Button onClick={() => setConfirmOpen(true)} disabled={!destino}>
-              <ArrowRightLeft className="h-4 w-4" /> Migrar
+              <ArrowRightLeft className="h-4 w-4" /> {t('migrateTemplate.migrate')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -280,18 +287,18 @@ export function MigrateTemplateDialog({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Migrar "{workflow.titulo}" para {destino?.nome}?
+              {t('migrateTemplate.confirmTitle', { title: workflow.titulo, target: destino?.nome })}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {perdidas.length > 0
-                ? `${perdidas.length} propriedade(s) terão valores perdidos nesta migração.`
-                : 'Nenhuma propriedade será perdida nesta migração.'}
+                ? t('migrateTemplate.lostCount', { n: perdidas.length })
+                : t('migrateTemplate.noneLost')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={saving}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={saving}>{t('actions.cancel')}</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirm} disabled={saving}>
-              {saving && <Spinner size="sm" />} Confirmar migração
+              {saving && <Spinner size="sm" />} {t('migrateTemplate.confirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

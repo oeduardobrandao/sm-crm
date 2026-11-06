@@ -75,3 +75,110 @@ Deno.test("fillAiBlocks preenche text e remove blocos de IA sem conteúdo", () =
   const summary = filled.blocks.find((b) => b.type === "ai_summary");
   assert(summary?.text !== undefined);
 });
+
+// ─── TikTok (spec 2026-10-28 §B3) ────────────────────────────────────────────────────
+
+const igKpis = {
+  followers_gained: { value: 10, unit: "count", prev: null },
+  followers_total: { value: null, unit: "count", prev: null },
+  reach: { value: 1000, unit: "count", prev: null },
+  views: { value: null, unit: "count", prev: null },
+  engagement_rate: { value: 3.2, unit: "pct", prev: null },
+  saves: { value: 5, unit: "count", prev: null },
+  posts_count: { value: 8, unit: "count", prev: null },
+  profile_views: { value: null, unit: "count", prev: null },
+  website_clicks: { value: null, unit: "count", prev: null },
+  follows: { value: null, unit: "count", prev: null },
+} as const;
+const emptyIgKpis = Object.fromEntries(
+  Object.entries(igKpis).map(([k, e]) => [k, { ...e, value: null }]),
+) as unknown as typeof igKpis;
+const ttKpis = {
+  followers_total: { value: 500, unit: "count", prev: null },
+  followers_gained: { value: 20, unit: "count", prev: null },
+  views: { value: 12000, unit: "count", prev: null },
+  engagement_rate: { value: 5.71, unit: "pct", prev: null },
+  likes: { value: 50, unit: "count", prev: null },
+  comments: { value: 5, unit: "count", prev: null },
+  shares: { value: 2, unit: "count", prev: null },
+  posts_count: { value: 1, unit: "count", prev: null },
+  likes_total: { value: null, unit: "count", prev: null },
+} as const;
+
+Deno.test("fallbackSummaryParagraphs só TikTok resume o TikTok, sem números do Instagram vazio", () => {
+  const paras = fallbackSummaryParagraphs(emptyIgKpis, "Julho de 2026", { instagram: false, tiktok: ttKpis });
+  assertEquals(paras, [
+    "Resumo de Julho de 2026 no TikTok: 1 vídeo publicado, 12.000 visualizações, 20 novos seguidores, engajamento por visualização de 5,7%.",
+  ]);
+});
+
+Deno.test("fallbackSummaryParagraphs com as duas redes: parágrafo do Instagram de hoje mais um do TikTok", () => {
+  const legacy = fallbackSummaryParagraphs(igKpis, "Julho de 2026");
+  const both = fallbackSummaryParagraphs(igKpis, "Julho de 2026", { instagram: true, tiktok: ttKpis });
+  assertEquals(both[0], legacy[0]);
+  assertEquals(both[1], "No TikTok: 1 vídeo publicado, 12.000 visualizações, 20 novos seguidores, engajamento por visualização de 5,7%.");
+  assertEquals(both.length, 2);
+});
+
+Deno.test("fallbackSummaryParagraphs só TikTok sem nenhum dado não inventa nada", () => {
+  const noData = Object.fromEntries(
+    Object.entries(ttKpis).map(([k, e]) => [k, { ...e, value: null }]),
+  ) as unknown as typeof ttKpis;
+  const paras = fallbackSummaryParagraphs(emptyIgKpis, "Julho de 2026", { instagram: false, tiktok: noData });
+  assertEquals(paras, ["Resumo de Julho de 2026 no TikTok."]);
+});
+
+Deno.test("aiGoalsDoc: id tiktok_<kpi> vira o rótulo TikTok com a plataforma", () => {
+  const doc = aiGoalsDoc({
+    ...ai,
+    suggested_goals: [
+      { metric: "tiktok_views", target: "60000", rationale: "r1" },
+      { metric: "tiktok_engagement_rate", target: "6.5%", rationale: "r2" },
+      { metric: "tiktok_desconhecido", target: "10", rationale: "r3" },
+    ],
+  }) as { content: { type: string; content: { text: string }[] }[] };
+  const headings = doc.content.filter((n) => n.type === "heading").map((n) => n.content[0].text);
+  assertEquals(headings, [
+    "Visualizações no TikTok: 60.000",
+    "Engajamento por visualização no TikTok: 6,5%",
+    "tiktok_desconhecido: 10",
+  ]);
+});
+
+// ── Google Meu Negócio (spec 2026-11-04-gmn-report-section) ──
+Deno.test("aiGoalsDoc: meta gbp_ vira rótulo do Google Meu Negócio", () => {
+  const doc = aiGoalsDoc({
+    ...ai,
+    suggested_goals: [{ metric: "gbp_website_clicks", target: "150", rationale: "r" }],
+  }) as { content: { type: string; content: { text: string }[] }[] };
+  const heading = doc.content.find((n) => n.type === "heading")!.content[0].text;
+  assertEquals(heading, "Cliques no site no Google Meu Negócio: 150");
+});
+
+Deno.test("fallbackSummaryParagraphs: Google só e Instagram + Google", () => {
+  const g = {
+    profile_views: { value: 18420, prev: null, unit: "count" as const },
+    calls: { value: 592, prev: null, unit: "count" as const },
+    directions: { value: 459, prev: null, unit: "count" as const },
+    website_clicks: { value: null, prev: null, unit: "count" as const },
+    messages: { value: 0, prev: null, unit: "count" as const },
+    bookings: { value: 0, prev: null, unit: "count" as const },
+    avg_rating: { value: 4.8, prev: null, unit: "rating" as const },
+    new_reviews: { value: 3, prev: null, unit: "count" as const },
+  };
+  const kpis = Object.fromEntries(
+    ["followers_gained", "followers_total", "reach", "views", "engagement_rate", "saves", "posts_count",
+      "profile_views", "website_clicks", "follows"].map((id) => [id, { value: null, unit: "count", prev: null }]),
+  ) as never;
+  assertEquals(
+    fallbackSummaryParagraphs(kpis, "outubro de 2026", { instagram: false, tiktok: null, google: g }),
+    ["Resumo de outubro de 2026 no Google Meu Negócio: 18.420 visualizações do perfil, 592 ligações, 459 pedidos de rota."],
+  );
+  const both = fallbackSummaryParagraphs(kpis, "outubro de 2026", { instagram: true, tiktok: null, google: g });
+  assertEquals(both[both.length - 1], "No Google Meu Negócio: 18.420 visualizações do perfil, 592 ligações, 459 pedidos de rota.");
+  const one = { ...g, calls: { value: 1, prev: null, unit: "count" as const }, website_clicks: { value: 1, prev: null, unit: "count" as const } };
+  assertEquals(
+    fallbackSummaryParagraphs(kpis, "outubro de 2026", { instagram: true, tiktok: null, google: one }).at(-1),
+    "No Google Meu Negócio: 18.420 visualizações do perfil, 1 ligação, 459 pedidos de rota, 1 clique no site.",
+  );
+});

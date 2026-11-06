@@ -56,6 +56,10 @@ const ALL_CODES = [
   'request_id_required',
   'request_not_found',
   'request_mismatch',
+  'etapa_changed',
+  'posts_changed',
+  'ciclo_changed',
+  'post_locked',
 ];
 
 describe('POST_PROCESS_ERROR_MESSAGES', () => {
@@ -106,13 +110,31 @@ describe('isStaleStateError', () => {
       'post_changed',
       'template_changed',
       'request_mismatch',
+      'etapa_changed',
+      'posts_changed',
+      'ciclo_changed',
       'post_has_active_process',
       'post_in_workflow',
       'post_already_in_flow',
     ]) {
       expect(isStaleStateError(err(c)), c).toBe(true);
     }
+    expect(isStaleStateError(err('post_locked'))).toBe(false);
     expect(isStaleStateError(err('permission_denied'))).toBe(false);
     expect(isStaleStateError(null)).toBe(false);
+  });
+});
+
+describe('getPostProcessErrorToast: acesso por cliente', () => {
+  it('maps client_scope_restricted to the scope copy', () => {
+    expect(
+      getPostProcessErrorToast({ message: 'client_scope_restricted', code: '42501' }, 'Erro'),
+    ).toBe('Seu acesso é limitado aos clientes atribuídos.');
+  });
+
+  it('a known code keeps its own copy', () => {
+    expect(getPostProcessErrorToast({ message: 'permission_denied', code: '42501' }, 'Erro')).toBe(
+      POST_PROCESS_ERROR_MESSAGES.permission_denied,
+    );
   });
 });

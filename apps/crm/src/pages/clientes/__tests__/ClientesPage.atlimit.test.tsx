@@ -3,7 +3,10 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
+import { fakeMembership } from '@/test/makeCan';
 
+const scopeAuth = vi.hoisted(() => ({ membership: null as unknown }));
 const { isAtLimitMock, limitsRef } = vi.hoisted(() => ({
   isAtLimitMock: vi.fn(),
   limitsRef: { current: null as null | Record<string, number | null> },
@@ -22,6 +25,10 @@ vi.mock('../../../lib/csv', () => ({ openCSVSelector: vi.fn() }));
 
 vi.mock('../../../lib/supabase');
 
+// These suites cover the desktop markup (table, header buttons); the phone branch below
+// 768px has its own suite. jsdom's matchMedia would otherwise render the phone branch.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 vi.mock('../../../store', async () => {
   const actual = await vi.importActual<typeof import('../../../store')>('../../../store');
   return {
@@ -38,12 +45,16 @@ vi.mock('../../../hooks/useEntitlements', () => ({
   useEntitlements: () => ({ isAtLimit: isAtLimitMock, limits: limitsRef.current }),
 }));
 
+vi.mock('@/hooks/useFinanceiroV2', () => ({
+  useFinanceiroV2: () => ({ ativo: false, isLoading: false }),
+}));
+
 vi.mock('../../../hooks/useIsWorkspaceOwner', () => ({
   useIsWorkspaceOwner: () => true,
 }));
 
 vi.mock('../../../context/AuthContext', () => ({
-  useAuth: () => ({ canSeeFinancials: true, can: () => true }),
+  useAuth: () => ({ canSeeFinancials: true, can: () => true, membership: scopeAuth.membership }),
 }));
 
 // The CSV import button is wrapped in FeatureGate; render its children unconditionally
@@ -149,6 +160,7 @@ beforeEach(() => {
   mockedGetClientes.mockReset();
   mockedGetClientes.mockResolvedValue([]);
   limitsRef.current = null;
+  scopeAuth.membership = null;
 });
 
 describe('ClientesPage at-limit create button', () => {
@@ -240,5 +252,48 @@ describe('ClientesPage header meter', () => {
     // Give React a tick to settle without ever resolving the query.
     await new Promise((r) => setTimeout(r, 0));
     expect(screen.queryByText(/de .* clientes/)).not.toBeInTheDocument();
+  });
+});
+
+describe('ClientesPage header meter in the Vidro toolbar', () => {
+  it('renders the meter as the toolbar subtitle, not in the page content', async () => {
+    isAtLimitMock.mockReturnValue(false);
+    limitsRef.current = { max_clients: 15 };
+    mockedGetClientes.mockResolvedValue([
+      { id: 1, nome: 'A', sigla: 'A', cor: '#000', status: 'ativo' } as store.Cliente,
+      { id: 2, nome: 'B', sigla: 'B', cor: '#000', status: 'ativo' } as store.Cliente,
+    ]);
+    render(
+      <MemoryRouter>
+        <QueryClientProvider
+          client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+        >
+          <VidroToolbarHarness>
+            <ClientesPage />
+          </VidroToolbarHarness>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    const meter = await screen.findByText('2 de 15 clientes');
+    expect(meter.closest('.vidro-toolbar-subtitle')).not.toBeNull();
+    expect(meter.closest('.page-content')).toBeNull();
+    expect(screen.getAllByText('2 de 15 clientes')).toHaveLength(1);
+  });
+});
+
+describe('ClientesPage header meter, membro restrito', () => {
+  it('hides the plan meter for a member restricted to assigned clients', async () => {
+    isAtLimitMock.mockReturnValue(false);
+    limitsRef.current = { max_clients: 15 };
+    scopeAuth.membership = fakeMembership({ role: 'agent', client_scope: 'atribuidos' });
+    mockedGetClientes.mockResolvedValue([
+      { id: 1, nome: 'A', sigla: 'A', cor: '#000', status: 'ativo' } as store.Cliente,
+      { id: 2, nome: 'B', sigla: 'B', cor: '#000', status: 'ativo' } as store.Cliente,
+    ]);
+    renderPage();
+
+    await waitFor(() => expect(isAtLimitMock).toHaveBeenCalledWith('max_clients', 2));
+    expect(screen.getByText('Você vê os clientes atribuídos a você.')).toBeInTheDocument();
+    expect(screen.queryByText('2 de 15 clientes')).toBeNull();
   });
 });

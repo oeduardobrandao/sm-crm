@@ -7,6 +7,7 @@ export function seedConsent(choice: Partial<ConsentChoice> = {}): void {
     JSON.stringify({
       analytics: false,
       support: false,
+      marketing: false,
       decidedAt: '2026-09-19T00:00:00.000Z',
       ...choice,
     }),

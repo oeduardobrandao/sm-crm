@@ -57,10 +57,10 @@
   background: rgba(10, 12, 15, 0.82);
   border-bottom-color: rgba(255, 255, 255, 0.06);
 }
-.lp-v2 .hdr-nav button {
+.lp-v2 .hdr-nav .hdr-nav-link {
   color: #9ca3af;
 }
-.lp-v2 .hdr-nav button:hover {
+.lp-v2 .hdr-nav .hdr-nav-link:hover {
   color: #e8eaf0;
   background: rgba(255, 255, 255, 0.06);
 }
@@ -316,7 +316,7 @@ body.landing-page:has(.lp-v2) {
   --lp2-text-3: #86868b;
   --lp2-accent: #ffbf30;
   --lp2-radius: 28px;
-  --lp2-font: -apple-system, 'SF Pro Display', 'Plus Jakarta Sans', system-ui, sans-serif;
+  --lp2-font: -apple-system, 'SF Pro Display', system-ui, sans-serif;
   background: var(--lp2-bg);
   color: var(--lp2-text);
 }
@@ -417,12 +417,12 @@ body.landing-page:has(.lp-v2) {
 .lp-v2 .hdr-logo {
   height: 20px;
 }
-.lp-v2 .hdr-nav button {
+.lp-v2 .hdr-nav .hdr-nav-link {
   color: #d2d2d7;
   font-size: 0.82rem;
   font-weight: 400;
 }
-.lp-v2 .hdr-nav button:hover {
+.lp-v2 .hdr-nav .hdr-nav-link:hover {
   color: #ffffff;
   background: transparent;
 }
@@ -1391,10 +1391,13 @@ body.landing-page:has(.lp-v2) {
 }
 
 /* ---------- hero motion ---------- */
-/* Staggered fade-up on load: headline, sub, offer pill, then the devices. */
+/* Staggered rise on load: headline, sub, offer pill, then the devices.
+ * Opacity starts at 0.6, never 0: Chrome skips opacity:0 elements as LCP
+ * candidates, so a 0 start let the cookie banner become the LCP element.
+ * The `both` fill holds 0.6 through each delay, so first paint is eligible. */
 @keyframes lp2-rise {
   from {
-    opacity: 0;
+    opacity: 0.6;
     transform: translateY(16px);
   }
   to {

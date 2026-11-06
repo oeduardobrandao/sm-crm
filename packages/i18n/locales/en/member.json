@@ -1,0 +1,134 @@
+{
+  "shared": {
+    "editarAcordo": "Edit agreement",
+    "cadastrarAcordo": "Add agreement",
+    "semFuncao": "No role",
+    "nenhumArquivo": "No file",
+    "nenhumClienteAtribuido": "No clients assigned in this period.",
+    "funcao": "Role",
+    "valorPorEntrega": "Amount per deliverable",
+    "diaPagamento": "Payment day",
+    "membroNaoEncontrado": "Member not found.",
+    "informacoes": "Details",
+    "transacoes": "Transactions",
+    "transacoesRestritas": "Financial transactions are only visible to people with financial access.",
+    "custoMensal": "Monthly cost",
+    "totalPago": "Total paid",
+    "pendente": "Pending",
+    "cargo": "Position",
+    "tipo": "Type",
+    "tipos": {
+      "clt": "Employee (CLT)",
+      "freelancer_mensal": "Monthly freelancer",
+      "freelancer_demanda": "On-demand freelancer"
+    }
+  },
+  "acordoHelpers": {
+    "periodo": {
+      "dia_util": "business day",
+      "semana": "week",
+      "mes": "month"
+    },
+    "modelo": {
+      "mensal_meta": "Monthly with target",
+      "mensal_limite": "Monthly with limit",
+      "por_entrega": "Per deliverable"
+    },
+    "modeloDescricao": {
+      "mensal_meta": "Fixed monthly amount and a deliverables target.",
+      "mensal_limite": "Fixed monthly amount to serve up to a number of clients.",
+      "por_entrega": "Paid for each deliverable."
+    },
+    "contrato": "Contract",
+    "contratoComExtensao": "Contract.{{ext}}"
+  },
+  "acordoCard": {
+    "entrega_one": "deliverable",
+    "entrega_other": "deliverables",
+    "metaMensal": "{{quantidade}} {{unidade}} per month",
+    "metaPeriodo": "{{quantidade}} {{unidade}} per {{periodo}}, about {{mensal}} per month",
+    "vigenciaIntervalo": "{{inicio}} to {{fim}}",
+    "vigenciaDesde": "Since {{data}}",
+    "vigenciaAte": "Until {{data}}",
+    "semPrazo": "No end date",
+    "popupBloqueado": "Your browser blocked the new tab. Allow pop-ups to open the contract.",
+    "erroAbrirContrato": "Couldn't open the contract.",
+    "ariaLabel": "Working agreement",
+    "titulo": "Agreement",
+    "erroCarregar": "Couldn't load the agreement.",
+    "semAcordo": "No agreement yet.",
+    "modelo": "Model",
+    "valor": "Amount",
+    "porMes": " per month",
+    "naoDefinido": "Not set",
+    "meta": "Target",
+    "limite": "Limit",
+    "limiteClientes_one": "up to {{count}} client",
+    "limiteClientes_other": "up to {{count}} clients",
+    "vigencia": "Term",
+    "contrato": "Contract",
+    "abrir": "Open",
+    "clientesAtendidos": "Clients served",
+    "historico": "History"
+  },
+  "acordoDialog": {
+    "erroPeriodo": "Choose the period.",
+    "erroValor": "Enter an amount of zero or more.",
+    "erroDia": "Day must be between 1 and 31",
+    "erroMeta": "Enter a target greater than zero.",
+    "erroLimite": "Enter a limit greater than zero.",
+    "erroVigencia": "The end can't be before the start.",
+    "erroEnviarArquivo": "Couldn't upload the file. Try again.",
+    "salvo": "Agreement saved.",
+    "erroSalvar": "Error saving the agreement",
+    "descricao": "Set how this person is paid and when it applies from.",
+    "comoPago": "How is this person paid?",
+    "valorMensal": "Monthly amount",
+    "quantidadeMeta": "Target quantity",
+    "unidade": "Unit",
+    "periodoMeta": "Target period",
+    "cercaPorMes": "About {{mensal}} per month",
+    "limiteClientes": "Client limit",
+    "inicioVigencia": "Term start",
+    "fimVigencia": "Term end",
+    "contratoAssinado": "Signed contract",
+    "trocarArquivo": "Replace file",
+    "enviarArquivo": "Upload file",
+    "arquivoContrato": "Contract file",
+    "enviando": "Uploading file...",
+    "formatos": "PDF, PNG or JPG up to 10 MB.",
+    "valeAPartirDe": "Applies from",
+    "valeAPartirDeAjuda": "The agreement applies from the start of the chosen period."
+  },
+  "entregasManuais": {
+    "salvas": "Deliverables saved.",
+    "erroSalvar": "Error saving the deliverables",
+    "titulo": "Deliverables for the period",
+    "descricao": "Enter how many deliverables each client received in this period.",
+    "periodo": "Period",
+    "erroCarregar": "Couldn't load this period's deliverables.",
+    "entregasDe": "Deliverables for {{nome}}",
+    "aInformar": "To be entered",
+    "salvar": "Save deliverables"
+  },
+  "membroDetalhe": {
+    "diaPagamento": "Payment day:",
+    "custoMensal": "Monthly cost:",
+    "cargo": "Position:",
+    "tipo": "Type:",
+    "data": "Date",
+    "descricao": "Description",
+    "categoria": "Category",
+    "valor": "Amount",
+    "status": "Status",
+    "txStatus": {
+      "pago": "paid",
+      "agendado": "scheduled"
+    }
+  },
+  "membroDetalhePhone": {
+    "voltarEquipe": "Back to Team",
+    "maisAcoes": "More member actions",
+    "nenhumaTransacao": "No transactions"
+  }
+}

@@ -5,9 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const store = vi.hoisted(() => ({
   completeEtapa: vi.fn(),
-  completeEtapaWithRearm: vi.fn(),
   hasLaterApprovalEtapa: vi.fn(),
-  approvePostsInternally: vi.fn(),
   sendPostsToCliente: vi.fn(),
   revertEtapa: vi.fn(),
   updateWorkflowPositions: vi.fn(),
@@ -56,7 +54,12 @@ vi.mock('../../components/WorkflowCard', () => ({
 }));
 
 import { KanbanView } from '../KanbanView';
+import { VidroToolbarHarness } from '@/test/vidroToolbar';
 import type { BoardCard } from '../../hooks/useEntregasData';
+
+// Desktop layout: the phone branch (below 768px, what jsdom's matchMedia reports)
+// has its own suites.
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 function QueryWrapper({ children }: { children: React.ReactNode }) {
@@ -183,6 +186,26 @@ describe('KanbanView board tab strip', () => {
     expect(container.querySelectorAll('.board-tab-add')).toHaveLength(0);
   });
 
+  it('puts tabsTrailing on the tab strip row, after the tabs', () => {
+    const { container } = render(
+      <KanbanView
+        {...boardProps([makeCard('Posts Agosto', 1, 1)])}
+        tabsTrailing={<input aria-label="Busca" />}
+      />,
+    );
+
+    const row = container.querySelector('.board-tabs-row')!;
+    expect(row.querySelector(':scope > .board-tabs')).not.toBeNull();
+    expect(row.querySelector(':scope > .board-tabs-row__trailing input')).not.toBeNull();
+  });
+
+  it('renders the bare tab strip, with no row wrapper, when tabsTrailing is omitted', () => {
+    const { container } = render(<KanbanView {...boardProps([makeCard('Posts Agosto', 1, 1)])} />);
+
+    expect(container.querySelector('.board-tabs-row')).toBeNull();
+    expect(container.querySelector('.board-tabs')).not.toBeNull();
+  });
+
   it('the "+" button does not have role="tab"', () => {
     render(
       <KanbanView {...boardProps([makeCard('Posts Agosto', 1, 1)])} onCreateTemplate={() => {}} />,
@@ -208,5 +231,59 @@ describe('KanbanView board tab strip', () => {
 
     fireEvent.click(addBtn);
     expect(onCreateTemplate).not.toHaveBeenCalled();
+  });
+});
+
+describe('KanbanView under the Vidro shell', () => {
+  const templates = [
+    {
+      id: 1,
+      nome: 'Edição de vídeo',
+      etapas: [{ nome: 'Produção', prazo_dias: 2, tipo_prazo: 'corridos', tipo: 'padrao' }],
+    },
+  ] as never;
+
+  function renderBoard(vidroShell: boolean) {
+    return render(
+      <VidroToolbarHarness vidroShell={vidroShell}>
+        <KanbanView {...boardProps([makeCard('Posts Agosto', 1, 1)])} templates={templates} />
+      </VidroToolbarHarness>,
+    );
+  }
+
+  it('keeps the classic uppercase tabs and tinted column headers with the shell off', () => {
+    const { container } = renderBoard(false);
+
+    expect(container.querySelector('.board-tab:not(.board-tab-add)')).toHaveTextContent(
+      'EDIÇÃO DE VÍDEO',
+    );
+    const header = container.querySelector<HTMLElement>('.board-column-header')!;
+    expect(header.style.background).not.toBe('');
+    expect(container.querySelector<HTMLElement>('.board-column-title')!.style.color).not.toBe('');
+    expect(
+      container.querySelector<HTMLElement>('.board-column-count')!.getAttribute('style'),
+    ).not.toBeNull();
+  });
+
+  it('shows the template name as typed and drops the inline column tints', () => {
+    const { container } = renderBoard(true);
+
+    const tab = container.querySelector('.board-tab:not(.board-tab-add)')!;
+    expect(tab).toHaveTextContent('Edição de vídeo');
+    expect(tab).not.toHaveTextContent('EDIÇÃO');
+
+    const header = container.querySelector<HTMLElement>('.board-column-header')!;
+    expect(header.style.background).toBe('');
+    // The etapa colour survives as a variable the title's dot reads.
+    expect(header.style.getPropertyValue('--col-tint')).not.toBe('');
+    expect(
+      container.querySelector<HTMLElement>('.board-column-title')!.getAttribute('style'),
+    ).toBeNull();
+    expect(
+      container.querySelector<HTMLElement>('.board-column-sort')!.getAttribute('style'),
+    ).toBeNull();
+    expect(
+      container.querySelector<HTMLElement>('.board-column-count')!.getAttribute('style'),
+    ).toBeNull();
   });
 });

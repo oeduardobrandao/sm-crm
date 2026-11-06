@@ -1,3 +1,4 @@
+import { i18n } from '@mesaas/i18n';
 import type { StepOverrides, WorkflowTemplate } from '../../store';
 import { computeDeadlineDate, computeDeliveryDeadlines } from './hooks/useEntregasData';
 import { endOfLocalDay, parseLocalISODate } from '@/utils/postDate';
@@ -47,9 +48,9 @@ export function buildApplyPlan(input: ApplyPlanInput): ApplyPlan {
   const modo: ModoPrazo = template.modo_prazo ?? 'padrao';
   const etapas = Array.isArray(template.etapas) ? template.etapas : [];
   const blockers: string[] = [];
-  if (etapas.length === 0) blockers.push('Este modelo não tem etapas.');
+  if (etapas.length === 0) blockers.push(i18n.t('entregas:applyPlan.noEtapas'));
   if (!Number.isInteger(startOrdem) || startOrdem < 0 || startOrdem >= etapas.length) {
-    blockers.push('Escolha a etapa inicial.');
+    blockers.push(i18n.t('entregas:applyPlan.pickStart'));
   }
   const fromStart = etapas
     .map((e, i) => ({
@@ -74,17 +75,15 @@ export function buildApplyPlan(input: ApplyPlanInput): ApplyPlan {
       for (const e of fromStart) {
         const raw = input.fixedDates[e.ordem];
         const d = raw ? parseLocalISODate(raw) : null;
-        if (!d) blockers.push(`Informe a data da etapa "${etapas[e.ordem].nome}".`);
+        if (!d)
+          blockers.push(i18n.t('entregas:applyPlan.dateRequired', { etapa: etapas[e.ordem].nome }));
         else prazoByOrdem.set(e.ordem, endOfLocalDay(d).toISOString());
       }
     } else {
-      if (!input.clienteHasDiaEntrega)
-        blockers.push('O cliente não tem dia de entrega configurado.');
-      else if (!input.deliveryDate) blockers.push('Escolha o mês de entrega.');
+      if (!input.clienteHasDiaEntrega) blockers.push(i18n.t('entregas:applyPlan.noDeliveryDay'));
+      else if (!input.deliveryDate) blockers.push(i18n.t('entregas:applyPlan.pickMonth'));
       if (needsApprovalStep) {
-        blockers.push(
-          'O modelo precisa de uma etapa de aprovação do cliente a partir da etapa inicial.',
-        );
+        blockers.push(i18n.t('entregas:applyPlan.needsApproval'));
       }
       if (blockers.length === 0 && input.deliveryDate) {
         const map = computeDeliveryDeadlines(fromStart, input.deliveryDate);
@@ -92,7 +91,9 @@ export function buildApplyPlan(input: ApplyPlanInput): ApplyPlan {
           const day = map.get(e.ordem);
           const d = day ? parseLocalISODate(day) : null;
           if (!d)
-            blockers.push(`Não foi possível calcular a data da etapa "${etapas[e.ordem].nome}".`);
+            blockers.push(
+              i18n.t('entregas:applyPlan.cannotCompute', { etapa: etapas[e.ordem].nome }),
+            );
           else prazoByOrdem.set(e.ordem, endOfLocalDay(d).toISOString());
         }
       }

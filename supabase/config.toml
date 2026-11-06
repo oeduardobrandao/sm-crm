@@ -1,6 +1,9 @@
 [functions.instagram-connect-link]
 verify_jwt = false
 
+[functions.google-integration]
+verify_jwt = false
+
 [functions.instagram-integration]
 verify_jwt = false
 
@@ -23,6 +26,9 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.tiktok-sync-cron]
+verify_jwt = false
+
+[functions.tiktok-analytics]
 verify_jwt = false
 
 [functions.post-media-cleanup-cron]
@@ -49,6 +55,9 @@ verify_jwt = false
 [functions.hub-approve]
 verify_jwt = false
 
+[functions.hub-media-notes]
+verify_jwt = false
+
 [functions.hub-post-history]
 verify_jwt = false
 
@@ -71,6 +80,9 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.hub-agenda]
+verify_jwt = false
+
+[functions.hub-linha-editorial]
 verify_jwt = false
 
 [functions.agenda-convite]
@@ -249,11 +261,38 @@ verify_jwt = false
 [functions.client-email-unsub]
 verify_jwt = false
 
+[functions.nurture-unsub]
+verify_jwt = false
+
 [functions.metrics-snapshot-cron]
 verify_jwt = false
 
 [functions.affiliate-public]
 verify_jwt = false
 
+[functions.blog-view]
+verify_jwt = false
+
+[functions.blog-search-console-cron]
+verify_jwt = false
+
 [functions.affiliate-payout-cron]
+verify_jwt = false
+
+[functions.equipe-chat-media]
+verify_jwt = false
+
+[functions.gbp-analytics]
+verify_jwt = false
+
+[functions.youtube-analytics]
+verify_jwt = false
+
+[functions.youtube-sync-cron]
+verify_jwt = false
+
+[functions.gbp-sync-cron]
+verify_jwt = false
+
+[functions.notification-push-cron]
 verify_jwt = false

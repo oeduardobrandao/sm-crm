@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Outlet, useParams } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { HubContext } from '../HubContext';
@@ -19,13 +19,31 @@ import {
   type HubCardStyle,
 } from '../theme';
 import { hubBootstrapQuery } from '../queries';
+import { canonicalHubToken, compactHubToken } from '../lib/hubLinks';
 import { ShellSkeleton } from '../components/Skeleton';
 
 const FONT_LINK_ID = 'hub-custom-fonts';
 
 export function HubShell() {
-  const { workspace, token } = useParams<{ workspace: string; token: string }>();
+  const { workspace, token: urlToken } = useParams<{ workspace: string; token: string }>();
+  // The URL carries the compact token (see compactHubToken); the API and the
+  // query keys use the hyphenated UUID, which old links still carry.
+  const token = urlToken ? canonicalHubToken(urlToken) : undefined;
+  const { pathname, search, hash } = useLocation();
+  const navigate = useNavigate();
   const { t } = useTranslation();
+
+  // An old link (hyphenated token) is rewritten to the compact form in place, so
+  // a URL copied from the address bar and pasted in WhatsApp isn't read as Pix.
+  useEffect(() => {
+    if (!urlToken) return;
+    const compact = compactHubToken(canonicalHubToken(urlToken));
+    if (compact === urlToken) return;
+    navigate(
+      { pathname: pathname.replace(`/hub/${urlToken}`, `/hub/${compact}`), search, hash },
+      { replace: true },
+    );
+  }, [urlToken, pathname, search, hash, navigate]);
   // Usually already in flight: main.tsx prefetches it before the page chunk loads.
   const bootstrapQuery = useQuery({
     ...hubBootstrapQuery(workspace ?? '', token ?? ''),

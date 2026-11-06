@@ -28,6 +28,7 @@ describe('TrialReelPanel', () => {
         post={makePost()}
         media={videoMedia}
         disabled={false}
+        collaboratorsCount={0}
         onFieldChange={vi.fn()}
       />,
     );
@@ -40,6 +41,7 @@ describe('TrialReelPanel', () => {
         post={makePost({ tipo: 'feed' })}
         media={videoMedia}
         disabled={false}
+        collaboratorsCount={0}
         onFieldChange={vi.fn()}
       />,
     );
@@ -52,6 +54,7 @@ describe('TrialReelPanel', () => {
         post={makePost({ platform: 'tiktok' })}
         media={videoMedia}
         disabled={false}
+        collaboratorsCount={0}
         onFieldChange={vi.fn()}
       />,
     );
@@ -65,6 +68,7 @@ describe('TrialReelPanel', () => {
         post={makePost()}
         media={videoMedia}
         disabled={false}
+        collaboratorsCount={0}
         onFieldChange={onFieldChange}
       />,
     );
@@ -79,6 +83,7 @@ describe('TrialReelPanel', () => {
         post={makePost({ ig_trial_strategy: 'auto' })}
         media={videoMedia}
         disabled={false}
+        collaboratorsCount={0}
         onFieldChange={onFieldChange}
       />,
     );
@@ -93,6 +98,7 @@ describe('TrialReelPanel', () => {
         post={makePost({ ig_trial_strategy: 'auto' })}
         media={videoMedia}
         disabled={false}
+        collaboratorsCount={0}
         onFieldChange={onFieldChange}
       />,
     );
@@ -106,6 +112,7 @@ describe('TrialReelPanel', () => {
         post={makePost({ ig_trial_strategy: 'auto' })}
         media={videoMedia}
         disabled
+        collaboratorsCount={0}
         onFieldChange={vi.fn()}
       />,
     );
@@ -119,9 +126,64 @@ describe('TrialReelPanel', () => {
         post={makePost({ ig_trial_strategy: 'auto' })}
         media={imageMedia}
         disabled={false}
+        collaboratorsCount={0}
         onFieldChange={vi.fn()}
       />,
     );
     expect(screen.getByText('Reel de teste exige exatamente um vídeo no post.')).toBeTruthy();
+  });
+  it('com colaboradores e Reel de teste desligado: switch desabilitado com o motivo', () => {
+    const onFieldChange = vi.fn();
+    render(
+      <TrialReelPanel
+        post={makePost()}
+        media={videoMedia}
+        disabled={false}
+        collaboratorsCount={2}
+        onFieldChange={onFieldChange}
+      />,
+    );
+    const sw = screen.getByRole('switch') as HTMLButtonElement;
+    expect(sw.disabled).toBe(true);
+    expect(
+      screen.getByText(
+        'Indisponível com colaboradores no post. Remova os colaboradores para publicar como teste.',
+      ),
+    ).toBeTruthy();
+    fireEvent.click(sw);
+    expect(onFieldChange).not.toHaveBeenCalled();
+  });
+
+  it('agendado com colaboradores: a linha de bloqueio vence, nunca as duas', () => {
+    render(
+      <TrialReelPanel
+        post={makePost()}
+        media={videoMedia}
+        disabled
+        collaboratorsCount={2}
+        onFieldChange={vi.fn()}
+      />,
+    );
+    expect((screen.getByRole('switch') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText('Cancelar agendamento para editar')).toBeTruthy();
+    expect(screen.queryByText(/Indisponível com colaboradores/)).toBeNull();
+  });
+
+  it('Reel de teste ligado com colaboradores (não deveria existir): segue ligado e desligável', () => {
+    const onFieldChange = vi.fn();
+    render(
+      <TrialReelPanel
+        post={makePost({ ig_trial_strategy: 'auto' })}
+        media={videoMedia}
+        disabled={false}
+        collaboratorsCount={1}
+        onFieldChange={onFieldChange}
+      />,
+    );
+    const sw = screen.getByRole('switch') as HTMLButtonElement;
+    expect(sw.disabled).toBe(false);
+    expect(screen.queryByText(/Indisponível com colaboradores/)).toBeNull();
+    fireEvent.click(sw);
+    expect(onFieldChange).toHaveBeenCalledWith('ig_trial_strategy', null);
   });
 });

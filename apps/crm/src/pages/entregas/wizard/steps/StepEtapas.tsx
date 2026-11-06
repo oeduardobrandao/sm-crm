@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -19,7 +20,7 @@ import {
 import { SUGGESTED_ETAPAS } from '../wizardLogic';
 import type { WizardState } from '../NewWorkflowWizard';
 
-/** `SUGGESTED_ETAPAS` is `as const`, so its entries are readonly — type against that, not a mutable row. */
+/** `SUGGESTED_ETAPAS` entries are readonly — type against that, not a mutable row. */
 type Suggestion = (typeof SUGGESTED_ETAPAS)[number];
 
 const NONE = '__none__';
@@ -39,6 +40,7 @@ export function StepEtapas({
 }) {
   // Scroll-and-flash target inside SortableEtapaList — new rows land at the bottom of a list
   // that is usually scrolled out of view, so every add must announce itself.
+  const { t } = useTranslation('workflows');
   const [highlight, setHighlight] = useState<EtapaHighlight | null>(null);
 
   const active = new Set(state.etapas.map((e) => e.suggestionId).filter(Boolean));
@@ -97,10 +99,9 @@ export function StepEtapas({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      <h3 style={{ margin: 0 }}>As etapas</h3>
+      <h3 style={{ margin: 0 }}>{t('wizard.stagesTitle')}</h3>
       <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0 }}>
-        Clique nas sugestões para montar o fluxo. Você pode renomear, reordenar e ajustar prazos
-        abaixo.
+        {t('wizard.stagesHint')}
       </p>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
@@ -145,29 +146,29 @@ export function StepEtapas({
           color: 'var(--text-muted)',
         }}
       >
-        ＋ Personalizada
+        {t('wizard.customStage')}
       </button>
 
       {membros.length === 0 ? (
         <PrerequisiteAlert
-          title="Nenhum membro cadastrado"
-          description="Para atribuir responsáveis às etapas, adicione membros na página"
-          actionLabel="Equipe"
+          title={t('wizard.noMembersTitle')}
+          description={t('wizard.noMembersDesc')}
+          actionLabel={t('wizard.teamPage')}
           actionHref="/equipe"
         />
       ) : (
         <div className="space-y-1">
-          <Label htmlFor="wizard-bulk-responsavel">Atribuir todas a…</Label>
+          <Label htmlFor="wizard-bulk-responsavel">{t('wizard.assignAll')}</Label>
           {/* `!v` guards the empty placeholder value, which must never become responsavelId 0. */}
           <Select
             value={bulkValue}
             onValueChange={(v) => bulkAssign(v === NONE || !v ? null : Number(v))}
           >
             <SelectTrigger id="wizard-bulk-responsavel">
-              <SelectValue placeholder="Escolha um responsável" />
+              <SelectValue placeholder={t('wizard.chooseAssignee')} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={NONE}>Sem responsável</SelectItem>
+              <SelectItem value={NONE}>{t('shared.noAssignee')}</SelectItem>
               {sortedMembros.map((m) => (
                 <SelectItem key={m.id} value={String(m.id)}>
                   {m.nome}
@@ -176,7 +177,7 @@ export function StepEtapas({
             </SelectContent>
           </Select>
           <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0 }}>
-            Define o responsável de todas as etapas de uma vez. Dá para ajustar cada uma depois.
+            {t('wizard.assignAllHint')}
           </p>
         </div>
       )}

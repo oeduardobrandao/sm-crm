@@ -1,4 +1,5 @@
 import { Download, ExternalLink, FileText, Link2, Play, Trash2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import type { ReferenceItem } from '@/store/postReferences';
 import { sanitizeUrl } from '@/utils/security';
@@ -24,12 +25,13 @@ const OVERLAY_ICON_BTN =
   'inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white/95 text-stone-900 shadow-sm transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white';
 
 function ReferencePreview({ item }: { item: ReferenceItem }) {
+  const { t } = useTranslation('postPanels');
   if (item.kind === 'link') {
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-sky-50 px-2 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">
         <Link2 className="h-5 w-5" aria-hidden="true" />
         <span className="max-w-full truncate text-[11px] font-medium">
-          {item.link_domain ?? 'Link'}
+          {item.link_domain ?? t('references.link')}
         </span>
       </div>
     );
@@ -38,7 +40,7 @@ function ReferencePreview({ item }: { item: ReferenceItem }) {
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
         <FileText className="h-6 w-6" aria-hidden="true" />
-        <span className="text-[11px] font-bold tracking-wide">PDF</span>
+        <span className="text-[11px] font-bold tracking-wide">{t('references.pdf')}</span>
       </div>
     );
   }
@@ -78,9 +80,12 @@ function ReferencePreview({ item }: { item: ReferenceItem }) {
 }
 
 export function ReferenceTile({ item, canDelete, onOpen, onDeleteRequest }: ReferenceTileProps) {
+  const { t } = useTranslation('postPanels');
   const label = referenceLabel(item);
   const size = item.kind === 'file' ? formatReferenceSize(item.size_bytes) : null;
-  const meta = ['Cliente', formatReferenceDate(item.created_at), size].filter(Boolean).join(' · ');
+  const meta = [t('references.client'), formatReferenceDate(item.created_at), size]
+    .filter(Boolean)
+    .join(' · ');
   const externalHref = sanitizeUrl(item.kind === 'link' ? item.link_url : item.url);
   const downloadHref =
     item.kind === 'file' && item.download_url ? sanitizeUrl(item.download_url) : null;
@@ -95,9 +100,9 @@ export function ReferenceTile({ item, canDelete, onOpen, onDeleteRequest }: Refe
               type="button"
               className={OVERLAY_BTN}
               onClick={() => onOpen(item)}
-              aria-label={`Abrir ${label}`}
+              aria-label={t('references.openAria', { label })}
             >
-              Abrir
+              {t('references.open')}
             </button>
           ) : (
             <a
@@ -105,10 +110,10 @@ export function ReferenceTile({ item, canDelete, onOpen, onDeleteRequest }: Refe
               target="_blank"
               rel="noopener noreferrer"
               className={OVERLAY_BTN}
-              aria-label={`Abrir ${label}`}
+              aria-label={t('references.openAria', { label })}
             >
               <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-              Abrir
+              {t('references.open')}
             </a>
           )}
           {(downloadHref || canDelete) && (
@@ -118,8 +123,8 @@ export function ReferenceTile({ item, canDelete, onOpen, onDeleteRequest }: Refe
                   href={downloadHref}
                   download={item.name ?? true}
                   className={OVERLAY_ICON_BTN}
-                  aria-label="Baixar"
-                  title="Baixar"
+                  aria-label={t('references.download')}
+                  title={t('references.download')}
                 >
                   <Download className="h-3.5 w-3.5" aria-hidden="true" />
                 </a>
@@ -129,8 +134,8 @@ export function ReferenceTile({ item, canDelete, onOpen, onDeleteRequest }: Refe
                   type="button"
                   className={OVERLAY_ICON_BTN}
                   onClick={() => onDeleteRequest(item)}
-                  aria-label="Excluir referência"
-                  title="Excluir referência"
+                  aria-label={t('references.deleteReference')}
+                  title={t('references.deleteReference')}
                 >
                   <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                 </button>
@@ -164,7 +169,7 @@ export function ReferenceTile({ item, canDelete, onOpen, onDeleteRequest }: Refe
         <p className="text-[11px] text-[var(--text-light)]">{meta}</p>
         {item.post_approval_id != null && (
           <Badge variant="warning" size="sm">
-            Na correção
+            {t('references.inRevision')}
           </Badge>
         )}
       </div>

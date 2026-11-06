@@ -47,17 +47,17 @@ describe('CookieConsent', () => {
     expect(accept.className).toBe(reject.className);
   });
 
-  it('Accept all stores both categories as granted', async () => {
+  it('Accept all stores every category as granted', async () => {
     renderBanner();
     await userEvent.click(screen.getByRole('button', { name: t('cookies.banner.acceptAll') }));
-    expect(getConsent()).toMatchObject({ analytics: true, support: true });
+    expect(getConsent()).toMatchObject({ analytics: true, support: true, marketing: true });
     expect(screen.queryByRole('region', { name: t('cookies.banner.title') })).toBeNull();
   });
 
-  it('Reject all stores both categories as denied', async () => {
+  it('Reject all stores every category as denied', async () => {
     renderBanner();
     await userEvent.click(screen.getByRole('button', { name: t('cookies.banner.rejectAll') }));
-    expect(getConsent()).toMatchObject({ analytics: false, support: false });
+    expect(getConsent()).toMatchObject({ analytics: false, support: false, marketing: false });
   });
 
   it('Customize lets the visitor grant one category and saves that choice', async () => {
@@ -68,7 +68,18 @@ describe('CookieConsent', () => {
       within(dialog).getByRole('switch', { name: t('cookies.dialog.analyticsTitle') }),
     );
     await userEvent.click(within(dialog).getByRole('button', { name: t('cookies.dialog.save') }));
-    expect(getConsent()).toMatchObject({ analytics: true, support: false });
+    expect(getConsent()).toMatchObject({ analytics: true, support: false, marketing: false });
+  });
+
+  it('Customize lets the visitor grant advertising on its own', async () => {
+    renderBanner();
+    await userEvent.click(screen.getByRole('button', { name: t('cookies.banner.customize') }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(
+      within(dialog).getByRole('switch', { name: t('cookies.dialog.marketingTitle') }),
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: t('cookies.dialog.save') }));
+    expect(getConsent()).toMatchObject({ analytics: false, support: false, marketing: true });
   });
 
   it('re-opens the preferences dialog after a decision (withdrawal must stay easy)', async () => {

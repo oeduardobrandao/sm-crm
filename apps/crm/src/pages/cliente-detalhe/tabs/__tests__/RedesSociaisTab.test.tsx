@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, Outlet, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Cliente } from '@/store';
@@ -27,6 +27,10 @@ vi.mock('@/services/instagram', async (importOriginal) => ({
 }));
 
 let mockFeatures: { feature_tiktok?: boolean } | null | undefined = { feature_tiktok: false };
+// jsdom has no layout, so useIsDesktop would report a phone; the desktop tabs are the default.
+let mockIsDesktop = true;
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => mockIsDesktop }));
+
 vi.mock('@/hooks/useWorkspaceLimits', () => ({
   useWorkspaceLimits: () => ({ features: mockFeatures }),
 }));
@@ -118,6 +122,7 @@ function renderTab(initialEntry: string, cliente: Cliente = CLIENTE) {
 
 afterEach(() => {
   cleanup();
+  mockIsDesktop = true;
   vi.clearAllMocks();
   mockFeatures = { feature_tiktok: false };
 });
@@ -130,6 +135,55 @@ describe('RedesSociaisTab', () => {
       expect(await screen.findByTestId('instagram-section')).toHaveTextContent(
         'ig-42-contato@aurora.com.br',
       );
+    });
+
+    it('hides the platform tabs when Instagram is the only one', async () => {
+      getInstagramSummaryMock.mockResolvedValue(null);
+      renderTab('/clientes/42/redes-sociais');
+      await screen.findByTestId('instagram-section');
+      expect(screen.queryByRole('navigation', { name: 'Redes sociais' })).toBeNull();
+    });
+
+    it('shows Instagram | TikTok tabs with the plan and switches between them', async () => {
+      getInstagramSummaryMock.mockResolvedValue(null);
+      getTikTokSummaryMock.mockResolvedValue(null);
+      mockFeatures = { feature_tiktok: true };
+      const { container } = renderTab('/clientes/42/redes-sociais');
+      const nav = await screen.findByRole('navigation', { name: 'Redes sociais' });
+      expect(within(nav).getByRole('link', { name: 'Instagram' })).toHaveAttribute(
+        'aria-current',
+        'page',
+      );
+      expect(container.querySelector('#tiktok-container')).toBeNull();
+
+      fireEvent.click(within(nav).getByRole('link', { name: 'TikTok' }));
+      await waitFor(() => expect(container.querySelector('#btn-tt-connect')).not.toBeNull());
+      expect(screen.queryByTestId('instagram-section')).toBeNull();
+      expect(screen.getByTestId('search')).toHaveTextContent('?rede=tiktok');
+
+      fireEvent.click(within(nav).getByRole('link', { name: 'Instagram' }));
+      expect(await screen.findByTestId('instagram-section')).toBeInTheDocument();
+      expect(screen.getByTestId('search')).toBeEmptyDOMElement();
+    });
+
+    it('uses the segmented control on a phone', async () => {
+      getInstagramSummaryMock.mockResolvedValue(null);
+      getTikTokSummaryMock.mockResolvedValue(null);
+      mockFeatures = { feature_tiktok: true };
+      mockIsDesktop = false;
+      const { container } = renderTab('/clientes/42/redes-sociais');
+      const tabs = await screen.findByRole('tablist', { name: 'Redes sociais' });
+      fireEvent.click(within(tabs).getByRole('tab', { name: 'TikTok' }));
+      await waitFor(() => expect(container.querySelector('#btn-tt-connect')).not.toBeNull());
+      expect(screen.getByTestId('search')).toHaveTextContent('?rede=tiktok');
+    });
+
+    it('falls back to Instagram for a platform tab the plan does not include', async () => {
+      getInstagramSummaryMock.mockResolvedValue(null);
+      mockFeatures = { feature_tiktok: false };
+      renderTab('/clientes/42/redes-sociais?rede=tiktok');
+      expect(await screen.findByTestId('instagram-section')).toBeInTheDocument();
+      expect(getTikTokSummaryMock).not.toHaveBeenCalled();
     });
 
     it('renders nothing TikTok-related when feature_tiktok is off', async () => {
@@ -145,19 +199,32 @@ describe('RedesSociaisTab', () => {
       getInstagramSummaryMock.mockResolvedValue(null);
       mockFeatures = { feature_tiktok: true };
       getTikTokSummaryMock.mockResolvedValue(null);
-      const { container } = renderTab('/clientes/42/redes-sociais');
+      const { container } = renderTab('/clientes/42/redes-sociais?rede=tiktok');
       await waitFor(() => expect(container.querySelector('#btn-tt-connect')).not.toBeNull());
       expect(getTikTokSummaryMock).toHaveBeenCalledWith(42);
     });
   });
 
   describe('query isolation', () => {
-    it('only fires igSummary (and ttSummary when the feature is on) — nothing from Entregas/Hub/Financeiro', async () => {
+    it('the Instagram tab fires only igSummary: other platforms wait for their tab', async () => {
+      getInstagramSummaryMock.mockResolvedValue(null);
+      mockFeatures = { feature_tiktok: true };
+      const { queryClient } = renderTab('/clientes/42/redes-sociais');
+      await screen.findByTestId('instagram-section');
+
+      const keys = queryClient
+        .getQueryCache()
+        .getAll()
+        .map((q) => q.queryKey[0]);
+      expect(new Set(keys)).toEqual(new Set(['igSummary']));
+      expect(getTikTokSummaryMock).not.toHaveBeenCalled();
+    });
+
+    it('the TikTok tab adds ttSummary and nothing from Entregas/Hub/Financeiro', async () => {
       getInstagramSummaryMock.mockResolvedValue(null);
       mockFeatures = { feature_tiktok: true };
       getTikTokSummaryMock.mockResolvedValue(null);
-      const { queryClient } = renderTab('/clientes/42/redes-sociais');
-      await screen.findByTestId('instagram-section');
+      const { queryClient } = renderTab('/clientes/42/redes-sociais?rede=tiktok');
       await waitFor(() => expect(getTikTokSummaryMock).toHaveBeenCalled());
 
       const keys = queryClient
@@ -223,7 +290,27 @@ describe('RedesSociaisTab', () => {
           'Ocorreu um erro ao conectar a conta TikTok. Tente novamente.',
         ),
       );
-      await waitFor(() => expect(screen.getByTestId('search')).toHaveTextContent(''));
+      // The callback params are gone and the TikTok tab is the one open.
+      await waitFor(() =>
+        expect(screen.getByTestId('search')).toHaveTextContent(/^\?rede=tiktok$/),
+      );
+    });
+
+    it('tt_error=already_linked: names the TikTok account and the client that holds it, and strips every param', async () => {
+      getInstagramSummaryMock.mockResolvedValue(null);
+      renderTab(
+        '/clientes/42/redes-sociais?tt_error=already_linked&tt_user=clinica.a&tt_other=Cl%C3%ADnica%20A',
+      );
+
+      await waitFor(() =>
+        expect(toastErrorMock).toHaveBeenCalledWith(
+          expect.stringContaining('A conta @clinica.a já está conectada ao cliente Clínica A.'),
+          { duration: 12000 },
+        ),
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId('search')).toHaveTextContent(/^\?rede=tiktok$/),
+      );
     });
 
     it('all three params together: each is processed exactly once and the URL ends up fully clean (no clobbering race between the two independent setSearchParams calls)', async () => {
@@ -242,9 +329,11 @@ describe('RedesSociaisTab', () => {
       // The critical regression check: with two independent useSearchParams
       // consumers (this effect + useInstagramActivationEvent) both mutating
       // the URL on mount, a stale-snapshot race can silently resurrect
-      // whichever param the OTHER effect just removed. Assert the URL is
-      // fully empty, not just that each individual handler fired.
-      await waitFor(() => expect(screen.getByTestId('search')).toHaveTextContent(''));
+      // whichever param the OTHER effect just removed. Assert the URL holds
+      // only the landing tab, not just that each individual handler fired.
+      await waitFor(() =>
+        expect(screen.getByTestId('search')).toHaveTextContent(/^\?rede=tiktok$/),
+      );
     });
 
     it('does not process anything on an ordinary visit with no OAuth params', async () => {
@@ -271,14 +360,18 @@ describe('RedesSociaisTab', () => {
       expect(captureEventMock).toHaveBeenCalledWith('tiktok_connected', { cliente_id: 42 });
       expect(captureEventMock).toHaveBeenCalledTimes(1);
       expect(toastErrorMock).not.toHaveBeenCalled();
-      await waitFor(() => expect(screen.getByTestId('search')).toHaveTextContent('?tab=redes'));
+      await waitFor(() =>
+        expect(screen.getByTestId('search')).toHaveTextContent(/^\?tab=redes&rede=tiktok$/),
+      );
     });
 
     it('tt_connected with any other value: no toast, no event, param still stripped', async () => {
       getInstagramSummaryMock.mockResolvedValue(null);
       renderTab('/clientes/42/redes-sociais?tt_connected=0');
 
-      await waitFor(() => expect(screen.getByTestId('search')).toHaveTextContent(''));
+      await waitFor(() =>
+        expect(screen.getByTestId('search')).toHaveTextContent(/^\?rede=tiktok$/),
+      );
       expect(toastSuccessMock).not.toHaveBeenCalled();
       expect(captureEventMock).not.toHaveBeenCalled();
     });
@@ -288,7 +381,9 @@ describe('RedesSociaisTab', () => {
       renderTab('/clientes/42/redes-sociais?tab=redes&tt_error=1');
 
       await waitFor(() => expect(toastErrorMock).toHaveBeenCalled());
-      await waitFor(() => expect(screen.getByTestId('search')).toHaveTextContent('?tab=redes'));
+      await waitFor(() =>
+        expect(screen.getByTestId('search')).toHaveTextContent(/^\?tab=redes&rede=tiktok$/),
+      );
     });
   });
 });

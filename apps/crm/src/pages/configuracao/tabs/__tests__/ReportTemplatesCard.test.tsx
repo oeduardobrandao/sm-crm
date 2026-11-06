@@ -14,6 +14,8 @@ const svc = vi.hoisted(() => ({
   SYSTEM_TEMPLATE_NAME: 'Padrão do sistema',
 }));
 vi.mock('../../../../services/reportTemplates', () => svc);
+// jsdom has no matchMedia match: keep this suite on the desktop layout (phone has its own suite).
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 
 const { navigateMock } = vi.hoisted(() => ({ navigateMock: vi.fn() }));
 vi.mock('react-router-dom', async () => ({
@@ -54,7 +56,14 @@ const rows = [
   {
     id: 't1',
     name: 'Mensal completo',
-    layout: { version: 1, blocks: [{ id: 'a', type: 'cover', size: 'full' }] },
+    // Seccionado: a contagem é de blocos de conteúdo, o marcador `section` não conta.
+    layout: {
+      version: 1,
+      blocks: [
+        { id: 's', type: 'section', size: 'full' },
+        { id: 'a', type: 'cover', size: 'full' },
+      ],
+    },
     is_default: true,
     created_at: '2026-09-01',
   },

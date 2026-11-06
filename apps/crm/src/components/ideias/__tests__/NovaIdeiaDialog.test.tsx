@@ -75,11 +75,28 @@ import React from 'react';
 import type { Ideia } from '@/store';
 import { NovaIdeiaDialog } from '../NovaIdeiaDialog';
 
-function renderDialog(onSaved = vi.fn(), editing: Ideia | null = null) {
+type Initial = {
+  cliente_id: number;
+  titulo: string;
+  descricao: string;
+  origem_sugestao_id: string;
+} | null;
+
+function renderDialog(
+  onSaved = vi.fn(),
+  editing: Ideia | null = null,
+  initialValues: Initial = null,
+) {
   const qc = new QueryClient();
   render(
     <QueryClientProvider client={qc}>
-      <NovaIdeiaDialog open onClose={() => {}} onSaved={onSaved} editing={editing} />
+      <NovaIdeiaDialog
+        open
+        onClose={() => {}}
+        onSaved={onSaved}
+        editing={editing}
+        initialValues={initialValues}
+      />
     </QueryClientProvider>,
   );
   return onSaved;
@@ -310,6 +327,62 @@ describe('NovaIdeiaDialog', () => {
         await screen.findByText('Adicione uma descrição ou grave um áudio.'),
       ).toBeInTheDocument();
       expect(updateIdeiaMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('initialValues (from an AI suggestion)', () => {
+    const INITIAL = {
+      cliente_id: 1,
+      titulo: 'Tema das dúvidas',
+      descricao: 'Responder a pergunta mais comum',
+      origem_sugestao_id: 'sug-1',
+    };
+
+    it('initialValues preenche título, descrição e cliente, Hub desligado', async () => {
+      renderDialog(vi.fn(), null, INITIAL);
+      await waitFor(() =>
+        expect((screen.getByLabelText('Título') as HTMLInputElement).value).toBe(
+          'Tema das dúvidas',
+        ),
+      );
+      expect((screen.getByLabelText(/^Descrição/) as HTMLTextAreaElement).value).toBe(
+        'Responder a pergunta mais comum',
+      );
+      const select = await screen.findByRole('combobox', { name: 'Cliente' });
+      await waitFor(() => expect((select as HTMLSelectElement).value).toBe('1'));
+      expect(screen.getByRole('switch', { name: /Visível no Hub/i })).toHaveAttribute(
+        'aria-checked',
+        'false',
+      );
+    });
+
+    it('salvar com initialValues chama createIdeia com origem_sugestao_id', async () => {
+      createIdeiaMock.mockResolvedValue('new-id');
+      const onSaved = renderDialog(vi.fn(), null, INITIAL);
+      const select = await screen.findByRole('combobox', { name: 'Cliente' });
+      await waitFor(() => expect((select as HTMLSelectElement).value).toBe('1'));
+      fireEvent.click(screen.getByRole('button', { name: 'Criar ideia' }));
+      await waitFor(() => expect(createIdeiaMock).toHaveBeenCalled());
+      expect(createIdeiaMock.mock.calls[0][0]).toMatchObject({
+        cliente_id: 1,
+        titulo: 'Tema das dúvidas',
+        origem_sugestao_id: 'sug-1',
+        visivel_no_hub: false,
+      });
+      await waitFor(() => expect(onSaved).toHaveBeenCalledWith('new-id'));
+    });
+
+    it('duplicata conta como sucesso: onSaved com string vazia', async () => {
+      const dup = Object.assign(new Error('duplicate_suggestion'), {
+        name: 'DuplicateSuggestionError',
+      });
+      createIdeiaMock.mockRejectedValue(dup);
+      const onSaved = renderDialog(vi.fn(), null, INITIAL);
+      const select = await screen.findByRole('combobox', { name: 'Cliente' });
+      await waitFor(() => expect((select as HTMLSelectElement).value).toBe('1'));
+      fireEvent.click(screen.getByRole('button', { name: 'Criar ideia' }));
+      await waitFor(() => expect(onSaved).toHaveBeenCalledWith(''));
+      expect(toastMock.error).not.toHaveBeenCalled();
     });
   });
 });

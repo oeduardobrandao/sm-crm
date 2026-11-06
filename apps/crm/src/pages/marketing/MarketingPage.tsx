@@ -1,4 +1,4 @@
-import '../landing/landing.css';
+import '../landing/landing-styles';
 import { LandingHeader, LandingFooter, useLandingChrome } from '../landing/LandingChrome';
 import { FaqSection } from '../landing/FaqSection';
 import { ArrowRight } from 'lucide-react';
@@ -59,12 +59,11 @@ export default function MarketingPage({ page }: { page: MarketingPageContent }) 
                   marginTop: 18,
                   fontSize: '.8rem',
                   color: '#9ca3af',
-                  fontFamily:
-                    "-apple-system,'SF Pro Display','Plus Jakarta Sans',system-ui,sans-serif",
+                  fontFamily: "-apple-system,'SF Pro Display',system-ui,sans-serif",
                   letterSpacing: '.08em',
                 }}
               >
-                Comece grátis · sem cartão de crédito
+                O Free não pede cartão · planos pagos com 30 dias grátis
               </div>
             </div>
           </div>

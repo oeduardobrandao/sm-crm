@@ -11,6 +11,7 @@ export type PublishErrorCode =
   | "TRIAL_INELIGIBLE"
   | "CAPTION_TOO_LONG"
   | "ACCOUNT_RESTRICTED"
+  | "COLLABORATOR_INVALID"
   | "CONTAINER_EXPIRED"
   | "RATE_LIMIT"
   | "IG_TRANSIENT"
@@ -27,6 +28,7 @@ export const NON_RETRYABLE_CODES: readonly PublishErrorCode[] = [
   "TRIAL_INELIGIBLE",
   "CAPTION_TOO_LONG",
   "ACCOUNT_RESTRICTED",
+  "COLLABORATOR_INVALID",
 ] as const;
 
 /** Lançada pelos guards de publicação quando um post com Reel de teste não é
@@ -38,6 +40,8 @@ export const TRIAL_MEDIA_SHAPE_ERROR =
 const RATE_LIMIT_GRAPH_CODES = new Set([4, 9, 17, 32, 613]);
 // 2207026 = formato de vídeo não suportado pela Meta.
 const MEDIA_UNSUPPORTED_SUBCODES = new Set([2207026]);
+// 2207018 = a Meta não consegue acessar um dos `collaborators` (código 110).
+const COLLABORATOR_INVALID_SUBCODE = 2207018;
 
 interface ClassifiableError {
   message?: string;
@@ -62,6 +66,7 @@ export function classifyPublishError(err: unknown): PublishErrorCode {
   ) return "IG_TRANSIENT";
 
   if (e.code === "TOKEN_EXPIRED" || graphCode === 190) return "TOKEN_EXPIRED";
+  if (e.graphSubcode === COLLABORATOR_INVALID_SUBCODE) return "COLLABORATOR_INVALID";
   if (msg.includes("reduce the amount of data")) return "MEDIA_TOO_LARGE";
   if (
     msg.includes("carrossel do instagram aceita no máximo") ||
@@ -153,6 +158,11 @@ export const PUBLISH_ERROR_COPY: Record<PublishErrorCode, PublishErrorDisplay> =
     titulo: "Acesso da conta restrito pelo Instagram",
     explicacao:
       "O Instagram restringiu o acesso desta conta. Confira o aplicativo do Instagram por avisos ou restrições antes de tentar novamente.",
+  },
+  COLLABORATOR_INVALID: {
+    titulo: "O Instagram recusou um colaborador",
+    explicacao:
+      "Confira se o @ está certo e se o perfil é público. Edite os colaboradores e tente novamente.",
   },
   CONTAINER_EXPIRED: {
     titulo: "Publicação preparada expirou no Instagram",

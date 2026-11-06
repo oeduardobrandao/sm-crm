@@ -264,6 +264,10 @@ export function buildPagarmeSubscriptionColumns(args: {
    * o undo restaura este valor em vez de sempre reativar, entao uma fonte ja em churn volta
    * a ficar em churn. */
   switchedFromCancelAtPeriodEnd?: boolean | null;
+  /** O mensal Stripe fonte ainda estava em trial (status 'trialing') no momento do switch.
+   * O lembrete de fim de trial (lifecycle-email-cron) so considera linhas de switch cuja
+   * fonte era trial; um switch de assinante pago nao e um trial acabando. */
+  switchedFromTrialing?: boolean | null;
 }): Record<string, unknown> {
   return {
     provider: "pagarme",
@@ -281,6 +285,7 @@ export function buildPagarmeSubscriptionColumns(args: {
     switched_from_stripe_subscription_id: args.switchedFromStripeSubscriptionId ?? null,
     switched_from_plan_id: args.switchedFromPlanId ?? null,
     switched_from_cancel_at_period_end: args.switchedFromCancelAtPeriodEnd ?? null,
+    switched_from_trialing: args.switchedFromTrialing ?? null,
     switch_checked_at: null,
     ever_subscribed_at: args.everSubscribedAt,
     // Fresh takeover clears ALL dunning state (mirroring buildRecoveryEpisode): a Stripe row

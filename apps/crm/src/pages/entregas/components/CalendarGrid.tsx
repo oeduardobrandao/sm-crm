@@ -1,8 +1,9 @@
+import { useTranslation } from 'react-i18next';
 import type { KeyboardEvent } from 'react';
 import { useState } from 'react';
 import { useDroppable, useDraggable } from '@dnd-kit/core';
 import { parseISO, format, isSameDay } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { useDateFnsLocale } from '@mesaas/i18n';
 import { GripVertical, Lock, Folder } from 'lucide-react';
 import { MonthGrid } from '@/components/ui/month-grid';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
@@ -33,6 +34,7 @@ function PostPill({
   isSelected: boolean;
   onSelect: (post: ClientePost) => void;
 }) {
+  const { t } = useTranslation('entregas');
   const isCurrentWorkflow = post.workflow_id === currentWorkflowId;
   const isLocked = LOCKED_STATUSES.has(post.status);
   // Ownership is shown (green pill + workflow name in the detail panel) but is no longer
@@ -62,12 +64,16 @@ function PostPill({
   };
 
   const time = post.scheduled_at ? format(parseISO(post.scheduled_at), 'HH:mm') : '';
-  const titulo = post.titulo || 'Post sem título';
+  const titulo = post.titulo || t('calendarGrid.untitled');
   // A post avulso has no workflow_titulo to show -- 'Avulso' fills every slot that
   // would otherwise render blank next to the Folder/workflow affordance.
   const isAvulso = post.workflow_id === null;
-  const workflowLabel = post.workflow_titulo ?? 'Avulso';
-  const foreignSuffix = isCurrentWorkflow ? '' : isAvulso ? ' (avulso)' : ' (outro workflow)';
+  const workflowLabel = post.workflow_titulo ?? t('calendarGrid.avulso');
+  const foreignSuffix = isCurrentWorkflow
+    ? ''
+    : isAvulso
+      ? t('calendarGrid.suffixAvulso')
+      : t('calendarGrid.suffixOtherWorkflow');
   // The dash carries tipo; the written tipo label sits right beside it, so colour is never
   // the only channel (feed/carrossel sit on the red/green axis). Ownership moved to the card
   // surface + the workflow name, which says *whose* it is instead of merely "not yours".
@@ -82,7 +88,7 @@ function PostPill({
       tabIndex={0}
       aria-pressed={isSelected}
       aria-label={`${TIPO_LABELS[post.tipo]} — ${titulo}${time ? ` — ${time}` : ''}${
-        !isCurrentWorkflow ? ` — workflow ${workflowLabel}` : ''
+        !isCurrentWorkflow ? t('calendarGrid.ariaWorkflow', { workflow: workflowLabel }) : ''
       }`}
       className={`calendar-post-card${isSelected ? ' selected' : ''}${
         isCurrentWorkflow ? '' : ' foreign'
@@ -107,7 +113,7 @@ function PostPill({
             ref={setActivatorNodeRef}
             className="calendar-pill-handle"
             tabIndex={0}
-            aria-label="Mover post (arraste, ou foque e use as setas)"
+            aria-label={t('calendarGrid.dragHandle')}
             onKeyDown={(e) => {
               // Let dnd-kit's keyboard sensor activate a drag from the handle, then stop the
               // event so it doesn't bubble to the card's select handler.
@@ -145,17 +151,19 @@ function DayPostsPopover({
   currentWorkflowId: number | null;
   onSelectPost: (post: ClientePost) => void;
 }) {
+  const { t } = useTranslation('entregas');
+  const dfLocale = useDateFnsLocale();
   const [open, setOpen] = useState(false);
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button type="button" className="cell-overflow" onClick={(e) => e.stopPropagation()}>
-          +{overflow} mais
+          {t('calendarGrid.more', { count: overflow })}
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="calendar-day-popover">
         <div className="calendar-day-popover-title">
-          {format(date, "dd 'de' MMMM", { locale: ptBR })}
+          {format(date, t('calendarGrid.dayFormat'), { locale: dfLocale })}
         </div>
         <div className="calendar-day-popover-list">
           {posts.map((post) => {
@@ -170,7 +178,13 @@ function DayPostsPopover({
                   onSelectPost(post);
                   setOpen(false);
                 }}
-                title={isForeign ? `Workflow: ${post.workflow_titulo ?? 'Avulso'}` : undefined}
+                title={
+                  isForeign
+                    ? t('calendarGrid.workflowTitle', {
+                        workflow: post.workflow_titulo ?? t('calendarGrid.avulso'),
+                      })
+                    : undefined
+                }
               >
                 <span
                   className="calendar-day-popover-dot"
@@ -179,7 +193,7 @@ function DayPostsPopover({
                 />
                 <span className="calendar-day-popover-tipo">{TIPO_LABELS[post.tipo]}</span>
                 <span className="calendar-day-popover-row-title">
-                  {post.titulo || 'Post sem título'}
+                  {post.titulo || t('calendarGrid.untitled')}
                 </span>
                 <span className="calendar-day-popover-time">{time}</span>
               </button>
@@ -206,6 +220,7 @@ function DroppableCell({
   selectedPostId: number | null;
   onSelectPost: (post: ClientePost) => void;
 }) {
+  const { t } = useTranslation('entregas');
   const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   const { setNodeRef, isOver } = useDroppable({ id: `date-${dateStr}` });
 
@@ -251,7 +266,7 @@ function DroppableCell({
           />
         )}
       </div>
-      {isOver && <div className="cell-drop-hint">Soltar aqui</div>}
+      {isOver && <div className="cell-drop-hint">{t('calendarGrid.dropHere')}</div>}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { headObject, signGetUrl } from "../_shared/r2.ts";
 import { signMediaUrl, isMediaProxyEnabled } from "../_shared/media-url.ts";
 import { buildCorsHeaders } from "../_shared/cors.ts";
+import { postMediaWriteGate } from "../_shared/post-media-scope.ts";
 
 const signUrl = isMediaProxyEnabled()
   ? (key: string) => signMediaUrl(key)
@@ -47,9 +48,10 @@ Deno.serve(async (req) => {
   };
   try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
 
-  // Verify post ownership
-  const { data: post } = await svc.from("workflow_posts").select("id, conta_id").eq("id", body.post_id).single();
-  if (!post || post.conta_id !== profile.conta_id) return json({ error: "Post not found" }, 404);
+  // Verify the post belongs to this conta and, acesso por cliente, that the caller may write to it
+  // (hidden = the same 404; own post in a hidden client = 403).
+  const scopeDenied = await postMediaWriteGate(svc, user.id, profile.conta_id, body.post_id);
+  if (scopeDenied) return json(scopeDenied.body, scopeDenied.status);
 
   // Enforce that r2_key (and thumbnail_r2_key) are scoped to this tenant + post.
   // Without this, a caller could point a row at an existing object in another tenant's namespace.

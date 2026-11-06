@@ -19,6 +19,9 @@
     "equipe": "Team",
     "analytics": "Analytics",
     "instagram": "Instagram",
+    "tiktok": "TikTok",
+    "youtube": "YouTube",
+    "googleBusiness": "Google Business Profile",
     "fluxos": "Flows",
     "configuracoes": "Settings",
     "privacidade": "Privacy",
@@ -37,7 +40,20 @@
     "suporte": "Support",
     "novidades": "What's New",
     "openMenuPending_one": "Open menu, 1 pending item",
-    "openMenuPending_other": "Open menu, {{count}} pending items"
+    "openMenuPending_other": "Open menu, {{count}} pending items",
+    "openMenu": "Open menu",
+    "menu": "Menu"
+  },
+  "vidroIntro": {
+    "eyebrow": "What's new",
+    "title": "Mesaas has a new look",
+    "body": "A lighter sidebar, each page's actions gathered at the top and cleaner screens, so you find what matters faster.\n\nPrefer the previous look? Switch back now or anytime from **Classic look** in your profile menu, at the bottom of the sidebar.",
+    "continue": "Keep the new look",
+    "classic": "Back to classic",
+    "classicToast": {
+      "title": "Classic look on",
+      "description": "To use the new look, choose New look in your profile menu."
+    }
   },
   "sidebar": {
     "accountOptions": "Account Options",
@@ -48,7 +64,9 @@
     "logout": "Log out",
     "myAccount": "My Account",
     "comingSoon": "Coming soon",
-    "upgradeToUnlock": "Available on the Pro and Max plans"
+    "upgradeToUnlock": "Available on the Pro and Max plans",
+    "lookClassic": "Classic look",
+    "lookNew": "New look"
   },
   "language": {
     "pt": "Português",
@@ -85,7 +103,8 @@
   },
   "toast": {
     "saveError": "Error saving",
-    "deleteError": "Error deleting"
+    "deleteError": "Error deleting",
+    "clientScopeRestricted": "Your access is limited to your assigned clients."
   },
   "months": {
     "0": "January",
@@ -139,12 +158,13 @@
     "somethingWentWrong": "Something went wrong",
     "reloadToRetry": "Reload the page to try again.",
     "reloadPage": "Reload page",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "clientPortal": "Client hub"
   },
   "cookies": {
     "banner": {
       "title": "Cookies and privacy",
-      "body": "We use essential storage so Mesaas works. With your permission we also use usage analytics (including session recording and heatmaps) and the support chat.",
+      "body": "We use essential storage so Mesaas works. With your permission we also use usage analytics (including session recording and heatmaps), the support chat and measurement of our ads.",
       "learnMore": "See details on the data protection page",
       "acceptAll": "Accept all",
       "rejectAll": "Reject all",
@@ -160,10 +180,109 @@
       "supportTitle": "Support chat",
       "supportDescription": "Crisp: chat with our team. Without this the chat does not load.",
       "supportNeeded": "To open the support chat, keep Support chat enabled and save.",
+      "marketingTitle": "Advertising",
+      "marketingDescription": "Google Ads and Meta (Instagram and Facebook): measure which ads brought you to Mesaas and let us show our ads again to people who visited the site.",
       "revokeNote": "Turning a tool off takes full effect after you reload the page.",
       "save": "Save preferences",
       "cancel": "Cancel"
     },
     "link": "Cookie preferences"
+  },
+  "topbar": {
+    "search": "Search...",
+    "searchPlaceholder": "Search...",
+    "noResults": "No results.",
+    "supportChat": "Support chat"
+  },
+  "ui": {
+    "close": "Close",
+    "clear": "Clear",
+    "previousMonth": "Previous month",
+    "nextMonth": "Next month",
+    "previousYear": "Previous year",
+    "nextYear": "Next year",
+    "selectDate": "Select date",
+    "selectDateTime": "Select date and time",
+    "selectPeriod": "Select period",
+    "selectMonth": "Select month",
+    "time": "Time:",
+    "minScheduleAhead": "At least {{minutes}} min in the future",
+    "confirmClose": {
+      "title": "Close without saving?",
+      "message": "You have unsaved changes. Close anyway?",
+      "keepEditing": "Keep editing",
+      "discard": "Close anyway"
+    },
+    "showPassword": "Show password",
+    "hidePassword": "Hide password"
+  },
+  "dateFormat": {
+    "monthYear": "MMMM yyyy",
+    "weekdayDayMonth": "EEEE, MMMM d"
+  },
+  "search": {
+    "types": {
+      "all": "All",
+      "cliente": "Clients",
+      "contrato": "Contracts",
+      "membro": "Team",
+      "transacao": "Finances",
+      "fluxo": "Workflows",
+      "post": "Posts",
+      "tarefa": "Tasks",
+      "ideia": "Ideas",
+      "pagina": "Pages",
+      "ajuda": "Help"
+    },
+    "hint": "Type to search clients, posts, tasks, workflows, help articles…",
+    "cancel": "Cancel",
+    "seeAllIn": "See all in {{type}}",
+    "createdAt": "Created {{date}}",
+    "scheduledAt": "Publishing {{date}}",
+    "dueAt": "Due {{date}}",
+    "standalonePost": "Standalone",
+    "sentByClient": "Sent by the client",
+    "byAuthor": "By {{name}}",
+    "request": "Request",
+    "fluxoStatus": {
+      "ativo": "Active",
+      "concluido": "Completed",
+      "arquivado": "Archived"
+    }
+  },
+  "plan": {
+    "limitReached": "Plan limit reached.",
+    "csvLocked": "CSV import is not available on your plan."
+  },
+  "optional": "(optional)",
+  "usage": {
+    "of": "{{used}} of {{limit}}",
+    "ofLabel": "{{used}} of {{limit}} {{label}}",
+    "notIncluded": "Not included in your plan",
+    "unlimited": "Unlimited",
+    "upgrade": "Upgrade"
+  },
+  "paywall": {
+    "notAvailable": "{{label}} is not available on your plan.",
+    "thisFeature": "This feature"
+  },
+  "photo": {
+    "add": "Add photo",
+    "change": "Change photo",
+    "addFor": "Add photo for {{nome}}",
+    "changeFor": "Change photo for {{nome}}",
+    "gallery": "Choose from library",
+    "camera": "Take photo",
+    "remove": "Remove photo",
+    "removeConfirm": "Remove",
+    "sheetTitle": "Profile photo",
+    "removeTitle": "Remove the photo?",
+    "removeDescription": "Your initials will show again.",
+    "help": "JPG, PNG or HEIC up to 10 MB. The photo is cropped to a square.",
+    "tooLarge": "The photo must be 10 MB or less.",
+    "updated": "Photo updated.",
+    "uploadError": "Could not upload the photo.",
+    "removed": "Photo removed.",
+    "removeError": "Could not remove the photo."
   }
 }

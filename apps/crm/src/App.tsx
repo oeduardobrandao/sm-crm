@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect, type ComponentType } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider, MutationCache } from '@tanstack/react-query';
 import { handleEntitlementMutationError } from './lib/entitlement-toast';
@@ -11,13 +11,44 @@ import CookieConsent from './components/consent/CookieConsent';
 import { Toaster } from '@/components/ui/sonner';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
-import AppLayout from './components/layout/AppLayout';
-import ProtectedRoute from './components/layout/ProtectedRoute';
-import { marketingPageBySlug } from '@/content/paginas';
+import { getSavedLanguage, i18n, loadLazyNamespaces } from '@mesaas/i18n';
+
+// The authenticated shell stays out of the entry chunk the public landing page downloads.
+// ProtectedRoute imports AppLayout (isLayoutGuardedPath), so both must be lazy for the shell
+// (Sidebar, MobileNav, nav data, guide content, stores) to leave the entry. ProtectedRoute
+// wraps every authenticated route, so its chunk also waits for the lazy i18n namespaces:
+// nothing behind it then suspends on a missing bundle, and once they're in i18next's `ns`
+// list a language switch fetches the other language's bundles before it applies.
+const ProtectedRoute = lazy(() =>
+  Promise.all([import('./components/layout/ProtectedRoute'), loadLazyNamespaces()]).then(
+    ([mod]) => mod,
+  ),
+);
+const AppLayout = lazy(() => import('./components/layout/AppLayout'));
+
+// A stored Supabase session means this visit is headed for the app: fetch the shell chunk now,
+// in parallel with auth hydration, instead of after it. Only the module is warmed (the lazy()
+// above reuses it); the namespaces wait for the route, since initI18n has not run yet when this
+// module evaluates. Only on the app shell (app.html, the one page served with a noindex robots
+// meta; prerendered public pages carry index, follow): the chunk brings the shell CSS and the
+// Phosphor icons, which a signed-in visitor reading the landing or the blog must not download.
+try {
+  const isAppShell = document.querySelector('meta[name="robots"][content*="noindex"]') !== null;
+  for (let i = 0; isAppShell && i < localStorage.length; i++) {
+    if (/^sb-[a-z0-9]+-auth-token$/.test(localStorage.key(i) ?? '')) {
+      void import('./components/layout/ProtectedRoute').catch(() => {});
+      break;
+    }
+  }
+} catch {
+  // Storage blocked: the shell loads when its route renders.
+}
 
 // Public pages
 const LoginPage = lazy(() => import('./pages/login/LoginPage'));
 const ConectarPage = lazy(() => import('./pages/conectar/ConectarPage'));
+const DescadastrarPage = lazy(() => import('./pages/descadastrar/DescadastrarPage'));
+const CancelarAvisosPage = lazy(() => import('./pages/cancelar-avisos/CancelarAvisosPage'));
 const ConfigurarSenhaPage = lazy(() => import('./pages/configurar-senha/ConfigurarSenhaPage'));
 const WorkspaceSetupPage = lazy(() => import('./pages/workspace-setup/WorkspaceSetupPage'));
 const ComecarPage = lazy(() => import('./pages/comecar/ComecarPage'));
@@ -25,12 +56,36 @@ const ConsentPage = lazy(() => import('./pages/oauth/ConsentPage'));
 const PoliticaPage = lazy(() => import('./pages/politica-privacidade/PoliticaPage'));
 const TermosPage = lazy(() => import('./pages/termos-de-uso/TermosPage'));
 const LgpdPage = lazy(() => import('./pages/lgpd/LgpdPage'));
-const LandingPage = lazy(() => import('./pages/landing/LandingPage'));
+const LandingPageLazy = lazy(() => import('./pages/landing/LandingPage'));
+// Set by preloadLanding() before the first render on `/`, so the hero paints in the same frame
+// as the rest of the shell. A plain lazy() always suspends once: the cookie banner (entry chunk)
+// painted first and the hero one async step later, which made the banner the mobile LCP element.
+let LandingPageReady: ComponentType | null = null;
+export function preloadLanding(): Promise<void> {
+  return import('./pages/landing/LandingPage').then((mod) => {
+    LandingPageReady = mod.default;
+  });
+}
+function LandingPage() {
+  return LandingPageReady ? <LandingPageReady /> : <LandingPageLazy />;
+}
 const NovidadesPage = lazy(() => import('./pages/novidades/NovidadesPage'));
 const BlogIndexPage = lazy(() => import('./pages/blog/BlogIndexPage'));
 const BlogPostPage = lazy(() => import('./pages/blog/BlogPostPage'));
 const PrecosPage = lazy(() => import('./pages/precos/PrecosPage'));
-const MarketingPage = lazy(() => import('./pages/marketing/MarketingPage'));
+// The marketing subpages' copy loads with their route, not with the entry.
+const MarketingRoute = lazy(async () => {
+  const [{ marketingPageBySlug }, { default: MarketingPage }] = await Promise.all([
+    import('@/content/paginas'),
+    import('./pages/marketing/MarketingPage'),
+  ]);
+  function MarketingRoute({ slug }: { slug: string }) {
+    const page = marketingPageBySlug(slug);
+    if (!page) return <Navigate to="/" replace />;
+    return <MarketingPage page={page} />;
+  }
+  return { default: MarketingRoute };
+});
 const AfiliadosPage = lazy(() => import('./pages/afiliados/AfiliadosPage'));
 const AfiliadoPainelPage = lazy(() => import('./pages/afiliados/AfiliadoPainelPage'));
 const AfiliadoEntrarPage = lazy(() => import('./pages/afiliados/AfiliadoEntrarPage'));
@@ -54,11 +109,16 @@ const ClienteHubIdeias = lazy(() => import('./pages/cliente-detalhe/hub/IdeiasPa
 const ClienteArquivosTab = lazy(() => import('./pages/cliente-detalhe/tabs/ArquivosTab'));
 const ClienteFinanceiroTab = lazy(() => import('./pages/cliente-detalhe/tabs/FinanceiroTab'));
 const FinanceiroPage = lazy(() => import('./pages/financeiro/FinanceiroPage'));
+const FinanceiroGate = lazy(() => import('./pages/financeiro/v2/FinanceiroGate'));
+const RentabilidadePage = lazy(() => import('./pages/financeiro/v2/RentabilidadePage'));
+const CustosEquipePage = lazy(() => import('./pages/financeiro/v2/CustosEquipePage'));
+const AtribuicaoPage = lazy(() => import('./pages/financeiro/v2/AtribuicaoPage'));
 const ContratosPage = lazy(() => import('./pages/contratos/ContratosPage'));
 const LeadsPage = lazy(() => import('./pages/leads/LeadsPage'));
 const EquipePage = lazy(() => import('./pages/equipe/EquipePage'));
 const MembroDetalhePage = lazy(() => import('./pages/membro-detalhe/MembroDetalhePage'));
 const ConfiguracaoLayout = lazy(() => import('./pages/configuracao/ConfiguracaoLayout'));
+const ConfiguracaoIndex = lazy(() => import('./pages/configuracao/ConfiguracaoIndex'));
 const PerfilTab = lazy(() => import('./pages/configuracao/tabs/PerfilTab'));
 const NotificacoesTab = lazy(() => import('./pages/configuracao/tabs/NotificacoesTab'));
 const WorkspaceTab = lazy(() => import('./pages/configuracao/tabs/WorkspaceTab'));
@@ -67,6 +127,7 @@ const PapeisTab = lazy(() => import('./pages/configuracao/tabs/PapeisTab'));
 const RelatoriosTab = lazy(() => import('./pages/configuracao/tabs/RelatoriosTab'));
 const StatusTab = lazy(() => import('./pages/configuracao/tabs/StatusTab'));
 const HubTab = lazy(() => import('./pages/configuracao/tabs/HubTab'));
+const ContasConectadasTab = lazy(() => import('./pages/configuracao/tabs/ContasConectadasTab'));
 const ArmazenamentoTab = lazy(() => import('./pages/configuracao/tabs/ArmazenamentoTab'));
 const CobrancaPage = lazy(() => import('./pages/configuracao/cobranca/CobrancaPage'));
 const IntegracoesClaudePage = lazy(() => import('./pages/configuracao/mcp/IntegracoesClaudePage'));
@@ -75,7 +136,10 @@ const EntregasPage = lazy(() => import('./pages/entregas/EntregasPage'));
 const TarefasPage = lazy(() => import('./pages/tarefas/TarefasPage'));
 const ExpressPostPage = lazy(() => import('./pages/post-express/ExpressPostPage'));
 const AnalyticsPage = lazy(() => import('./pages/analytics/AnalyticsPage'));
-const AnalyticsContaPage = lazy(() => import('./pages/analytics-conta/AnalyticsContaPage'));
+const TikTokOverviewPage = lazy(() => import('./pages/analytics-tiktok/TikTokOverviewPage'));
+const YouTubeOverviewPage = lazy(() => import('./pages/analytics-youtube/YouTubeOverviewPage'));
+const GoogleOverviewPage = lazy(() => import('./pages/analytics-google/GoogleOverviewPage'));
+const AnalyticsClientShell = lazy(() => import('./pages/analytics-conta/AnalyticsClientShell'));
 const AnalyticsFluxosPage = lazy(() => import('./pages/analytics-fluxos/AnalyticsFluxosPage'));
 const RelatorioEditorPage = lazy(() => import('./pages/relatorio-editor/RelatorioEditorPage'));
 const ModeloEditorPage = lazy(() => import('./pages/relatorio-editor/ModeloEditorPage'));
@@ -105,17 +169,22 @@ export const queryClient = new QueryClient({
   }),
 });
 
+// The prerendered landing hydrates in `pt` (main.tsx passes `initialLanguage: 'pt'` on that path,
+// matching the server HTML); the visitor's saved language is applied right after hydration. On
+// every other boot i18n already starts in the saved language, so this is a no-op there.
+function SavedLanguageSync() {
+  useEffect(() => {
+    const saved = getSavedLanguage();
+    if (i18n.language !== saved) void i18n.changeLanguage(saved);
+  }, []);
+  return null;
+}
+
 const PageFallback = (
   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
     <Spinner size="lg" />
   </div>
 );
-
-function MarketingRoute({ slug }: { slug: string }) {
-  const page = marketingPageBySlug(slug);
-  if (!page) return <Navigate to="/" replace />;
-  return <MarketingPage page={page} />;
-}
 
 export default function App() {
   return (
@@ -132,6 +201,7 @@ export default function App() {
     >
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
+          <SavedLanguageSync />
           <BuildPrefetch />
           <Toaster />
           <Suspense fallback={PageFallback}>
@@ -154,6 +224,8 @@ export default function App() {
               />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/conectar/:token" element={<ConectarPage />} />
+              <Route path="/descadastrar/:token" element={<DescadastrarPage />} />
+              <Route path="/cancelar-avisos/:token" element={<CancelarAvisosPage />} />
               <Route path="/afiliados" element={<AfiliadosPage />} />
               <Route path="/afiliados/entrar" element={<AfiliadoEntrarPage />} />
               <Route path="/afiliados/painel" element={<AfiliadoPainelPage />} />
@@ -227,13 +299,21 @@ export default function App() {
                       through to the top-level "*" 404 route. */}
                   <Route path="*" element={null} />
                 </Route>
-                <Route path="/financeiro" element={<FinanceiroPage />} />
+                {/* FinanceiroGate owns the index (ledger with the flag off, redirect to
+                    rentabilidade with it on); children only exist with the flag on. */}
+                <Route path="/financeiro" element={<FinanceiroGate />}>
+                  <Route path="rentabilidade" element={<RentabilidadePage />} />
+                  <Route path="equipe" element={<CustosEquipePage />} />
+                  <Route path="atribuicao" element={<AtribuicaoPage />} />
+                  <Route path="lancamentos" element={<FinanceiroPage />} />
+                </Route>
                 <Route path="/contratos" element={<ContratosPage />} />
                 <Route path="/leads" element={<LeadsPage />} />
                 <Route path="/equipe" element={<EquipePage />} />
                 <Route path="/equipe/:id" element={<MembroDetalhePage />} />
                 <Route path="/configuracao" element={<ConfiguracaoLayout />}>
-                  <Route index element={<Navigate to="/configuracao/perfil" replace />} />
+                  {/* Desktop: redirects to perfil. Phones: the Settings list. */}
+                  <Route index element={<ConfiguracaoIndex />} />
                   <Route path="perfil" element={<PerfilTab />} />
                   <Route path="notificacoes" element={<NotificacoesTab />} />
                   <Route path="workspace" element={<WorkspaceTab />} />
@@ -242,6 +322,7 @@ export default function App() {
                   <Route path="relatorios" element={<RelatoriosTab />} />
                   <Route path="status" element={<StatusTab />} />
                   <Route path="hub" element={<HubTab />} />
+                  <Route path="contas-conectadas" element={<ContasConectadasTab />} />
                   <Route path="armazenamento" element={<ArmazenamentoTab />} />
                   <Route path="mcp" element={<IntegracoesClaudePage />} />
                   <Route path="cobranca" element={<CobrancaPage />} />
@@ -252,13 +333,17 @@ export default function App() {
                 <Route path="/post-express" element={<ExpressPostPage />} />
                 <Route path="/arquivos" element={<ArquivosPage />} />
                 <Route path="/analytics" element={<AnalyticsPage />} />
-                <Route path="/analytics/:id" element={<AnalyticsContaPage />} />
+                <Route path="/analytics/tiktok" element={<TikTokOverviewPage />} />
+                <Route path="/analytics/youtube" element={<YouTubeOverviewPage />} />
+                <Route path="/analytics/google" element={<GoogleOverviewPage />} />
+                <Route path="/analytics/:id/:tab?" element={<AnalyticsClientShell />} />
                 <Route path="/relatorios/modelos/padrao" element={<ModeloPadraoPage />} />
                 <Route path="/relatorios/modelos/:id" element={<ModeloEditorPage />} />
                 <Route path="/relatorios/:id" element={<RelatorioEditorPage />} />
                 <Route path="/analytics-fluxos" element={<AnalyticsFluxosPage />} />
                 <Route path="/ideias" element={<IdeiasPage />} />
                 <Route path="/mensagens" element={<MensagensPage />} />
+                <Route path="/mensagens/equipe/:conversaId" element={<MensagensPage />} />
                 <Route path="/mensagens/:clienteId" element={<MensagensPage />} />
                 <Route path="/automacoes" element={<AutomacoesPage />} />
                 <Route path="/importar" element={<ImportarPage />} />

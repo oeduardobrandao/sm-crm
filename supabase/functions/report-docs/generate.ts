@@ -4,17 +4,53 @@ import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 import { generateAINarrative, type GenerateResult } from "../_shared/report-template/ai.ts";
 import { type ThumbnailStorage } from "../_shared/instagram-thumbnail-cache.ts";
 import { monthWindow } from "../_shared/report-docs/month-window.ts";
-import { buildDefaultLayout } from "../_shared/report-docs/default-layout.ts";
+import { buildDefaultLayout, NEXT_STEPS_TITLE } from "../_shared/report-docs/default-layout.ts";
+import {
+  narrativePlatforms, selectPlatformSections, showAllPlatformHeadings,
+} from "../_shared/report-docs/platform-filter.ts";
+import { fromSections, toSections } from "../_shared/report-docs/sections.ts";
 import {
   aiGoalsDoc, aiRecommendationsDoc, aiSummaryDoc, fallbackSummaryParagraphs,
   fillAiBlocks, textDoc,
 } from "../_shared/report-docs/tiptap-doc.ts";
-import { snapshotToReportData } from "../_shared/report-docs/ai-input.ts";
-import { normalizeCoverSize, sanitizeLayoutForTemplate, validateLayout, type ReportLayout } from "../_shared/report-docs/layout.ts";
+import { prefixGoalMetrics, snapshotToReportData } from "../_shared/report-docs/ai-input.ts";
+import {
+  normalizeCoverSize, sanitizeLayoutForTemplate, validateLayout, type ReportLayout,
+} from "../_shared/report-docs/layout.ts";
+import type { ReportPlatform } from "./client-id.ts";
 import { GenerateError } from "./errors.ts";
-import { loadClientSnapshot } from "./snapshot-source.ts";
+import { connectedPlatforms, loadClientSnapshot } from "./snapshot-source.ts";
+import { saoPauloDate } from "../_shared/sao-paulo-date.ts";
 
 export { GenerateError } from "./errors.ts";
+
+const METRIC_PRIORITY_INSTAGRAM =
+  "METRIC PRIORITY: 'views' (visualizações) is the primary performance metric for " +
+  "this report. Lead the executive summary, analysis, recommendations and " +
+  "suggested_goals with views wherever the data provides them; treat reach as " +
+  "secondary context.";
+
+const metricPriorityWithOthers = (others: string) =>
+  "METRIC PRIORITY: on Instagram, 'views' (visualizações) is the primary performance metric. " +
+  "Lead the Instagram part of the executive summary, analysis, recommendations and " +
+  "suggested_goals with Instagram views wherever the data provides them; treat reach as " +
+  `secondary context. This priority does not apply to the ${others} data.`;
+
+/** Direcionamento de views do Instagram (pedido 2026-08). Só entra quando o Instagram está na
+ * narrativa e o dado existe; com TikTok junto, fica restrito ao Instagram. O texto só Instagram
+ * é o de sempre. */
+export function metricPriorityGuidance(n: {
+  instagram: boolean;
+  tiktok: boolean;
+  google?: boolean;
+  instagramHasViews: boolean;
+}): string | undefined {
+  if (!n.instagram || !n.instagramHasViews) return undefined;
+  const others = [n.tiktok ? "TikTok" : null, n.google ? "Google Meu Negócio" : null].filter(
+    (x): x is string => x !== null,
+  );
+  return others.length > 0 ? metricPriorityWithOthers(others.join(" or ")) : METRIC_PRIORITY_INSTAGRAM;
+}
 
 export interface GenerateDeps {
   fetch: typeof fetch;
@@ -33,10 +69,12 @@ export async function generateReportDocument(
   clientId: number,
   month: string,
   templateId: string | null,
+  /** Plataformas pedidas no dialog; null = todas as conectadas (automações e chamadores antigos). */
+  platforms: ReportPlatform[] | null = null,
 ): Promise<{ id: string }> {
   // Mês válido e não futuro.
-  const now = new Date();
-  const currentMonth = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+  // Mês corrente em São Paulo: das 21h às 24h do último dia, o mês UTC já virou.
+  const currentMonth = saoPauloDate(new Date()).slice(0, 7);
   let w;
   try {
     w = monthWindow(month);
@@ -54,6 +92,21 @@ export async function generateReportDocument(
   if (!(await effectivePlanFeature(db, contaId, "feature_analytics_reports"))) {
     throw new GenerateError("feature_disabled");
   }
+  // TikTok no relatório só com feature_tiktok (lido uma vez aqui). Desligada, a conta TikTok
+  // conta como não conectada: snapshot.tiktok null e tiktok_account_id null. Erro na RPC
+  // derruba a geração, como o feature_analytics_reports acima.
+  const tiktokEnabled = await effectivePlanFeature(db, contaId, "feature_tiktok");
+  // Google Meu Negócio no relatório só com feature_google_business (spec 2026-11-04), mesma regra.
+  const googleEnabled = await effectivePlanFeature(db, contaId, "feature_google_business");
+  const flags = { tiktokEnabled, googleEnabled };
+
+  // Plataformas pedidas (spec 2026-10-28 §B1): só as conectadas, conferidas pelas linhas de conta
+  // antes do snapshot completo (que chama a Graph e baixa thumbnails). A escolha molda só o
+  // layout; os dados de toda rede conectada entram no snapshot de qualquer jeito.
+  if (platforms) {
+    const connectedNow = await connectedPlatforms(db, contaId, clientId, flags);
+    if (platforms.some((p) => !connectedNow.includes(p))) throw new GenerateError("invalid_platforms");
+  }
 
   // Layout base: template explícito > default do workspace > padrão do sistema
   // (spec §5 passo 3). Template explícito inválido é erro do request; default
@@ -66,6 +119,8 @@ export async function generateReportDocument(
   // is_default -- outros clientes (ex.: automações) dependem desse
   // comportamento omitido.
   let templateLayout: ReportLayout | null = null;
+  // Só para log (aviso de teto ao acrescentar seção): nunca dado do cliente.
+  let templateRowId: string | null = null;
   if (templateId === "system") {
     // Nada a buscar: templateLayout permanece null e o layout nasce de
     // buildDefaultLayout() abaixo, ignorando o is_default do workspace.
@@ -78,6 +133,7 @@ export async function generateReportDocument(
     // Defesa no servidor (spec 2026-10-02): modelo nunca carrega imagem; a
     // invariante já vale no banco, isto cobre layout legado/escrito por fora.
     templateLayout = sanitizeLayoutForTemplate(check.layout);
+    templateRowId = tpl.id;
   } else {
     const { data: tpl } = await db.from("report_templates")
       .select("id, conta_id, layout").eq("conta_id", contaId)
@@ -88,24 +144,81 @@ export async function generateReportDocument(
         // Defesa no servidor (spec 2026-10-02): modelo nunca carrega imagem; a
         // invariante já vale no banco, isto cobre layout legado/escrito por fora.
         templateLayout = sanitizeLayoutForTemplate(check.layout);
+        templateRowId = tpl.id;
       }
       else console.warn("[report-docs] template default com layout inválido; usando o padrão do sistema");
     }
   }
 
-  const { snapshot, igAccountId } = await loadClientSnapshot(
+  const { snapshot, igAccountId, tiktokAccountId } = await loadClientSnapshot(
     db, deps, contaId,
     { id: cliente.id, especialidade: cliente.especialidade, nome: cliente.nome, foto_url: cliente.foto_url },
     month,
+    flags,
   );
+
+  const connected: ReportPlatform[] = [];
+  if (igAccountId) connected.push("instagram");
+  if (tiktokAccountId) connected.push("tiktok");
+  if (snapshot.google) connected.push("google");
+  // A escolha molda o layout (seção por plataforma no padrão; no template, as seções escolhidas
+  // + a seção das plataformas que ele não cobre); os dados de toda rede conectada já estão no
+  // snapshot.
+  const selectedPlatforms: ReportPlatform[] = platforms ?? connected;
+  const wantsAi = cliente.include_ai_analysis !== false;
+
+  // Layout montado ANTES da IA: a narrativa cobre as plataformas que o layout final mostra. No
+  // padrão do sistema, "Próximos passos" nasce quando a IA vai rodar e sai abaixo se ela não
+  // entregar conteúdo (sem seção vazia). Os dois caminhos gravam o layout canônico (seções).
+  const aiWillRun = wantsAi && !!deps.geminiKey;
+  const sectionOpts = {
+    hasAudience: snapshot.audience !== null,
+    hasBestTimes: snapshot.best_times.length > 0,
+    hasTags: snapshot.tags_performance.length > 0,
+    hasTikTokBestTimes: (snapshot.tiktok?.best_times.length ?? 0) > 0,
+    hasGbpUnits: (snapshot.google?.unit_rows.length ?? 0) > 1,
+  };
+  // Modelo do workspace (spec 2026-10-28-report-platform-sections §Generation): seções das
+  // plataformas desmarcadas (ou sem dados) saem inteiras; só um modelo com alguma seção de
+  // plataforma ganha a seção padrão da que falta. Um modelo neutro (capa, resumo, texto,
+  // imagem) só é seccionado. Com duas seções de plataforma, os dois títulos aparecem.
+  const baseLayout = templateLayout
+    ? showAllPlatformHeadings(selectPlatformSections(templateLayout, selectedPlatforms, {
+      hasData: (p) =>
+        p === "instagram"
+          ? snapshot.instagram_connected !== false
+          : p === "tiktok"
+          ? !!snapshot.tiktok
+          : !!snapshot.google,
+      sectionOpts,
+      onCapSkip: (platform) =>
+        console.warn(
+          `[report-docs] template ${templateRowId} sem espaço para a seção ${platform}; seção não acrescentada`,
+        ),
+    }))
+    : buildDefaultLayout({
+      hasAi: aiWillRun,
+      ...sectionOpts,
+      platforms: selectedPlatforms,
+    });
+  const narrative = narrativePlatforms(baseLayout, selectedPlatforms);
+  const narrativeInstagram = narrative.includes("instagram") && snapshot.instagram_connected !== false;
+  const narrativeTiktok = narrative.includes("tiktok") ? snapshot.tiktok?.kpis ?? null : null;
+  const narrativeGoogle = narrative.includes("google") ? snapshot.google?.kpis ?? null : null;
 
   // IA: nunca derruba a geração (padrão do v2, index.ts:987-1017).
   let aiContent: unknown = null;
-  let summaryDoc = textDoc(fallbackSummaryParagraphs(snapshot.kpis, snapshot.period.label));
+  // Sem Instagram no relatório o resumo de fallback fala do TikTok, nunca da raiz Instagram vazia.
+  let summaryDoc = textDoc(fallbackSummaryParagraphs(
+    snapshot.kpis,
+    snapshot.period.label,
+    narrativeTiktok || narrativeGoogle
+      ? { instagram: narrativeInstagram, tiktok: narrativeTiktok, google: narrativeGoogle }
+      : undefined,
+  ));
   let recsDoc: unknown | null = null;
   let goalsDoc: unknown | null = null;
-  const wantsAi = cliente.include_ai_analysis !== false;
-  if (wantsAi && deps.geminiKey) {
+  if (aiWillRun) {
     const AI_TIMEOUT_MS = 45_000;
     // Ao vencer o teto de 45s, aborta o fetch do Gemini em voo (achado de
     // review externo: sem isso, o fetch perdedor do race seguia rodando
@@ -129,19 +242,16 @@ export async function generateReportDocument(
       // Visualizações são a métrica-guia do relatório de blocos (pedido
       // 2026-08). O direcionamento só entra quando o dado existe — empurrar a
       // IA para uma métrica ausente convida invenção que a DATA RULE proíbe.
-      const hasViews = snapshot.kpis.views?.value != null;
-      const promptOpts = hasViews
-        ? {
-          extraGuidance:
-            "METRIC PRIORITY: 'views' (visualizações) is the primary performance metric for " +
-            "this report. Lead the executive summary, analysis, recommendations and " +
-            "suggested_goals with views wherever the data provides them; treat reach as " +
-            "secondary context.",
-        }
-        : undefined;
+      const guidance = metricPriorityGuidance({
+        instagram: narrativeInstagram,
+        tiktok: narrativeTiktok !== null,
+        google: narrativeGoogle !== null,
+        instagramHasViews: snapshot.kpis.views?.value != null,
+      });
+      const promptOpts = guidance ? { extraGuidance: guidance } : undefined;
       const ai = await Promise.race([
         generateAINarrative(
-          snapshotToReportData(snapshot),
+          snapshotToReportData(snapshot, narrative),
           deps.geminiKey,
           controller.signal,
           promptOpts,
@@ -149,10 +259,17 @@ export async function generateReportDocument(
         timeoutPromise,
       ]);
       if (ai.status === "success" && ai.output) {
-        aiContent = ai.output;
-        summaryDoc = aiSummaryDoc(ai.output);
-        recsDoc = aiRecommendationsDoc(ai.output);
-        goalsDoc = aiGoalsDoc(ai.output);
+        // Uma só plataforma sem Instagram: meta "views"/"website_clicks" é a dela, então ganha o
+        // prefixo antes do rótulo. Com duas sem Instagram o prompt já pede os prefixos.
+        const solo = [narrativeTiktok ? "tiktok" as const : null, narrativeGoogle ? "google" as const : null]
+          .filter((x): x is "tiktok" | "google" => x !== null);
+        const output = !narrativeInstagram && solo.length === 1
+          ? prefixGoalMetrics(ai.output, solo[0])
+          : ai.output;
+        aiContent = output;
+        summaryDoc = aiSummaryDoc(output);
+        recsDoc = aiRecommendationsDoc(output);
+        goalsDoc = aiGoalsDoc(output);
       } else {
         const reason = "error" in ai ? ai.error : (ai as GenerateResult).status;
         console.warn(`[report-docs] AI falhou: ${reason}`);
@@ -162,19 +279,18 @@ export async function generateReportDocument(
     }
   }
 
-  // hasAi é derivado do CONTEÚDO (recsDoc !== null), não da intenção
-  // (wantsAi): se a IA falhar ou GEMINI_API_KEY faltar, recsDoc/goalsDoc
-  // ficam null e fillAiBlocks remove os blocos -- usar wantsAi aqui deixaria
-  // um "Próximos passos" órfão, sem nenhum bloco de conteúdo embaixo.
-  // Só entra no fallback do padrão do sistema quando não há template
-  // (explícito ou default) válido.
-  const baseLayout = templateLayout ?? buildDefaultLayout({
-    hasAi: recsDoc !== null,
-    hasAudience: snapshot.audience !== null,
-    hasBestTimes: snapshot.best_times.length > 0,
-    hasTags: snapshot.tags_performance.length > 0,
-  });
-  const layout = fillAiBlocks(baseLayout, {
+  // Sem conteúdo de IA (falha, timeout ou IA desligada), fillAiBlocks remove os blocos de IA; no
+  // padrão do sistema a seção Geral "Próximos passos" sai inteira (marcador e título), para não
+  // sobrar seção vazia. Modelo do workspace mantém as seções como o usuário salvou.
+  const finalBase = !templateLayout && recsDoc === null
+    ? fromSections(
+      toSections(baseLayout).filter(
+        (sec) => !(sec.kind === "general" && sec.marker.config?.title === NEXT_STEPS_TITLE),
+      ),
+      baseLayout,
+    )
+    : baseLayout;
+  const layout = fillAiBlocks(finalBase, {
     summary: summaryDoc, recommendations: recsDoc, goals: goalsDoc,
   });
 
@@ -183,6 +299,7 @@ export async function generateReportDocument(
       conta_id: contaId,
       client_id: clientId,
       instagram_account_id: igAccountId,
+      tiktok_account_id: tiktokAccountId,
       title: `Relatório de ${w.label}`,
       period_start: w.startDate,
       period_end: w.endDateExclusive,

@@ -846,3 +846,71 @@ begin
   raise notice 'PASS 72.7 select-options remap (select/status/multiselect + tenant isolation)';
 end $$;
 rollback;
+
+-- =====================================================================
+-- 8. move_posts_to_new_flow: futuras pelo template (20261021120000). A
+--    origem tem escada embaralhada; o fluxo novo fica com concluidas e ativa
+--    copiadas e as futuras = template[p+1..], levando prazo/data por nome.
+-- =====================================================================
+begin;
+do $$
+declare
+  v_ws uuid; v_user uuid := gen_random_uuid();
+  v_cli bigint; v_tpl bigint; v_wf bigint; v_new_wf bigint; v_p1 bigint; v_p2 bigint;
+  v_result jsonb; v_names text;
+begin
+  v_ws := et_make_workspace('pro');
+  insert into auth.users (id) values (v_user);
+  insert into workspace_members (user_id, workspace_id, role) values (v_user, v_ws, 'owner');
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws where id = v_user;
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (v_user, v_ws, 'C', 'C', '#000') returning id into v_cli;
+  insert into workflow_templates (user_id, conta_id, nome, etapas)
+    values (v_user, v_ws, 'TPL', jsonb_build_array(
+      jsonb_build_object('nome', 'Roteiro', 'prazo_dias', 1),
+      jsonb_build_object('nome', 'Gravação', 'prazo_dias', 2),
+      jsonb_build_object('nome', 'Edição', 'prazo_dias', 3),
+      jsonb_build_object('nome', 'Postado', 'prazo_dias', 1)))
+    returning id into v_tpl;
+  insert into workflows (user_id, conta_id, cliente_id, titulo, template_id, status, etapa_atual)
+    values (v_user, v_ws, v_cli, 'Origem', v_tpl, 'ativo', 0) returning id into v_wf;
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, status, iniciado_em)
+    values (v_wf, 0, 'Roteiro', 1, 'ativo', now());
+  insert into workflow_etapas (workflow_id, ordem, nome, prazo_dias, status, data_limite) values
+    (v_wf, 1, 'Gravação', 2, 'pendente', null),
+    (v_wf, 2, 'Postado', 1, 'pendente', date '2026-12-30'),
+    (v_wf, 3, 'Edição', 6, 'pendente', date '2026-12-20'),
+    (v_wf, 4, 'Postado', 1, 'pendente', null);
+  insert into workflow_posts (workflow_id, conta_id, titulo, ordem)
+    values (v_wf, v_ws, 'P1', 0) returning id into v_p1;
+  insert into workflow_posts (workflow_id, conta_id, titulo, ordem)
+    values (v_wf, v_ws, 'P2', 1) returning id into v_p2;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_user)::text, true);
+
+  -- 8a. continuacao comecando na Gravacao (ordem 1)
+  select move_posts_to_new_flow(array[v_p1], v_wf, 'Continuação', 1) into v_result;
+  v_new_wf := (v_result->>'target_workflow_id')::bigint;
+  select string_agg(ordem || ':' || nome || ':' || status || ':' || prazo_dias || ':' || coalesce(data_limite::text, '-'),
+                    ' > ' order by ordem) into v_names
+    from workflow_etapas where workflow_id = v_new_wf;
+  assert v_names = '0:Roteiro:concluido:1:- > 1:Gravação:ativo:2:- > 2:Edição:pendente:6:2026-12-20 > 3:Postado:pendente:1:2026-12-30',
+    format('8a escada: %s', v_names);
+  assert (select etapa_atual from workflows where id = v_new_wf) = 1, '8a etapa_atual';
+  -- o retorno carrega a escada realinhada (o CRM abre o drawer com ela)
+  assert jsonb_array_length(v_result->'etapas') = 4
+     and v_result->'etapas'->2->>'nome' = 'Edição', format('8a retorno: %s', v_result->'etapas');
+  assert (select count(*) from workflow_etapas where workflow_id = v_wf) = 5, '8a origem intocada';
+
+  -- 8b. comecando na duplicata alem do template (ordem 4, Postado): p = 3,
+  -- nada a acrescentar, a escada copiada fica como esta (limite documentado)
+  select move_posts_to_new_flow(array[v_p2], v_wf, 'Fim', 4) into v_result;
+  v_new_wf := (v_result->>'target_workflow_id')::bigint;
+  select string_agg(nome || ':' || status, ' > ' order by ordem) into v_names
+    from workflow_etapas where workflow_id = v_new_wf;
+  assert v_names = 'Roteiro:concluido > Gravação:concluido > Postado:concluido > Edição:concluido > Postado:ativo',
+    format('8b escada: %s', v_names);
+
+  raise notice 'PASS 72.8 new flow future etapas follow the template';
+end $$;
+rollback;

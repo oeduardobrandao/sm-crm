@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useState, useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -59,6 +60,7 @@ export function WorkflowCalendarView({
   hubUrl,
   onPostsChanged,
 }: WorkflowCalendarViewProps) {
+  const { t } = useTranslation('entregas');
   const qc = useQueryClient();
   const [currentMonth, setCurrentMonth] = useState(
     () => new Date(new Date().getFullYear(), new Date().getMonth(), 1),
@@ -133,8 +135,8 @@ export function WorkflowCalendarView({
         case 'reject-foreign-unschedule':
           toast.info(
             post?.workflow_id === null
-              ? 'Post avulso: desagende pela publicação.'
-              : 'Só é possível remover a data de posts deste workflow.',
+              ? t('workflowCalendar.rejectAvulso')
+              : t('workflowCalendar.rejectForeign'),
           );
           return;
 
@@ -142,9 +144,9 @@ export function WorkflowCalendarView({
           try {
             await updateWorkflowPost(post!.id, { scheduled_at: null });
             invalidateQueries(post!.workflow_id);
-            toast.success('Data removida do post');
+            toast.success(t('workflowCalendar.dateRemoved'));
           } catch {
-            toast.error('Erro ao remover data do post');
+            toast.error(t('workflowCalendar.dateRemoveError'));
           }
           return;
 
@@ -157,7 +159,7 @@ export function WorkflowCalendarView({
           return;
       }
     },
-    [invalidateQueries, currentWorkflowId],
+    [invalidateQueries, currentWorkflowId, t],
   );
 
   const handleTimeConfirm = useCallback(
@@ -176,12 +178,12 @@ export function WorkflowCalendarView({
           }),
         );
       } catch {
-        toast.error('Erro ao agendar post');
+        toast.error(t('workflowCalendar.scheduleError'));
       } finally {
         setPendingDrop(null);
       }
     },
-    [pendingDrop, invalidateQueries, allPosts, currentWorkflowId],
+    [pendingDrop, invalidateQueries, allPosts, currentWorkflowId, t],
   );
 
   const handleTimeCancel = useCallback(() => {
@@ -203,10 +205,10 @@ export function WorkflowCalendarView({
           }),
         );
       } catch {
-        toast.error('Erro ao reagendar post');
+        toast.error(t('workflowCalendar.rescheduleError'));
       }
     },
-    [selectedPost, invalidateQueries, currentWorkflowId],
+    [selectedPost, invalidateQueries, currentWorkflowId, t],
   );
 
   const handlePanelRemoveDate = useCallback(async () => {
@@ -216,11 +218,11 @@ export function WorkflowCalendarView({
     try {
       await updateWorkflowPost(id, { scheduled_at: null });
       invalidateQueries(workflow_id);
-      toast.success('Data removida do post');
+      toast.success(t('workflowCalendar.dateRemoved'));
     } catch {
-      toast.error('Erro ao remover data do post');
+      toast.error(t('workflowCalendar.dateRemoveError'));
     }
-  }, [selectedPost, invalidateQueries]);
+  }, [selectedPost, invalidateQueries, t]);
 
   const dismissHint = () => {
     setHintDismissed(true);
@@ -238,10 +240,14 @@ export function WorkflowCalendarView({
         <div className="calendar-hint-banner">
           <span className="calendar-hint-text">
             {currentWorkflowId === null
-              ? '💡 Arraste posts da lista lateral para agendar, ou entre datas para reagendar — inclusive posts de fluxos. Arraste de volta para remover a data (apenas posts avulsos).'
-              : '💡 Arraste posts da lista lateral para agendar, ou entre datas para reagendar — inclusive posts de outros workflows. Arraste de volta para remover a data (apenas posts deste workflow).'}
+              ? t('workflowCalendar.hintAvulso')
+              : t('workflowCalendar.hintFluxo')}
           </span>
-          <button onClick={dismissHint} className="calendar-hint-close" aria-label="Fechar dica">
+          <button
+            onClick={dismissHint}
+            className="calendar-hint-close"
+            aria-label={t('workflowCalendar.closeHint')}
+          >
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -289,7 +295,9 @@ export function WorkflowCalendarView({
           {activePost && (
             <div className="drag-overlay-card">
               <span className="drag-overlay-tipo">{TIPO_LABELS[activePost.tipo]}</span>
-              <span className="drag-overlay-title">{activePost.titulo || 'Post sem título'}</span>
+              <span className="drag-overlay-title">
+                {activePost.titulo || t('calendarGrid.untitled')}
+              </span>
             </div>
           )}
         </DragOverlay>

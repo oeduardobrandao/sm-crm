@@ -1,0 +1,359 @@
+/* Início below 768px (FInicio). Phone-only markup, phone-home-* classes on the
+   --phone-* tokens. */
+
+.phone-home {
+  color: var(--phone-label);
+  font-family: var(--font-main);
+}
+
+/* Chips under the page title and above the health list. */
+.phone-home-chips {
+  margin-bottom: 16px;
+}
+
+/* ---- Section (header with trailing link/buttons + card) ---- */
+.phone-home-section {
+  margin: 0 0 20px;
+  color: var(--phone-label);
+  font-family: var(--font-main);
+}
+.phone-home-section__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 22px;
+  margin: 0 0 6px 16px;
+}
+.phone-home-section__titles {
+  min-width: 0;
+}
+.phone-home-section__title {
+  margin: 0;
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--phone-label-secondary);
+}
+.phone-home-section__title--danger {
+  color: var(--danger-text, #b91c1c);
+}
+.phone-home-section__subtitle {
+  margin: 1px 0 0;
+  font-size: 12px;
+  color: var(--phone-label-secondary);
+}
+.phone-home-section__trailing {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 10px;
+}
+.phone-home-section__list {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+  list-style: none;
+}
+.phone-home-section__footer {
+  margin: 6px 16px 0;
+  font-size: var(--phone-text-footnote);
+  color: var(--phone-label-secondary);
+}
+.phone-home-section .phone-home-chips,
+.phone-home-section .phone-home-search {
+  margin-bottom: 10px;
+}
+
+.phone-home-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin: -11px 0;
+  color: var(--phone-label);
+  font-size: var(--phone-text-footnote);
+  font-weight: 600;
+  text-decoration: none;
+}
+.phone-home-inline-link {
+  color: var(--phone-label);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+/* ---- Rows ---- */
+.phone-home-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 46px;
+  list-style: none;
+}
+.phone-home-row + .phone-home-row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 16px;
+  border-top: 0.5px solid var(--phone-separator);
+}
+.phone-home-row--pad {
+  padding: 10px 16px;
+}
+.phone-home-row__check {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin-left: 4px;
+  margin-right: -10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.phone-home-row__check:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: -4px;
+  border-radius: 999px;
+}
+.phone-home-row__ring {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  box-sizing: border-box;
+  border: 2px solid #c7c7cc;
+  border-radius: 999px;
+  color: transparent;
+}
+.phone-home-row__ring svg {
+  width: 13px;
+  height: 13px;
+}
+.phone-home-row__check:active .phone-home-row__ring {
+  border-color: var(--phone-success);
+  background: var(--phone-success);
+  color: #fff;
+}
+.phone-home-row__check:disabled {
+  opacity: 0.5;
+}
+.phone-home-row__icon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  margin-left: 16px;
+  margin-right: -4px;
+  color: var(--phone-label-secondary);
+}
+.phone-home-row__icon svg {
+  width: 18px;
+  height: 18px;
+}
+.phone-home-row__link {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 46px;
+  padding: 8px 16px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.phone-home-row__link:active {
+  background: var(--phone-cell-pressed);
+}
+.phone-home-row__link:focus-visible {
+  outline: 2px solid var(--phone-accent);
+  outline-offset: -2px;
+}
+.phone-home-row__link--action {
+  font-weight: 600;
+}
+.phone-home-row__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.phone-home-row__title {
+  font-weight: 600;
+}
+.phone-home-row__context {
+  color: var(--phone-label-secondary);
+  font-weight: 400;
+}
+.phone-home-row__title + .phone-home-row__context::before {
+  content: ' ';
+}
+/* Health rows: name over @username. */
+.phone-home-section[data-testid='health-phone'] .phone-home-row__text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.phone-home-section[data-testid='health-phone'] .phone-home-row__title {
+  overflow: hidden;
+  font-size: var(--phone-text-body);
+  text-overflow: ellipsis;
+}
+.phone-home-section[data-testid='health-phone'] .phone-home-row__context {
+  overflow: hidden;
+  font-size: var(--phone-text-footnote);
+  text-overflow: ellipsis;
+}
+.phone-home-section[data-testid='health-phone'] .phone-home-row__context::before {
+  content: none;
+}
+.phone-home-row__chevron {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin-right: -4px;
+  color: #c7c7cc;
+}
+.phone-home-more {
+  flex: 1;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  font-size: var(--phone-text-subhead);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.phone-home-empty {
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-subhead);
+}
+.phone-home-note {
+  margin: 0 16px 20px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-subhead);
+}
+.phone-home-card {
+  margin-bottom: 20px;
+  padding: 12px 16px;
+  border-radius: var(--phone-radius-group);
+  background: var(--phone-cell);
+}
+
+/* Pill badge (deadline classes from board-card-deadline keep their colours). */
+.phone-home-badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+/* Health status pill: the desktop card's light tones, re-derived from the foreground in
+   dark mode so the pill doesn't glow as a pastel chip on the dark list. */
+.phone-home-badge--health {
+  background: var(--tone-bg);
+  color: var(--tone-fg);
+}
+[data-theme='dark'] .phone-home-badge--health {
+  background: color-mix(in srgb, var(--tone-fg) 22%, transparent);
+  color: color-mix(in srgb, var(--tone-fg) 55%, #fff);
+}
+
+.phone-home-avatar {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--phone-fill);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  object-fit: cover;
+}
+
+.phone-home-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: var(--phone-fill);
+  color: var(--phone-label-secondary);
+}
+.phone-home-search svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+.phone-home-search input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-label);
+  font: inherit;
+  font-size: 16px;
+  outline: none;
+}
+
+/* ---- Client sheet ---- */
+.phone-home-sheet {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 24px;
+}
+.phone-home-sheet__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+.phone-home-sheet__head .phone-home-avatar {
+  width: 48px;
+  height: 48px;
+  font-size: 15px;
+}
+.phone-home-sheet__who {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  font-size: var(--phone-text-subhead);
+}
+.phone-home-sheet__pipeline {
+  margin: -8px 0 20px;
+}
+.phone-home-sheet__note {
+  margin: 0 0 20px;
+  color: var(--phone-label-secondary);
+  font-size: var(--phone-text-subhead);
+}

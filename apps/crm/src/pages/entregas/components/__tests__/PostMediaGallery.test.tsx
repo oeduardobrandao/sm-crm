@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ComponentProps } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { toast } from 'sonner';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('sonner', () => ({
@@ -15,24 +17,63 @@ vi.mock('../../../../services/postMedia', async (importOriginal) => {
     deletePostMedia: vi.fn(),
     reorderPostMedia: vi.fn(),
     updateVideoThumbnail: vi.fn(),
+    probeVideo: vi.fn(async () => ({ width: 1080, height: 1920, duration_seconds: 30 })),
   };
 });
 
-vi.mock('@mesaas/ui/video/frame', () => ({
-  extractVideoFrame: vi.fn(),
-  captureFrameFromElement: vi.fn(),
-}));
+vi.mock('@mesaas/ui/video/frame', () => {
+  const extractVideoFrame = vi.fn();
+  return {
+    extractVideoFrame,
+    // The gallery calls this one; it reports the frame at 0.5 s (the real auto-frame time).
+    extractVideoFrameWithTime: vi.fn(async (...args: unknown[]) => ({
+      file: await extractVideoFrame(...args),
+      timeSeconds: 0.5,
+    })),
+    captureFrameFromElement: vi.fn(),
+  };
+});
 
 vi.mock('../../../../utils/imageJpeg', () => ({
   encodeImageAsJpeg: vi.fn((f: File) => Promise.resolve(f)),
 }));
 
 vi.mock('../PostMediaLightbox', () => ({
-  PostMediaLightbox: () => null,
+  PostMediaLightbox: ({
+    open,
+    initialIndex,
+    onCreateInternalNote,
+    onNoteStatus,
+  }: {
+    open: boolean;
+    initialIndex: number;
+    onCreateInternalNote?: (input: Record<string, unknown>) => Promise<void>;
+    onNoteStatus?: (ids: number[], status: 'open' | 'resolved') => Promise<void>;
+  }) =>
+    open ? (
+      <div data-testid="lightbox-stub" data-index={initialIndex}>
+        <button
+          type="button"
+          onClick={() => void onCreateInternalNote?.({ linkId: 5, x: 0.1, y: 0.2, body: 'n' })}
+        >
+          stub-criar-nota
+        </button>
+        <button type="button" onClick={() => void onNoteStatus?.([77], 'resolved')}>
+          stub-resolver-nota
+        </button>
+      </div>
+    ) : null,
+}));
+
+vi.mock('@/store/mediaNotes', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/store/mediaNotes')>()),
+  setMediaNoteStatus: vi.fn(async () => undefined),
+  createInternalMediaNote: vi.fn(async () => 1),
 }));
 
 vi.mock('../ThumbnailPickerDialog', () => ({
-  ThumbnailPickerDialog: () => null,
+  ThumbnailPickerDialog: ({ media }: { media: { id: number } | null }) =>
+    media ? <div data-testid="thumbnail-editor-stub" data-media-id={media.id} /> : null,
 }));
 
 vi.mock('../../../arquivos/components/FilePickerModal', () => ({
@@ -70,6 +111,8 @@ import type { PostMedia } from '../../../../store';
 import { extractVideoFrame } from '@mesaas/ui/video/frame';
 import { encodeImageAsJpeg } from '../../../../utils/imageJpeg';
 import { PostMediaGallery } from '../PostMediaGallery';
+import { createInternalMediaNote, setMediaNoteStatus, type MediaNote } from '@/store/mediaNotes';
+import { makeNote } from '../mediaNotes/__tests__/fixtures';
 
 const uploadPostMediaMock = vi.mocked(uploadPostMedia);
 const extractVideoFrameMock = vi.mocked(extractVideoFrame);
@@ -124,6 +167,9 @@ describe('PostMediaGallery upload orchestration', () => {
       postId: 42,
       file: video,
       thumbnail: expect.any(File),
+      // The auto frame's moment becomes files.thumbnail_frame_ms (the TikTok cover).
+      thumbnailFrameMs: 500,
+      thumbnailSource: 'auto',
     });
     expect(screen.queryByText(/Não foi possível gerar a miniatura/)).not.toBeInTheDocument();
   });
@@ -340,13 +386,39 @@ describe('media request mode', () => {
   });
 });
 
+describe('tile file names', () => {
+  it('shows each file name under its tile so the order can be checked at a glance', async () => {
+    const media = makeMedia(2);
+    media[1] = { ...media[1], original_filename: 'carrossel-cliente-final-10.png' };
+    vi.mocked(listPostMedia).mockResolvedValueOnce(media);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <PostMediaGallery postId={1} />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByTitle('img0.jpg')).toHaveTextContent('img0.jpg');
+    // Long names keep their end visible: the slide number is what tells the order.
+    const long = screen.getByTitle('carrossel-cliente-final-10.png');
+    expect(long).toHaveTextContent('carrossel-cliente-final-10.png');
+    expect(long.lastElementChild).toHaveTextContent('l-10.png');
+  });
+});
+
 // ============================================================
 
 // Regression guard: Estúdio was retired, so the gallery can never be design-locked again.
 describe('PostMediaGallery design decoupling regression guard', () => {
   it('never renders a design-ownership banner', async () => {
     vi.mocked(listPostMedia).mockResolvedValueOnce([
-      { id: 10, kind: 'image', origin: 'manual', url: 'https://x/y.jpg' } as never,
+      {
+        id: 10,
+        kind: 'image',
+        origin: 'manual',
+        url: 'https://x/y.jpg',
+        original_filename: 'y.jpg',
+      } as never,
     ]);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
@@ -410,7 +482,13 @@ describe('PostMediaGallery auto-clean placeholder', () => {
 
   it('keeps the normal gallery when the post still has media', async () => {
     vi.mocked(listPostMedia).mockResolvedValueOnce([
-      { id: 10, kind: 'image', origin: 'manual', url: 'https://x/y.jpg' } as never,
+      {
+        id: 10,
+        kind: 'image',
+        origin: 'manual',
+        url: 'https://x/y.jpg',
+        original_filename: 'y.jpg',
+      } as never,
     ]);
     renderStamped({ instagramPermalink: 'https://www.instagram.com/p/abc/' });
 
@@ -452,21 +530,33 @@ vi.mock('../MediaAdjustmentDialog', () => ({
   MediaAdjustmentDialog: ({
     media,
     onUpdated,
+    onReplaced,
     onClose,
   }: {
     media: PostMedia;
     onUpdated: () => void;
+    onReplaced?: () => void;
     onClose: () => void;
   }) => (
     <div role="dialog">
       Editando {media.original_filename}
       <button
         onClick={() => {
+          onReplaced?.();
           onUpdated();
           onClose();
         }}
       >
         Simular ajuste salvo
+      </button>
+      {/* The real dialog also calls onUpdated from its catch once a save was attempted. */}
+      <button
+        onClick={() => {
+          onUpdated();
+          onClose();
+        }}
+      >
+        Simular falha no ajuste
       </button>
     </div>
   ),
@@ -614,5 +704,764 @@ describe('PostMediaGallery Reel cover uploaded as a second file', () => {
       expect(screen.getByRole('button', { name: 'Usar como capa do Reel' })).toBeEnabled(),
     );
     expect(deletePostMedia).not.toHaveBeenCalled();
+  });
+});
+
+describe('PostMediaGallery feedback em mídia', () => {
+  const slide = (id: number, over: Partial<PostMedia> = {}) =>
+    ({ ...makeMedia(1)[0], id, original_filename: `s${id}.jpg`, ...over }) as PostMedia;
+  const notesOn = (linkId: number, n: number, firstId = linkId * 100): MediaNote[] =>
+    Array.from({ length: n }, (_, i) => makeNote({ id: firstId + i, current_link_id: linkId }));
+
+  function renderWithNotes(notes: MediaNote[], onNotesChanged = vi.fn(), extra = {}) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <PostMediaGallery postId={42} notes={notes} onNotesChanged={onNotesChanged} {...extra} />
+      </QueryClientProvider>,
+    );
+    return { onNotesChanged };
+  }
+
+  it('tiles carry the count of open notes on that item (client and internal, current only)', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([slide(5), slide(6)]);
+    renderWithNotes([
+      ...notesOn(5, 2),
+      makeNote({ id: 900, current_link_id: 5, visibility: 'internal', author_kind: 'team' }),
+      makeNote({ id: 901, current_link_id: 5, status: 'resolved' }),
+      makeNote({ id: 902, current_link_id: null, is_previous_version: true }),
+    ]);
+    expect(await screen.findByText('3 comentários em aberto')).toBeInTheDocument();
+    expect(screen.getAllByText(/em aberto/)).toHaveLength(1);
+  });
+
+  it('gallery delete with open notes shows prompt and confirm resolves them', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([slide(5), slide(6)]);
+    vi.mocked(deletePostMedia).mockResolvedValue(undefined);
+    const { onNotesChanged } = renderWithNotes([...notesOn(5, 2, 10), ...notesOn(6, 1, 20)]);
+
+    fireEvent.click((await screen.findAllByTitle('Remover'))[0]);
+
+    expect(
+      await screen.findByText('Marcar como resolvidos os 2 comentários deste slide?'),
+    ).toBeInTheDocument();
+    expect(deletePostMedia).toHaveBeenCalledWith(5);
+    fireEvent.click(screen.getByRole('button', { name: 'Marcar como resolvidos' }));
+    await waitFor(() => expect(setMediaNoteStatus).toHaveBeenCalledWith([10, 11], 'resolved'));
+    await waitFor(() => expect(onNotesChanged).toHaveBeenCalled());
+  });
+
+  it('Agora não leaves the notes open', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([slide(5)]);
+    vi.mocked(deletePostMedia).mockResolvedValue(undefined);
+    const { onNotesChanged } = renderWithNotes(notesOn(5, 2, 10));
+    fireEvent.click(await screen.findByTitle('Remover'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Agora não' }));
+    await waitFor(() => expect(screen.queryByText(/deste slide/)).not.toBeInTheDocument());
+    expect(setMediaNoteStatus).not.toHaveBeenCalled();
+    expect(onNotesChanged).not.toHaveBeenCalled();
+  });
+
+  it('no prompt when the delete fails', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([slide(5)]);
+    vi.mocked(deletePostMedia).mockRejectedValue(new Error('falhou'));
+    renderWithNotes(notesOn(5, 2, 10));
+    fireEvent.click(await screen.findByTitle('Remover'));
+    await waitFor(() => expect(deletePostMedia).toHaveBeenCalled());
+    expect(screen.queryByText(/deste slide/)).not.toBeInTheDocument();
+  });
+
+  it('no prompt when there are no open notes on that link', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([slide(5), slide(6)]);
+    vi.mocked(deletePostMedia).mockResolvedValue(undefined);
+    renderWithNotes([
+      ...notesOn(6, 2, 20),
+      makeNote({ id: 11, current_link_id: 5, status: 'resolved' }),
+    ]);
+    fireEvent.click((await screen.findAllByTitle('Remover'))[0]);
+    await waitFor(() => expect(deletePostMedia).toHaveBeenCalledWith(5));
+    expect(screen.queryByText(/deste slide/)).not.toBeInTheDocument();
+  });
+
+  it('adjust replace with open notes shows prompt after the save', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([slide(5)]);
+    renderWithNotes(notesOn(5, 3, 10));
+    fireEvent.click(await screen.findByTitle('Ajustar proporção'));
+    expect(screen.queryByText(/deste slide/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Simular ajuste salvo' }));
+    expect(
+      await screen.findByText('Marcar como resolvidos os 3 comentários deste slide?'),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Marcar como resolvidos' }));
+    await waitFor(() => expect(setMediaNoteStatus).toHaveBeenCalledWith([10, 11, 12], 'resolved'));
+  });
+
+  it('adjust replace without open notes on that link shows no prompt', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([slide(5), slide(6)]);
+    renderWithNotes(notesOn(6, 2, 20));
+    fireEvent.click((await screen.findAllByTitle('Ajustar proporção'))[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Simular ajuste salvo' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.queryByText(/deste slide/)).not.toBeInTheDocument();
+  });
+
+  it('openLinkRequest opens the lightbox on that item (anchor chip)', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([slide(5), slide(6), slide(7)]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { rerender } = render(
+      <QueryClientProvider client={qc}>
+        <PostMediaGallery postId={42} openLinkRequest={null} />
+      </QueryClientProvider>,
+    );
+    await screen.findAllByTitle('Remover');
+    expect(screen.queryByTestId('lightbox-stub')).not.toBeInTheDocument();
+    rerender(
+      <QueryClientProvider client={qc}>
+        <PostMediaGallery postId={42} openLinkRequest={{ linkId: 6, nonce: 1 }} />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByTestId('lightbox-stub')).toHaveAttribute('data-index', '1');
+  });
+
+  it('passes internal note creation through with the post id, then refreshes', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([slide(5)]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const onNotesChanged = vi.fn();
+    render(
+      <QueryClientProvider client={qc}>
+        <PostMediaGallery
+          postId={42}
+          notes={[]}
+          onNotesChanged={onNotesChanged}
+          openLinkRequest={{ linkId: 5, nonce: 1 }}
+        />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'stub-criar-nota' }));
+    await waitFor(() =>
+      expect(createInternalMediaNote).toHaveBeenCalledWith({
+        postId: 42,
+        linkId: 5,
+        x: 0.1,
+        y: 0.2,
+        body: 'n',
+      }),
+    );
+    await waitFor(() => expect(onNotesChanged).toHaveBeenCalled());
+  });
+
+  it('adjust: a failed or aborted replace (onUpdated only) does not offer the prompt', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([slide(5)]);
+    renderWithNotes(notesOn(5, 3, 10));
+    fireEvent.click(await screen.findByTitle('Ajustar proporção'));
+    fireEvent.click(screen.getByRole('button', { name: 'Simular falha no ajuste' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.queryByText(/deste slide/)).not.toBeInTheDocument();
+  });
+
+  it('the prompt covers every open note on the link, client and internal', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([slide(5)]);
+    vi.mocked(deletePostMedia).mockResolvedValue(undefined);
+    renderWithNotes([
+      makeNote({ id: 10, current_link_id: 5 }),
+      makeNote({ id: 11, current_link_id: 5, visibility: 'internal', author_kind: 'team' }),
+      makeNote({ id: 12, current_link_id: 5, status: 'resolved' }),
+    ]);
+    fireEvent.click(await screen.findByTitle('Remover'));
+    expect(
+      await screen.findByText('Marcar como resolvidos os 2 comentários deste slide?'),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Marcar como resolvidos' }));
+    await waitFor(() => expect(setMediaNoteStatus).toHaveBeenCalledWith([10, 11], 'resolved'));
+  });
+
+  it('a removed video asks about "deste vídeo" and a single note reads in the singular', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([
+      slide(5, { kind: 'video', original_filename: 'v.mp4', url: 'https://example.test/v.mp4' }),
+    ]);
+    vi.mocked(deletePostMedia).mockResolvedValue(undefined);
+    renderWithNotes([makeNote({ id: 10, current_link_id: 5, media_kind: 'video' })]);
+    fireEvent.click(await screen.findByTitle('Remover'));
+    expect(
+      await screen.findByText('Marcar como resolvido o comentário deste vídeo?'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Marcar como resolvido' })).toBeInTheDocument();
+  });
+
+  it('Reel cover moved: offers to resolve the open notes of the removed image', async () => {
+    const video = slide(50, {
+      kind: 'video',
+      original_filename: 'reel.mp4',
+      url: 'https://example.test/reel.mp4',
+      thumbnail_url: 'https://example.test/reel-thumb.jpg',
+      width: 1080,
+      height: 1920,
+    });
+    const cover = slide(51, { original_filename: 'capa.jpg', width: 1080, height: 1920 });
+    vi.mocked(listPostMedia).mockResolvedValue([video, cover]);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(new Blob(['img'], { type: 'image/jpeg' }))),
+    );
+    vi.mocked(updateVideoThumbnail).mockResolvedValue(video);
+    vi.mocked(deletePostMedia).mockResolvedValue(undefined);
+    const { onNotesChanged } = renderWithNotes([...notesOn(51, 2, 30), ...notesOn(50, 1, 40)]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Usar como capa do Reel' }));
+    expect(
+      await screen.findByText('Marcar como resolvidos os 2 comentários deste slide?'),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Marcar como resolvidos' }));
+    await waitFor(() => expect(setMediaNoteStatus).toHaveBeenCalledWith([30, 31], 'resolved'));
+    await waitFor(() => expect(onNotesChanged).toHaveBeenCalled());
+    vi.unstubAllGlobals();
+  });
+
+  it('Reel cover: a failed thumbnail update offers no prompt', async () => {
+    const video = slide(50, {
+      kind: 'video',
+      original_filename: 'reel.mp4',
+      url: 'https://example.test/reel.mp4',
+      thumbnail_url: 'https://example.test/reel-thumb.jpg',
+      width: 1080,
+      height: 1920,
+    });
+    const cover = slide(51, { original_filename: 'capa.jpg', width: 1080, height: 1920 });
+    vi.mocked(listPostMedia).mockResolvedValue([video, cover]);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(new Blob(['img'], { type: 'image/jpeg' }))),
+    );
+    vi.mocked(updateVideoThumbnail).mockRejectedValue(new Error('upload failed'));
+    renderWithNotes(notesOn(51, 2, 30));
+    fireEvent.click(await screen.findByRole('button', { name: 'Usar como capa do Reel' }));
+    await waitFor(() => expect(updateVideoThumbnail).toHaveBeenCalled());
+    expect(screen.queryByText(/deste slide/)).not.toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
+  it('lightbox status changes go through setMediaNoteStatus, then refresh', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([slide(5)]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const onNotesChanged = vi.fn();
+    render(
+      <QueryClientProvider client={qc}>
+        <PostMediaGallery
+          postId={42}
+          notes={[]}
+          onNotesChanged={onNotesChanged}
+          openLinkRequest={{ linkId: 5, nonce: 1 }}
+        />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'stub-resolver-nota' }));
+    await waitFor(() => expect(setMediaNoteStatus).toHaveBeenCalledWith([77], 'resolved'));
+    await waitFor(() => expect(onNotesChanged).toHaveBeenCalled());
+  });
+
+  it('a failing status change shows a pt-BR toast, never the raw error', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([slide(5)]);
+    vi.mocked(setMediaNoteStatus).mockRejectedValueOnce(
+      new Error('new row violates row-level security policy'),
+    );
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <PostMediaGallery postId={42} notes={[]} openLinkRequest={{ linkId: 5, nonce: 1 }} />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'stub-resolver-nota' }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(toast.error).toHaveBeenCalledWith('Não foi possível atualizar a nota. Tente novamente.');
+  });
+
+  it('a failing confirm in the resolve prompt shows a pt-BR toast', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([slide(5)]);
+    vi.mocked(deletePostMedia).mockResolvedValue(undefined);
+    vi.mocked(setMediaNoteStatus).mockRejectedValueOnce(new Error('rls'));
+    renderWithNotes(notesOn(5, 2, 10));
+    fireEvent.click(await screen.findByTitle('Remover'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Marcar como resolvidos' }));
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        'Não foi possível atualizar a nota. Tente novamente.',
+      ),
+    );
+  });
+
+  it('a refresh failure after a successful change stays silent', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([slide(5)]);
+    vi.mocked(setMediaNoteStatus).mockResolvedValueOnce(undefined);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const onNotesChanged = vi.fn().mockRejectedValue(new Error('refetch failed'));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    render(
+      <QueryClientProvider client={qc}>
+        <PostMediaGallery
+          postId={42}
+          notes={[]}
+          onNotesChanged={onNotesChanged}
+          openLinkRequest={{ linkId: 5, nonce: 1 }}
+        />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'stub-resolver-nota' }));
+    await waitFor(() => expect(onNotesChanged).toHaveBeenCalled());
+    expect(setMediaNoteStatus).toHaveBeenCalledWith([77], 'resolved');
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+});
+
+// ── Oversized-video downscale (4K) ──────────────────────────────────────────────
+const ds = vi.hoisted(() => ({
+  probes: new Map<string, { width: number; height: number; duration_seconds: number } | null>(),
+  inspectForDownscale: vi.fn(),
+  downscaleVideo: vi.fn(),
+  captureEvent: vi.fn(),
+  planNull: false,
+}));
+
+// planDownscale only returns null for a budget under 100 kbps, which no video inside
+// Instagram's duration limits reaches; the flag forces it to exercise the guard.
+vi.mock('../../media-editor/downscalePlan', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../media-editor/downscalePlan')>();
+  return {
+    ...actual,
+    planDownscale: (...args: Parameters<typeof actual.planDownscale>) =>
+      ds.planNull ? null : actual.planDownscale(...args),
+  };
+});
+
+vi.mock('../../media-editor/oversize', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../media-editor/oversize')>();
+  return {
+    ...actual,
+    probeWithTimeout: vi.fn(async (f: File) =>
+      ds.probes.has(f.name) ? ds.probes.get(f.name)! : actual.probeWithTimeout(f),
+    ),
+  };
+});
+
+vi.mock('../../media-editor/downscaleVideo', () => ({
+  inspectForDownscale: ds.inspectForDownscale,
+  downscaleVideo: ds.downscaleVideo,
+  EngineUnavailable: class EngineUnavailable extends Error {
+    name = 'EngineUnavailable';
+  },
+  DownscaleOutputInvalid: class DownscaleOutputInvalid extends Error {},
+}));
+
+vi.mock('@/lib/analytics', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/analytics')>()),
+  captureEvent: ds.captureEvent,
+}));
+
+vi.mock('../DownscaleMediaDialog', () => ({
+  DownscaleMediaDialog: ({ media }: { media: PostMedia | null }) =>
+    media ? (
+      <div data-testid="downscale-media-dialog">Reduzindo {media.original_filename}</div>
+    ) : null,
+}));
+
+describe('PostMediaGallery oversized-video downscale at upload', () => {
+  const FOUR_K = { width: 2160, height: 3840, duration_seconds: 30 };
+  // A 9:16 video beside other files is a carousel slide and breaks the feed ratio too, so it
+  // is not offered there; a 16:9 4K one only breaks the width.
+  const FOUR_K_LANDSCAPE = { width: 3840, height: 2160, duration_seconds: 30 };
+  const GB = 1024 * 1024 * 1024;
+
+  function renderWith(props: Partial<ComponentProps<typeof PostMediaGallery>> = {}) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <PostMediaGallery postId={42} {...props} />
+      </QueryClientProvider>,
+    );
+  }
+
+  function bigFile(name: string, size: number) {
+    const f = createFile(name, 'video/mp4');
+    Object.defineProperty(f, 'size', { value: size });
+    return f;
+  }
+
+  const converted = () => createFile('4k (1080p).mp4', 'video/mp4');
+
+  beforeEach(() => {
+    ds.probes.clear();
+    ds.planNull = false;
+    ds.inspectForDownscale.mockResolvedValue({ engine: 'webcodecs', hdr: false });
+    ds.downscaleVideo.mockImplementation(async () => ({
+      file: converted(),
+      engine: 'webcodecs',
+      hdr: false,
+      width: 1080,
+      height: 1920,
+    }));
+    vi.mocked(listPostMedia).mockResolvedValue([]);
+  });
+
+  async function reduceButton() {
+    const btn = await screen.findByRole('button', { name: 'Reduzir e enviar' });
+    await waitFor(() => expect(btn).toBeEnabled());
+    return btn;
+  }
+
+  it('holds a 4K video back behind the offer, then converts and uploads it', async () => {
+    ds.probes.set('4k.mp4', FOUR_K);
+    renderWith();
+    await pickFiles([createFile('4k.mp4', 'video/mp4')]);
+
+    expect(await screen.findByText('Vídeo acima do limite do Instagram')).toBeInTheDocument();
+    expect(uploadPostMediaMock).not.toHaveBeenCalled();
+
+    fireEvent.click(await reduceButton());
+    await waitFor(() => expect(uploadPostMediaMock).toHaveBeenCalledTimes(1));
+    expect(ds.downscaleVideo).toHaveBeenCalledTimes(1);
+    const call = uploadPostMediaMock.mock.calls[0][0];
+    expect(call.file.name).toBe('4k (1080p).mp4');
+    expect(call.sortOrder).toBe(0);
+    expect(ds.captureEvent).toHaveBeenCalledWith(
+      'video_downscaled',
+      expect.objectContaining({ source: 'upload', outcome: 'ok', engine: 'webcodecs' }),
+    );
+  });
+
+  it('uploads the passing files of a mixed batch right away, the 4K one after the decision', async () => {
+    ds.probes.set('4k.mp4', FOUR_K_LANDSCAPE);
+    renderWith();
+    const img = createFile('a.jpg', 'image/jpeg');
+    const ok = createFile('ok.mp4', 'video/mp4');
+    await pickFiles([img, ok, createFile('4k.mp4', 'video/mp4')]);
+
+    await waitFor(() => expect(uploadPostMediaMock).toHaveBeenCalledTimes(2));
+    const first = uploadPostMediaMock.mock.calls.map((c) => [c[0].file.name, c[0].sortOrder]);
+    expect(first).toEqual(
+      expect.arrayContaining([
+        ['a.jpg', 0],
+        ['ok.mp4', 1],
+      ]),
+    );
+    fireEvent.click(await reduceButton());
+    await waitFor(() => expect(uploadPostMediaMock).toHaveBeenCalledTimes(3));
+    expect(uploadPostMediaMock.mock.calls[2][0]).toMatchObject({ sortOrder: 2 });
+    expect(uploadPostMediaMock.mock.calls[2][0].file.name).toBe('4k (1080p).mp4');
+  });
+
+  it('"Enviar original" uploads the original file', async () => {
+    ds.probes.set('4k.mp4', FOUR_K);
+    renderWith();
+    const original = createFile('4k.mp4', 'video/mp4');
+    await pickFiles([original]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Enviar original' }));
+    await waitFor(() => expect(uploadPostMediaMock).toHaveBeenCalledTimes(1));
+    expect(uploadPostMediaMock.mock.calls[0][0].file).toBe(original);
+    expect(ds.downscaleVideo).not.toHaveBeenCalled();
+  });
+
+  it('dismissing uploads nothing for the held-back file, re-enables the tile and still reports the rest once', async () => {
+    ds.probes.set('4k.mp4', FOUR_K_LANDSCAPE);
+    renderWith();
+    await pickFiles([createFile('a.jpg', 'image/jpeg'), createFile('4k.mp4', 'video/mp4')]);
+    await screen.findByText('Vídeo acima do limite do Instagram');
+    await waitFor(() => expect(uploadPostMediaMock).toHaveBeenCalledTimes(1));
+    expect(screen.getByText('Enviando…')).toBeInTheDocument();
+    expect(toast.success).not.toHaveBeenCalledWith('Upload concluído');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }));
+    await waitFor(() => expect(screen.getByText('Adicionar')).toBeInTheDocument());
+    expect(uploadPostMediaMock).toHaveBeenCalledTimes(1);
+    expect(ds.downscaleVideo).not.toHaveBeenCalled();
+    expect(
+      vi.mocked(toast.success).mock.calls.filter((c) => c[0] === 'Upload concluído'),
+    ).toHaveLength(1);
+  });
+
+  it('a failed conversion warns and uploads the original', async () => {
+    ds.probes.set('4k.mp4', FOUR_K);
+    ds.downscaleVideo.mockRejectedValue(new Error('boom'));
+    renderWith();
+    const original = createFile('4k.mp4', 'video/mp4');
+    await pickFiles([original]);
+    fireEvent.click(await reduceButton());
+    await waitFor(() => expect(uploadPostMediaMock).toHaveBeenCalledTimes(1));
+    expect(uploadPostMediaMock.mock.calls[0][0].file).toBe(original);
+    expect(toast.error).toHaveBeenCalledWith(
+      '4k.mp4: não foi possível reduzir o vídeo. Enviamos o original.',
+    );
+    expect(ds.captureEvent).toHaveBeenCalledWith(
+      'video_downscaled',
+      expect.objectContaining({ source: 'upload', outcome: 'error' }),
+    );
+  });
+
+  it('a probe that fails uploads as today, without the offer', async () => {
+    ds.probes.set('4k.mp4', null);
+    renderWith();
+    await pickFiles([createFile('4k.mp4', 'video/mp4')]);
+    await waitFor(() => expect(uploadPostMediaMock).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('Vídeo acima do limite do Instagram')).not.toBeInTheDocument();
+  });
+
+  it('a 4K video joining an existing image (carousel) is not offered', async () => {
+    ds.probes.set('4k.mp4', FOUR_K);
+    vi.mocked(listPostMedia).mockResolvedValue(makeMedia(1));
+    renderWith();
+    await screen.findByText('img0.jpg');
+    await pickFiles([createFile('4k.mp4', 'video/mp4')]);
+    await waitFor(() => expect(uploadPostMediaMock).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('Vídeo acima do limite do Instagram')).not.toBeInTheDocument();
+  });
+
+  it('a post that does not target Instagram is not offered', async () => {
+    ds.probes.set('4k.mp4', FOUR_K);
+    renderWith({ targetsInstagram: false });
+    await pickFiles([createFile('4k.mp4', 'video/mp4')]);
+    await waitFor(() => expect(uploadPostMediaMock).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('Vídeo acima do limite do Instagram')).not.toBeInTheDocument();
+  });
+
+  it('an over-2 GB video the browser cannot reduce is neither converted nor uploaded', async () => {
+    ds.probes.set('huge.mp4', FOUR_K_LANDSCAPE);
+    ds.inspectForDownscale.mockResolvedValue({ engine: 'none', hdr: false });
+    renderWith();
+    await pickFiles([createFile('a.jpg', 'image/jpeg'), bigFile('huge.mp4', 3 * GB)]);
+    await waitFor(() => expect(uploadPostMediaMock).toHaveBeenCalledTimes(1));
+    // Reduzir is disabled (no engine) and Enviar original too (over 2 GB): only closing is left.
+    expect(await screen.findByRole('button', { name: 'Enviar original' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }));
+    await waitFor(() => expect(screen.getByText('Adicionar')).toBeInTheDocument());
+    expect(ds.downscaleVideo).not.toHaveBeenCalled();
+    expect(uploadPostMediaMock).toHaveBeenCalledTimes(1);
+    expect(uploadPostMediaMock.mock.calls[0][0].file.name).toBe('a.jpg');
+  });
+
+  it('"Reduzir e enviar": an over-2 GB video the browser cannot reduce is skipped with an error, the rest converts', async () => {
+    ds.probes.set('4k.mp4', FOUR_K_LANDSCAPE);
+    ds.probes.set('huge.mp4', FOUR_K_LANDSCAPE);
+    ds.inspectForDownscale.mockImplementation(async (f: File) =>
+      f.name === 'huge.mp4' ? { engine: 'none', hdr: false } : { engine: 'webcodecs', hdr: false },
+    );
+    renderWith();
+    await pickFiles([createFile('4k.mp4', 'video/mp4'), bigFile('huge.mp4', 3 * GB)]);
+    fireEvent.click(await reduceButton());
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith('huge.mp4: não foi possível reduzir o vídeo.'),
+    );
+    await waitFor(() => expect(screen.getByText('Adicionar')).toBeInTheDocument());
+    expect(ds.downscaleVideo).toHaveBeenCalledTimes(1);
+    expect(uploadPostMediaMock).toHaveBeenCalledTimes(1);
+    expect(uploadPostMediaMock.mock.calls[0][0].file.name).toBe('4k (1080p).mp4');
+  });
+
+  it('"Enviar original": an over-2 GB video is skipped with an error, the other original uploads', async () => {
+    ds.probes.set('4k.mp4', FOUR_K_LANDSCAPE);
+    ds.probes.set('huge.mp4', FOUR_K_LANDSCAPE);
+    renderWith();
+    const small = createFile('4k.mp4', 'video/mp4');
+    await pickFiles([small, bigFile('huge.mp4', 3 * GB)]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Enviar original' }));
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        'huge.mp4: Arquivo acima de 2 GB: só pode ser enviado reduzido.',
+      ),
+    );
+    await waitFor(() => expect(uploadPostMediaMock).toHaveBeenCalledTimes(1));
+    expect(uploadPostMediaMock.mock.calls[0][0].file).toBe(small);
+    expect(ds.downscaleVideo).not.toHaveBeenCalled();
+  });
+
+  it("a second pick during a conversion keeps each batch's engine info and never converts two at once", async () => {
+    for (const n of ['a4k.mp4', 'b4k.mp4', 'c4k.mp4']) ds.probes.set(n, FOUR_K_LANDSCAPE);
+    const gates = new Map<string, () => void>();
+    let active = 0;
+    let maxActive = 0;
+    ds.downscaleVideo.mockImplementation(async (file: File) => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      await new Promise<void>((resolve) => gates.set(file.name, resolve));
+      active--;
+      return {
+        file: createFile(file.name.replace('.mp4', ' (1080p).mp4'), 'video/mp4'),
+        engine: 'webcodecs',
+        hdr: false,
+        width: 1920,
+        height: 1080,
+      };
+    });
+    renderWith();
+    await pickFiles([createFile('a4k.mp4', 'video/mp4'), createFile('b4k.mp4', 'video/mp4')]);
+    fireEvent.click(await reduceButton());
+    await waitFor(() => expect(gates.has('a4k.mp4')).toBe(true));
+
+    // The add tile stays live while uploading ("Enviando…"): pick again mid-conversion.
+    const input = document.querySelector<HTMLInputElement>('input[accept="image/*,video/*"]')!;
+    fireEvent.change(input, { target: { files: [createFile('c4k.mp4', 'video/mp4')] } });
+    fireEvent.click(await reduceButton());
+
+    // Release each running conversion in turn; the queue decides which comes next.
+    const released = new Set<string>();
+    for (let i = 0; i < 3; i++) {
+      await waitFor(() => expect(gates.size).toBe(released.size + 1));
+      const [name, release] = [...gates].find(([n]) => !released.has(n))!;
+      released.add(name);
+      release();
+    }
+
+    await waitFor(() => expect(uploadPostMediaMock).toHaveBeenCalledTimes(3));
+    expect(uploadPostMediaMock.mock.calls.map((c) => c[0].file.name).sort()).toEqual([
+      'a4k (1080p).mp4',
+      'b4k (1080p).mp4',
+      'c4k (1080p).mp4',
+    ]);
+    expect(ds.downscaleVideo).toHaveBeenCalledTimes(3);
+    expect(maxActive).toBe(1);
+  });
+
+  it('an over-2 GB video too long to fit the budget is skipped with an error, no dialog', async () => {
+    ds.probes.set('longo.mp4', FOUR_K);
+    ds.planNull = true;
+    renderWith();
+    await pickFiles([bigFile('longo.mp4', 3 * GB)]);
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith('longo.mp4: não foi possível reduzir o vídeo.'),
+    );
+    expect(screen.queryByText('Vídeo acima do limite do Instagram')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Adicionar')).toBeInTheDocument());
+    expect(uploadPostMediaMock).not.toHaveBeenCalled();
+    expect(ds.downscaleVideo).not.toHaveBeenCalled();
+    // Nothing was sent: no "Upload concluído" next to the skip error.
+    expect(toast.success).not.toHaveBeenCalledWith('Upload concluído');
+  });
+
+  it('a converted file whose thumbnail cannot be extracted goes to the manual-thumbnail flow', async () => {
+    ds.probes.set('4k.mp4', FOUR_K);
+    extractVideoFrameMock.mockRejectedValue(new Error('decode failed'));
+    renderWith();
+    await pickFiles([createFile('4k.mp4', 'video/mp4')]);
+    fireEvent.click(await reduceButton());
+    expect(await screen.findByText('4k (1080p).mp4')).toBeInTheDocument();
+    expect(screen.getByText('Escolher thumbnail')).toBeInTheDocument();
+    expect(uploadPostMediaMock).not.toHaveBeenCalled();
+  });
+
+  it('reports "Upload concluído" once, after the held-back file finished', async () => {
+    ds.probes.set('4k.mp4', FOUR_K_LANDSCAPE);
+    renderWith();
+    await pickFiles([createFile('a.jpg', 'image/jpeg'), createFile('4k.mp4', 'video/mp4')]);
+    await waitFor(() => expect(uploadPostMediaMock).toHaveBeenCalledTimes(1));
+    expect(toast.success).not.toHaveBeenCalledWith('Upload concluído');
+    fireEvent.click(await reduceButton());
+    await waitFor(() => expect(uploadPostMediaMock).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(
+        vi.mocked(toast.success).mock.calls.filter((c) => c[0] === 'Upload concluído'),
+      ).toHaveLength(1),
+    );
+  });
+});
+
+describe('PostMediaGallery warning box: oversized existing video', () => {
+  const video4k = {
+    id: 60,
+    post_id: 42,
+    kind: 'video',
+    mime_type: 'video/mp4',
+    original_filename: 'uhd.mp4',
+    url: 'https://example.test/uhd.mp4',
+    thumbnail_url: 'https://example.test/uhd.jpg',
+    width: 2160,
+    height: 3840,
+    size_bytes: 1024,
+    duration_seconds: 30,
+    is_cover: true,
+  } as PostMedia;
+
+  it('offers "Reduzir resolução" with the width reason and opens the downscale dialog', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([video4k]);
+    renderGallery();
+    const btn = await screen.findByRole('button', { name: 'Reduzir resolução de uhd.mp4' });
+    expect(
+      screen.getByText('Largura acima de 1920 px (ex.: 4K). O Instagram não aceita.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Ajustar proporção de uhd.mp4' })).toBeNull();
+    // The grid tile offers it too, beside its "Ajustar proporção" control.
+    expect(screen.getByTitle('Reduzir resolução')).toBeInTheDocument();
+    expect(screen.getByTitle('Ajustar proporção')).toBeInTheDocument();
+    fireEvent.click(btn);
+    expect(await screen.findByTestId('downscale-media-dialog')).toHaveTextContent('uhd.mp4');
+  });
+
+  it('keeps "Ajustar proporção" for a 9:16 4K video inside a carousel', async () => {
+    vi.mocked(listPostMedia).mockResolvedValue([video4k, { ...makeMedia(2)[1], height: 1350 }]);
+    renderGallery();
+    expect(
+      await screen.findByRole('button', { name: 'Ajustar proporção de uhd.mp4' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reduzir resolução de uhd.mp4' })).toBeNull();
+    expect(screen.queryByTitle('Reduzir resolução')).toBeNull();
+  });
+});
+
+describe('PostMediaGallery: tile shape and video cover chip', () => {
+  function videoItem(overrides: Partial<PostMedia>): PostMedia {
+    return {
+      ...makeMedia(1)[0],
+      id: 50,
+      kind: 'video',
+      mime_type: 'video/mp4',
+      original_filename: 'reel.mp4',
+      width: 1080,
+      height: 1920,
+      duration_seconds: 20,
+      thumbnail_r2_key: 'thumb/50.jpg',
+      thumbnail_url: 'https://example.test/thumb/50.jpg',
+      ...overrides,
+    } as PostMedia;
+  }
+
+  function renderWith(media: PostMedia[]) {
+    vi.mocked(listPostMedia).mockResolvedValueOnce(media);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <PostMediaGallery postId={1} />
+      </QueryClientProvider>,
+    );
+  }
+
+  it('shapes each tile like its file, and the add tiles like the first one', async () => {
+    renderWith([
+      { ...makeMedia(1)[0], width: 1080, height: 1440 },
+      { ...makeMedia(2)[1], width: 1080, height: 1080 },
+    ]);
+    const add = (await screen.findByText('Adicionar')).closest('label')!;
+    const tiles = screen
+      .getAllByRole('img', { name: /img\d\.jpg/ })
+      .map((img) => img.parentElement!);
+    expect(tiles[0].style.aspectRatio).toBe('0.75');
+    expect(tiles[1].style.aspectRatio).toBe('1');
+    expect(add.style.aspectRatio).toBe('0.75');
+  });
+
+  it.each([
+    ['auto', 500, 'Capa padrão'],
+    ['frame', 12300, 'Capa 0:12.3'],
+    ['image', null, 'Capa: imagem'],
+    [null, null, 'Capa'],
+  ] as const)('labels a %s cover on the tile', async (source, frame, label) => {
+    renderWith([videoItem({ thumbnail_source: source, thumbnail_frame_ms: frame })]);
+    const chip = await screen.findByTestId('video-cover-chip');
+    expect(chip).toHaveTextContent(label);
+    expect(chip.parentElement!.style.aspectRatio).toBe('0.5625');
+  });
+
+  it('the chip opens the thumbnail editor without opening the lightbox', async () => {
+    renderWith([videoItem({ thumbnail_source: 'auto', thumbnail_frame_ms: 500 })]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Capa padrão. Trocar capa' }));
+    expect(await screen.findByTestId('thumbnail-editor-stub')).toHaveAttribute(
+      'data-media-id',
+      '50',
+    );
+    expect(screen.queryByTestId('lightbox-stub')).not.toBeInTheDocument();
   });
 });

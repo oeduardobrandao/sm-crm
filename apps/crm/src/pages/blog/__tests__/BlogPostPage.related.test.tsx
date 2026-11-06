@@ -9,7 +9,7 @@ vi.mock('@/context/AuthContext', () => ({
 }));
 
 // The repo currently ships one real post, so relatedPosts(post, BLOG_POSTS)
-// always returns [] against real content and the "Leia também" branch never
+// always returns [] against real content and the "Continue lendo" branch never
 // runs in BlogPostPage.test.tsx. Mock the post loader here (only in this
 // file) so the page sees two posts and the block has something to render.
 const { POST_A, POST_B } = vi.hoisted(() => {
@@ -18,7 +18,7 @@ const { POST_A, POST_B } = vi.hoisted(() => {
     title: 'Título de teste A usado só para o teste de posts relacionados',
     h1: 'H1 de teste do post A',
     description:
-      'Descrição de teste do post A, usada só para verificar o bloco "Leia também" do BlogPostPage com dois posts.',
+      'Descrição de teste do post A, usada só para verificar o bloco "Continue lendo" do BlogPostPage com dois posts.',
     date: '2026-07-20',
     updated: '2026-07-20',
     category: 'comparativo',
@@ -30,7 +30,7 @@ const { POST_A, POST_B } = vi.hoisted(() => {
     title: 'Título de teste B usado só para o teste de posts relacionados',
     h1: 'H1 de teste do post B',
     description:
-      'Descrição de teste do post B, usada só para verificar o bloco "Leia também" do BlogPostPage com dois posts.',
+      'Descrição de teste do post B, usada só para verificar o bloco "Continue lendo" do BlogPostPage com dois posts.',
     date: '2026-07-10',
     updated: '2026-07-10',
     category: 'guia',
@@ -43,6 +43,7 @@ const { POST_A, POST_B } = vi.hoisted(() => {
 vi.mock('@/content/blog.client', () => ({
   BLOG_POSTS: [POST_A, POST_B],
   postBySlug: (slug: string) => [POST_A, POST_B].find((p) => p.slug === slug),
+  loadPostBody: async (slug: string) => [POST_A, POST_B].find((p) => p.slug === slug)?.body ?? '',
 }));
 
 import BlogPostPage from '../BlogPostPage';
@@ -57,11 +58,12 @@ function renderAt(path: string) {
   );
 }
 
-describe('BlogPostPage "Leia também"', () => {
+describe('BlogPostPage "Continue lendo"', () => {
   it('renders a link to the other post when more than one post exists', () => {
     renderAt(`/blog/${POST_A.slug}`);
-    expect(screen.getByRole('heading', { name: 'Leia também' })).toBeInTheDocument();
-    const link = screen.getByRole('link', { name: POST_B.h1 });
+    expect(screen.getByRole('heading', { name: 'Continue lendo' })).toBeInTheDocument();
+    // The card's accessible name also carries the category label.
+    const link = screen.getByRole('link', { name: new RegExp(POST_B.h1) });
     expect(link).toHaveAttribute('href', `/blog/${POST_B.slug}`);
   });
 });

@@ -1,0 +1,35 @@
+/* Configurações > Notificações on phones (FConfigNotificacoes). phone-* classes and
+   --phone-* tokens only: the Hub imports the CRM stylesheet. */
+
+/* Notes between blocks (channel footnote, read-only note). Same metrics as a group
+   footer, standing on their own. */
+.phone-kit .phone-notif-note {
+  margin: 0 16px 16px;
+  font-size: var(--phone-text-footnote);
+  color: var(--phone-label-secondary);
+}
+
+/* Type rows carry "Quando · Quem recebe": let the subtitle wrap instead of cutting it. */
+.phone-kit .phone-cell__main.phone-notif-row .phone-cell__subtitle {
+  white-space: normal;
+}
+
+/* "(pausado)" / "(encerrado)" after a client's name. */
+.phone-kit .phone-notif-status {
+  margin-left: 4px;
+  font-size: var(--phone-text-subhead);
+  font-weight: 400;
+  color: var(--phone-label-secondary);
+}
+
+/* Client who unsubscribed from the pendências digest: the switch is only dimmed, it
+   still takes the tap that opens the reactivation confirm. */
+.phone-kit .phone-notif-unsub .phone-switch {
+  opacity: 0.6;
+}
+
+.phone-kit .phone-notif-empty {
+  list-style: none;
+  text-align: center;
+  color: var(--phone-label-secondary);
+}

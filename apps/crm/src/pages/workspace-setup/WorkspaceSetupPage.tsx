@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
+import './workspace-setup.css';
 
 export default function WorkspaceSetupPage() {
   const navigate = useNavigate();
@@ -58,17 +59,7 @@ export default function WorkspaceSetupPage() {
   };
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '2rem 1rem',
-        background: '#f5f3ee',
-      }}
-    >
+    <div className="workspace-setup-shell">
       <div
         style={{
           background: '#fff',

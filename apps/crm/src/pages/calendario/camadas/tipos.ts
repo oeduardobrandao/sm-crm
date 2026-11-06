@@ -1,3 +1,4 @@
+import { i18n } from '@mesaas/i18n';
 import type { ScheduledPost } from '../../../store';
 import type { PostPublishState } from '../../entregas/postLabels';
 import type { NicheEvent } from '../nicheCalendars/types';
@@ -71,13 +72,31 @@ export const CAMADAS: CamadaId[] = [
 
 export const CAMADAS_FINANCEIRAS: ReadonlySet<CamadaId> = new Set(['recebimentos', 'pagamentos']);
 
+/** Display name of a layer in the UI language, resolved at call time. */
+export function rotuloDaCamada(id: CamadaId): string {
+  return i18n.t(`calendario:camadas.rotulo.${id}`);
+}
+
+/** Same labels as `rotuloDaCamada`, as a map; each read resolves in the current language. */
 export const CAMADA_ROTULO: Record<CamadaId, string> = {
-  posts: 'Posts agendados',
-  prazos: 'Prazos de entrega',
-  recebimentos: 'Recebimentos',
-  pagamentos: 'Pagamentos da equipe',
-  datas: 'Datas dos clientes',
-  comemorativas: 'Datas comemorativas',
+  get posts() {
+    return rotuloDaCamada('posts');
+  },
+  get prazos() {
+    return rotuloDaCamada('prazos');
+  },
+  get recebimentos() {
+    return rotuloDaCamada('recebimentos');
+  },
+  get pagamentos() {
+    return rotuloDaCamada('pagamentos');
+  },
+  get datas() {
+    return rotuloDaCamada('datas');
+  },
+  get comemorativas() {
+    return rotuloDaCamada('comemorativas');
+  },
 };
 
 /** Layer ink: swatch in the sidebar and the dashed border of its chips. */

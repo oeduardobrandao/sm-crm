@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
 import type { SourceGuide } from '../sourceGuides';
 
-const KB_SLUG = 'como-exportar-seus-dados-do-notion-trello-e-clickup';
+export const KB_SLUG = 'como-exportar-seus-dados-do-notion-trello-e-clickup';
 
 function GuideContent({ guide }: { guide: SourceGuide }) {
   return (

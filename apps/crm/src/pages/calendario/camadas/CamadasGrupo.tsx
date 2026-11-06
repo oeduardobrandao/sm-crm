@@ -1,4 +1,5 @@
 import { useId } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
@@ -12,9 +13,9 @@ import { NICHE_CALENDARS } from '../nicheCalendars/registry';
 import { CAMADA_ICONE } from './icones';
 import {
   CAMADA_COR,
-  CAMADA_ROTULO,
   CAMADAS,
   CAMADAS_FINANCEIRAS,
+  rotuloDaCamada,
   type CamadaId,
   type CamadasAtivas,
 } from './tipos';
@@ -37,6 +38,7 @@ export function CamadasGrupo({
   nichoKey,
   onNichoChange,
 }: CamadasGrupoProps) {
+  const { t } = useTranslation('calendario');
   const nichoId = useId();
   const visiveis = CAMADAS.filter(
     (id) => !CAMADAS_FINANCEIRAS.has(id) || canSeeFinancials === true,
@@ -47,8 +49,8 @@ export function CamadasGrupo({
   }
 
   return (
-    <div className="agenda-sidebar__grupo" role="group" aria-label="Camadas">
-      <div className="agenda-sidebar__rotulo">Camadas</div>
+    <div className="agenda-sidebar__grupo" role="group" aria-label={t('camadas.group')}>
+      <div className="agenda-sidebar__rotulo">{t('camadas.group')}</div>
       <ul className="agenda-pessoas">
         {visiveis.map((id) => {
           const Icone = CAMADA_ICONE[id];
@@ -56,7 +58,7 @@ export function CamadasGrupo({
             <li key={id}>
               <label className="agenda-pessoa">
                 <Checkbox
-                  aria-label={CAMADA_ROTULO[id]}
+                  aria-label={rotuloDaCamada(id)}
                   checked={ativas[id]}
                   onCheckedChange={(c) => alternar(id, c === true)}
                 />
@@ -67,7 +69,7 @@ export function CamadasGrupo({
                 >
                   <Icone size={12} strokeWidth={2} />
                 </span>
-                <span className="agenda-pessoa__nome">{CAMADA_ROTULO[id]}</span>
+                <span className="agenda-pessoa__nome">{rotuloDaCamada(id)}</span>
               </label>
             </li>
           );
@@ -76,10 +78,10 @@ export function CamadasGrupo({
       {ativas.comemorativas && (
         <div className="agenda-camadas__nicho">
           <label htmlFor={nichoId} className="agenda-camadas__nicho-rotulo">
-            Nicho
+            {t('shared.niche')}
           </label>
           <Select value={nichoKey} onValueChange={onNichoChange}>
-            <SelectTrigger id={nichoId} aria-label="Nicho" className="h-9">
+            <SelectTrigger id={nichoId} aria-label={t('shared.niche')} className="h-9">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

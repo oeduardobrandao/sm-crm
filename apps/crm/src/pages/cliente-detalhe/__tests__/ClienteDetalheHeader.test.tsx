@@ -46,6 +46,24 @@ describe('ClienteDetalheHeader', () => {
     expect(onEdit).toHaveBeenCalledOnce();
   });
 
+  it('omits the plan badge when the client has no plan', () => {
+    const { container } = renderHeader({
+      clienteId: 1,
+      nome: 'Eduardo',
+      initials: 'E',
+      cor: '#eab308',
+      plano: '',
+      status: 'ativo',
+      canEditPhoto: false,
+      canEdit: true,
+      onBack: vi.fn(),
+      onEdit: vi.fn(),
+    });
+    const badges = container.querySelectorAll('.cliente-detalhe-header__badges .badge');
+    expect(badges).toHaveLength(1);
+    expect(badges[0]).toHaveTextContent('Ativo');
+  });
+
   it('shows the photo-upload control only when canEditPhoto is true', () => {
     renderHeader({
       clienteId: 7,
