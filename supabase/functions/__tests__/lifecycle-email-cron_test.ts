@@ -3,6 +3,7 @@ import {
   type CronReportDetail,
   type LifecycleCronDeps,
   runLifecycleEmailCron,
+  runNurturePreview,
 } from "../lifecycle-email-cron/handler.ts";
 
 /**
@@ -38,6 +39,22 @@ function makeFakeDb(opts: {
     first_charge_at: string;
   }>;
   trialRpcError?: string;
+  nurtureCandidates?: Array<{
+    user_id: string;
+    workspace_id: string;
+    email: string;
+    nome?: string | null;
+    workspace_name?: string;
+    workspace_created_at?: string;
+    step: string;
+    attempts?: number;
+    client_count?: number;
+    first_client_name?: string | null;
+    has_instagram?: boolean;
+  }>;
+  nurtureRpcError?: string;
+  /** claim_nurture_email result keyed `${workspace_id}/${step}`; default attempts + 1. */
+  claimResults?: Record<string, number | null>;
 }) {
   type Row = {
     email_type: string;
@@ -54,13 +71,50 @@ function makeFakeDb(opts: {
   const find = (email_type: string, key: string) =>
     rows.find((r) => r.email_type === email_type && keyOf(r) === key);
 
+  const rpcCalls: Array<{ name: string; args?: Record<string, unknown> }> = [];
+  const nurtureUpdates: Array<{ patch: { delivered_at: string }; filters: Record<string, string> }> =
+    [];
+  const fromCalls: string[] = [];
   const db = {
     rows,
+    rpcCalls,
+    nurtureUpdates,
+    fromCalls,
     markStale(email_type: string, key: string) {
       const r = find(email_type, key);
       if (r) r.stale = true;
     },
-    rpc(name: string) {
+    rpc(name: string, args?: Record<string, unknown>) {
+      rpcCalls.push({ name, args });
+      if (name === "get_nurture_candidates") {
+        if (opts.nurtureRpcError) {
+          return Promise.resolve({ data: null, error: { message: opts.nurtureRpcError } });
+        }
+        return Promise.resolve({
+          data: (opts.nurtureCandidates ?? []).map((c) => ({
+            nome: "Ana Souza",
+            workspace_name: "Agencia N",
+            workspace_created_at: "2026-09-01T10:00:00+00:00",
+            attempts: 0,
+            client_count: 0,
+            first_client_name: null,
+            has_instagram: false,
+            ...c,
+            email_type: `nurture_${c.step}`,
+          })),
+          error: null,
+        });
+      }
+      if (name === "claim_nurture_email") {
+        const key = `${args?.p_workspace_id}/${args?.p_step}`;
+        const c = (opts.nurtureCandidates ?? []).find(
+          (x) => x.workspace_id === args?.p_workspace_id && x.step === args?.p_step,
+        );
+        const result = opts.claimResults && key in opts.claimResults
+          ? opts.claimResults[key]
+          : (c?.attempts ?? 0) + 1;
+        return Promise.resolve({ data: result, error: null });
+      }
       // Mirrors the SQL: eligible = no row, or an undelivered stale row under
       // the 30-attempt cap; the RPC returns the current attempts count.
       const eligible = (email_type: string, key: string) => {
@@ -110,6 +164,25 @@ function makeFakeDb(opts: {
       throw new Error(`unexpected rpc ${name}`);
     },
     from(table: string) {
+      fromCalls.push(table);
+      if (table === "nurture_emails") {
+        return {
+          update(patch: { delivered_at: string }) {
+            const filters: Record<string, string> = {};
+            const chain = {
+              eq(col: string, val: string) {
+                filters[col] = val;
+                return chain;
+              },
+              then(resolve: (v: { error: null }) => void) {
+                nurtureUpdates.push({ patch, filters });
+                resolve({ error: null });
+              },
+            };
+            return chain;
+          },
+        };
+      }
       assert(table === "lifecycle_emails");
       return {
         upsert(
@@ -166,6 +239,13 @@ function makeDeps(db: ReturnType<typeof makeFakeDb>, overrides?: Partial<Lifecyc
   const sent: Array<{ kind: string; to: string; firstName: string | null; key: string }> = [];
   const reminders: Array<{ to: string; subject: string; html: string; key: string }> = [];
   const founderSent: Array<{ kind: string; key: string; payload: Record<string, unknown> }> = [];
+  const nurtureSent: Array<{
+    to: string;
+    subject: string;
+    html: string;
+    idempotencyKey: string;
+    headers: Record<string, string>;
+  }> = [];
   const deps: LifecycleCronDeps = {
     db: db as unknown as LifecycleCronDeps["db"],
     appBaseUrl: "https://x.test",
@@ -190,10 +270,17 @@ function makeDeps(db: ReturnType<typeof makeFakeDb>, overrides?: Partial<Lifecyc
       reminders.push({ to: p.to, subject: p.subject, html: p.html, key: p.idempotencyKey });
       return Promise.resolve();
     },
+    nurtureEnabled: false,
+    nurtureUnsubUrl: (userId) => Promise.resolve(`https://unsub.test/${userId}`),
+    whatsappUrl: null,
+    sendNurture: (p) => {
+      nurtureSent.push({ ...p });
+      return Promise.resolve();
+    },
     report: () => Promise.resolve(),
     ...overrides,
   };
-  return { deps, sent, founderSent, reminders };
+  return { deps, sent, founderSent, reminders, nurtureSent };
 }
 
 Deno.test("welcome sweep claims, sends with first name + key, marks delivered", async () => {
@@ -537,4 +624,171 @@ Deno.test("trial reminder: an RPC error is reported and the other sweeps still r
   assert(
     (reported as CronReportDetail | null)?.errors[0].error?.includes("trial reminder candidates"),
   );
+});
+
+// --- Nurture sweep ----------------------------------------------------------
+
+const B1 = {
+  user_id: "11111111-1111-1111-1111-111111111111",
+  workspace_id: "ws-b1",
+  email: "dona@x.test",
+  step: "b1",
+  client_count: 1,
+  first_client_name: "Studio Bela",
+};
+
+Deno.test("nurture off never calls the rpc", async () => {
+  const db = makeFakeDb({ nurtureCandidates: [B1] });
+  const { deps, nurtureSent } = makeDeps(db);
+  const result = await runLifecycleEmailCron(deps);
+  assertEquals(result.nurtureSent, 0);
+  assert(!db.rpcCalls.some((c) => c.name === "get_nurture_candidates"));
+  assert(!db.rpcCalls.some((c) => c.name === "claim_nurture_email"));
+  assertEquals(nurtureSent.length, 0);
+});
+
+Deno.test("nurture on sends claimed steps", async () => {
+  const db = makeFakeDb({ nurtureCandidates: [B1] });
+  const { deps, nurtureSent } = makeDeps(db, { nurtureEnabled: true });
+  const nowIso = deps.now().toISOString();
+  const result = await runLifecycleEmailCron(deps);
+  assertEquals(result.nurtureSent, 1);
+  assertEquals(result.failed, 0);
+
+  const candCall = db.rpcCalls.find((c) => c.name === "get_nurture_candidates");
+  assertEquals(candCall?.args, { p_now: nowIso });
+  const claimCall = db.rpcCalls.find((c) => c.name === "claim_nurture_email");
+  assertEquals(claimCall?.args, {
+    p_workspace_id: "ws-b1",
+    p_step: "b1",
+    p_recipient_user_id: B1.user_id,
+    p_now: nowIso,
+  });
+
+  assertEquals(nurtureSent.length, 1);
+  const m = nurtureSent[0];
+  const url = `https://unsub.test/${B1.user_id}`;
+  assertEquals(m.to, "dona@x.test");
+  assertEquals(m.idempotencyKey, "nurture_b1/ws-b1");
+  assertEquals(m.headers["List-Unsubscribe"], `<${url}>`);
+  assertEquals(m.headers["List-Unsubscribe-Post"], "List-Unsubscribe=One-Click");
+  assert(m.html.includes(url), "html must carry the unsubscribe link");
+  assert(m.html.includes("Ana"), "first name from nome");
+  assert(m.subject.length > 0);
+
+  assertEquals(db.nurtureUpdates.length, 1);
+  assertEquals(db.nurtureUpdates[0].filters, { workspace_id: "ws-b1", step: "b1" });
+  assertEquals(db.nurtureUpdates[0].patch.delivered_at, nowIso);
+});
+
+Deno.test("nurture: claim refused skips send", async () => {
+  const db = makeFakeDb({ nurtureCandidates: [B1], claimResults: { "ws-b1/b1": null } });
+  let reported = false;
+  const { deps, nurtureSent } = makeDeps(db, {
+    nurtureEnabled: true,
+    report: () => {
+      reported = true;
+      return Promise.resolve();
+    },
+  });
+  const result = await runLifecycleEmailCron(deps);
+  assertEquals(result.nurtureSent, 0);
+  assertEquals(result.failed, 0);
+  assertEquals(nurtureSent.length, 0);
+  assertEquals(db.nurtureUpdates.length, 0);
+  assert(!reported, "a refused claim is not an error");
+});
+
+Deno.test("nurture: send failure is reported, not delivered", async () => {
+  const db = makeFakeDb({ nurtureCandidates: [B1] });
+  let reported: CronReportDetail | null = null;
+  const { deps } = makeDeps(db, {
+    nurtureEnabled: true,
+    sendNurture: () => Promise.reject(new Error("resend down")),
+    report: (d: CronReportDetail) => {
+      reported = d;
+      return Promise.resolve();
+    },
+  });
+  const result = await runLifecycleEmailCron(deps);
+  assertEquals(result.nurtureSent, 0);
+  assertEquals(result.failed, 1);
+  assertEquals((reported as CronReportDetail | null)?.errors[0].accountId, "ws-b1");
+  assertEquals(db.nurtureUpdates.length, 0);
+});
+
+Deno.test("nurture: candidate rpc error is reported, other sweeps still run", async () => {
+  const db = makeFakeDb({
+    welcomeCandidates: [{ user_id: "u1", email: "ana@x.test", nome: "Ana" }],
+    nurtureRpcError: "function does not exist",
+  });
+  let reported: CronReportDetail | null = null;
+  const { deps } = makeDeps(db, {
+    nurtureEnabled: true,
+    report: (d: CronReportDetail) => {
+      reported = d;
+      return Promise.resolve();
+    },
+  });
+  const result = await runLifecycleEmailCron(deps);
+  assertEquals(result.welcomeSent, 1);
+  assertEquals(result.failed, 1);
+  assert(
+    (reported as CronReportDetail | null)?.errors[0].error?.startsWith("nurture candidates: "),
+  );
+});
+
+Deno.test("nurture: empty email is reported and never claimed or sent", async () => {
+  const db = makeFakeDb({ nurtureCandidates: [{ ...B1, email: "" }] });
+  let reported: CronReportDetail | null = null;
+  const { deps, nurtureSent } = makeDeps(db, {
+    nurtureEnabled: true,
+    report: (d: CronReportDetail) => {
+      reported = d;
+      return Promise.resolve();
+    },
+  });
+  const result = await runLifecycleEmailCron(deps);
+  assertEquals(result.nurtureSent, 0);
+  assertEquals(result.failed, 1);
+  assertEquals((reported as CronReportDetail | null)?.errors[0].accountId, "ws-b1");
+  assert(!db.rpcCalls.some((c) => c.name === "claim_nurture_email"));
+  assertEquals(nurtureSent.length, 0);
+});
+
+Deno.test("nurture: unknown step is reported and never claimed", async () => {
+  const db = makeFakeDb({ nurtureCandidates: [{ ...B1, step: "c9" }] });
+  const { deps, nurtureSent } = makeDeps(db, { nurtureEnabled: true });
+  const result = await runLifecycleEmailCron(deps);
+  assertEquals(result.failed, 1);
+  assert(!db.rpcCalls.some((c) => c.name === "claim_nurture_email"));
+  assertEquals(nurtureSent.length, 0);
+});
+
+Deno.test("nurture: blank nome sends without a first name", async () => {
+  const db = makeFakeDb({ nurtureCandidates: [{ ...B1, nome: "   " }] });
+  const { deps, nurtureSent } = makeDeps(db, { nurtureEnabled: true });
+  await runLifecycleEmailCron(deps);
+  assertEquals(nurtureSent.length, 1);
+  assert(nurtureSent[0].html.includes("A Agencia N já está no Mesaas."));
+});
+
+Deno.test("nurture preview sends 8 without touching ledgers", async () => {
+  const db = makeFakeDb({ nurtureCandidates: [B1] });
+  // Preview must work with the sweep switched off (deploy step 5).
+  const { deps, nurtureSent } = makeDeps(db, { nurtureEnabled: false });
+  const result = await runNurturePreview(deps, "e@x");
+  assertEquals(result.previewSent, 8);
+  assertEquals(nurtureSent.length, 8);
+  assert(nurtureSent.every((m) => m.to === "e@x"));
+  const day = deps.now().toISOString().slice(0, 10);
+  assertEquals(
+    nurtureSent.map((m) => m.idempotencyKey),
+    ["a1", "a2", "a3", "a4", "b1", "b2", "b3", "b4"].map((s) => `nurture_preview/${s}/${day}`),
+  );
+  const previewUrl = "https://unsub.test/00000000-0000-0000-0000-000000000000";
+  assert(nurtureSent.every((m) => m.headers["List-Unsubscribe"] === `<${previewUrl}>`));
+  assertEquals(nurtureSent[0].subject, "Seu primeiro cliente no Mesaas leva 3 minutos");
+  assertEquals(db.rpcCalls.length, 0);
+  assertEquals(db.fromCalls.length, 0);
 });
