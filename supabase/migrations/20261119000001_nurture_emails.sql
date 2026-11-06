@@ -54,13 +54,17 @@ create table if not exists public.nurture_emails (
   step text not null check (step in ('a1','a2','a3','a4','b1','b2','b3','b4')),
   recipient_user_id uuid not null,
   sent_at timestamptz not null,
+  -- First claim of this step. Never moved by a retry: retries stop 20h after
+  -- it, inside Resend's 24h Idempotency-Key window, so a retry can never
+  -- double-send. Past that the step is abandoned and the sequence ends.
+  first_claimed_at timestamptz not null default now(),
   delivered_at timestamptz null,
   attempts int not null default 1,
   unique (workspace_id, step)
 );
 
 comment on table public.nurture_emails is
-  'Ledger do nurture de contas que nunca assinaram: uma linha por workspace e passo (a1..a4 sem cliente, b1..b4 com cliente). sent_at = claim; delivered_at = entrega confirmada. Nunca apagar: e o registro de "nunca mandar duas vezes".';
+  'Ledger do nurture de contas que nunca assinaram: uma linha por workspace e passo (a1..a4 sem cliente, b1..b4 com cliente). sent_at = ultimo claim; first_claimed_at = primeiro claim (retentativa so ate 20h depois dele, dentro das 24h de idempotencia do Resend); delivered_at = entrega confirmada. Nunca apagar: e o registro de "nunca mandar duas vezes".';
 
 create index if not exists nurture_emails_recipient_delivered_idx
   on public.nurture_emails (recipient_user_id, delivered_at);
@@ -109,8 +113,12 @@ $$;
 --    person currently owns. One sequence per person: a nurture row on another
 --    workspace blocks this one.
 --
---    Step: a pending claim is retried (stale, < 30 attempts) or waited on
---    (fresh); a4/b4 delivered ends it; segment b when there is any b row or
+--    Step: a pending claim is retried (stale, < 30 attempts, first claimed
+--    less than 20h ago, same recipient as the current owner) or waited on
+--    (fresh); a pending claim first claimed 20h ago or more, or claimed for
+--    a previous owner, is abandoned and ends the sequence (a retry past
+--    Resend's 24h idempotency window could send twice); a4/b4 delivered
+--    ends it; segment b when there is any b row or
 --    at least one client; A -> B only before a4; steps 2/3/4 are due 4/9/16
 --    days after the delivery of step 1 of the current segment.
 --
@@ -223,7 +231,9 @@ as $$
            r.end_delivered,
            pend.step as pend_step,
            pend.attempts as pend_attempts,
-           pend.sent_at as pend_sent_at
+           pend.sent_at as pend_sent_at,
+           pend.first_claimed_at as pend_first_claimed_at,
+           pend.recipient_user_id as pend_recipient
     from eligible e
     cross join lateral (
       select count(*)::int as client_count from clientes c where c.conta_id = e.workspace_id
@@ -252,7 +262,7 @@ as $$
       from nurture_emails n where n.workspace_id = e.workspace_id
     ) r
     left join lateral (
-      select n.step, n.attempts, n.sent_at
+      select n.step, n.attempts, n.sent_at, n.first_claimed_at, n.recipient_user_id
       from nurture_emails n
       where n.workspace_id = e.workspace_id and n.delivered_at is null
       order by n.sent_at desc
@@ -265,6 +275,10 @@ as $$
              when s.pend_step is not null then
                case
                  when s.pend_sent_at > p_now - interval '1 hour' then null
+                 -- abandoned: past the 20h retry bound, or claimed for a
+                 -- previous owner (the claim would refuse it anyway)
+                 when s.pend_first_claimed_at <= p_now - interval '20 hours' then null
+                 when s.pend_recipient is distinct from s.user_id then null
                  when s.pend_attempts < 30 then s.pend_step
                  else null
                end
@@ -337,8 +351,9 @@ $$;
 -- =============================================================
 -- 5) Claim. Returns attempts after the claim, or null when refused: invalid
 --    step, recipient is not the current owner (owner changed between read
---    and send), step already delivered, a fresh claim (< 1h) in flight, or
---    the retry budget (30) spent.
+--    and send), recipient opted out, step already delivered, a fresh claim
+--    (< 1h) in flight, the retry budget (30) spent, or the first claim is
+--    20h old or more (Resend dedupes an Idempotency-Key for 24h only).
 -- =============================================================
 create or replace function public.claim_nurture_email(
   p_workspace_id uuid,
@@ -357,18 +372,24 @@ begin
   if p_step is null
      or p_step not in ('a1','a2','a3','a4','b1','b2','b3','b4')
      or p_recipient_user_id is null
-     or _nurture_current_owner(p_workspace_id) is distinct from p_recipient_user_id then
+     or _nurture_current_owner(p_workspace_id) is distinct from p_recipient_user_id
+     or exists (
+       select 1 from profiles p
+       where p.id = p_recipient_user_id and p.nurture_opt_out_at is not null
+     ) then
     return null;
   end if;
 
-  insert into nurture_emails as ne (workspace_id, step, recipient_user_id, sent_at, attempts)
-  values (p_workspace_id, p_step, p_recipient_user_id, p_now, 1)
+  insert into nurture_emails as ne
+    (workspace_id, step, recipient_user_id, sent_at, first_claimed_at, attempts)
+  values (p_workspace_id, p_step, p_recipient_user_id, p_now, p_now, 1)
   on conflict (workspace_id, step) do update
     set sent_at = p_now,
         attempts = ne.attempts + 1
     where ne.delivered_at is null
       and ne.sent_at <= p_now - interval '1 hour'
       and ne.attempts < 30
+      and ne.first_claimed_at > p_now - interval '20 hours'
       and ne.recipient_user_id = p_recipient_user_id
   returning ne.attempts into v_attempts;
 

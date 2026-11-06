@@ -388,8 +388,9 @@ begin;
   declare f record; r record; n int; v_t timestamptz := '2026-11-10 13:00:00+00';
   begin
     select * into f from et_nurture_fixture(0);
-    insert into nurture_emails (workspace_id, step, recipient_user_id, sent_at, delivered_at, attempts)
-      values (f.workspace_id, 'a1', f.user_id, v_t - interval '2 hours', null, 3);
+    -- first_claimed_at explicit: its default is the wall clock, not v_t
+    insert into nurture_emails (workspace_id, step, recipient_user_id, sent_at, first_claimed_at, delivered_at, attempts)
+      values (f.workspace_id, 'a1', f.user_id, v_t - interval '2 hours', v_t - interval '2 hours', null, 3);
     select * into r from get_nurture_candidates(v_t) c where c.workspace_id = f.workspace_id;
     if r.step is distinct from 'a1' or r.attempts <> 3 then
       raise exception 'stale_claim_retry: got %, expected a1 with attempts 3', row_to_json(r);
@@ -500,7 +501,7 @@ begin;
     if v_r is distinct from 1 then raise exception 'claim: first claim returned %, expected 1', v_r; end if;
     select count(*) into n from nurture_emails
      where workspace_id = f.workspace_id and step = 'a1' and recipient_user_id = f.user_id
-       and sent_at = v_t and delivered_at is null and attempts = 1;
+       and sent_at = v_t and first_claimed_at = v_t and delivered_at is null and attempts = 1;
     if n <> 1 then raise exception 'claim: first claim row not as expected'; end if;
 
     v_r := claim_nurture_email(f.workspace_id, 'a1', f.user_id, v_t);
@@ -509,6 +510,10 @@ begin;
     update nurture_emails set sent_at = v_t - interval '2 hours' where workspace_id = f.workspace_id;
     v_r := claim_nurture_email(f.workspace_id, 'a1', f.user_id, v_t);
     if v_r is distinct from 2 then raise exception 'claim: stale re-claim returned %, expected 2', v_r; end if;
+    -- a retry moves sent_at, never first_claimed_at
+    select count(*) into n from nurture_emails
+     where workspace_id = f.workspace_id and first_claimed_at = v_t and sent_at = v_t;
+    if n <> 1 then raise exception 'claim: retry did not keep first_claimed_at'; end if;
 
     -- a delivered step is never claimed again
     update nurture_emails set sent_at = v_t - interval '2 hours', delivered_at = v_t - interval '2 hours'
@@ -604,6 +609,99 @@ begin;
       values (v_ws2, 'a1', f.user_id, v_t - interval '30 days', v_t - interval '30 days');
     select count(*) into n from get_nurture_candidates(v_t) c where c.workspace_id = f.workspace_id;
     if n <> 0 then raise exception 'one_sequence_per_person: returned % rows', n; end if;
+  end $$;
+rollback;
+
+-- 17. retry_bound_20h: an undelivered step first claimed 20h ago or more is
+--     abandoned (Resend dedupes an Idempotency-Key for 24h only): no candidate,
+--     no claim, and the sequence does not move past it. 19h ago is retried.
+begin;
+  select et_grant_hosted_parity();
+  do $$
+  declare f record; r record; n int; v_r int; v_t timestamptz := '2026-11-10 13:00:00+00';
+  begin
+    -- a1 delivered, a2 claimed 21h ago and never delivered
+    select * into f from et_nurture_fixture(0);
+    insert into nurture_emails (workspace_id, step, recipient_user_id, sent_at, first_claimed_at, delivered_at, attempts) values
+      (f.workspace_id, 'a1', f.user_id, v_t - interval '6 days', v_t - interval '6 days', v_t - interval '6 days', 1),
+      (f.workspace_id, 'a2', f.user_id, v_t - interval '2 hours', v_t - interval '21 hours', null, 4);
+    select count(*) into n from get_nurture_candidates(v_t) c where c.workspace_id = f.workspace_id;
+    if n <> 0 then raise exception 'retry_bound_20h: 21h-old claim returned % rows', n; end if;
+    v_r := claim_nurture_email(f.workspace_id, 'a2', f.user_id, v_t);
+    if v_r is not null then raise exception 'retry_bound_20h: 21h-old claim re-claimed (%)', v_r; end if;
+    select count(*) into n from nurture_emails
+     where workspace_id = f.workspace_id and step = 'a2' and attempts = 4 and sent_at = v_t - interval '2 hours';
+    if n <> 1 then raise exception 'retry_bound_20h: refused claim changed the row'; end if;
+    -- never continues: not when a3 would be due, not after a client appears
+    select count(*) into n from get_nurture_candidates(v_t + interval '7 days') c where c.workspace_id = f.workspace_id;
+    if n <> 0 then raise exception 'retry_bound_20h: sequence continued past the abandoned step (% rows)', n; end if;
+    insert into clientes (user_id, conta_id, nome, sigla, cor) values (f.user_id, f.workspace_id, 'Primeiro', 'P', '#000');
+    select count(*) into n from get_nurture_candidates(v_t) c where c.workspace_id = f.workspace_id;
+    if n <> 0 then raise exception 'retry_bound_20h: abandoned step migrated to b1 (% rows)', n; end if;
+
+    -- 19h ago: still retried
+    select * into f from et_nurture_fixture(0);
+    insert into nurture_emails (workspace_id, step, recipient_user_id, sent_at, first_claimed_at, delivered_at, attempts) values
+      (f.workspace_id, 'a1', f.user_id, v_t - interval '6 days', v_t - interval '6 days', v_t - interval '6 days', 1),
+      (f.workspace_id, 'a2', f.user_id, v_t - interval '2 hours', v_t - interval '19 hours', null, 4);
+    select * into r from get_nurture_candidates(v_t) c where c.workspace_id = f.workspace_id;
+    if r.step is distinct from 'a2' or r.attempts <> 4 then
+      raise exception 'retry_bound_20h: 19h-old claim got %, expected a2 retry', row_to_json(r);
+    end if;
+    v_r := claim_nurture_email(f.workspace_id, 'a2', f.user_id, v_t);
+    if v_r is distinct from 5 then raise exception 'retry_bound_20h: 19h-old re-claim returned %, expected 5', v_r; end if;
+  end $$;
+rollback;
+
+-- 18. claim_refuses_opted_out
+begin;
+  select et_grant_hosted_parity();
+  do $$
+  declare f record; n int; v_r int; v_t timestamptz := '2026-11-10 13:00:00+00';
+  begin
+    select * into f from et_nurture_fixture(0);
+    update profiles set nurture_opt_out_at = v_t - interval '5 minutes' where id = f.user_id;
+    v_r := claim_nurture_email(f.workspace_id, 'a1', f.user_id, v_t);
+    if v_r is not null then raise exception 'claim_refuses_opted_out: returned %, expected null', v_r; end if;
+    select count(*) into n from nurture_emails where workspace_id = f.workspace_id;
+    if n <> 0 then raise exception 'claim_refuses_opted_out: wrote % rows', n; end if;
+    -- control: opted back in, the claim goes through
+    update profiles set nurture_opt_out_at = null where id = f.user_id;
+    v_r := claim_nurture_email(f.workspace_id, 'a1', f.user_id, v_t);
+    if v_r is distinct from 1 then raise exception 'claim_refuses_opted_out: control returned %, expected 1', v_r; end if;
+  end $$;
+rollback;
+
+-- 19. pending_claim_of_previous_owner_skipped: after an owner change, a stale
+--     undelivered claim made for the previous owner is not returned (the
+--     claim would refuse it, leaving a stuck row every run).
+begin;
+  select et_grant_hosted_parity();
+  do $$
+  declare f record; n int; v_owner2 uuid := gen_random_uuid();
+          v_t timestamptz := '2026-11-10 13:00:00+00';
+  begin
+    select * into f from et_nurture_fixture(0);
+    insert into nurture_emails (workspace_id, step, recipient_user_id, sent_at, first_claimed_at, delivered_at, attempts)
+      values (f.workspace_id, 'a1', f.user_id, v_t - interval '2 hours', v_t - interval '2 hours', null, 1);
+    -- control: same owner, the stale claim is retried
+    select count(*) into n from get_nurture_candidates(v_t) c
+     where c.workspace_id = f.workspace_id and c.step = 'a1' and c.user_id = f.user_id;
+    if n <> 1 then raise exception 'previous_owner: control returned % rows, expected 1', n; end if;
+
+    -- v_owner2 becomes the current owner (created_by), set up like the fixture
+    insert into auth.users (id, email, email_confirmed_at, last_sign_in_at, raw_user_meta_data)
+      values (v_owner2, v_owner2 || '@et.test', now(), now(), '{}'::jsonb);
+    delete from workspaces where created_by = v_owner2;
+    update auth.users set created_at = v_t - interval '4 days' where id = v_owner2;
+    update workspaces set plan_id = 'max', created_by = v_owner2 where id = f.workspace_id;
+    insert into workspace_members (user_id, workspace_id, role) values (v_owner2, f.workspace_id, 'owner');
+    update profiles set conta_id = f.workspace_id, nurture_opt_out_at = null where id = v_owner2;
+    if _nurture_current_owner(f.workspace_id) is distinct from v_owner2 then
+      raise exception 'previous_owner: setup did not make owner2 the current owner';
+    end if;
+    select count(*) into n from get_nurture_candidates(v_t) c where c.workspace_id = f.workspace_id;
+    if n <> 0 then raise exception 'previous_owner: pending claim of the previous owner returned % rows', n; end if;
   end $$;
 rollback;
 
