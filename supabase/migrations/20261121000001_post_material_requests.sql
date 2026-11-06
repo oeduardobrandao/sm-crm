@@ -43,7 +43,7 @@ CREATE TABLE post_material_items (
   post_id    bigint NOT NULL,
   conta_id   uuid   NOT NULL,
   label      text   NOT NULL
-    CONSTRAINT post_material_items_label_len CHECK (char_length(btrim(label)) BETWEEN 1 AND 120),
+    CONSTRAINT post_material_items_label_len CHECK (char_length(regexp_replace(label, '^\s+|\s+$', '', 'g')) BETWEEN 1 AND 120),
   detail     text
     CONSTRAINT post_material_items_detail_len CHECK (detail IS NULL OR char_length(detail) <= 300),
   position   int    NOT NULL,
@@ -330,11 +330,12 @@ REVOKE ALL ON FUNCTION _post_material_complete_check(bigint, boolean, text) FROM
 --   p_open = false: pedido existente vira cancelado/team (já cancelado fica
 --     como está); p_items é ignorado e os itens ficam. Sem pedido: devolve
 --     NULL (nada a cancelar, nenhuma linha criada).
---   p_open = true: recusa post agendado/postado/falha_publicacao; cria ou
---     reabre (reabrir reescreve opened_by/opened_at e limpa closed_*; editar
---     um pedido já aberto não troca quem abriu) e roda a conclusão SEM
---     notificar. Reabrir vale também para concluido/client: salvar de novo
---     pergunta outra vez ao cliente.
+--   p_open = true: recusa post agendado/postado/falha_publicacao; cria, ou
+--     reabre um cancelado; um concluido continua concluido (mesmo closed_*)
+--     salvo quando o salvar cria item novo (sem arquivo), aí reabre. Reabrir
+--     reescreve opened_by/opened_at e limpa closed_*; editar sem reabrir não
+--     troca quem abriu. Depois roda a conclusão SEM notificar (só age em
+--     pedido aberto).
 -- Limites: 1..10 itens; itens + referências que ficarão livres depois do
 -- salvar (sem item, ou de item que sai da lista) <= 10; label aparado 1..120;
 -- detail aparado <= 300 ('' vira NULL).
@@ -356,6 +357,7 @@ DECLARE
   v_detail text;
   v_ids    bigint[] := '{}';
   v_free   int;
+  v_added  boolean := false;
 BEGIN
   SELECT wp.status INTO v_status
     FROM workflow_posts wp
@@ -395,9 +397,9 @@ BEGIN
   FOR v_el IN SELECT e.value FROM jsonb_array_elements(p_items) e LOOP
     IF jsonb_typeof(v_el) <> 'object'
        OR jsonb_typeof(v_el->'label') IS DISTINCT FROM 'string'
-       OR char_length(btrim(v_el->>'label')) NOT BETWEEN 1 AND 120
+       OR char_length(regexp_replace(v_el->>'label', '^\s+|\s+$', '', 'g')) NOT BETWEEN 1 AND 120
        OR COALESCE(jsonb_typeof(v_el->'detail'), 'null') NOT IN ('string', 'null')
-       OR COALESCE(char_length(btrim(v_el->>'detail')), 0) > 300
+       OR COALESCE(char_length(regexp_replace(v_el->>'detail', '^\s+|\s+$', '', 'g')), 0) > 300
        OR COALESCE(jsonb_typeof(v_el->'id'), 'null') NOT IN ('number', 'null') THEN
       RAISE EXCEPTION 'invalid_item' USING errcode = 'P0001';
     END IF;
@@ -427,7 +429,7 @@ BEGIN
     INSERT INTO post_material_requests (post_id, conta_id, status, opened_by, opened_at)
     VALUES (p_post, p_conta, 'aberto', p_user, now())
     RETURNING * INTO v_req;
-  ELSIF v_req.status <> 'aberto' THEN
+  ELSIF v_req.status = 'cancelado' THEN
     UPDATE post_material_requests
        SET status = 'aberto', closed_by = NULL, closed_at = NULL,
            opened_by = p_user, opened_at = now()
@@ -438,8 +440,8 @@ BEGIN
    WHERE i.request_id = v_req.id AND i.id <> ALL (v_ids);
 
   FOR v_el, v_ord IN SELECT e.value, e.ord FROM jsonb_array_elements(p_items) WITH ORDINALITY e(value, ord) LOOP
-    v_label  := btrim(v_el->>'label');
-    v_detail := NULLIF(btrim(v_el->>'detail'), '');
+    v_label  := regexp_replace(v_el->>'label', '^\s+|\s+$', '', 'g');
+    v_detail := NULLIF(regexp_replace(v_el->>'detail', '^\s+|\s+$', '', 'g'), '');
     IF jsonb_typeof(v_el->'id') = 'number' THEN
       UPDATE post_material_items
          SET label = v_label, detail = v_detail, position = (v_ord - 1)::int
@@ -447,8 +449,19 @@ BEGIN
     ELSE
       INSERT INTO post_material_items (request_id, post_id, conta_id, label, detail, position)
       VALUES (v_req.id, p_post, p_conta, v_label, v_detail, (v_ord - 1)::int);
+      v_added := true;
     END IF;
   END LOOP;
+
+  -- concluido só reabre se o salvar criou item sem arquivo (item novo; editar,
+  -- reordenar ou remover não esvazia item). Um concluido/client já tem itens
+  -- vazios por escolha do cliente: corrigir um rótulo não pergunta de novo.
+  IF v_req.status = 'concluido' AND v_added THEN
+    UPDATE post_material_requests
+       SET status = 'aberto', closed_by = NULL, closed_at = NULL,
+           opened_by = p_user, opened_at = now()
+     WHERE id = v_req.id;
+  END IF;
 
   PERFORM _post_material_complete_check(v_req.id, false, 'auto');
   RETURN _post_material_request_json(v_req.id);
@@ -650,18 +663,21 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 DECLARE
-  v_req   post_material_requests;
-  v_total int;
-  v_done  int;
+  v_req    post_material_requests;
+  v_total  int;
+  v_done   int;
+  v_status text;
 BEGIN
-  PERFORM 1 FROM workflow_posts wp
+  SELECT wp.status INTO v_status FROM workflow_posts wp
    WHERE wp.id = p_post AND wp.conta_id = p_conta AND wp.cliente_id = p_cliente
    FOR UPDATE;
   IF NOT FOUND THEN RETURN 'not_found'; END IF;
 
   SELECT * INTO v_req FROM post_material_requests q WHERE q.post_id = p_post;
   IF NOT FOUND THEN RETURN 'not_found'; END IF;
-  IF v_req.status <> 'aberto' THEN RETURN 'request_closed'; END IF;
+  IF v_req.status <> 'aberto' OR v_status IN ('agendado', 'postado', 'falha_publicacao') THEN
+    RETURN 'request_closed';
+  END IF;
 
   SELECT count(*)::int,
          (count(*) FILTER (WHERE EXISTS (
@@ -684,10 +700,9 @@ GRANT EXECUTE ON FUNCTION post_material_client_close(uuid, bigint, bigint) TO se
 -- =====================================================================
 -- 3f. can_remove e lista
 -- =====================================================================
--- Regra de 20261011000001 (decisão 2) OU arquivo de item com pedido aberto,
--- com o post fora de agendado/postado/falha_publicacao. Fechado o pedido, o arquivo de item
--- volta para a regra antiga: num post em enviado_cliente o cliente ainda pode
--- remover um arquivo de item de um pedido concluido (e nada o reabre).
+-- Referência livre: regra de 20261011000001 (decisão 2). Arquivo de item: só
+-- a regra do pedido (aberto, post fora de agendado/postado/falha_publicacao);
+-- fechado o pedido, trava, qualquer que seja o status do post.
 -- client_update e client_delete chamam este predicado sob o lock do post.
 CREATE OR REPLACE FUNCTION post_reference_can_remove(p_ref_id bigint)
 RETURNS boolean
@@ -701,6 +716,7 @@ AS $$
       FROM post_references r
       JOIN workflow_posts wp ON wp.id = r.post_id AND wp.conta_id = r.conta_id
      WHERE r.id = p_ref_id
+       AND r.material_item_id IS NULL
        AND wp.status = 'enviado_cliente'
        AND NOT EXISTS (
          SELECT 1 FROM post_approvals pa
@@ -774,6 +790,8 @@ DECLARE
   v_item   bigint;
   v_status text;
 BEGIN
+  -- Leitura antes do lock só para achar o post a travar; o DELETE ... RETURNING
+  -- abaixo, já sob o lock, revalida a linha (sumiu -> not_found) e lê o item.
   SELECT r.post_id INTO v_post
     FROM post_references r
    WHERE r.id = p_ref_id AND r.conta_id = p_conta;

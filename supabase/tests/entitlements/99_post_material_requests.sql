@@ -12,7 +12,9 @@
 -- tenho"; (h) can_remove de arquivo de item; (i) remoção pela equipe reabre;
 -- (j) gatilho de status cancela; (k) salvar da equipe conclui ou reabre sem
 -- notificar; (l) post_material_requests_for e post_material_summary;
--- (m) post agendado/postado/falha_publicacao nunca reabre nem aceita item.
+-- (m) post agendado/postado/falha_publicacao nunca reabre nem aceita item;
+-- (n) rodada de revisão: arquivo de item trava ao fechar (também em
+-- enviado_cliente), salvar não reabre concluido sem item novo, espaço em branco.
 --
 -- now() é fixo dentro da transação: para provar que opened_at foi
 -- reescrito, a linha é antes empurrada para o passado.
@@ -842,7 +844,86 @@ begin
       pg_temp.pm_item_id(v_r, 1)), 'request_closed');
     assert not post_reference_can_remove(f1.id), 'item travado em ' || v_st;
     assert post_reference_client_delete(f1.id, e.ws, e.cli) = 'locked', 'cliente nao remove em ' || v_st;
+    assert post_material_client_close(e.ws, e.cli, v_p) = 'request_closed', 'cliente nao encerra em ' || v_st;
+    assert pg_temp.pm_notifs(v_p) = 1, 'sem notificacao nova em ' || v_st;
   end loop;
   raise notice 'PASS 99_post_material_requests (m) post agendado/postado nao reabre';
+end $$;
+rollback;
+
+-- ---- (n) revisão: trava de item, concluido estável, espaço em branco ----
+begin;
+do $$
+declare
+  e record;
+  v_p bigint; v_r jsonb; f post_references; v_free post_references;
+  v_req post_material_requests; v_before post_material_requests;
+  v_usr2 uuid := gen_random_uuid();
+begin
+  select * into e from pg_temp.pm_env();
+  insert into auth.users (id) values (v_usr2);
+  insert into workspace_members (user_id, workspace_id, role) values (v_usr2, e.ws, 'admin');
+
+  -- arquivo de item em enviado_cliente trava quando o pedido conclui
+  v_p := pg_temp.pm_post_s(e.ws, e.wf, 'enviado_cliente');
+  v_r := pg_temp.pm_save(e.ws, v_p, e.usr, true, pg_temp.pm_items(1));
+  v_free := pg_temp.pm_link(e.ws, e.cli, v_p, null);
+  f := pg_temp.pm_file(e.ws, e.cli, v_p, pg_temp.pm_item_id(v_r, 0));
+  assert (pg_temp.pm_req(v_p)).status = 'concluido', 'concluido/auto';
+  assert not post_reference_can_remove(f.id), 'item travado em enviado_cliente';
+  assert post_reference_client_update(f.id, e.ws, e.cli, 'x') = 'locked', 'nota do item travada';
+  assert post_reference_client_delete(f.id, e.ws, e.cli) = 'locked', 'remocao do item travada';
+  assert post_reference_can_remove(v_free.id), 'referencia livre segue a regra antiga';
+
+  -- concluido/auto: editar rótulo não reabre nem mexe em closed_*/opened_*
+  update post_material_requests set closed_at = now() - interval '2 hours',
+         opened_at = now() - interval '1 day' where post_id = v_p;
+  v_before := pg_temp.pm_req(v_p);
+  v_r := pg_temp.pm_save(e.ws, v_p, v_usr2, true,
+    jsonb_build_array(jsonb_build_object('id', pg_temp.pm_item_id(v_r, 0), 'label', 'Outro nome')));
+  v_req := pg_temp.pm_req(v_p);
+  assert v_req.status = 'concluido' and v_req.closed_by = 'auto' and v_req.closed_at = v_before.closed_at,
+    'concluido/auto intacto';
+  assert v_req.opened_by = e.usr and v_req.opened_at = v_before.opened_at, 'opened_* intactos';
+  assert v_r->'items'->0->>'label' = 'Outro nome', 'rotulo salvo';
+
+  -- concluido/auto + item novo: reabre e reescreve opened_*
+  v_r := pg_temp.pm_save(e.ws, v_p, v_usr2, true, (v_r->'items') || '[{"label":"Novo"}]'::jsonb);
+  v_req := pg_temp.pm_req(v_p);
+  assert v_req.status = 'aberto' and v_req.closed_by is null and v_req.closed_at is null, 'reaberto pelo item novo';
+  assert v_req.opened_by = v_usr2 and v_req.opened_at >= now() - interval '1 minute', 'opened_* reescritos';
+
+  -- concluido/client: editar rótulo mantém concluido/client
+  v_p := pg_temp.pm_post_s(e.ws, e.wf, 'rascunho');
+  v_r := pg_temp.pm_save(e.ws, v_p, e.usr, true, pg_temp.pm_items(2));
+  perform pg_temp.pm_file(e.ws, e.cli, v_p, pg_temp.pm_item_id(v_r, 0));
+  assert post_material_client_close(e.ws, e.cli, v_p) = 'ok', 'cliente encerra';
+  update post_material_requests set closed_at = now() - interval '2 hours',
+         opened_at = now() - interval '1 day' where post_id = v_p;
+  v_before := pg_temp.pm_req(v_p);
+  v_r := pg_temp.pm_save(e.ws, v_p, v_usr2, true,
+    jsonb_build_array(jsonb_build_object('id', pg_temp.pm_item_id(v_r, 0), 'label', 'A'),
+                      jsonb_build_object('id', pg_temp.pm_item_id(v_r, 1), 'label', 'B corrigido')));
+  v_req := pg_temp.pm_req(v_p);
+  assert v_req.status = 'concluido' and v_req.closed_by = 'client' and v_req.closed_at = v_before.closed_at,
+    'concluido/client intacto';
+  assert v_req.opened_by = e.usr and v_req.opened_at = v_before.opened_at, 'opened_* intactos (client)';
+  -- dono + admin: uma notificação por alvo, todas do fechamento do cliente
+  assert pg_temp.pm_notifs(v_p) = 2, 'sem notificacao nova: ' || pg_temp.pm_notifs(v_p);
+
+  -- espaço em branco: tab/quebra de linha contam como vazio e são aparados
+  v_p := pg_temp.pm_post_s(e.ws, e.wf, 'rascunho');
+  perform pg_temp.pm_expect(format('select pg_temp.pm_save(%L, %s, %L, true, %L)', e.ws, v_p, e.usr,
+    jsonb_build_array(jsonb_build_object('label', E'\t\n '))), 'invalid_item');
+  v_r := pg_temp.pm_save(e.ws, v_p, e.usr, true,
+    jsonb_build_array(jsonb_build_object('label', E'\tFoto\n', 'detail', E'\n\t')));
+  assert v_r->'items'->0->>'label' = 'Foto', 'label aparado de tab/quebra: ' || (v_r->'items'->0->>'label');
+  assert v_r->'items'->0->'detail' = 'null'::jsonb, 'detail so de espaco vira null';
+  begin
+    insert into post_material_items (request_id, post_id, conta_id, label, position)
+      values ((v_r->>'id')::bigint, v_p, e.ws, E'\t\n', 5);
+    assert false, 'CHECK deveria recusar label so de tab/quebra';
+  exception when check_violation then null; end;
+  raise notice 'PASS 99_post_material_requests (n) revisao';
 end $$;
 rollback;
