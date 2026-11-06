@@ -149,22 +149,26 @@ Deno.serve(async (req) => {
 
         // Plan limit, checked here so the user is told before the Meta round-trip instead of after
         // it. Mirrors trg_limit_instagram exactly: every instagram_accounts row of the workspace
-        // counts, whatever its authorization_status. A client that already has a row is a reconnect,
-        // which the callback writes as an UPDATE and the trigger never sees.
+        // counts except the 'disconnected' ones (the user released them). A client whose row is
+        // still counted is a reconnect of a slot it already holds, so it skips the check. A client
+        // with no row, or with a 'disconnected' one, needs a free slot: the callback INSERTs the
+        // first and UPDATEs the second, and trg_limit_instagram / trg_limit_instagram_reconnect
+        // enforce the same rule there.
         // Fails open: the trigger stays the hard gate, so if this lookup errors the user still gets
         // the plan_limit message, only after the Meta round-trip instead of before it.
         let igAtLimit: number | null = null;
         try {
             const { data: existingIgRow, error: existingErr } = await authServiceClient
-                .from('instagram_accounts').select('id').eq('client_id', clientId).maybeSingle();
+                .from('instagram_accounts').select('id, authorization_status').eq('client_id', clientId).maybeSingle();
             if (existingErr) throw existingErr;
-            if (!existingIgRow) {
+            if (!existingIgRow || existingIgRow.authorization_status === 'disconnected') {
                 const igLimit = await effectivePlanLimit(authServiceClient, authCallerProfile.conta_id, 'max_instagram_accounts');
                 if (igLimit !== null) {
                     const { count: igCount, error: igCountErr } = await authServiceClient
                         .from('instagram_accounts')
                         .select('id, clientes!inner(conta_id)', { count: 'exact', head: true })
-                        .eq('clientes.conta_id', authCallerProfile.conta_id);
+                        .eq('clientes.conta_id', authCallerProfile.conta_id)
+                        .neq('authorization_status', 'disconnected');
                     if (igCountErr) throw igCountErr;
                     if ((igCount ?? 0) >= igLimit) igAtLimit = igLimit;
                 }
