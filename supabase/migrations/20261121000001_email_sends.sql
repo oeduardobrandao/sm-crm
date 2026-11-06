@@ -141,7 +141,7 @@ language plpgsql stable security definer set search_path = public as $$
 declare
   v_result jsonb;
 begin
-  if p_start is null or p_end is null or p_end < p_start or p_end - p_start > 366 then
+  if p_start is null or p_end is null or p_end < p_start or p_end - p_start > 365 then
     raise exception 'invalid_range';
   end if;
 

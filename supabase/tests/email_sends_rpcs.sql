@@ -141,13 +141,13 @@ begin
   m := email_metrics('2027-01-01', '2027-01-03');
   assert jsonb_array_length(m->'daily') = 3 and jsonb_array_length(m->'by_type') = 0;
 
-  m := email_metrics('2026-01-01', '2027-01-02');
-  assert jsonb_array_length(m->'daily') = 367, '366 dias de diferenca ok';
+  m := email_metrics('2026-01-01', '2027-01-01');
+  assert jsonb_array_length(m->'daily') = 366, '365 dias de diferenca ok';
   ok := false;
   begin
-    perform email_metrics('2026-01-01', '2027-01-03');
+    perform email_metrics('2026-01-01', '2027-01-02');
   exception when others then ok := true; end;
-  assert ok, '367 levanta';
+  assert ok, '366 dias de diferenca levanta';
   ok := false;
   begin
     perform email_metrics('2026-11-10', '2026-11-08');
@@ -157,7 +157,7 @@ begin
   begin
     perform email_metrics('2025-01-01', '2026-11-08');
   exception when others then ok := true; end;
-  assert ok, '> 366 dias levanta';
+  assert ok, '> 365 dias de diferenca levanta';
 end $$;
 
 -- janela de 90 dias em recent e email_sends_cleanup

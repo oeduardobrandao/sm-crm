@@ -1,7 +1,7 @@
 // Handler for resend-webhook. Server-to-server: no CORS, POST only. Authenticated by the Svix
 // signature. Never log the payload, recipient or error details (LGPD).
 
-import { classifyEmail, eventFromWebhookType, PII_EVENTS } from "../_shared/email-classify.ts";
+import { classifyEmail, EMAIL_TYPES, eventFromWebhookType, PII_EVENTS } from "../_shared/email-classify.ts";
 import { verifySvixSignature } from "../_shared/svix-verify.ts";
 
 export interface ApplyEventArgs {
@@ -76,6 +76,19 @@ export async function handleResendWebhook(req: Request, deps: ResendWebhookDeps)
   const bounce = data.bounce && typeof data.bounce === "object"
     ? data.bounce as Record<string, unknown>
     : {};
+  const failed = data.failed && typeof data.failed === "object"
+    ? data.failed as Record<string, unknown>
+    : {};
+  const suppressed = data.suppressed && typeof data.suppressed === "object"
+    ? data.suppressed as Record<string, unknown>
+    : {};
+  let bounceType = str(bounce.type);
+  let bounceMessage = str(bounce.message);
+  if (event === "failed") bounceMessage = str(failed.reason);
+  if (event === "suppressed") {
+    bounceType = str(suppressed.type);
+    bounceMessage = str(suppressed.message);
+  }
   const to = Array.isArray(data.to) ? str(data.to[0]) : null;
 
   try {
@@ -86,10 +99,11 @@ export async function handleResendWebhook(req: Request, deps: ResendWebhookDeps)
       sentAt,
       category,
       type,
-      hasTag: typeof tags.type === "string",
-      bounceType: pii ? str(bounce.type) : null,
+      hasTag: typeof tags.type === "string" &&
+        Object.prototype.hasOwnProperty.call(EMAIL_TYPES, tags.type),
+      bounceType: pii ? bounceType : null,
       bounceSubtype: pii ? str(bounce.subType) : null,
-      bounceMessage: pii ? str(bounce.message) : null,
+      bounceMessage: pii ? bounceMessage : null,
       recipient: pii ? to : null,
       subject: pii ? str(data.subject) : null,
     });

@@ -130,3 +130,48 @@ Deno.test("applyEvent throwing is 500 without the error message", async () => {
   assertEquals(res.status, 500);
   assertEquals((await res.text()).includes("secret db detail"), false);
 });
+
+Deno.test("email.failed maps data.failed.reason to bounceMessage", async () => {
+  const { deps, calls } = setup();
+  const body = payload("email.failed", {
+    email_id: "f1",
+    created_at: "2026-11-06T10:00:00.000Z",
+    from: "a@mesaas.com.br",
+    to: ["a@b.com"],
+    subject: "Oi",
+    failed: { reason: "reached_daily_quota" },
+  });
+  assertEquals((await handleResendWebhook(await signed(body), deps)).status, 200);
+  assertEquals(calls[0].event, "failed");
+  assertEquals(calls[0].bounceMessage, "reached_daily_quota");
+  assertEquals(calls[0].bounceType, null);
+});
+
+Deno.test("email.suppressed maps data.suppressed type and message", async () => {
+  const { deps, calls } = setup();
+  const body = payload("email.suppressed", {
+    email_id: "s1",
+    created_at: "2026-11-06T10:00:00.000Z",
+    from: "a@mesaas.com.br",
+    to: ["a@b.com"],
+    subject: "Oi",
+    suppressed: { type: "OnAccountSuppressionList", message: "on list" },
+  });
+  assertEquals((await handleResendWebhook(await signed(body), deps)).status, 200);
+  assertEquals(calls[0].event, "suppressed");
+  assertEquals(calls[0].bounceType, "OnAccountSuppressionList");
+  assertEquals(calls[0].bounceMessage, "on list");
+});
+
+Deno.test("unknown tag type is hasTag false", async () => {
+  const { deps, calls } = setup();
+  const body = payload("email.sent", {
+    email_id: "u1",
+    created_at: "2026-11-06T10:00:00.000Z",
+    from: "a@mesaas.com.br",
+    subject: "Oi",
+    tags: { type: "not_a_real_type" },
+  });
+  assertEquals((await handleResendWebhook(await signed(body), deps)).status, 200);
+  assertEquals(calls[0].hasTag, false);
+});

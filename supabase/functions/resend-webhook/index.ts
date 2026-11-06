@@ -28,7 +28,11 @@ async function applyEvent(a: ApplyEventArgs): Promise<boolean> {
     p_recipient: a.recipient,
     p_subject: a.subject,
   }).abortSignal(AbortSignal.timeout(10_000));
-  if (error) throw new Error("rpc failed");
+  if (error) {
+    // code + message only: details/hint can carry the failing row (recipient, subject).
+    console.error("[resend-webhook] rpc failed", error.code, error.message);
+    throw new Error("rpc failed");
+  }
   return data === true;
 }
 
