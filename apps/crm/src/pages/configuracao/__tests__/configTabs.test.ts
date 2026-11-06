@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { CONFIG_TABS, visibleConfigTabs, canAccessConfigTab } from '../configTabs';
 import { makeCan, fakeMembership } from '@/test/makeCan';
 
@@ -161,5 +161,22 @@ describe('configTabs', () => {
     ] as const) {
       expect(canAccessConfigTab('perfil', can, workspaceRole)).toBe(true);
     }
+  });
+});
+
+describe('configTabs inside the iOS app', () => {
+  afterEach(() => {
+    (window as unknown as { Capacitor?: unknown }).Capacitor = undefined;
+  });
+
+  it('never lists Cobrança, not even for the owner', () => {
+    (window as unknown as { Capacitor?: unknown }).Capacitor = { isNativePlatform: () => true };
+    const paths = visibleConfigTabs(ownerCan, 'owner', googleOn).map((t) => t.path);
+    expect(paths).not.toContain('cobranca');
+    expect(paths).toContain('notificacoes');
+  });
+
+  it('still lists Cobrança for the owner on the web', () => {
+    expect(visibleConfigTabs(ownerCan, 'owner', googleOn).map((t) => t.path)).toContain('cobranca');
   });
 });

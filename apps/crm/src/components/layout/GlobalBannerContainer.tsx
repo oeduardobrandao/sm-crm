@@ -5,6 +5,8 @@ import remarkGfm from 'remark-gfm';
 import { useBanners } from '../../hooks/useBanners';
 import { sanitizeUrl } from '../../utils/security';
 import type { GlobalBanner } from '../../store/banners';
+import { isNativeApp } from '../../native/platform';
+import { containsBlockedLink, isBlockedInNativeApp } from '../../native/blockedPaths';
 
 const TYPE_STYLES: Record<string, { accent: string; bg: string; border: string }> = {
   info: { accent: '#42c8f5', bg: 'rgba(66,200,245,0.18)', border: 'rgba(66,200,245,0.30)' },
@@ -22,6 +24,16 @@ function getStyles(banner: GlobalBanner) {
   };
 }
 
+/**
+ * Inside the iOS app nothing may sell (apps/mobile/DECISIONS.md D5): a banner whose link or any
+ * inline link leads to pricing, sign-up or billing is hidden whole, since its text would still sell.
+ */
+function sellsInNativeApp(banner: GlobalBanner): boolean {
+  return (
+    (banner.link ? isBlockedInNativeApp(banner.link) : false) || containsBlockedLink(banner.content)
+  );
+}
+
 function contentHasLinks(content: string): boolean {
   return /\[.*?\]\(.*?\)/.test(content) || /<a\s/i.test(content);
 }
@@ -37,7 +49,8 @@ interface GlobalBannerContainerProps {
 }
 
 export default function GlobalBannerContainer({ children }: GlobalBannerContainerProps) {
-  const { banners, dismiss } = useBanners();
+  const { banners: allBanners, dismiss } = useBanners();
+  const banners = isNativeApp() ? allBanners.filter((b) => !sellsInNativeApp(b)) : allBanners;
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Measured via ResizeObserver (not a `banners.length` dep): DunningBanner resolves its own

@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { getSavedLanguage, i18n, loadLazyNamespaces } from '@mesaas/i18n';
 import { isNativeApp } from './native/platform';
+import { useNativePathGuard } from './native/useNativePathGuard';
 
 // The authenticated shell stays out of the entry chunk the public landing page downloads.
 // ProtectedRoute imports AppLayout (isLayoutGuardedPath), so both must be lazy for the shell
@@ -189,6 +190,9 @@ const PageFallback = (
 );
 
 export default function App() {
+  // Inside the iOS app, sends pricing, sign-up, billing and marketing paths to /dashboard. An
+  // effect, so the hydrated landing's first render is untouched.
+  useNativePathGuard();
   return (
     <Sentry.ErrorBoundary
       fallback={

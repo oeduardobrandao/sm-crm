@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { getEffectivePlanWithSource, getWorkspaceSubscription } from '@/services/billing';
 import { isTrialOfferEligible } from '@/pages/configuracao/cobranca/plan-display';
+import { isNativeApp } from '@/native/platform';
 
 /**
  * Paths where the owner must never be bounced to /comecar: the offer screen itself, the
@@ -37,7 +38,9 @@ export function useTrialOfferRedirect(pathname: string): TrialOfferRedirectState
   // Follow the ACTIVE workspace role, not the stale profile-level role.
   const isOwner = (workspaceRole ?? role) === 'owner';
   const exempt = TRIAL_OFFER_EXEMPT_PREFIXES.some((prefix) => pathname.startsWith(prefix));
-  const enabled = isOwner && !exempt;
+  // The iOS app never offers a trial or a plan (apps/mobile/DECISIONS.md D5): no redirect and
+  // no billing queries there.
+  const enabled = isOwner && !exempt && !isNativeApp();
 
   const plan = useQuery({
     queryKey: ['billing', 'effective-plan-with-source'],

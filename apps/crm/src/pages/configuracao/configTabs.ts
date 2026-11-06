@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import type { PermissionAction, PermissionCheck, PermissionModule } from '@/lib/permissions';
 import type { FeatureFlags } from '@/hooks/useWorkspaceLimits';
+import { isNativeApp } from '@/native/platform';
 
 /**
  * `'all'` = every member, regardless of role or membership state (used for a
@@ -187,6 +188,14 @@ export function visibleConfigTabs(
   features?: ConfigTabFeatures | null,
 ): ConfigTab[] {
   return CONFIG_TABS.filter(
-    (t) => canAccessConfigTab(t.path, can, workspaceRole) && listedForFeatures(t.path, features),
+    (t) =>
+      canAccessConfigTab(t.path, can, workspaceRole) &&
+      listedForFeatures(t.path, features) &&
+      listedInNativeApp(t.path),
   );
+}
+
+/** The iOS app never shows billing (apps/mobile/DECISIONS.md D5); the route guard bounces it. */
+function listedInNativeApp(path: string): boolean {
+  return path !== 'cobranca' || !isNativeApp();
 }
