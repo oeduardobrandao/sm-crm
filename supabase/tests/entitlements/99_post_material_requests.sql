@@ -11,7 +11,8 @@
 -- com pedido aberto: referência livre não marca item; (g) "Enviei o que
 -- tenho"; (h) can_remove de arquivo de item; (i) remoção pela equipe reabre;
 -- (j) gatilho de status cancela; (k) salvar da equipe conclui ou reabre sem
--- notificar; (l) post_material_requests_for e post_material_summary.
+-- notificar; (l) post_material_requests_for e post_material_summary;
+-- (m) post agendado/postado/falha_publicacao nunca reabre nem aceita item.
 --
 -- now() é fixo dentro da transação: para provar que opened_at foi
 -- reescrito, a linha é antes empurrada para o passado.
@@ -806,5 +807,42 @@ begin
   select count(*) into v_n from post_material_summary(e.ws, array[]::bigint[]);
   assert v_n = 0, 'lista vazia';
   raise notice 'PASS 99_post_material_requests (l) listagem e resumo';
+end $$;
+rollback;
+
+-- ---- (m) post já agendado/postado/falha_publicacao ----
+begin;
+do $$
+declare
+  e record;
+  v_p bigint; v_r jsonb; f1 post_references; f2 post_references; v_st text;
+begin
+  select * into e from pg_temp.pm_env();
+  foreach v_st in array array['agendado', 'postado', 'falha_publicacao'] loop
+    v_p := pg_temp.pm_post_s(e.ws, e.wf, 'rascunho');
+    v_r := pg_temp.pm_save(e.ws, v_p, e.usr, true, pg_temp.pm_items(2));
+    f1 := pg_temp.pm_file(e.ws, e.cli, v_p, pg_temp.pm_item_id(v_r, 0));
+    f2 := pg_temp.pm_file(e.ws, e.cli, v_p, pg_temp.pm_item_id(v_r, 1));
+    assert (pg_temp.pm_req(v_p)).status = 'concluido', 'concluido antes de ' || v_st;
+    update workflow_posts set status = v_st where id = v_p;
+
+    -- equipe apaga o último arquivo de um item: não reabre
+    assert post_reference_team_delete(e.ws, f2.id) = 'ok', 'apaga em ' || v_st;
+    assert (pg_temp.pm_req(v_p)).status = 'concluido', 'concluido intacto em ' || v_st;
+
+    -- salvar com p_open=true recusa, mesmo com pedido existente
+    perform pg_temp.pm_expect(format('select pg_temp.pm_save(%L, %s, %L, true, %L)', e.ws, v_p, e.usr,
+      v_r->'items'), 'post_not_requestable');
+
+    -- pedido aberto à força (fora do fluxo normal): upload de item recusa, can_remove falso
+    update post_material_requests set status = 'aberto', closed_by = null, closed_at = null where post_id = v_p;
+    perform pg_temp.pm_expect(format('select pg_temp.pm_file(%L, %s, %s, %s)', e.ws, e.cli, v_p,
+      pg_temp.pm_item_id(v_r, 1)), 'request_closed');
+    perform pg_temp.pm_expect(format('select pg_temp.pm_link(%L, %s, %s, %s)', e.ws, e.cli, v_p,
+      pg_temp.pm_item_id(v_r, 1)), 'request_closed');
+    assert not post_reference_can_remove(f1.id), 'item travado em ' || v_st;
+    assert post_reference_client_delete(f1.id, e.ws, e.cli) = 'locked', 'cliente nao remove em ' || v_st;
+  end loop;
+  raise notice 'PASS 99_post_material_requests (m) post agendado/postado nao reabre';
 end $$;
 rollback;

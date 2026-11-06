@@ -463,7 +463,8 @@ GRANT EXECUTE ON FUNCTION post_material_request_save(uuid, bigint, uuid, boolean
 -- Novo material_item_id opcional no jsonb. Ordem das checagens, depois do
 -- lock do post (dono = token):
 --   com item: o item tem que ser deste post (FK composta garante que o pedido
---     dele é o pedido do post) e o pedido tem que estar aberto; senão
+--     dele é o pedido do post), o pedido tem que estar aberto e o post fora de
+--     agendado/postado/falha_publicacao (defesa extra ao gatilho); senão
 --     request_closed (item apagado pela equipe ou pedido encerrado no meio).
 --   sem item: post fora de enviado_cliente com pedido aberto -> item_required
 --     (no rascunho o cliente só responde itens); sem pedido aberto ->
@@ -507,7 +508,9 @@ BEGIN
   -- 1b. Gate: enviado_cliente ou pedido de material aberto.
   SELECT * INTO v_req FROM post_material_requests q WHERE q.post_id = v_post;
   IF v_item IS NOT NULL THEN
-    IF v_req.status IS DISTINCT FROM 'aberto' OR NOT EXISTS (
+    IF v_req.status IS DISTINCT FROM 'aberto'
+       OR v_status IN ('agendado', 'postado', 'falha_publicacao')
+       OR NOT EXISTS (
          SELECT 1 FROM post_material_items i
           WHERE i.id = v_item AND i.post_id = v_post AND i.conta_id = v_conta) THEN
       RAISE EXCEPTION 'request_closed' USING errcode = 'P0001';
@@ -603,7 +606,9 @@ BEGIN
 
   SELECT * INTO v_req FROM post_material_requests q WHERE q.post_id = v_post;
   IF v_item IS NOT NULL THEN
-    IF v_req.status IS DISTINCT FROM 'aberto' OR NOT EXISTS (
+    IF v_req.status IS DISTINCT FROM 'aberto'
+       OR v_status IN ('agendado', 'postado', 'falha_publicacao')
+       OR NOT EXISTS (
          SELECT 1 FROM post_material_items i
           WHERE i.id = v_item AND i.post_id = v_post AND i.conta_id = v_conta) THEN
       RAISE EXCEPTION 'request_closed' USING errcode = 'P0001';
@@ -680,7 +685,7 @@ GRANT EXECUTE ON FUNCTION post_material_client_close(uuid, bigint, bigint) TO se
 -- 3f. can_remove e lista
 -- =====================================================================
 -- Regra de 20261011000001 (decisão 2) OU arquivo de item com pedido aberto,
--- qualquer que seja o status do post. Fechado o pedido, o arquivo de item
+-- com o post fora de agendado/postado/falha_publicacao. Fechado o pedido, o arquivo de item
 -- volta para a regra antiga: num post em enviado_cliente o cliente ainda pode
 -- remover um arquivo de item de um pedido concluido (e nada o reabre).
 -- client_update e client_delete chamam este predicado sob o lock do post.
@@ -712,8 +717,10 @@ AS $$
       FROM post_references r
       JOIN post_material_items i ON i.id = r.material_item_id
       JOIN post_material_requests q ON q.id = i.request_id
+      JOIN workflow_posts wp ON wp.id = r.post_id AND wp.conta_id = r.conta_id
      WHERE r.id = p_ref_id
        AND q.status = 'aberto'
+       AND wp.status NOT IN ('agendado', 'postado', 'falha_publicacao')
   );
 $$;
 REVOKE ALL ON FUNCTION post_reference_can_remove(bigint) FROM PUBLIC, anon, authenticated;
@@ -752,7 +759,8 @@ GRANT EXECUTE ON FUNCTION post_reference_list(bigint, uuid) TO service_role;
 -- =====================================================================
 -- Sob o lock do post. Se a referência era o último arquivo do item dela e o
 -- pedido estava concluido, o pedido reabre (sem notificar, opened_* intactos):
--- o cliente é perguntado de novo e as contagens do CRM ficam certas. Apagar
+-- o cliente é perguntado de novo e as contagens do CRM ficam certas. Post já
+-- agendado/postado/falha_publicacao nunca reabre pedido. Apagar
 -- referência livre nunca reabre (um pedido fechado pelo cliente já tem itens
 -- vazios). 'not_found': inexistente ou de outro workspace.
 CREATE OR REPLACE FUNCTION post_reference_team_delete(p_conta uuid, p_ref_id bigint)
@@ -762,15 +770,16 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 DECLARE
-  v_post bigint;
-  v_item bigint;
+  v_post   bigint;
+  v_item   bigint;
+  v_status text;
 BEGIN
   SELECT r.post_id INTO v_post
     FROM post_references r
    WHERE r.id = p_ref_id AND r.conta_id = p_conta;
   IF NOT FOUND THEN RETURN 'not_found'; END IF;
 
-  PERFORM 1 FROM workflow_posts wp WHERE wp.id = v_post FOR UPDATE;
+  SELECT wp.status INTO v_status FROM workflow_posts wp WHERE wp.id = v_post FOR UPDATE;
 
   -- Dispara reference_count e a limpeza de órfão (files -> R2 + cota).
   DELETE FROM post_references r
@@ -779,6 +788,7 @@ BEGIN
   IF NOT FOUND THEN RETURN 'not_found'; END IF;
 
   IF v_item IS NOT NULL
+     AND v_status NOT IN ('agendado', 'postado', 'falha_publicacao')
      AND NOT EXISTS (SELECT 1 FROM post_references r WHERE r.material_item_id = v_item) THEN
     UPDATE post_material_requests q
        SET status = 'aberto', closed_by = NULL, closed_at = NULL
