@@ -293,3 +293,6 @@ verify_jwt = false
 
 [functions.gbp-sync-cron]
 verify_jwt = false
+
+[functions.notification-push-cron]
+verify_jwt = false

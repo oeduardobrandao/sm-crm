@@ -315,6 +315,66 @@ begin
 end $$;
 
 -- =============================================================
+-- block 4b: push (claim_notification_pushes + push_badge_counts, 20261120000001)
+-- Same rule as the e-mail claim: scope, or the notification's item is his.
+-- A hidden row is stamped pushed_at and never offered again; the badge counts
+-- only what the bell shows.
+-- =============================================================
+do $$
+declare
+  v_ws uuid := pg_temp.fx('ws');
+  v_ws2 uuid := pg_temp.fx('ws2');
+  v_ca bigint := pg_temp.fx('ca');
+  v_cb bigint := pg_temp.fx('cb');
+  v_ca2 bigint := pg_temp.fx('ca2');
+  v_cb2 bigint := pg_temp.fx('cb2');
+  v_ids uuid[];
+  v_got text; v_hidden text; v_n bigint;
+begin
+  delete from notifications where workspace_id in (v_ws, v_ws2);
+  insert into push_devices (user_id, token, platform, environment)
+  select f.v::uuid, 'tok-' || f.k, 'ios', 'sandbox'
+    from _fx f where f.k in ('owner', 'adm', 'radm', 'radm2', 'multi');
+  perform pg_temp.notif(v_ws, pg_temp.fx('owner')::uuid, v_cb, 'owner/B');
+  perform pg_temp.notif(v_ws, pg_temp.fx('adm')::uuid, v_cb, 'adm/B');
+  perform pg_temp.notif(v_ws, pg_temp.fx('radm')::uuid, v_cb, 'radm/B');
+  perform pg_temp.notif(v_ws, pg_temp.fx('radm')::uuid, v_ca, 'radm/A');
+  perform pg_temp.notif(v_ws, pg_temp.fx('radm')::uuid, null, 'radm/none');
+  perform pg_temp.notif(v_ws, pg_temp.fx('radm2')::uuid, v_cb, 'radm2/B');
+  perform pg_temp.notif_m(v_ws, pg_temp.fx('radm2')::uuid, v_cb, 'radm2/Bown',
+                          jsonb_build_object('post_id', pg_temp.fx('p_radm2'), 'workflow_id', null));
+  perform pg_temp.notif_m(v_ws, pg_temp.fx('radm2')::uuid, v_cb, 'radm2/Bother',
+                          jsonb_build_object('post_id', pg_temp.fx('p_bother')));
+  perform pg_temp.notif(v_ws, pg_temp.fx('multi')::uuid, v_cb, 'multi/B');
+  perform pg_temp.notif(v_ws2, pg_temp.fx('multi')::uuid, v_ca2, 'multi/A2');
+  perform pg_temp.notif(v_ws2, pg_temp.fx('multi')::uuid, v_cb2, 'multi/B2');
+  update notifications set created_at = now() - interval '1 minute' where workspace_id in (v_ws, v_ws2);
+
+  -- badge_counts_bell_only: radm A+none, radm2 only Bown, multi B (ws, 'todos') + A2
+  select string_agg(pg_temp.who(array[b.user_id]) || '=' || b.unread, ',' order by pg_temp.who(array[b.user_id])) into v_got
+    from push_badge_counts(array[pg_temp.fx('radm')::uuid, pg_temp.fx('radm2')::uuid, pg_temp.fx('multi')::uuid, pg_temp.fx('owner')::uuid]) b;
+  assert v_got = 'multi=2,owner=1,radm=2,radm2=1', 'push_badge_counts_bell_only: ' || coalesce(v_got, '<none>');
+
+  select array_agg(c.id) into v_ids
+    from claim_notification_pushes(now() - interval '15 minutes', 1000) c;
+  select string_agg(n.metadata->>'tag', ',' order by n.metadata->>'tag') into v_got
+    from notifications n where n.id = any (v_ids) and n.workspace_id in (v_ws, v_ws2);
+  assert v_got = 'adm/B,multi/A2,multi/B,owner/B,radm/A,radm/none,radm2/Bown', 'push_claim_returns_in_scope_only: ' || coalesce(v_got, '<none>');
+
+  select string_agg(n.metadata->>'tag', ',' order by n.metadata->>'tag') into v_hidden
+    from notifications n
+   where n.workspace_id in (v_ws, v_ws2) and n.pushed_at is not null and not (n.id = any (v_ids));
+  assert v_hidden = 'multi/B2,radm/B,radm2/B,radm2/Bother', 'push_claim_skips_hidden_and_marks_pushed: ' || coalesce(v_hidden, '<none>');
+  select count(*) into v_n
+    from claim_notification_pushes(now() - interval '15 minutes', 1000) c
+    join notifications n on n.id = c.id where n.workspace_id in (v_ws, v_ws2);
+  assert v_n = 0, 'push_claim_second_run_empty: ' || v_n;
+
+  delete from push_devices where user_id in (select f.v::uuid from _fx f where f.k in ('owner', 'adm', 'radm', 'radm2', 'multi'));
+  raise notice 'PASS block 4b push claim + badge';
+end $$;
+
+-- =============================================================
 -- block 5: owner / 'todos' cost nothing
 -- =============================================================
 set local track_functions = 'all';
