@@ -327,7 +327,7 @@
   "material": {
     "title": "Request material from the client",
     "switchLabel": "Request material from the client",
-    "switchHint": "The client sees the list in the Hub and sends the files for each item.",
+    "switchHint": "The post shows in Approvals in the Hub, even as a draft, with these items.",
     "itemsTitle": "Requested items",
     "progress": "Requested items · {{done}} of {{total}} with a file",
     "itemLabel": "Item {{n}} name",
@@ -358,6 +358,9 @@
       "forbidden": "You do not have permission to request material.",
       "not_found": "Post not found.",
       "generic": "Could not save the request. Try again."
-    }
+    },
+    "receivedOn": "Material received on {{date}}",
+    "receivedOnByClient": "Material received on {{date}} · sent by the client",
+    "nameRequired": "Give every item a name."
   }
 }

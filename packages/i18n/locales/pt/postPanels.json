@@ -327,7 +327,7 @@
   "material": {
     "title": "Pedir material ao cliente",
     "switchLabel": "Pedir material ao cliente",
-    "switchHint": "O cliente vê a lista no Hub e envia os arquivos de cada item.",
+    "switchHint": "O post aparece em Aprovações no Hub, mesmo em rascunho, com estes itens.",
     "itemsTitle": "Itens pedidos",
     "progress": "Itens pedidos · {{done}} de {{total}} com arquivo",
     "itemLabel": "Nome do item {{n}}",
@@ -358,6 +358,9 @@
       "forbidden": "Você não tem permissão para pedir material.",
       "not_found": "Post não encontrado.",
       "generic": "Não foi possível salvar o pedido. Tente novamente."
-    }
+    },
+    "receivedOn": "Material recebido em {{date}}",
+    "receivedOnByClient": "Material recebido em {{date}} · enviado pelo cliente",
+    "nameRequired": "Dê um nome a cada item."
   }
 }

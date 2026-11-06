@@ -58,6 +58,7 @@ export function PostClientReferences({
       qc.invalidateQueries({ queryKey: ['post-references', postId] });
       // Prefix: the drawer keys counts by workflow id, which this section does not know.
       qc.invalidateQueries({ queryKey: ['post-reference-counts'] });
+      qc.invalidateQueries({ queryKey: ['post-material-summary'] });
       toast.success(t('references.deleted'));
     },
     onError: (err) => {

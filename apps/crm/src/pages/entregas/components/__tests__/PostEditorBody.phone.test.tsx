@@ -119,6 +119,7 @@ vi.mock('@/pages/entregas/components/TikTokSettingsPanel', () => ({
 }));
 vi.mock('@/store/postReferences', () => ({
   getPostReferences: vi.fn(async () => []),
+  getPostReferencesData: vi.fn(async () => ({ items: [], request: null })),
   getPostReferenceCounts: vi.fn(async () => ({})),
   deletePostReference: vi.fn(),
 }));
@@ -250,6 +251,27 @@ describe('PostEditorBody, phone layout', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     limitsMock.features = { feature_tiktok: true };
+  });
+
+  it('shows the material status badge in the phone header', async () => {
+    const mod = await import('@/store/postReferences');
+    vi.mocked(mod.getPostReferencesData).mockResolvedValueOnce({
+      items: [],
+      request: {
+        id: 1,
+        post_id: 5,
+        status: 'aberto',
+        closed_by: null,
+        closed_at: null,
+        opened_by: null,
+        opened_at: '2026-11-06T12:00:00Z',
+        opened_by_name: null,
+        items: [],
+      },
+    });
+    renderPhone();
+    const header = screen.getByRole('banner');
+    expect(await within(header).findByText('Aguardando material')).toBeInTheDocument();
   });
 
   it('renders the header, the four tabs and every pane mounted, only Conteúdo visible', () => {

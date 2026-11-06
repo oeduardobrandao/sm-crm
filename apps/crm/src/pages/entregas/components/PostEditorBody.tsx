@@ -1385,10 +1385,13 @@ export function PostEditorBody({
             statusOpen={statusSheetOpen}
             onStatusOpenChange={setStatusSheetOpen}
             extra={
-              <OpenNotesBadge
-                approvals={approvals}
-                notes={conversationNotes?.notes ?? EMPTY_MEDIA_NOTES}
-              />
+              <>
+                <MaterialStatusBadge request={materialRequest} postStatus={post.status} />
+                <OpenNotesBadge
+                  approvals={approvals}
+                  notes={conversationNotes?.notes ?? EMPTY_MEDIA_NOTES}
+                />
+              </>
             }
           />
           {phone.banner}

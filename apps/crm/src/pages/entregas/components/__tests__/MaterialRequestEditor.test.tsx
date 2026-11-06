@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
@@ -50,15 +50,17 @@ function request(over: Partial<CrmMaterialRequest> = {}): CrmMaterialRequest {
 
 function renderEditor(props: { request?: CrmMaterialRequest | null; freeFormCount?: number } = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const tree = (p: typeof props) => (
     <QueryClientProvider client={qc}>
       <MaterialRequestEditor
         postId={10}
-        request={props.request ?? null}
-        freeFormCount={props.freeFormCount ?? 0}
+        request={p.request ?? null}
+        freeFormCount={p.freeFormCount ?? 0}
       />
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+  const utils = render(tree(props));
+  return { ...utils, rerenderWith: (p: typeof props) => utils.rerender(tree(p)) };
 }
 
 describe('MaterialRequestEditor', () => {
@@ -94,10 +96,11 @@ describe('MaterialRequestEditor', () => {
   });
 
   it('hides "Adicionar item" when items plus free-form references reach 10', () => {
-    renderEditor({ request: request(), freeFormCount: 6 });
+    const a = renderEditor({ request: request(), freeFormCount: 6 });
     expect(screen.getByRole('button', { name: 'Adicionar item' })).toBeInTheDocument();
+    a.unmount();
     renderEditor({ request: request(), freeFormCount: 7 });
-    expect(screen.getAllByRole('button', { name: 'Adicionar item' })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Adicionar item' })).toBeNull();
   });
 
   it('shows file badges, progress header and the requester footer', () => {
@@ -156,6 +159,103 @@ describe('MaterialRequestEditor', () => {
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Pedido de material salvo'));
   });
 
+  it('row badges follow the latest request, not the local form', () => {
+    const { rerenderWith } = renderEditor({ request: request() });
+    expect(screen.getByText('Falta')).toBeInTheDocument();
+    const r = request();
+    r.items[1] = { ...r.items[1], file_count: 3, done: true };
+    rerenderWith({ request: r });
+    expect(screen.queryByText('Falta')).toBeNull();
+    expect(screen.getByText('3 arquivos')).toBeInTheDocument();
+  });
+
+  it('a new unsaved row shows "Falta"', () => {
+    renderEditor();
+    fireEvent.click(screen.getByRole('switch', { name: 'Pedir material ao cliente' }));
+    expect(screen.getByText('Falta')).toBeInTheDocument();
+  });
+
+  it('uses the helper copy from the spec', () => {
+    renderEditor();
+    expect(
+      screen.getByText('O post aparece em Aprovações no Hub, mesmo em rascunho, com estes itens.'),
+    ).toBeInTheDocument();
+  });
+
+  it('a concluded request keeps the switch on and shows items, progress and received line', () => {
+    renderEditor({
+      request: request({
+        status: 'concluido',
+        closed_by: 'client',
+        closed_at: '2026-11-08T15:00:00Z',
+      }),
+    });
+    expect(screen.getByRole('switch', { name: 'Pedir material ao cliente' })).toBeChecked();
+    expect(screen.getAllByRole('textbox', { name: /Nome do item/ })).toHaveLength(3);
+    expect(screen.getByText('Itens pedidos · 2 de 3 com arquivo')).toBeInTheDocument();
+    expect(
+      screen.getByText('Material recebido em 08/11 · enviado pelo cliente'),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/^Pedido por Ana em 06\/11$/)).toBeInTheDocument();
+  });
+
+  it('received line has no client suffix when closed automatically', () => {
+    renderEditor({
+      request: request({
+        status: 'concluido',
+        closed_by: 'auto',
+        closed_at: '2026-11-08T15:00:00Z',
+      }),
+    });
+    expect(screen.getByText('Material recebido em 08/11')).toBeInTheDocument();
+  });
+
+  it('does not collapse after a save that auto-completes the request', async () => {
+    mockSave.mockResolvedValue(
+      request({ status: 'concluido', closed_by: 'auto', closed_at: '2026-11-08T15:00:00Z' }),
+    );
+    const { rerenderWith } = renderEditor({ request: request() });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Nome do item 2' }), {
+      target: { value: 'Logo nova' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar pedido' }));
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    rerenderWith({
+      request: request({
+        status: 'concluido',
+        closed_by: 'auto',
+        closed_at: '2026-11-08T15:00:00Z',
+      }),
+    });
+    expect(screen.getByRole('switch', { name: 'Pedir material ao cliente' })).toBeChecked();
+    expect(screen.getAllByRole('textbox', { name: /Nome do item/ })).toHaveLength(3);
+  });
+
+  it('cancelling discards local edits and sends the saved items', async () => {
+    mockSave.mockResolvedValue(request({ status: 'cancelado' }));
+    renderEditor({ request: request() });
+    fireEvent.click(screen.getByRole('button', { name: 'Remover item 3' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Nome do item 1' }), {
+      target: { value: 'Mudou' },
+    });
+    fireEvent.click(screen.getByRole('switch', { name: 'Pedir material ao cliente' }));
+    await waitFor(() => expect(mockSave).toHaveBeenCalled());
+    expect(mockSave.mock.calls[0][1].items).toEqual([
+      { id: 1, label: 'Foto', detail: null },
+      { id: 2, label: 'Logo', detail: 'PNG' },
+      { id: 3, label: 'Vídeo', detail: null },
+    ]);
+  });
+
+  it('blank name on an existing item blocks Save instead of deleting it', () => {
+    renderEditor({ request: request() });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Nome do item 1' }), {
+      target: { value: '  ' },
+    });
+    expect(screen.getByRole('button', { name: 'Salvar pedido' })).toBeDisabled();
+    expect(screen.getByText('Dê um nome a cada item.')).toBeInTheDocument();
+  });
+
   it('maps server error codes to Portuguese copy', async () => {
     mockSave.mockRejectedValue(new Error('too_many_items'));
     renderEditor({ request: request() });
@@ -193,6 +293,5 @@ describe('MaterialStatusBadge', () => {
       <MaterialStatusBadge request={request({ status: 'cancelado' })} postStatus="rascunho" />,
     );
     expect(b.container).toBeEmptyDOMElement();
-    void within;
   });
 });

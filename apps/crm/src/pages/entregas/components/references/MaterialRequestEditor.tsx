@@ -26,7 +26,6 @@ interface FormItem {
   id?: number;
   label: string;
   detail: string;
-  file_count: number;
 }
 
 interface FormState {
@@ -39,13 +38,12 @@ const newKey = () => `n${++keySeq}`;
 
 function fromRequest(request: CrmMaterialRequest | null): FormState {
   return {
-    open: request?.status === 'aberto',
+    open: request?.status === 'aberto' || request?.status === 'concluido',
     items: (request?.items ?? []).map((i) => ({
       key: `i${i.id}`,
       id: i.id,
       label: i.label,
       detail: i.detail ?? '',
-      file_count: i.file_count,
     })),
   };
 }
@@ -64,6 +62,15 @@ function toBody(f: FormState, open: boolean) {
         detail: i.detail.trim() === '' ? null : i.detail.trim(),
       })),
   };
+}
+
+function FileBadge({ count }: { count: number }) {
+  const { t } = useTranslation('postPanels');
+  return (
+    <Badge variant={count > 0 ? 'success' : 'warning'} size="sm">
+      {count > 0 ? t('material.fileCount', { count }) : t('material.missing')}
+    </Badge>
+  );
 }
 
 /** Header badge: waiting while open; "received" only while the post is still internal. */
@@ -159,6 +166,9 @@ export function MaterialRequestEditor({
 
   const items = form.items;
   const hasLabel = items.some((i) => i.label.trim() !== '');
+  // Blanking an existing row would delete it server-side; only the remove button does that.
+  const hasBlankExisting = items.some((i) => i.id != null && i.label.trim() === '');
+  const fileCounts = new Map((request?.items ?? []).map((i) => [i.id, i.file_count]));
   const canAdd =
     items.length + freeFormCount < MAX_MATERIAL_ITEMS && items.length < MAX_MATERIAL_ITEMS;
   const doneCount = (request?.items ?? []).filter((i) => i.file_count > 0).length;
@@ -178,10 +188,11 @@ export function MaterialRequestEditor({
     if (checked) {
       setForm((f) => ({
         open: true,
-        items: f.items.length ? f.items : [{ key: newKey(), label: '', detail: '', file_count: 0 }],
+        items: f.items.length ? f.items : [{ key: newKey(), label: '', detail: '' }],
       }));
-    } else if (request && request.status === 'aberto') {
-      mutation.mutate({ open: false, form });
+    } else if (request && (request.status === 'aberto' || request.status === 'concluido')) {
+      // Cancel with the saved items; unsaved local edits are discarded.
+      mutation.mutate({ open: false, form: baseline });
     } else {
       setForm((f) => ({ ...f, open: false }));
     }
@@ -241,13 +252,7 @@ export function MaterialRequestEditor({
                     />
                   </div>
                   <div className="flex shrink-0 items-center gap-1 pt-1.5">
-                    {item.id != null && (
-                      <Badge variant={item.file_count > 0 ? 'success' : 'warning'} size="sm">
-                        {item.file_count > 0
-                          ? t('material.fileCount', { count: item.file_count })
-                          : t('material.missing')}
-                      </Badge>
-                    )}
+                    <FileBadge count={item.id != null ? (fileCounts.get(item.id) ?? 0) : 0} />
                     <button
                       type="button"
                       className="rounded p-1 text-[var(--text-muted)] hover:bg-[var(--surface-hover)] disabled:opacity-40"
@@ -290,11 +295,7 @@ export function MaterialRequestEditor({
                       <p className="text-[12px] text-[var(--text-muted)]">{item.detail}</p>
                     )}
                   </div>
-                  <Badge variant={item.file_count > 0 ? 'success' : 'warning'} size="sm">
-                    {item.file_count > 0
-                      ? t('material.fileCount', { count: item.file_count })
-                      : t('material.missing')}
-                  </Badge>
+                  <FileBadge count={item.file_count} />
                 </li>
               ))}
             </ul>
@@ -310,7 +311,7 @@ export function MaterialRequestEditor({
                   onClick={() =>
                     setForm((f) => ({
                       ...f,
-                      items: [...f.items, { key: newKey(), label: '', detail: '', file_count: 0 }],
+                      items: [...f.items, { key: newKey(), label: '', detail: '' }],
                     }))
                   }
                 >
@@ -319,21 +320,32 @@ export function MaterialRequestEditor({
                 </Button>
               )}
               <div className="ml-auto flex items-center gap-2">
-                {!hasLabel && (
+                {(hasBlankExisting || !hasLabel) && (
                   <span className="text-[12px] text-[var(--text-muted)]">
-                    {t('material.needItem')}
+                    {hasBlankExisting ? t('material.nameRequired') : t('material.needItem')}
                   </span>
                 )}
                 <Button
                   type="button"
                   size="sm"
-                  disabled={!hasLabel || mutation.isPending}
+                  disabled={!hasLabel || hasBlankExisting || mutation.isPending}
                   onClick={() => mutation.mutate({ open: true, form })}
                 >
                   {mutation.isPending ? t('material.saving') : t('material.save')}
                 </Button>
               </div>
             </div>
+          )}
+
+          {request?.status === 'concluido' && request.closed_at && (
+            <p className="text-[12px] font-medium text-[var(--success)]">
+              {t(
+                request.closed_by === 'client'
+                  ? 'material.receivedOnByClient'
+                  : 'material.receivedOn',
+                { date: format(new Date(request.closed_at), 'dd/MM') },
+              )}
+            </p>
           )}
 
           {request && (
