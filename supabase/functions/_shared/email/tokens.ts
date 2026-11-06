@@ -31,6 +31,26 @@ export const EMAIL_LOGO_URL = "https://www.mesaas.com.br/logo-black-email.png";
 /** Eduardo's photo for `signature()` (160x160 JPEG, shown at 40x40). `public/eduardo-email.jpg`. */
 export const EMAIL_FOUNDER_PHOTO_URL = "https://www.mesaas.com.br/eduardo-email.jpg";
 
+export interface EmailImage {
+  url: string;
+  /** Display size in CSS px; the file is 2x for retina. */
+  width: number;
+  height: number;
+}
+
+/**
+ * Anonymized phone screenshots for the nurture e-mails (`public/email/`), framed
+ * and exported by scripts/build-nurture-email-images.py from the captures in
+ * e2e/screenshots/nurture-emails.spec.ts. 560px files shown at 280px.
+ */
+export const NURTURE_SHOTS = {
+  clientes: { url: "https://www.mesaas.com.br/email/nurture-clientes.jpg", width: 280, height: 402 },
+  hub: { url: "https://www.mesaas.com.br/email/nurture-hub.jpg", width: 280, height: 431 },
+  aprovacoes: { url: "https://www.mesaas.com.br/email/nurture-aprovacoes.jpg", width: 280, height: 517 },
+  aprovar: { url: "https://www.mesaas.com.br/email/nurture-aprovar.jpg", width: 280, height: 511 },
+  relatorios: { url: "https://www.mesaas.com.br/email/nurture-relatorios.jpg", width: 280, height: 460 },
+} as const satisfies Record<string, EmailImage>;
+
 export const DEFAULT_BRAND_COLOR = "#eab308";
 
 export type BadgeTone = "danger" | "warning" | "info" | "success" | "neutral";

@@ -133,3 +133,22 @@ Deno.test("no gendered article before user names; default workspace name falls b
     }
   }
 });
+
+Deno.test("feature screenshots: one per tip/trial email, none on the last-ask emails", () => {
+  const expected: Record<NurtureStep, string | null> = {
+    a1: "nurture-clientes.jpg",
+    a2: "nurture-aprovacoes.jpg",
+    a3: "nurture-hub.jpg",
+    a4: null,
+    b1: "nurture-hub.jpg",
+    b2: "nurture-aprovar.jpg",
+    b3: "nurture-relatorios.jpg",
+    b4: null,
+  };
+  for (const [step, file] of Object.entries(expected) as [NurtureStep, string | null][]) {
+    const { html } = buildNurtureEmail({ ...NURTURE_SAMPLE, step, appBaseUrl: BASE, unsubUrl: UNSUB, whatsappUrl: WA });
+    const shots = [...html.matchAll(/src="https:\/\/www\.mesaas\.com\.br\/email\/([^"]+)"/g)].map((m) => m[1]);
+    assert(file ? shots.length === 1 && shots[0] === file : shots.length === 0, `${step}: ${shots.join(",")}`);
+    if (file) assert(/alt="[^"]{10,}"/.test(html.slice(html.indexOf(file))), `${step}: alt text`);
+  }
+});

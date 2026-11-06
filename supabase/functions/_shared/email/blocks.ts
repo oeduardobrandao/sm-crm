@@ -8,7 +8,7 @@
  */
 import { escapeHtml } from "../report-template/escape.ts";
 import { pickHeaderTextColor } from "../report-template/brand-header.ts";
-import { BADGE_TONES, type BadgeTone, EMAIL, EMAIL_FOUNDER_PHOTO_URL, FONT_STACK, POST_TIPO_FALLBACK, POST_TIPOS } from "./tokens.ts";
+import { BADGE_TONES, type BadgeTone, EMAIL, EMAIL_FOUNDER_PHOTO_URL, type EmailImage, FONT_STACK, POST_TIPO_FALLBACK, POST_TIPOS } from "./tokens.ts";
 import { corSegura, linkSeguro } from "./safe.ts";
 
 const WRAP = "word-break: break-word; overflow-wrap: anywhere;";
@@ -103,6 +103,17 @@ export function featureGrid(items: Array<{ title: string; text: string }>): stri
 /** Vertical gap as a table row: Outlook's Word engine ignores margins on div. */
 export function spacer(px: number): string {
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td height="${px}" style="height: ${px}px; font-size: 0; line-height: 0;">&nbsp;</td></tr></table>`;
+}
+
+/**
+ * A product screenshot, centered, at a fixed width that shrinks on narrow
+ * screens. The frame (radius, border) is baked into the file because Outlook
+ * drops CSS radius on images. Unsafe src drops the block.
+ */
+export function screenshot(img: EmailImage, alt: string): string {
+  const url = linkSeguro(img.url);
+  if (!url) return "";
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding: 4px 0 22px;"><img src="${escapeHtml(url)}" width="${img.width}" height="${img.height}" alt="${escapeHtml(alt)}" style="display: block; width: ${img.width}px; max-width: 100%; height: auto; border: 0; margin: 0 auto;"></td></tr></table>`;
 }
 
 export function callout(innerHtml: string): string {
