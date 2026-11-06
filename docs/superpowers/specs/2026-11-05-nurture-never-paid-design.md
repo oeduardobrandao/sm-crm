@@ -24,7 +24,7 @@ de 30 dias (e daí a assinar), e que continua rodando para todo cadastro novo.
 | ... que entraram no app nos últimos 14 dias | 9 |
 | Cadastros novos que nunca pagam, por mês | ~18 |
 
-Os números de cohort, consentimento e telefone abaixo da linha 59 foram medidos com um filtro mais largo (68) e servem de ordem de grandeza. A maior alavanca: a grande maioria nunca souberam que existe teste grátis de 30 dias com tudo
+Os números de cohort, consentimento e telefone abaixo da linha 59 foram medidos com um filtro mais largo (68) e servem de ordem de grandeza. A maior alavanca: a grande maioria nunca soube que existe teste grátis de 30 dias com tudo
 liberado. O teste é por workspace e vale para qualquer um que nunca assinou
 (`resolveTrialDays` em `_shared/trial.ts`), então todos os 59 são elegíveis.
 
@@ -58,7 +58,7 @@ e-mail passa a exigir `marketing_opt_in = true`.
 1. Todo dono que nunca assinou recebe uma sequência curta (4 e-mails em ~2,5 semanas)
    adequada ao estágio dele.
 2. Medir quantos começam o teste a partir dela.
-3. Os 59 atuais entram sem disparar 68 e-mails no mesmo minuto.
+3. Os 59 atuais entram sem disparar 59 e-mails no mesmo minuto.
 4. Cadastros novos entram sozinhos, depois do boas-vindas.
 
 ## Non-goals
