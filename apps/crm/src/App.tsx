@@ -183,6 +183,14 @@ function SavedLanguageSync() {
   return null;
 }
 
+// Inside the iOS app, sends pricing, sign-up, billing and marketing paths to /dashboard. An
+// effect, so the hydrated landing's first render is untouched. Its own component so only it,
+// not the whole provider tree in App, subscribes to the location.
+function NativePathGuard() {
+  useNativePathGuard();
+  return null;
+}
+
 const PageFallback = (
   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
     <Spinner size="lg" />
@@ -190,9 +198,6 @@ const PageFallback = (
 );
 
 export default function App() {
-  // Inside the iOS app, sends pricing, sign-up, billing and marketing paths to /dashboard. An
-  // effect, so the hydrated landing's first render is untouched.
-  useNativePathGuard();
   return (
     <Sentry.ErrorBoundary
       fallback={
@@ -208,6 +213,7 @@ export default function App() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <SavedLanguageSync />
+          <NativePathGuard />
           <BuildPrefetch />
           <Toaster />
           <Suspense fallback={PageFallback}>
