@@ -203,13 +203,13 @@ describe('NotificacoesTab', () => {
     updateWorkspaceBrandingMock.mockReset().mockResolvedValue(undefined);
   });
 
-  it('renders the 6 CATEGORY_LABELS groups and all 36 catalog type rows', async () => {
+  it('renders the 6 CATEGORY_LABELS groups and all 37 catalog type rows', async () => {
     renderTab();
     for (const category of CATEGORY_ORDER) {
       expect(await screen.findByText(CATEGORY_LABELS[category])).toBeInTheDocument();
     }
     expect(CATEGORY_ORDER.length).toBe(6);
-    expect(Object.keys(NOTIFICATION_CATALOG).length).toBe(36);
+    expect(Object.keys(NOTIFICATION_CATALOG).length).toBe(37);
     for (const entry of Object.values(NOTIFICATION_CATALOG)) {
       // getAllByText, not getByText: NOTIFICATION_CATALOG.instagram_connected_by_client
       // shares its label ("Instagram conectado") with a fixed row in
