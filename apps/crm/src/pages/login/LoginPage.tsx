@@ -5,15 +5,22 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PasswordInput } from '@/components/ui/password-input';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
-import { Sparkles, ChevronRight, Images, Film, Camera, MailCheck } from 'lucide-react';
+import { Sparkles, ChevronRight, Images, Film, Camera, MailCheck, CircleAlert } from 'lucide-react';
 import { signIn, signUp, resetPassword, resendSignupConfirmation } from '../../lib/supabase';
 import { clearStoredReferral, getStoredReferral } from '../../lib/referral';
 import { captureEvent, identifySignup } from '@/lib/analytics';
 import { trackMetaEvent } from '@/lib/metaPixelLoader';
 import { markSignupStarted } from './signupStarted';
+import {
+  SIGNUP_FIELDS,
+  signupErrorKey,
+  validateSignup,
+  type SignupErrorKey,
+  type SignupField,
+  type SignupFieldError,
+} from './signupValidation';
 import { useAuth } from '@/context/AuthContext';
 import { CookiePreferencesLink } from '@/components/consent/CookiePreferencesLink';
 import { parsePlanIntent, buildPlanIntentQuery } from '@/pages/comecar/plan-intent';
@@ -22,6 +29,10 @@ type TabKey = 'login' | 'register' | 'forgot';
 
 /** Seconds a resend button stays disabled; Supabase rate-limits resends to about one a minute. */
 const RESEND_COOLDOWN_S = 60;
+
+/** Red border on a signup field that failed validation (login page is always light). */
+const REG_INVALID_INPUT =
+  'border-[color:var(--danger-text)] focus-visible:ring-[color:var(--danger-text)]';
 
 /**
  * With email confirmation on, Supabase answers a signup for an address that already has a
@@ -38,6 +49,20 @@ function isEmailNotConfirmed(error: { code?: string; message?: string }) {
 
 function isGmail(email: string) {
   return /@(gmail|googlemail)\.com$/i.test(email.trim());
+}
+
+/** Inline error under a signup field. The id is what the input's aria-describedby points at. */
+function FieldError({ id, children }: { id: string; children: string }) {
+  return (
+    <p
+      id={id}
+      className="flex items-start gap-1.5 leading-snug"
+      style={{ color: 'var(--danger-text)', fontSize: '0.8rem' }}
+    >
+      <CircleAlert className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      <span>{children}</span>
+    </p>
+  );
 }
 
 export default function LoginPage() {
@@ -66,12 +91,20 @@ export default function LoginPage() {
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [regNome, setRegNome] = useState('');
-  const [regEmpresa, setRegEmpresa] = useState('');
   const [regEmail, setRegEmail] = useState('');
-  const [regTelefone, setRegTelefone] = useState('');
   const [regPassword, setRegPassword] = useState('');
-  const [regConfirm, setRegConfirm] = useState('');
-  const [regMarketingOptIn, setRegMarketingOptIn] = useState(false);
+  // Field errors show after the first submit attempt, then follow every keystroke.
+  const [regErrors, setRegErrors] = useState<Partial<Record<SignupField, SignupFieldError>>>({});
+  const [regAttempted, setRegAttempted] = useState(false);
+  // Server-side failure, mapped to our own copy (never the raw Supabase message).
+  const [regFormError, setRegFormError] = useState<SignupErrorKey | null>(null);
+  // `disabled={loading}` only lands after a re-render; this closes the gap for a double tap.
+  const regSubmitting = useRef(false);
+  const regInputs = {
+    nome: useRef<HTMLInputElement>(null),
+    email: useRef<HTMLInputElement>(null),
+    password: useRef<HTMLInputElement>(null),
+  };
   const [forgotEmail, setForgotEmail] = useState('');
   const [registerSuccess, setRegisterSuccess] = useState(false);
   // The address the confirmation went to. Kept apart from regEmail, which the form clears.
@@ -156,48 +189,78 @@ export default function LoginPage() {
     }
   };
 
+  const updateRegField = (field: SignupField, value: string) => {
+    const next = { nome: regNome, email: regEmail, password: regPassword, [field]: value };
+    if (field === 'nome') setRegNome(value);
+    else if (field === 'email') setRegEmail(value);
+    else setRegPassword(value);
+    if (regAttempted) setRegErrors(validateSignup(next));
+  };
+
+  const regErrorText = (field: SignupField) => {
+    const key = regErrors[field];
+    if (key === 'nameRequired') return t('register.errors.nameRequired');
+    if (key === 'emailInvalid') return t('register.errors.emailInvalid');
+    if (key === 'passwordShort') return t('register.errors.passwordShort');
+    return null;
+  };
+
+  const regFormErrorText = (key: SignupErrorKey) => {
+    if (key === 'rateLimit') return t('register.errors.rateLimit');
+    if (key === 'weakPassword') return t('register.errors.weakPassword');
+    if (key === 'emailInvalid') return t('register.errors.emailInvalid');
+    return t('register.errors.generic');
+  };
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (regPassword !== regConfirm) {
-      toast.error(t('register.passwordMismatch'));
+    if (regSubmitting.current) return;
+    setRegAttempted(true);
+    setRegFormError(null);
+    const errors = validateSignup({ nome: regNome, email: regEmail, password: regPassword });
+    setRegErrors(errors);
+    const firstInvalid = SIGNUP_FIELDS.find((field) => errors[field]);
+    if (firstInvalid) {
+      regInputs[firstInvalid].current?.focus();
       return;
     }
-    // HTML `required` accepts whitespace, and the workspace name comes straight
-    // from this value — a blank-looking company would create a blank-named
-    // workspace AND skip /workspace-setup, because ' ' is truthy.
+    // The workspace name is collected on /workspace-setup. `empresa: ''` (not omitted) makes
+    // handle_new_user write a blank company, which is what sends the owner through that step;
+    // an omitted key would fall back to 'Meu Workspace' and skip it.
     const nome = regNome.trim();
-    const empresa = regEmpresa.trim();
-    if (!nome || !empresa) {
-      toast.error('Preencha seu nome e o nome da empresa.');
-      return;
-    }
+    const email = regEmail.trim();
+    regSubmitting.current = true;
     setLoading(true);
     const refCode = getStoredReferral();
-    const { data, error } = await signUp(
-      regEmail,
-      regPassword,
-      {
-        nome,
-        empresa,
-        telefone: regTelefone,
-        marketing_opt_in: regMarketingOptIn,
-        ...(refCode ? { ref_code: refCode } : {}),
-      },
-      confirmRedirectPath,
-    );
+    let result: Awaited<ReturnType<typeof signUp>>;
+    try {
+      result = await signUp(
+        email,
+        regPassword,
+        { nome, empresa: '', ...(refCode ? { ref_code: refCode } : {}) },
+        confirmRedirectPath,
+      );
+    } catch (err) {
+      console.error('signUp failed:', err);
+      regSubmitting.current = false;
+      setLoading(false);
+      setRegFormError('generic');
+      return;
+    }
+    regSubmitting.current = false;
     setLoading(false);
+    const { data, error } = result;
     if (error) {
-      toast.error(error.message);
+      setRegFormError(signupErrorKey(error));
       return;
     }
     // Existing account: the uuid is fake and no email goes out, so identifying it would mint an
     // orphan person and "check your email" would leave them waiting for nothing.
     if (!data?.session && isExistingAccountSignup(data?.user)) {
       captureEvent('signup_existing_account');
-      setLoginEmail(regEmail.trim());
+      setLoginEmail(email);
       setExistingAccount(true);
       setRegPassword('');
-      setRegConfirm('');
       return;
     }
     // Identify BEFORE capturing: under `identified_only` an anonymous `signup_completed` is
@@ -215,18 +278,16 @@ export default function LoginPage() {
       navigate(intentQuery ? `/comecar?${intentQuery}` : '/comecar', { replace: true });
       return;
     }
-    setPendingEmail(regEmail.trim());
-    setLoginEmail(regEmail.trim());
+    setPendingEmail(email);
+    setLoginEmail(email);
     // Signing up already sent the email; a resend inside the same minute would be refused.
     setResendCooldown(RESEND_COOLDOWN_S);
     setRegisterSuccess(true);
     setRegNome('');
-    setRegEmpresa('');
     setRegEmail('');
-    setRegTelefone('');
     setRegPassword('');
-    setRegConfirm('');
-    setRegMarketingOptIn(false);
+    setRegAttempted(false);
+    setRegErrors({});
   };
 
   const handleForgot = async (e: React.FormEvent) => {
@@ -445,102 +506,93 @@ export default function LoginPage() {
                 </p>
               </div>
             ) : (
-              <form onSubmit={handleRegister} onFocus={markSignupStarted} className="auth-form">
+              <form
+                onSubmit={handleRegister}
+                onFocus={markSignupStarted}
+                className="auth-form"
+                noValidate
+              >
                 <div className="space-y-1">
                   <Label htmlFor="reg-nome">{t('register.fullName')}</Label>
                   <Input
                     id="reg-nome"
+                    ref={regInputs.nome}
                     placeholder={t('register.fullNamePlaceholder')}
+                    autoComplete="name"
                     value={regNome}
-                    onChange={(e) => setRegNome(e.target.value)}
-                    required
+                    onChange={(e) => updateRegField('nome', e.target.value)}
+                    aria-invalid={regErrors.nome ? true : undefined}
+                    aria-describedby={regErrors.nome ? 'reg-nome-error' : undefined}
+                    className={regErrors.nome ? REG_INVALID_INPUT : undefined}
                   />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="reg-empresa">{t('register.companyName')}</Label>
-                  <Input
-                    id="reg-empresa"
-                    placeholder={t('register.companyPlaceholder')}
-                    value={regEmpresa}
-                    onChange={(e) => setRegEmpresa(e.target.value)}
-                    required
-                  />
+                  {regErrors.nome && (
+                    <FieldError id="reg-nome-error">{regErrorText('nome')!}</FieldError>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor="reg-email">{t('register.email')}</Label>
                   <Input
                     id="reg-email"
+                    ref={regInputs.email}
                     type="email"
+                    inputMode="email"
                     placeholder={t('register.emailPlaceholder')}
                     autoComplete="email"
                     value={regEmail}
-                    onChange={(e) => setRegEmail(e.target.value)}
-                    required
+                    onChange={(e) => updateRegField('email', e.target.value)}
+                    aria-invalid={regErrors.email ? true : undefined}
+                    aria-describedby={regErrors.email ? 'reg-email-error' : undefined}
+                    className={regErrors.email ? REG_INVALID_INPUT : undefined}
                   />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="reg-telefone">{t('register.phone')}</Label>
-                  <Input
-                    id="reg-telefone"
-                    type="tel"
-                    inputMode="tel"
-                    placeholder={t('register.phonePlaceholder')}
-                    autoComplete="tel"
-                    value={regTelefone}
-                    onChange={(e) => setRegTelefone(e.target.value)}
-                    required
-                  />
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-                    {t('register.phoneHint')}
-                  </p>
+                  {regErrors.email && (
+                    <FieldError id="reg-email-error">{regErrorText('email')!}</FieldError>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor="reg-password">{t('register.password')}</Label>
                   <PasswordInput
                     id="reg-password"
+                    ref={regInputs.password}
                     placeholder={t('register.passwordPlaceholder')}
                     autoComplete="new-password"
-                    minLength={8}
                     value={regPassword}
-                    onChange={(e) => setRegPassword(e.target.value)}
-                    required
+                    onChange={(e) => updateRegField('password', e.target.value)}
+                    aria-invalid={regErrors.password ? true : undefined}
+                    aria-describedby={
+                      regErrors.password ? 'reg-password-error' : 'reg-password-help'
+                    }
+                    className={regErrors.password ? REG_INVALID_INPUT : undefined}
                   />
+                  {regErrors.password ? (
+                    <FieldError id="reg-password-error">{regErrorText('password')!}</FieldError>
+                  ) : (
+                    <p
+                      id="reg-password-help"
+                      style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}
+                    >
+                      {t('register.passwordHelp')}
+                    </p>
+                  )}
                 </div>
-                <div className="space-y-1">
-                  <Label htmlFor="reg-confirm">{t('register.confirmPassword')}</Label>
-                  <PasswordInput
-                    id="reg-confirm"
-                    placeholder={t('register.confirmPlaceholder')}
-                    autoComplete="new-password"
-                    minLength={8}
-                    value={regConfirm}
-                    onChange={(e) => setRegConfirm(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="flex items-start gap-2">
-                  <Checkbox
-                    id="reg-marketing-opt-in"
-                    checked={regMarketingOptIn}
-                    onCheckedChange={(checked) => setRegMarketingOptIn(checked === true)}
-                    className="mt-0.5"
-                  />
-                  <Label
-                    htmlFor="reg-marketing-opt-in"
-                    style={{
-                      fontWeight: 400,
-                      lineHeight: 1.35,
-                      color: 'var(--text-muted)',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {t('register.marketingOptIn')}
-                  </Label>
-                </div>
+                {regFormError && (
+                  <p role="alert" style={{ color: 'var(--danger-text)', fontSize: '0.85rem' }}>
+                    {regFormErrorText(regFormError)}
+                  </p>
+                )}
                 <Button type="submit" disabled={loading} className="btn-primary auth-submit w-full">
                   {loading && <Spinner size="sm" />}
                   {t('register.submit')}
                 </Button>
+                <p
+                  style={{
+                    color: 'var(--text-muted)',
+                    fontSize: '0.8rem',
+                    lineHeight: 1.45,
+                    textAlign: 'center',
+                  }}
+                >
+                  {t('register.nextStepNote')}
+                </p>
               </form>
             ))}
 
