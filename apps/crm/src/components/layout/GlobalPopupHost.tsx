@@ -8,6 +8,8 @@ import { useGuide } from '@/components/guide/GuideContext';
 import { captureEvent } from '@/lib/analytics';
 import { resolveInlineImageUrls } from '@/services/inlineImage';
 import { openExternalUrl, sanitizeUrl } from '@/utils/security';
+import { isNativeApp } from '@/native/platform';
+import { containsBlockedLink, isBlockedInNativeApp } from '@/native/blockedPaths';
 import type { GlobalPopup } from '@/store/popups';
 import { usePopups } from '@/hooks/usePopups';
 import { pickPopup, sameLocalDay } from '@/hooks/pickPopup';
@@ -17,6 +19,18 @@ import {
   markPopupsSkipped,
   readPopupSession,
 } from '@/hooks/popupSession';
+
+/**
+ * Inside the iOS app nothing may sell (apps/mobile/DECISIONS.md D5): a popup whose CTA or any
+ * inline link leads to pricing, sign-up or billing is dropped whole, since its text would still
+ * sell. Filtered before pickPopup, so it never records `seen` and another popup can show.
+ */
+function sellsInNativeApp(popup: GlobalPopup): boolean {
+  if (popup.cta_url && isBlockedInNativeApp(popup.cta_url)) return true;
+  return popup.pages.some(
+    (pg) => (pg.cta_url ? isBlockedInNativeApp(pg.cta_url) : false) || containsBlockedLink(pg.body),
+  );
+}
 
 interface Decision {
   popup: GlobalPopup;
@@ -86,7 +100,9 @@ export default function GlobalPopupHost({ openDelayMs = 800 }: { openDelayMs?: n
     }
 
     const interactions = snap.interactions ?? [];
-    const chosen = pickPopup(snap.popups ?? [], interactions, readPopupSession());
+    const popups = snap.popups ?? [];
+    const candidates = isNativeApp() ? popups.filter((p) => !sellsInNativeApp(p)) : popups;
+    const chosen = pickPopup(candidates, interactions, readPopupSession());
     if (!chosen) return;
 
     (async () => {

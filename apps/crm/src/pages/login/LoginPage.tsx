@@ -17,6 +17,7 @@ import { markSignupStarted } from './signupStarted';
 import { useAuth } from '@/context/AuthContext';
 import { CookiePreferencesLink } from '@/components/consent/CookiePreferencesLink';
 import { parsePlanIntent, buildPlanIntentQuery } from '@/pages/comecar/plan-intent';
+import { isNativeApp } from '@/native/platform';
 
 type TabKey = 'login' | 'register' | 'forgot';
 
@@ -53,13 +54,17 @@ export default function LoginPage() {
   const from = fromLoc?.pathname
     ? `${fromLoc.pathname}${fromLoc.search ?? ''}${fromLoc.hash ?? ''}`
     : '/dashboard';
-  const planIntent = parsePlanIntent(location.search);
+  // Inside the iOS app there is no sign-up, no plan choice and no landing page
+  // (apps/mobile/DECISIONS.md D5). /login is not hydrated, so a render-time read is safe.
+  const native = isNativeApp();
+  // No plan intent in the app: every post-login path below then goes to `from`, never /comecar.
+  const planIntent = native ? null : parsePlanIntent(location.search);
   const intentQuery = planIntent
     ? buildPlanIntentQuery(planIntent.planId, planIntent.interval)
     : '';
   const tabParam = new URLSearchParams(location.search).get('tab');
   const initialTab: TabKey =
-    tabParam === 'register' ? 'register' : tabParam === 'forgot' ? 'forgot' : 'login';
+    tabParam === 'register' && !native ? 'register' : tabParam === 'forgot' ? 'forgot' : 'login';
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const [loading, setLoading] = useState(false);
 
@@ -242,10 +247,12 @@ export default function LoginPage() {
     }
   };
 
-  const tabItems = [
-    { key: 'login', label: t('tabs.login') },
-    { key: 'register', label: t('tabs.register') },
-  ];
+  const tabItems = native
+    ? [{ key: 'login', label: t('tabs.login') }]
+    : [
+        { key: 'login', label: t('tabs.login') },
+        { key: 'register', label: t('tabs.register') },
+      ];
 
   return (
     <div className="auth-wrapper">
@@ -253,16 +260,20 @@ export default function LoginPage() {
         <div className="auth-card animate-up">
           <div className="auth-header">
             <div className="auth-logo" style={{ display: 'flex', justifyContent: 'center' }}>
-              <Link to="/" aria-label={t('homeLink')} style={{ display: 'inline-flex' }}>
+              {native ? (
                 <img src="/logo-black.svg" alt="Mesaas" style={{ height: 20, width: 'auto' }} />
-              </Link>
+              ) : (
+                <Link to="/" aria-label={t('homeLink')} style={{ display: 'inline-flex' }}>
+                  <img src="/logo-black.svg" alt="Mesaas" style={{ height: 20, width: 'auto' }} />
+                </Link>
+              )}
             </div>
             <div className="auth-logo-sub" style={{ marginTop: 5, letterSpacing: 1 }}>
               {t('tagline')}
             </div>
           </div>
 
-          {activeTab !== 'forgot' && (
+          {activeTab !== 'forgot' && tabItems.length > 1 && (
             <div className="auth-tabs">
               {tabItems.map((tab) => (
                 <button

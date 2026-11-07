@@ -45,6 +45,7 @@ import {
   lastMonthRange,
   periodTag,
 } from './tiktokTabFormat';
+import { isNativeApp } from '@/native/platform';
 import type { useTikTokTabData } from './useTikTokTabData';
 
 const PRESET_DAYS = [7, 30, 90];
@@ -123,14 +124,23 @@ export function TikTokAnalyticsTabPhone(props: TikTokAnalyticsTabPhoneProps) {
     if (isTikTokFeatureDisabled(err)) {
       return (
         <Frame frame={frame}>
-          <StateBlock
-            title={t('states.locked')}
-            action={
-              <Link to={BILLING_PATH} className="phone-an-link-button">
-                {t('states.lockedAction')}
-              </Link>
-            }
-          />
+          {/* Inside the iOS app: the fact, no link to billing (apps/mobile DECISIONS.md D33). */}
+          {isNativeApp() ? (
+            <StateBlock
+              title={t('native.lockedTitle', { feature: t('overview.title') })}
+              body={t('native.lockedBody')}
+              action={null}
+            />
+          ) : (
+            <StateBlock
+              title={t('states.locked')}
+              action={
+                <Link to={BILLING_PATH} className="phone-an-link-button">
+                  {t('states.lockedAction')}
+                </Link>
+              }
+            />
+          )}
         </Frame>
       );
     }
@@ -485,9 +495,20 @@ function PhoneBody({
       />
 
       {aiLocked ? (
-        <GroupedList header={t('ai.title')} footer={t('ai.locked')}>
-          <Cell icon={<Lock />} label={t('states.lockedAction')} to={BILLING_PATH} />
-        </GroupedList>
+        isNativeApp() ? (
+          // Inside the iOS app: the fact as a plain row, no link (apps/mobile DECISIONS.md D33).
+          <GroupedList header={t('ai.title')}>
+            <Cell
+              icon={<Lock />}
+              label={t('native.lockedTitle', { feature: t('ai.title') })}
+              chevron={false}
+            />
+          </GroupedList>
+        ) : (
+          <GroupedList header={t('ai.title')} footer={t('ai.locked')}>
+            <Cell icon={<Lock />} label={t('states.lockedAction')} to={BILLING_PATH} />
+          </GroupedList>
+        )
       ) : (
         <AIAnalysisPhone
           title={t('ai.title')}
@@ -691,9 +712,20 @@ function BestTimesPhone({
     <section aria-label={title}>
       <SectionHead large title={title} />
       {locked ? (
-        <GroupedList aria-label={title} footer={t('bestTimes.locked')}>
-          <Cell icon={<Lock />} label={t('states.lockedAction')} to={BILLING_PATH} />
-        </GroupedList>
+        isNativeApp() ? (
+          // Inside the iOS app: the fact as a plain row, no link (apps/mobile DECISIONS.md D33).
+          <GroupedList aria-label={title}>
+            <Cell
+              icon={<Lock />}
+              label={t('native.lockedTitle', { feature: title })}
+              chevron={false}
+            />
+          </GroupedList>
+        ) : (
+          <GroupedList aria-label={title} footer={t('bestTimes.locked')}>
+            <Cell icon={<Lock />} label={t('states.lockedAction')} to={BILLING_PATH} />
+          </GroupedList>
+        )
       ) : loading ? (
         <LoadingBlock />
       ) : onRetry ? (

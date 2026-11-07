@@ -7,7 +7,10 @@ import type { CapacitorConfig } from '@capacitor/cli';
 // MESAAS_APP_URL lets a developer point a Simulator build at a local or staging CRM
 // (e.g. http://localhost:5173). Release builds must be synced without it.
 const appUrl = process.env.MESAAS_APP_URL ?? 'https://www.mesaas.com.br';
-const appHost = new URL(appUrl).host;
+// Capacitor matches allowNavigation against the URL's host WITHOUT the port
+// (CAPInstanceConfiguration.shouldAllowNavigation), so `localhost:5173` would never
+// match and every full page load in a dev build would open in Safari.
+const appHost = new URL(appUrl).hostname;
 
 const config: CapacitorConfig = {
   appId: 'br.com.mesaas.app',
@@ -35,6 +38,11 @@ const config: CapacitorConfig = {
       launchShowDuration: 1500,
       launchFadeOutDuration: 200,
       showSpinner: false,
+    },
+    PushNotifications: {
+      // How a push shows while the app is in the foreground. `alert` is deprecated
+      // on iOS in favour of `banner` + `list`.
+      presentationOptions: ['badge', 'sound', 'banner', 'list'],
     },
     Keyboard: {
       // Shrink the web view above the keyboard so composers and inputs stay visible.

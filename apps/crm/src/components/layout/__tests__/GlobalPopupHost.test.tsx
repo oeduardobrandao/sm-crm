@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
   useAuthMock,
@@ -365,5 +365,75 @@ describe('GlobalPopupHost', () => {
       screen.getByRole('heading', { level: 2, name: 'Seu teste termina em breve' }),
     ).toBeInTheDocument();
     expect(sessionStorage.getItem('mesaas_popup_shown')).toBe('trig');
+  });
+
+  describe('dentro do app iOS', () => {
+    beforeEach(() => {
+      (window as unknown as { Capacitor?: unknown }).Capacitor = { isNativePlatform: () => true };
+    });
+    afterEach(() => {
+      (window as unknown as { Capacitor?: unknown }).Capacitor = undefined;
+    });
+
+    it('não abre popup cujo CTA leva a /precos e não grava seen', async () => {
+      getActivePopupsMock.mockResolvedValue([{ ...popup, cta_url: '/precos' }]);
+      renderHost();
+      await waitFor(() => expect(getMyPopupInteractionsMock).toHaveBeenCalled());
+      // The open path awaits image signing and a 0 ms timer: give it real time.
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 50));
+      });
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(recordPopupInteractionMock).not.toHaveBeenCalled();
+      expect(sessionStorage.getItem('mesaas_popup_shown')).toBeNull();
+    });
+
+    it('não abre popup com link de venda no corpo de uma página', async () => {
+      getActivePopupsMock.mockResolvedValue([
+        {
+          ...popup,
+          pages: [
+            popup.pages[0],
+            {
+              ...popup.pages[1],
+              body: 'Conheça o [plano Max](https://www.mesaas.com.br/precos).',
+            },
+          ],
+        },
+      ]);
+      renderHost();
+      await waitFor(() => expect(getMyPopupInteractionsMock).toHaveBeenCalled());
+      // The open path awaits image signing and a 0 ms timer: give it real time.
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 50));
+      });
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('mostra outro popup elegível no lugar do bloqueado', async () => {
+      getActivePopupsMock.mockResolvedValue([
+        {
+          ...popup,
+          id: 'venda',
+          created_at: '2026-09-05T00:00:00Z',
+          pages: [{ title: 'Assine', eyebrow: null, body: 'b', image_key: null }],
+          cta_url: '/configuracao/cobranca',
+        },
+        {
+          ...popup,
+          id: 'aviso',
+          pages: [{ title: 'Novidade', eyebrow: null, body: 'b', image_key: null }],
+        },
+      ]);
+      renderHost();
+      await screen.findByRole('dialog');
+      expect(screen.getByRole('heading', { level: 2, name: 'Novidade' })).toBeInTheDocument();
+      expect(sessionStorage.getItem('mesaas_popup_shown')).toBe('aviso');
+    });
+
+    it('abre normalmente um popup sem link de venda', async () => {
+      renderHost();
+      expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    });
   });
 });

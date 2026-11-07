@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { isNativeApp } from '@/native/platform';
 
 export default function NotFoundPage() {
   useEffect(() => {
@@ -25,7 +26,8 @@ export default function NotFoundPage() {
         O endereço que você acessou não existe ou mudou de lugar.
       </p>
       <div className="flex gap-4">
-        <Link to="/" className="underline">
+        {/* The iOS app has no landing page: its home is the dashboard. */}
+        <Link to={isNativeApp() ? '/dashboard' : '/'} className="underline">
           Ir para a página inicial
         </Link>
         <Link to="/login" className="underline">

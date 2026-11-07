@@ -43,6 +43,11 @@ import {
 import { getConsent } from '../lib/consent';
 import { useConsent } from '../lib/useConsent';
 import { purgeSupportStorage } from '../lib/legacyStorage';
+import { isNativeApp } from '../native/platform';
+import { unregisterNativePush } from '../native/push';
+
+/** Longest a logout waits on the push unregister RPC before signing out anyway. */
+const NATIVE_PUSH_UNREGISTER_TIMEOUT_MS = 3_000;
 
 interface Profile {
   id: string;
@@ -1098,6 +1103,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Never let a support-tooling nicety break auth.
     }
     profileRequestId.current += 1;
+    // iOS app: detach this phone from the user while the session still exists (the RPC
+    // runs as the user), so their notifications stop reaching it. Bounded: a slow or
+    // failed unregister must never keep anyone signed in. If it does not finish, the
+    // token stays in the Keychain and the next login on this phone moves it anyway.
+    if (isNativeApp()) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([
+        Promise.resolve()
+          .then(unregisterNativePush)
+          .catch(() => {}),
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, NATIVE_PUSH_UNREGISTER_TIMEOUT_MS);
+        }),
+      ]);
+      clearTimeout(timer);
+    }
     await supabaseSignOut();
     // Prevent the next user on a shared machine from being merged into this identity.
     resetAnalytics();

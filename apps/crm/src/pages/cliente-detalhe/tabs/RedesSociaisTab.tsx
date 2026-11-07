@@ -19,6 +19,7 @@ import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { SegmentedControl } from '@/components/mobile/SegmentedControl';
 import { captureEvent } from '@/lib/analytics';
 import { resolveIgError } from '@/lib/instagram-oauth-errors';
+import { isNativeApp } from '@/native/platform';
 import { InstagramSection } from '../components/InstagramSection';
 import { AutomationContactsSection } from '../components/AutomationContactsSection';
 import { TikTokSection } from '../TikTokSection';
@@ -164,13 +165,18 @@ export default function RedesSociaisTab() {
     if (action?.kind === 'off_meta') {
       setIgOffMetaOpen(true);
     } else if (action?.kind === 'plan_limit') {
-      toast.error(t('detail.igPlanLimit'), {
-        duration: 12000,
-        action: {
-          label: t('detail.igPlanLimitAction'),
-          onClick: () => navigate('/configuracao/cobranca'),
-        },
-      });
+      // The iOS app never points at plans or billing (apps/mobile/DECISIONS.md D33).
+      if (isNativeApp()) {
+        toast.error(t('native.limitBody', { ns: 'common' }));
+      } else {
+        toast.error(t('detail.igPlanLimit'), {
+          duration: 12000,
+          action: {
+            label: t('detail.igPlanLimitAction'),
+            onClick: () => navigate('/configuracao/cobranca'),
+          },
+        });
+      }
     } else if (action?.kind === 'toast') {
       if (action.level === 'info') toast.info(t(action.i18nKey));
       else toast.error(t(action.i18nKey));

@@ -29,6 +29,7 @@ describe('post_client_reference notification', () => {
       when: 'o cliente anexa fotos, vídeos, PDFs ou links a um post no Hub',
       recipients: 'responsável pelo item + donos e admins',
       emailEligible: false,
+      pushEligible: true,
     });
     expect(EMAIL_ELIGIBLE_TYPES).not.toContain('post_client_reference');
   });

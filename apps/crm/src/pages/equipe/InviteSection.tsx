@@ -22,6 +22,7 @@ import { FormRow } from '@/components/mobile/FormRow';
 import { PickerCell } from '@/components/mobile/PickerSheet';
 import type { MembroFormValues } from './membroForm';
 import type { SeatState } from './inviteSupport';
+import { isNativeApp } from '@/native/platform';
 
 /** Lower-case display name of a workspace role id; unknown ids render as is. */
 function roleName(t: TFunction, role: string): string {
@@ -261,7 +262,7 @@ export function InviteSection({
             border: '1px solid var(--border-color)',
           }}
         >
-          {t('inviteSection.seatsFull')}
+          {isNativeApp() ? t('native.limitBody') : t('inviteSection.seatsFull')}
         </div>
       )}
     </div>
@@ -283,7 +284,7 @@ function SeatFullNotice() {
         border: '1px solid var(--border-color)',
       }}
     >
-      {t('inviteSection.seatsFull')}
+      {isNativeApp() ? t('native.limitBody') : t('inviteSection.seatsFull')}
     </div>
   );
 }

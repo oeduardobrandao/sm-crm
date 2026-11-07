@@ -287,6 +287,22 @@ describe('RedesSociaisTab', () => {
       );
     });
 
+    it('ig_error=plan_limit in the iOS app: states the limit with no plans action (D33)', async () => {
+      vi.stubGlobal('Capacitor', { isNativePlatform: () => true, getPlatform: () => 'ios' });
+      try {
+        getInstagramSummaryMock.mockResolvedValue(null);
+        renderTab('/clientes/42/redes-sociais?ig_error=plan_limit');
+
+        await waitFor(() =>
+          expect(toastErrorMock).toHaveBeenCalledWith('Você atingiu o limite da sua conta.'),
+        );
+        expect(toastErrorMock).toHaveBeenCalledTimes(1);
+        await waitFor(() => expect(screen.getByTestId('search')).toHaveTextContent(''));
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
     it('ig_error with an unrecognised code: toasts the generic error message', async () => {
       getInstagramSummaryMock.mockResolvedValue(null);
       renderTab('/clientes/42/redes-sociais?ig_error=some_unknown_code');

@@ -1,4 +1,6 @@
 import type { PermissionAction, PermissionCheck, PermissionModule } from '@/lib/permissions';
+import { isNativeApp } from '@/native/platform';
+import { isBlockedInNativeApp } from '@/native/blockedPaths';
 
 export interface NavItem {
   id: string;
@@ -346,7 +348,16 @@ export function getNavGroups(
   // (e.g. billing, if it returns to the nav) would need it immediately.
   void workspaceRole;
 
+  const native = isNativeApp();
   let groups = ALL_NAV_GROUPS;
+
+  // The iOS app never shows the marketing site (Novidades); Privacidade stays, opened in
+  // Safari by the nav (openSitePageInNativeApp).
+  if (native) {
+    groups = groups
+      .map((g) => ({ ...g, items: g.items.filter((i) => !isBlockedInNativeApp(i.route)) }))
+      .filter((g) => g.items.length > 0);
+  }
 
   // Single permission filter for every module-backed nav item. Fails CLOSED
   // on 'unknown' for EVERY gated id, not just the old financial pair
@@ -406,7 +417,8 @@ export function getNavGroups(
               ? features[flag[0]] !== false || flag.slice(1).some((f) => features[f] === true)
               : features[flag] !== false;
             if (isEnabled) return i;
-            return i.showLockedWhenGated ? { ...i, locked: true } : null;
+            // The iOS app never shows a locked item: its destination is a paywall.
+            return i.showLockedWhenGated && !native ? { ...i, locked: true } : null;
           })
           .filter((i): i is NavItem => i !== null),
       }))

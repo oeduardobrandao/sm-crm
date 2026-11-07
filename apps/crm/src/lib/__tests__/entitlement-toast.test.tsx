@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const reportPaywallHit = vi.fn();
 vi.mock('../paywall-report', () => ({
@@ -65,5 +65,34 @@ describe('handleEntitlementMutationError paywall reporting', () => {
   it('returns false and reports nothing for an unrelated error', () => {
     expect(handleEntitlementMutationError(new Error('network'), 'ws-1')).toBe(false);
     expect(reportPaywallHit).not.toHaveBeenCalled();
+  });
+});
+
+describe('handleEntitlementMutationError inside the native app', () => {
+  beforeEach(() => {
+    toastError.mockClear();
+    reportPaywallHit.mockClear();
+    (window as unknown as { Capacitor?: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+      getPlatform: () => 'ios',
+    };
+  });
+  afterEach(() => {
+    delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+  });
+
+  it('shows the error toast with no upgrade action, and still reports', () => {
+    const handled = handleEntitlementMutationError(
+      { message: 'feature_disabled:feature_hub_portal' },
+      'ws-1',
+    );
+    expect(handled).toBe(true);
+    expect(toastError).toHaveBeenCalledTimes(1);
+    const options = toastError.mock.calls[0][1] as { action?: unknown } | undefined;
+    expect(options?.action).toBeUndefined();
+    expect(reportPaywallHit).toHaveBeenCalledWith({
+      workspaceId: 'ws-1',
+      feature: 'feature_hub_portal',
+    });
   });
 });
