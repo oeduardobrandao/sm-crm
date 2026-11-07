@@ -17,6 +17,7 @@ import {
   retryInstagramPublish,
   publishInstagramPostNow,
 } from '../instagram';
+import { mapEntitlementError } from '../../lib/entitlement-errors';
 
 type MockedSupabaseModule = typeof supabaseModule & {
   __resetSupabaseMock: () => void;
@@ -49,6 +50,27 @@ describe('instagram service', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('a plan-limit 403 from /auth throws an error the entitlement mapper recognises', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      jsonResponse(
+        {
+          error: 'plan_limit_exceeded',
+          message: 'plan_limit_exceeded:max_instagram_accounts',
+          limit: 1,
+        },
+        { status: 403 },
+      ),
+    );
+
+    const err = await getInstagramAuthUrl(42).catch((e: unknown) => e);
+    expect(mapEntitlementError(err)).toEqual({
+      kind: 'limit',
+      key: 'max_instagram_accounts',
+      label: 'contas do Instagram',
+    });
+    expect(captureEventMock).not.toHaveBeenCalled();
   });
 
   it('returns the auth url from /auth/:clientId', async () => {

@@ -24,6 +24,9 @@ export function classifyOAuthError(msg: string, params: URLSearchParams): string
     return 'rate_limited';
   }
   if (/^CONNECT_LINK_REVOKED/.test(msg)) return 'link_revoked';
+  // Raised by the trg_limit_instagram trigger (enforce_plan_count_limit) when the
+  // workspace already holds as many Instagram accounts as its plan allows.
+  if (/plan_limit_exceeded:max_instagram_accounts/.test(msg)) return 'plan_limit';
   return '1';
 }
 

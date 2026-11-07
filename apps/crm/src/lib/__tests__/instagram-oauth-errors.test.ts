@@ -11,6 +11,10 @@ describe('resolveIgError', () => {
     expect(resolveIgError('off_meta_activity')).toEqual({ kind: 'off_meta' });
   });
 
+  test('plan_limit gets its own action (upgrade in the CRM, talk to the agency on /conectar)', () => {
+    expect(resolveIgError('plan_limit')).toEqual({ kind: 'plan_limit' });
+  });
+
   test('cancelled is informational, not an error', () => {
     expect(resolveIgError('cancelled')).toEqual({
       kind: 'toast',
