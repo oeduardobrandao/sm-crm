@@ -150,7 +150,10 @@ export default function EmailsListPage() {
       aria-label="Período"
       value={activePreset}
       onChange={changePreset}
-      options={SEGMENTS.map((s) => ({ value: s.value, label: s.label }))}
+      options={SEGMENTS.map((s) => ({
+        value: s.value,
+        label: isPhone && s.value === 'custom' ? 'Outro' : s.label,
+      }))}
     />
   );
 
@@ -210,7 +213,7 @@ export default function EmailsListPage() {
   return (
     <div>
       <PageHeader
-        title="Todos os e-mails"
+        title={isPhone ? 'Envios' : 'Todos os e-mails'}
         description="Todos os envios do período, do mais novo para o mais antigo"
         back={{ to: '/admin/emails', label: 'E-mails' }}
         actions={segments}

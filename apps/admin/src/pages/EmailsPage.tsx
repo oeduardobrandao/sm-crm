@@ -99,7 +99,10 @@ export default function EmailsPage() {
         setMessage(null);
         setPreset(p);
       }}
-      options={SEGMENTS.map((s) => ({ value: s.value, label: s.label }))}
+      options={SEGMENTS.map((s) => ({
+        value: s.value,
+        label: isPhone && s.value === 'custom' ? 'Outro' : s.label,
+      }))}
     />
   );
 
