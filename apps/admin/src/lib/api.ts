@@ -1256,3 +1256,61 @@ export function republishBlogPost(id: string) {
 export function retryBlogPublish(id: string) {
   return adminApi<{ post: BlogPostRow }>('retry-blog-publish', { id });
 }
+
+export interface EmailCounts {
+  sent: number;
+  delivered: number;
+  bounced: number;
+  complained: number;
+  delayed: number;
+  pending: number;
+  not_sent: number;
+}
+
+export interface EmailMetricsByType extends EmailCounts {
+  category: string;
+  type: string;
+}
+
+export interface EmailMetricsDaily {
+  day: string;
+  sent: number;
+  delivered: number;
+  bounced: number;
+  other: number;
+}
+
+export interface EmailMetricsRecent {
+  sent_at: string;
+  category: string;
+  type: string;
+  last_event: string;
+  bounce_type: string | null;
+  bounce_message: string | null;
+  recipient_masked: string | null;
+  subject: string | null;
+}
+
+export interface EmailMetricsResponse {
+  coverage_start: string | null;
+  by_type: EmailMetricsByType[];
+  daily: EmailMetricsDaily[];
+  recent: EmailMetricsRecent[];
+}
+
+export interface EmailBackfillResult {
+  inserted: number;
+  scanned: number;
+  nextCursor: string | null;
+  /** ISO timestamp of the oldest email reached in this call, or null. */
+  oldestReached: string | null;
+  done: boolean;
+}
+
+export function getEmailMetrics(start: string, end: string) {
+  return adminApi<EmailMetricsResponse>('email-metrics', { start, end });
+}
+
+export function runEmailBackfill(cursor: string | null) {
+  return adminApi<EmailBackfillResult>('email-backfill', { cursor });
+}

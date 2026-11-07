@@ -2,13 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { NAV_GROUPS, PHONE_TABS, MAIS_GROUPS, hidesTabBar, isRouteActive } from '../nav-items';
 
 describe('nav-items', () => {
-  it('lists the 12 admin routes once, in four groups', () => {
+  it('lists the 13 admin routes once, in four groups', () => {
     const all = NAV_GROUPS.flatMap((g) => g.items.map((i) => i.to));
     expect(all).toEqual([
       '/admin',
       '/admin/metricas',
       '/admin/workspaces',
       '/admin/afiliados',
+      '/admin/emails',
       '/admin/plans',
       '/admin/admins',
       '/admin/integrations',
@@ -32,7 +33,7 @@ describe('nav-items', () => {
       'Workspaces',
       'Afiliados',
     ]);
-    expect(MAIS_GROUPS.flatMap((g) => g.items).length).toBe(8);
+    expect(MAIS_GROUPS.flatMap((g) => g.items).length).toBe(9);
   });
   it('isRouteActive: Dashboard only on /admin; others on their subtree', () => {
     expect(isRouteActive('/admin', '/admin')).toBe(true);

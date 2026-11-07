@@ -5,6 +5,7 @@ import {
   Film,
   HandCoins,
   LayoutDashboard,
+  Mail,
   Megaphone,
   Newspaper,
   Package,
@@ -17,6 +18,7 @@ import {
 export type NavId =
   | 'dashboard'
   | 'metricas'
+  | 'emails'
   | 'workspaces'
   | 'afiliados'
   | 'planos'
@@ -63,6 +65,7 @@ export const NAV_GROUPS: AdminNavGroup[] = [
   {
     label: 'Plataforma',
     items: [
+      item('emails', '/admin/emails', 'E-mails', Mail, '#30d158'),
       item('planos', '/admin/plans', 'Planos', Package, '#af52de'),
       item('admins', '/admin/admins', 'Admins', Users, '#30b0c7'),
       item('integracoes', '/admin/integrations', 'Integrações', Plug, '#636366'),
