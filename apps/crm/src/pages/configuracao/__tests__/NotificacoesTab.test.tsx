@@ -15,14 +15,25 @@ const getInapp = vi.fn();
 const setInapp = vi.fn().mockResolvedValue(undefined);
 const getEmail = vi.fn();
 const setEmail = vi.fn().mockResolvedValue(undefined);
+const getPush = vi.fn();
+const setPush = vi.fn().mockResolvedValue(undefined);
+const hasDevice = vi.fn();
 
 vi.mock('@/store/notificationPrefs', () => ({
   getNotificationInappPrefs: (...a: unknown[]) => getInapp(...a),
   setNotificationInappPref: (...a: unknown[]) => setInapp(...a),
   getNotificationEmailPrefs: (...a: unknown[]) => getEmail(...a),
   setNotificationEmailPref: (...a: unknown[]) => setEmail(...a),
+  getNotificationPushPrefs: (...a: unknown[]) => getPush(...a),
+  setNotificationPushPref: (...a: unknown[]) => setPush(...a),
+  hasActivePushDevice: (...a: unknown[]) => hasDevice(...a),
   MASTER_PAUSE_TYPE: '__all__',
 }));
+
+// The Celular column shows inside the iOS app, or on the web once the user has a
+// registered device.
+const { mockNative } = vi.hoisted(() => ({ mockNative: { current: false } }));
+vi.mock('@/native/platform', () => ({ isNativeApp: () => mockNative.current }));
 
 // Only the exported query-key constant is needed here; mocking the hook
 // module directly avoids dragging in its own store imports for this test.
@@ -185,6 +196,10 @@ describe('NotificacoesTab', () => {
     setInapp.mockReset().mockResolvedValue(undefined);
     getEmail.mockReset().mockResolvedValue({});
     setEmail.mockReset().mockResolvedValue(undefined);
+    getPush.mockReset().mockResolvedValue({});
+    setPush.mockReset().mockResolvedValue(undefined);
+    hasDevice.mockReset().mockResolvedValue(false);
+    mockNative.current = false;
 
     refetchProfile = vi.fn().mockResolvedValue(undefined);
     mockUseAuth.mockReset().mockReturnValue({
@@ -248,7 +263,7 @@ describe('NotificacoesTab', () => {
   it('toggling the in-app switch for "mention" calls setNotificationInappPref(mention, false)', async () => {
     renderTab();
     const label = NOTIFICATION_CATALOG.mention.label;
-    const switchEl = await screen.findByLabelText(`${label} (no app)`);
+    const switchEl = await screen.findByLabelText(`${label} (sino)`);
     expect((switchEl as HTMLInputElement).checked).toBe(true); // no row = default on
     fireEvent.click(switchEl);
     await waitFor(() => expect(setInapp).toHaveBeenCalledWith('mention', false));
@@ -268,7 +283,7 @@ describe('NotificacoesTab', () => {
 
     renderTab();
     const label = NOTIFICATION_CATALOG.mention.label;
-    const switchEl = (await screen.findByLabelText(`${label} (no app)`)) as HTMLInputElement;
+    const switchEl = (await screen.findByLabelText(`${label} (sino)`)) as HTMLInputElement;
     expect(switchEl.checked).toBe(true); // no row = default on
 
     fireEvent.click(switchEl);
@@ -292,7 +307,7 @@ describe('NotificacoesTab', () => {
 
   it('the "Pausar tudo" master row calls the setter of the channel that was toggled', async () => {
     renderTab();
-    const masterInapp = await screen.findByLabelText('Pausar tudo (no app)');
+    const masterInapp = await screen.findByLabelText('Pausar tudo (sino)');
     expect((masterInapp as HTMLInputElement).checked).toBe(false);
     fireEvent.click(masterInapp);
     await waitFor(() => expect(setInapp).toHaveBeenCalledWith('__all__', false));
@@ -307,10 +322,92 @@ describe('NotificacoesTab', () => {
   it('renders default state (no row for the type) as switched on, for both channels', async () => {
     renderTab();
     const label = NOTIFICATION_CATALOG.post_publish_failed.label;
-    const inapp = await screen.findByLabelText(`${label} (no app)`);
+    const inapp = await screen.findByLabelText(`${label} (sino)`);
     const email = screen.getByLabelText(`${label} (e-mail)`);
     expect((inapp as HTMLInputElement).checked).toBe(true);
     expect((email as HTMLInputElement).checked).toBe(true);
+  });
+
+  describe('Celular column', () => {
+    const headerRow = async () => {
+      const sino = await screen.findByText('Sino', { selector: 'span' });
+      return sino.parentElement as HTMLElement;
+    };
+
+    it('without a device or the app: only the Sino and E-mail columns', async () => {
+      renderTab();
+      const header = await headerRow();
+      expect(within(header).getByText('E-mail')).toBeInTheDocument();
+      expect(within(header).queryByText('Celular')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Pausar tudo (celular)')).not.toBeInTheDocument();
+      expect(hasDevice).toHaveBeenCalled();
+    });
+
+    it('with an active device: header reads Sino, E-mail, Celular', async () => {
+      hasDevice.mockResolvedValue(true);
+      renderTab();
+      await screen.findByLabelText('Pausar tudo (celular)');
+      const header = await headerRow();
+      expect(
+        Array.from(header.querySelectorAll('span'))
+          .map((el) => el.textContent)
+          .filter(Boolean),
+      ).toEqual(['Sino', 'E-mail', 'Celular']);
+    });
+
+    it('inside the app: shows the column without asking for devices', async () => {
+      mockNative.current = true;
+      renderTab();
+      expect(await screen.findByLabelText('Pausar tudo (celular)')).toBeInTheDocument();
+      expect(hasDevice).not.toHaveBeenCalled();
+    });
+
+    it('a type that never pushes shows "·" with a tooltip in the Celular column', async () => {
+      hasDevice.mockResolvedValue(true);
+      renderTab();
+      const label = NOTIFICATION_CATALOG.step_activated.label;
+      await screen.findByLabelText(`${label} (sino)`);
+      expect(screen.queryByLabelText(`${label} (celular)`)).not.toBeInTheDocument();
+      expect(screen.getByLabelText(`${label}: este tipo não chega no celular`)).toHaveAttribute(
+        'title',
+        'Este tipo não chega no celular',
+      );
+    });
+
+    it('toggling a Celular switch calls setNotificationPushPref', async () => {
+      hasDevice.mockResolvedValue(true);
+      renderTab();
+      const label = NOTIFICATION_CATALOG.mention.label;
+      const switchEl = (await screen.findByLabelText(`${label} (celular)`)) as HTMLInputElement;
+      expect(switchEl.checked).toBe(true); // no row = default on
+      fireEvent.click(switchEl);
+      await waitFor(() => expect(setPush).toHaveBeenCalledWith('mention', false));
+      expect(setInapp).not.toHaveBeenCalled();
+      expect(setEmail).not.toHaveBeenCalled();
+    });
+
+    it('the Celular "Pausar tudo" writes the master pause', async () => {
+      hasDevice.mockResolvedValue(true);
+      renderTab();
+      const master = (await screen.findByLabelText('Pausar tudo (celular)')) as HTMLInputElement;
+      expect(master.checked).toBe(false);
+      fireEvent.click(master);
+      await waitFor(() => expect(setPush).toHaveBeenCalledWith('__all__', false));
+      expect(setInapp).not.toHaveBeenCalled();
+      expect(setEmail).not.toHaveBeenCalled();
+    });
+
+    it('a paused Celular channel locks only its own column', async () => {
+      hasDevice.mockResolvedValue(true);
+      getPush.mockResolvedValue({ __all__: false });
+      renderTab();
+      const label = NOTIFICATION_CATALOG.mention.label;
+      const master = (await screen.findByLabelText('Pausar tudo (celular)')) as HTMLInputElement;
+      expect(master.checked).toBe(true);
+      expect(screen.getByLabelText(`${label} (celular)`)).toBeDisabled();
+      expect(screen.getByLabelText(`${label} (sino)`)).not.toBeDisabled();
+      expect(screen.getByLabelText(`${label} (e-mail)`)).not.toBeDisabled();
+    });
   });
 
   describe('EmailsAutomaticosSection', () => {

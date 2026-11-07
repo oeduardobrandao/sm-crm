@@ -18,6 +18,7 @@ import { sanitizeUrl } from '../../../utils/security';
 import { Avatar } from '../../analytics/phone/shared';
 import { PeriodSegmented } from '../../analytics/phone/PeriodControl';
 import { BILLING_PATH } from '../AnalyticsStateCards';
+import { isNativeApp } from '@/native/platform';
 import { cardState } from './YouTubeCardFrame';
 import { YouTubeKpiGrid } from './YouTubeKpiGrid';
 import { YouTubeDailyViewsChart } from './YouTubeDailyViewsChart';
@@ -100,14 +101,23 @@ export function YouTubeAnalyticsTabPhone(props: YouTubeAnalyticsTabPhoneProps) {
     if (data.locked) {
       return (
         <Frame frame={frame}>
-          <StateBlock
-            title={t('states.locked')}
-            action={
-              <Link to={BILLING_PATH} className="phone-an-link-button">
-                {t('states.lockedAction')}
-              </Link>
-            }
-          />
+          {/* Inside the iOS app: the fact, no link to billing (apps/mobile DECISIONS.md D33). */}
+          {isNativeApp() ? (
+            <StateBlock
+              title={t('native.lockedTitle', { feature: t('states.lockedTitle') })}
+              body={t('native.lockedBody')}
+              action={null}
+            />
+          ) : (
+            <StateBlock
+              title={t('states.locked')}
+              action={
+                <Link to={BILLING_PATH} className="phone-an-link-button">
+                  {t('states.lockedAction')}
+                </Link>
+              }
+            />
+          )}
         </Frame>
       );
     }

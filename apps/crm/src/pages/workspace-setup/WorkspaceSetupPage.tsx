@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { captureEvent } from '@/lib/analytics';
 import { useAuth } from '../../context/AuthContext';
+import { isNativeApp } from '@/native/platform';
 import { saveWorkspaceSetup } from './saveWorkspaceSetup';
 import { isValidBrPhone, safeNextPath } from './setupHelpers';
 import './workspace-setup.css';
@@ -81,7 +82,9 @@ export default function WorkspaceSetupPage() {
   // DOM heuristic in app-lifecycle).
   useUnsavedWork(saving);
 
-  const target = safeNextPath(searchParams.get('next')) ?? '/comecar';
+  // The iOS app never offers a plan, so without a `next` it goes straight to the dashboard.
+  const target =
+    safeNextPath(searchParams.get('next')) ?? (isNativeApp() ? '/dashboard' : '/comecar');
 
   const update = (field: SetupField, value: string) => {
     const next = { ...values, [field]: value };

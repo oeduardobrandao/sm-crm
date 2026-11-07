@@ -284,5 +284,18 @@
     "uploadError": "Could not upload the photo.",
     "removed": "Photo removed.",
     "removeError": "Could not remove the photo."
+  },
+  "native": {
+    "lockedTitle": "{{feature}} is not available on your account",
+    "lockedBody": "Talk to the workspace owner if you need this feature.",
+    "limitBody": "You have reached your account's limit.",
+    "ok": "Got it",
+    "pushPromptTitle": "Get alerts on your phone?",
+    "pushPromptBody": "We let you know when a client approves a post, asks for changes or sends a message, and when a deadline is near.",
+    "pushPromptAllow": "Turn on notifications",
+    "pushPromptLater": "Not now",
+    "pushOffTitle": "Notifications are off on this iPhone",
+    "pushOffEnable": "Turn on",
+    "pushOffSettings": "Open Settings"
   }
 }

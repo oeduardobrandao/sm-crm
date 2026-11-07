@@ -51,6 +51,7 @@ import { PhoneConfirmSheet } from '@/components/mobile/PhoneConfirmSheet';
 import { PhoneArquivosView } from './phone/PhoneArquivosView';
 import { PhoneFolderPickerSheet } from './phone/PhoneFolderPickerSheet';
 import { PhoneNameSheet } from './phone/PhoneNameSheet';
+import { isNativeApp } from '@/native/platform';
 
 /** `?pasta=<id>` on phones: each folder is a pushed screen with its own history entry. */
 function parseFolderParam(value: string | null): number | null {
@@ -306,7 +307,7 @@ export default function ArquivosPage() {
     },
     onError: (err) => {
       if (err.message.includes('quota_exceeded')) {
-        toast.error(t('page.copyQuotaExceeded'));
+        toast.error(isNativeApp() ? t('native.limitBody') : t('page.copyQuotaExceeded'));
       } else {
         toast.error(t('page.copyFileError'));
       }
@@ -332,7 +333,7 @@ export default function ArquivosPage() {
     },
     onError: (err) => {
       if (err.message.includes('quota_exceeded')) {
-        toast.error(t('page.copyQuotaExceeded'));
+        toast.error(isNativeApp() ? t('native.limitBody') : t('page.copyQuotaExceeded'));
       } else if (err.message.includes('copy_limit_exceeded')) {
         toast.error(t('page.copyLimitExceeded'));
       } else {

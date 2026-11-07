@@ -156,6 +156,7 @@ describe('post_discussion notification', () => {
       when: 'alguém escreve na discussão de um post que você segue',
       recipients: 'quem escreveu, foi mencionado ou é responsável pelo post e segue a discussão',
       emailEligible: false,
+      pushEligible: false,
     });
     expect(EMAIL_ELIGIBLE_TYPES).not.toContain('post_discussion');
   });

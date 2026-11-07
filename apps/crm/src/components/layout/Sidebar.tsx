@@ -6,6 +6,7 @@ import { changeLanguage, SUPPORTED_LANGUAGES } from '@mesaas/i18n';
 import type { Language } from '@mesaas/i18n';
 import { getNavGroups, isNavRouteActive } from './nav-data';
 import type { NavGroup } from './nav-data';
+import { openSitePageInNativeApp } from '@/native/blockedPaths';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { useEffectiveNavFeatures } from '../../hooks/useEffectiveNavFeatures';
 import { useMensagensUnread } from '../../hooks/useMensagensUnread';
@@ -204,7 +205,9 @@ export default function Sidebar({
   };
 
   const handleNavClick = (route: string) => {
-    navigate(route);
+    // Inside the iOS app (iPad shows this sidebar), Privacidade opens in Safari through the
+    // app plugin, never as a marketing page in the web view.
+    if (!openSitePageInNativeApp(route)) navigate(route);
     setRailOpen(false);
     if (isDrawer) onClose?.();
   };

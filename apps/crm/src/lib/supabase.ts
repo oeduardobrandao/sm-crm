@@ -3,6 +3,9 @@
 // =============================================
 import { createClient } from '@supabase/supabase-js';
 import { resetVidroLook } from './vidroLook';
+import { isNativeApp } from '../native/platform';
+import { getMesaasNative } from '../native/mesaasNative';
+import { createNativeAuthStorage } from '../native/authStorage';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -11,7 +14,16 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   throw new Error('Missing Supabase environment variables. Check your .env file.');
 }
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Inside the iOS app the session lives in the Keychain (native/authStorage.ts); the web
+// keeps supabase-js's default localStorage. isNativeApp() is false in the SSR prerender
+// (no window), so window.localStorage is only read on the native branch.
+export const supabase = createClient(
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY,
+  isNativeApp()
+    ? { auth: { storage: createNativeAuthStorage(getMesaasNative, window.localStorage) } }
+    : undefined,
+);
 
 // ---- Auth State ----
 let cachedProfile: any = null;

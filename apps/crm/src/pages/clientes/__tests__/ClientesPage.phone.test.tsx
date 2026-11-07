@@ -302,6 +302,28 @@ describe('ClientesPage on phones', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/configuracao/cobranca');
   });
 
+  it('inside the native app: no locked CSV row, and the limit line names no plan', async () => {
+    (window as unknown as { Capacitor?: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+      getPlatform: () => 'ios',
+    };
+    try {
+      hasFeatureMock.mockReturnValue(false);
+      isAtLimitMock.mockReturnValue(true);
+      renderPage();
+      await screen.findByText('Alpha Studio');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Novo cliente ou importar CSV' }));
+      const sheet = await screen.findByRole('dialog', { name: 'Novo cliente ou importar CSV' });
+      expect(within(sheet).getByRole('button', { name: 'Novo Cliente' })).toBeDisabled();
+      expect(within(sheet).getByText('Você atingiu o limite da sua conta.')).toBeInTheDocument();
+      expect(within(sheet).queryByRole('button', { name: 'Importar CSV' })).toBeNull();
+      expect(within(sheet).queryByText(/plano/i)).toBeNull();
+    } finally {
+      delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+    }
+  });
+
   it('row menu: Abrir no Notion, Editar (prefilled form) and Remover with confirmation', async () => {
     const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
     renderPage();

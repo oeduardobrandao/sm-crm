@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useIntlLocale } from '@mesaas/i18n';
 import { useAuth } from '../../context/AuthContext';
 import { getWorkspaceSubscription } from '../../services/billing';
+import { isNativeApp } from '@/native/platform';
 
 /**
  * Derived state, deliberately not a global_banners row.
@@ -18,15 +19,18 @@ export function DunningBanner() {
   const intlLocale = useIntlLocale();
   const { profile } = useAuth();
   const isOwner = profile?.role === 'owner';
+  // Fixing a payment happens on the website: inside the iOS app the banner never
+  // shows (apps/mobile DECISIONS.md D33).
+  const native = isNativeApp();
 
   const { data } = useQuery({
     queryKey: ['workspace-subscription-dunning'],
     queryFn: getWorkspaceSubscription,
-    enabled: isOwner,
+    enabled: isOwner && !native,
     staleTime: 5 * 60_000,
   });
 
-  if (!isOwner || data?.status !== 'past_due') return null;
+  if (native || !isOwner || data?.status !== 'past_due') return null;
 
   const retryLabel = data.next_payment_attempt
     ? new Date(data.next_payment_attempt).toLocaleDateString(intlLocale, {

@@ -26,6 +26,7 @@ import { useMensagensUnread } from '../../hooks/useMensagensUnread';
 import { useEquipeChatUnread } from '../../hooks/useEquipeChatUnread';
 import { useWorkspaceSwitcher } from '../../hooks/useWorkspaceSwitcher';
 import { getPhoneNav, isNavRouteActive, type NavItem } from './nav-data';
+import { openSitePageInNativeApp } from '@/native/blockedPaths';
 import GlobalSearchDialog from './GlobalSearchDialog';
 import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { useGuide } from '../guide/GuideContext';
@@ -257,8 +258,10 @@ function MoreSheetContent({ shortcuts, moreGroups, onSearch }: MoreSheetContentP
   // Public pages (Novidades, Privacidade) live outside the shell: open them in a new tab
   // or window instead of leaving the app with no tab bar. No SPA navigation, so a plain
   // close is enough (the sheet's entry pops with it).
+  // Inside the iOS app, Privacidade opens in Safari through the app plugin instead.
   const openOutside = (route: string) => {
     close();
+    if (openSitePageInNativeApp(route)) return;
     window.open(route, '_blank', 'noopener,noreferrer');
   };
 

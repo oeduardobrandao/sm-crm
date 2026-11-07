@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { FeatureGate } from '../FeatureGate';
@@ -135,6 +135,39 @@ describe('FeatureGate', () => {
       workspaceId: 'ws-1',
       feature: 'feature_off',
       clickedUpgrade: true,
+    });
+  });
+});
+
+describe('FeatureGate inside the native app', () => {
+  beforeEach(() => {
+    (window as unknown as { Capacitor?: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+      getPlatform: () => 'ios',
+    };
+  });
+  afterEach(() => {
+    delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+  });
+
+  it('states the fact with no upgrade button, and still reports the hit', () => {
+    setEntitlements({ enabledFlag: 'feature_on' });
+    renderWithWorkspace(
+      <FeatureGate flag="feature_off" label="Leads">
+        <span>inside</span>
+      </FeatureGate>,
+      'ws-1',
+    );
+    expect(screen.queryByText('inside')).toBeNull();
+    expect(screen.getByText('Leads não está disponível na sua conta')).toBeInTheDocument();
+    expect(
+      screen.getByText('Fale com o dono do workspace se precisar deste recurso.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.queryByText(/plano|upgrade/i)).toBeNull();
+    expect(mockedReportPaywallHit).toHaveBeenCalledWith({
+      workspaceId: 'ws-1',
+      feature: 'feature_off',
     });
   });
 });

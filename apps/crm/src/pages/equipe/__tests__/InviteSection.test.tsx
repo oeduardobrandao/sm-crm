@@ -140,6 +140,21 @@ describe('InviteSection', () => {
     expect(screen.getByText(/Todas as vagas do plano estão em uso/)).toBeInTheDocument();
   });
 
+  it('states the limit without upgrade copy inside the native app', () => {
+    (window as unknown as { Capacitor?: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+      getPlatform: () => 'ios',
+    };
+    try {
+      render(<Harness seat={{ status: 'full', used: 5, limit: 5, remaining: 0 }} />);
+      expect(screen.getByRole('switch')).toBeDisabled();
+      expect(screen.getByText('Você atingiu o limite da sua conta.')).toBeInTheDocument();
+      expect(screen.queryByText(/upgrade/i)).not.toBeInTheDocument();
+    } finally {
+      delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+    }
+  });
+
   it('disables the switch while limits load and when they are unavailable', () => {
     const { rerender } = render(
       <Harness seat={{ status: 'loading', used: 0, limit: null, remaining: null }} />,

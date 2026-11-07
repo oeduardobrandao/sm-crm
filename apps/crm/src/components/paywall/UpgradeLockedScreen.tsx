@@ -1,8 +1,10 @@
 import { ReactNode, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { reportPaywallHit } from '../../lib/paywall-report';
+import { isNativeApp } from '@/native/platform';
 
 /**
  * Route-level paywall. `feature` is optional so existing callers that only have
@@ -25,6 +27,7 @@ export function UpgradeLockedScreen({
   feature?: string;
   children?: ReactNode;
 }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   // workspaceRole (workspace_members do workspace ATIVO), não `role`:
   // profiles.role fica obsoleto após trocar de workspace (contrato documentado
@@ -39,6 +42,18 @@ export function UpgradeLockedScreen({
   useEffect(() => {
     if (feature && workspaceId) reportPaywallHit({ workspaceId, feature });
   }, [feature, workspaceId]);
+
+  // Inside the iOS app nothing offers a purchase or mentions plans (apps/mobile
+  // DECISIONS.md D33): the same fact for everyone, owner included, and no button.
+  if (isNativeApp()) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center gap-3 p-8">
+        <h1 className="text-xl font-bold">{t('native.lockedTitle', { feature: featureLabel })}</h1>
+        {children}
+        <p className="text-muted-foreground">{t('native.lockedBody')}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] text-center gap-3 p-8">

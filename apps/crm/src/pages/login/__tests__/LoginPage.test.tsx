@@ -686,3 +686,72 @@ describe('Crisp widget visibility', () => {
     expect(crispPush).toHaveBeenCalledWith(['do', 'chat:hide']);
   });
 });
+
+describe('LoginPage inside the iOS app', () => {
+  beforeEach(() => {
+    mockedSignIn.mockReset();
+    mockedToastSuccess.mockReset();
+    mockedUseAuth.mockReset();
+    mockedUseAuth.mockReturnValue({ user: null, loading: false } as never);
+    (window as unknown as { Capacitor?: unknown }).Capacitor = { isNativePlatform: () => true };
+  });
+
+  afterEach(() => {
+    (window as unknown as { Capacitor?: unknown }).Capacitor = undefined;
+  });
+
+  it('offers no "Criar Conta" tab', () => {
+    renderLoginPage();
+    expect(screen.getByLabelText('E-mail')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Criar conta' })).not.toBeInTheDocument();
+  });
+
+  it('opens the login form even with ?tab=register', () => {
+    renderLoginPage('/login?tab=register');
+    expect(screen.queryByLabelText('Nome completo')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Senha')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Criar conta' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the forgot-password flow', () => {
+    renderLoginPage();
+    fireEvent.click(screen.getByRole('link', { name: 'Esqueci minha senha' }));
+    expect(screen.getByText(/Informe seu e-mail para receber um link/i)).toBeInTheDocument();
+  });
+
+  it('does not make the logo a link to the landing page', () => {
+    renderLoginPage();
+    expect(
+      screen.queryByRole('link', { name: 'Ir para a página inicial' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByAltText('Mesaas')).toBeInTheDocument();
+  });
+
+  it('ignores a plan intent after login and goes to /dashboard, never /comecar', async () => {
+    mockedSignIn.mockResolvedValue({ error: null } as never);
+    renderRegister('/login?plan=pro&interval=year');
+
+    fireEvent.change(screen.getByLabelText('E-mail'), { target: { value: 'ana@mesaas.com' } });
+    fireEvent.change(screen.getByLabelText('Senha'), { target: { value: 'senha-segura' } });
+    fireEvent.submit(screen.getByLabelText('E-mail').closest('form')!);
+
+    await waitFor(() => expect(screen.getByTestId('probe')).toHaveTextContent('/dashboard'));
+  });
+
+  it('sends an already-authenticated visitor with a plan intent to /dashboard', async () => {
+    mockedUseAuth.mockReturnValue({ user: { id: 'user-1' }, loading: false } as never);
+    renderRegister('/login?plan=pro&interval=year');
+    await waitFor(() => expect(screen.getByTestId('probe')).toHaveTextContent('/dashboard'));
+  });
+});
+
+describe('LoginPage on the web keeps the landing link', () => {
+  it('links the logo to the landing page', () => {
+    mockedUseAuth.mockReturnValue({ user: null, loading: false } as never);
+    renderLoginPage();
+    expect(screen.getByRole('link', { name: 'Ir para a página inicial' })).toHaveAttribute(
+      'href',
+      '/',
+    );
+  });
+});

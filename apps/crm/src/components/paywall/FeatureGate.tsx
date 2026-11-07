@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useEntitlements } from '../../hooks/useEntitlements';
 import { AuthContext } from '../../context/AuthContext';
 import { reportPaywallHit } from '../../lib/paywall-report';
+import { isNativeApp } from '@/native/platform';
 
 /** Renders children only if the feature is enabled; otherwise an inline upgrade nudge. */
 export function FeatureGate({
@@ -33,6 +34,15 @@ export function FeatureGate({
   }, [locked, workspaceId, flag]);
 
   if (isLoading || hasFeature(flag)) return <>{children}</>;
+  // Inside the iOS app: the fact, no upgrade button (apps/mobile DECISIONS.md D33).
+  if (isNativeApp()) {
+    return (
+      <div className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+        <p>{t('native.lockedTitle', { feature: label ?? t('paywall.thisFeature') })}</p>
+        <p className="mt-1">{t('native.lockedBody')}</p>
+      </div>
+    );
+  }
   return (
     <div className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
       <p>{t('paywall.notAvailable', { label: label ?? t('paywall.thisFeature') })}</p>

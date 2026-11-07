@@ -21,6 +21,8 @@ import { PageToolbarProvider } from './PageToolbarContext';
 import PageToolbar from './PageToolbar';
 import TopBarActions from './TopBarActions';
 import NavigationProgress from './NavigationProgress';
+import { isNativeApp } from '../../native/platform';
+import NativeBridge from '../../native/NativeBridge';
 
 const GlobalBannerContainer = lazy(() => import('./GlobalBannerContainer'));
 const GuideDialog = lazy(() => import('../guide/GuideDialog'));
@@ -315,6 +317,9 @@ export default function AppLayout() {
 
             <MobileNav />
             <GuidePill />
+            {/* iOS app only: push registration, tap routing and the pre-prompt. AppLayout is
+              never prerendered, so this render branch cannot break hydration. */}
+            {isNativeApp() && <NativeBridge />}
             <Suspense fallback={null}>
               <GuideDialog />
             </Suspense>

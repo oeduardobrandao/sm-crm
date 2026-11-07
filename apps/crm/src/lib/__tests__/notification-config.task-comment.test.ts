@@ -64,6 +64,7 @@ describe('task_comment notification', () => {
       recipients:
         'responsável, quem criou e quem já comentou, exceto quem escreveu e quem foi mencionado',
       emailEligible: false,
+      pushEligible: false,
     });
     expect(EMAIL_ELIGIBLE_TYPES).not.toContain('task_comment');
   });

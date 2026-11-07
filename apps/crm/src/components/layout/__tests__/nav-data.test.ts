@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
 import { getNavGroups, getMoreSheetGroups, getPhoneNav, isNavRouteActive } from '../nav-data';
 import { deriveFinancialAccess } from '@/lib/financialAccess';
 import { makeCan, fakeMembership } from '@/test/makeCan';
@@ -531,5 +531,42 @@ describe('mensagens nav item: array flag (feature_mensagens OR feature_team_chat
       },
     );
     expect(nav.tabs.map((t) => t.navId)).toContain('mensagens');
+  });
+});
+
+describe('getNavGroups inside the iOS app', () => {
+  afterEach(() => {
+    (window as unknown as { Capacitor?: unknown }).Capacitor = undefined;
+  });
+
+  const goNative = () => {
+    (window as unknown as { Capacitor?: unknown }).Capacitor = { isNativePlatform: () => true };
+  };
+
+  it('drops a locked item instead of showing it with a lock', () => {
+    goNative();
+    const items = getNavGroups({ feature_instagram_automation: false }, 'owner', ownerCan).flatMap(
+      (g) => g.items,
+    );
+    expect(items.find((i) => i.id === 'automacoes')).toBeUndefined();
+  });
+
+  it('keeps an enabled gated item', () => {
+    goNative();
+    const items = getNavGroups({ feature_instagram_automation: true }, 'owner', ownerCan).flatMap(
+      (g) => g.items,
+    );
+    expect(items.find((i) => i.id === 'automacoes')).toBeDefined();
+  });
+
+  it('drops Novidades and keeps Privacidade', () => {
+    goNative();
+    const got = ids(getNavGroups(null, 'owner', ownerCan));
+    expect(got).not.toContain('novidades');
+    expect(got).toContain('politica-de-privacidade');
+  });
+
+  it('keeps Novidades on the web', () => {
+    expect(ids(getNavGroups(null, 'owner', ownerCan))).toContain('novidades');
   });
 });

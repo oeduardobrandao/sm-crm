@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Migration 20261122000001: a 'disconnected' instagram_accounts row no longer
+-- Migration 20261123000001: a 'disconnected' instagram_accounts row no longer
 -- holds a plan slot, and reconnecting it (UPDATE back to active) is checked
 -- against the same limit. Free plan: max_instagram_accounts = 1.
 begin;

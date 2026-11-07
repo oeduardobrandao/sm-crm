@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
+import { isNativeApp } from '@/native/platform';
 
 /** Where a plan-locked card sends the user. */
 export const BILLING_PATH = '/configuracao/cobranca';
@@ -47,6 +49,9 @@ export function LockedCard({
   /** The tab's own "Ver planos" string. */
   actionLabel: string;
 }) {
+  const { t } = useTranslation();
+  // Inside the iOS app: the fact, no link to billing (apps/mobile DECISIONS.md D33).
+  const native = isNativeApp();
   return (
     <div className="card animate-up">
       <div className="dashboard-hub-card-header">
@@ -62,10 +67,14 @@ export function LockedCard({
         }}
       >
         <Lock className="h-4 w-4" style={{ color: 'var(--text-muted)' }} aria-hidden="true" />
-        <p style={{ color: 'var(--text-muted)', margin: 0, flex: 1 }}>{body}</p>
-        <Button asChild size="sm" variant="outline">
-          <Link to={BILLING_PATH}>{actionLabel}</Link>
-        </Button>
+        <p style={{ color: 'var(--text-muted)', margin: 0, flex: 1 }}>
+          {native ? t('native.lockedBody') : body}
+        </p>
+        {!native && (
+          <Button asChild size="sm" variant="outline">
+            <Link to={BILLING_PATH}>{actionLabel}</Link>
+          </Button>
+        )}
       </div>
     </div>
   );

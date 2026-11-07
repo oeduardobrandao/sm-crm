@@ -7,15 +7,23 @@ import {
   setNotificationEmailPref,
   getNotificationInappPrefs,
   setNotificationInappPref,
+  getNotificationPushPrefs,
+  setNotificationPushPref,
+  hasActivePushDevice,
   MASTER_PAUSE_TYPE,
   type NotificationEmailType,
+  type NotificationPushType,
 } from '@/store/notificationPrefs';
+import { isNativeApp } from '@/native/platform';
 import { INAPP_PREFS_KEY } from '@/hooks/useNotifications';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import type { NotificationType } from '@/store/notifications';
 
 const INAPP_PREFS_QUERY_KEY = ['notification-inapp-prefs-page'];
 const EMAIL_PREFS_QUERY_KEY = ['notification-email-prefs-page'];
+const PUSH_PREFS_QUERY_KEY = ['notification-push-prefs-page'];
+/** Whether the user has an active push device (web only; inside the app it is moot). */
+export const PUSH_DEVICE_QUERY_KEY = ['push-device-active'];
 
 /** Catalog entries flattened to rows, keeping declaration order (also the
  * within-category order, since the catalog is already grouped by category). */
@@ -33,9 +41,12 @@ export const enabledOf = (prefs: Record<string, boolean> | undefined, type: stri
   prefs?.[type] !== false;
 
 /**
- * State and saves of "Suas notificações" (in-app x e-mail per catalog type plus a
- * master "Pausar tudo" per channel). Shared by the desktop section and the phone
- * screen, so both write through the same optimistic mutations.
+ * State and saves of "Suas notificações" (sino x e-mail x celular per catalog type
+ * plus a master "Pausar tudo" per channel). Shared by the desktop section and the
+ * phone screen, so both write through the same optimistic mutations.
+ *
+ * The Celular (push) channel is visible inside the iOS app, or on the web once the
+ * user has an active device: someone who never installed the app has nothing to set.
  */
 export function useSuasNotificacoes() {
   const qc = useQueryClient();
@@ -51,6 +62,20 @@ export function useSuasNotificacoes() {
   const { data: emailPrefs, isLoading: emailLoading } = useQuery({
     queryKey: EMAIL_PREFS_QUERY_KEY,
     queryFn: getNotificationEmailPrefs,
+  });
+
+  const native = isNativeApp();
+  const { data: hasDevice, isLoading: deviceLoading } = useQuery({
+    queryKey: PUSH_DEVICE_QUERY_KEY,
+    queryFn: hasActivePushDevice,
+    enabled: !native,
+  });
+  const pushVisible = native || hasDevice === true;
+  // Fetched alongside the other two (not after the device check) so the column
+  // doesn't make a second loading round; a small table, read once per visit.
+  const { data: pushPrefs, isLoading: pushLoading } = useQuery({
+    queryKey: PUSH_PREFS_QUERY_KEY,
+    queryFn: getNotificationPushPrefs,
   });
 
   const saveInapp = useMutation({
@@ -114,6 +139,30 @@ export function useSuasNotificacoes() {
     onSettled: () => qc.invalidateQueries({ queryKey: EMAIL_PREFS_QUERY_KEY }),
   });
 
+  const savePush = useMutation({
+    mutationFn: ({
+      type,
+      enabled,
+    }: {
+      type: NotificationPushType | typeof MASTER_PAUSE_TYPE;
+      enabled: boolean;
+    }) => setNotificationPushPref(type, enabled),
+    onMutate: async (v) => {
+      await qc.cancelQueries({ queryKey: PUSH_PREFS_QUERY_KEY });
+      const prev = qc.getQueryData<Record<string, boolean>>(PUSH_PREFS_QUERY_KEY);
+      qc.setQueryData<Record<string, boolean>>(PUSH_PREFS_QUERY_KEY, (old) => ({
+        ...(old ?? {}),
+        [v.type]: v.enabled,
+      }));
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(PUSH_PREFS_QUERY_KEY, ctx.prev);
+      toast.error(i18n.t('settings:notifications.saveError'));
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: PUSH_PREFS_QUERY_KEY }),
+  });
+
   /** Categories in display order, each with its visible rows; empty ones dropped (no
    * "Agenda" header when every row of the category is hidden). Row copy (label, when,
    * recipients) is resolved here, at render, in the current UI language. */
@@ -125,13 +174,20 @@ export function useSuasNotificacoes() {
   })).filter((group) => group.rows.length > 0);
 
   return {
-    loading: inappLoading || emailLoading,
+    // The device check gates the layout (two or three columns), so it holds the
+    // skeleton too: the column never pops in after the table rendered.
+    loading:
+      inappLoading || emailLoading || (!native && deviceLoading) || (pushVisible && pushLoading),
     inappPrefs,
     emailPrefs,
+    pushPrefs,
     inappPaused: !enabledOf(inappPrefs, MASTER_PAUSE_TYPE),
     emailPaused: !enabledOf(emailPrefs, MASTER_PAUSE_TYPE),
+    pushPaused: !enabledOf(pushPrefs, MASTER_PAUSE_TYPE),
+    pushVisible,
     categories,
     saveInapp: saveInapp.mutate,
     saveEmail: saveEmail.mutate,
+    savePush: savePush.mutate,
   };
 }

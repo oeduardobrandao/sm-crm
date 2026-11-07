@@ -52,6 +52,7 @@ import { useClientePhoneHeader } from '../phone/ClientePhoneChrome';
 import '../phone/clienteDetalhePhone.css';
 import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
 import { compactHubToken } from '@/lib/hubLinks';
+import { isNativeApp } from '@/native/platform';
 
 // Raw Postgres error text must never reach the user.
 function mapTokenError(e: { message?: string }, t: TFunction<'clientHub'>): string {
@@ -302,21 +303,25 @@ export default function AcessoPage() {
               </GroupedList>
             </>
           ) : !hubPortalEnabled ? (
-            <section className="phone-cli-card phone-cli-acesso__upgrade">
-              <Lock aria-hidden="true" />
-              <p className="phone-cli-acesso__upgrade-title">{t('acesso.upgradeTitle')}</p>
-              <p className="phone-cli-acesso__upgrade-text">{t('acesso.upgradeText')}</p>
-              <button
-                type="button"
-                className="phone-cli-button"
-                onClick={() => {
-                  captureEvent('hub_upgrade_prompt_clicked', { cliente_id: clienteId });
-                  window.location.href = '/configuracao/cobranca';
-                }}
-              >
-                {t('acesso.seePlans')}
-              </button>
-            </section>
+            // The portal upsell is a purchase prompt: hidden inside the iOS app
+            // (apps/mobile DECISIONS.md D33).
+            isNativeApp() ? null : (
+              <section className="phone-cli-card phone-cli-acesso__upgrade">
+                <Lock aria-hidden="true" />
+                <p className="phone-cli-acesso__upgrade-title">{t('acesso.upgradeTitle')}</p>
+                <p className="phone-cli-acesso__upgrade-text">{t('acesso.upgradeText')}</p>
+                <button
+                  type="button"
+                  className="phone-cli-button"
+                  onClick={() => {
+                    captureEvent('hub_upgrade_prompt_clicked', { cliente_id: clienteId });
+                    window.location.href = '/configuracao/cobranca';
+                  }}
+                >
+                  {t('acesso.seePlans')}
+                </button>
+              </section>
+            )
           ) : (
             <GroupedList footer={t('acesso.noLink')} aria-label={t('acesso.sectionTitle')}>
               <Cell
@@ -434,7 +439,10 @@ export default function AcessoPage() {
         <div className="hub-acesso__grid">
           <div className="hub-acesso__main">
             <section>
-              <h3 className="font-semibold mb-3">{t('acesso.sectionTitle')}</h3>
+              {/* With the upsell hidden in the iOS app there is nothing under the title. */}
+              {(tokenData || hubPortalEnabled || !isNativeApp()) && (
+                <h3 className="font-semibold mb-3">{t('acesso.sectionTitle')}</h3>
+              )}
               {tokenData ? (
                 <div className="hub-access">
                   <div className="hub-access__status">
@@ -562,23 +570,29 @@ export default function AcessoPage() {
                   </div>
                 </div>
               ) : !hubPortalEnabled ? (
-                <div className="hub-access__upgrade rounded-xl border border-dashed border-border p-6 text-center">
-                  <Lock size={18} className="mx-auto mb-2 text-muted-foreground" />
-                  <p className="text-sm font-medium text-foreground">{t('acesso.upgradeTitle')}</p>
-                  <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-                    {t('acesso.upgradeText')}
-                  </p>
-                  <Button
-                    size="sm"
-                    className="mt-3"
-                    onClick={() => {
-                      captureEvent('hub_upgrade_prompt_clicked', { cliente_id: clienteId });
-                      window.location.href = '/configuracao/cobranca';
-                    }}
-                  >
-                    {t('acesso.seePlans')}
-                  </Button>
-                </div>
+                // The portal upsell is a purchase prompt: hidden inside the iOS app
+                // (apps/mobile DECISIONS.md D33).
+                isNativeApp() ? null : (
+                  <div className="hub-access__upgrade rounded-xl border border-dashed border-border p-6 text-center">
+                    <Lock size={18} className="mx-auto mb-2 text-muted-foreground" />
+                    <p className="text-sm font-medium text-foreground">
+                      {t('acesso.upgradeTitle')}
+                    </p>
+                    <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+                      {t('acesso.upgradeText')}
+                    </p>
+                    <Button
+                      size="sm"
+                      className="mt-3"
+                      onClick={() => {
+                        captureEvent('hub_upgrade_prompt_clicked', { cliente_id: clienteId });
+                        window.location.href = '/configuracao/cobranca';
+                      }}
+                    >
+                      {t('acesso.seePlans')}
+                    </Button>
+                  </div>
+                )
               ) : (
                 <div className="flex items-center gap-3">
                   <p className="text-sm text-muted-foreground">{t('acesso.noLink')}</p>
