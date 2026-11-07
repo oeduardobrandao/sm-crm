@@ -1,4 +1,4 @@
--- 20261122000002_push_devices_session.sql
+-- 20261123000002_push_devices_session.sql
 -- A push device belongs to the Supabase session that registered it. When that
 -- session ends on the server (sign-out, password reset, revoked or expired
 -- refresh token, MCP/OAuth revocation), the device stops receiving pushes.
