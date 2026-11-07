@@ -816,6 +816,9 @@ html[data-standalone] {
   max-width: 440px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.08);
   border: 1px solid rgba(226, 232, 240, 0.4);
+  /* The card stays white in dark theme, where :root's --danger-text (#f55a42) fails AA on
+     white. Pin the light value for the inline form errors inside it. */
+  --danger-text: #b91c1c;
 }
 
 [data-theme='dark'] .auth-card {

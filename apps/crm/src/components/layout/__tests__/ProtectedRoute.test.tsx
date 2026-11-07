@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 
 vi.mock('../../../context/AuthContext', () => ({
   useAuth: vi.fn(),
@@ -50,6 +50,11 @@ beforeEach(() => {
   mockedTrialOffer.mockReturnValue({ pending: false, redirect: false });
 });
 
+function SetupSearchProbe() {
+  const location = useLocation();
+  return <span data-testid="setup-search">{location.search}</span>;
+}
+
 function renderRoute(pathname: string) {
   return render(
     <MemoryRouter initialEntries={[pathname]}>
@@ -69,6 +74,7 @@ function renderRoute(pathname: string) {
           element={
             <ProtectedRoute>
               <div>Área protegida: setup</div>
+              <SetupSearchProbe />
             </ProtectedRoute>
           }
         />
@@ -367,6 +373,42 @@ describe('ProtectedRoute', () => {
     renderRoute('/dashboard');
 
     expect(screen.getByText('Área protegida: setup')).toBeInTheDocument();
+  });
+
+  it('carries the requested path and query to workspace-setup as next', () => {
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'owner-1' } as never,
+      profile: { id: 'owner-1', role: 'owner', empresa: '' } as never,
+      role: 'owner',
+      can: ownerCan,
+      loading: false,
+      refetchProfile: vi.fn(),
+      signOut: vi.fn(),
+    });
+
+    renderRoute('/dashboard?plan=pro&interval=year');
+
+    expect(screen.getByText('Área protegida: setup')).toBeInTheDocument();
+    expect(screen.getByTestId('setup-search')).toHaveTextContent(
+      '?next=%2Fdashboard%3Fplan%3Dpro%26interval%3Dyear',
+    );
+  });
+
+  it('renders workspace-setup itself with its next intact (no second redirect)', () => {
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'owner-1' } as never,
+      profile: { id: 'owner-1', role: 'owner', empresa: '' } as never,
+      role: 'owner',
+      can: ownerCan,
+      loading: false,
+      refetchProfile: vi.fn(),
+      signOut: vi.fn(),
+    });
+
+    renderRoute('/workspace-setup?next=%2Fcomecar%3Fplan%3Dpro');
+
+    expect(screen.getByText('Área protegida: setup')).toBeInTheDocument();
+    expect(screen.getByTestId('setup-search')).toHaveTextContent('?next=%2Fcomecar%3Fplan%3Dpro');
   });
 
   it('does not loop owner already on workspace-setup', () => {

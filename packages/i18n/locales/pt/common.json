@@ -164,10 +164,10 @@
   "cookies": {
     "banner": {
       "title": "Cookies e privacidade",
-      "body": "Usamos armazenamento essencial para o Mesaas funcionar. Com a sua permissão, também usamos análise de uso (incluindo gravação de sessão e mapas de calor), o chat de suporte e a medição dos nossos anúncios.",
-      "learnMore": "Ver detalhes na página de LGPD",
-      "acceptAll": "Aceitar todos",
-      "rejectAll": "Rejeitar todos",
+      "bodyShort": "Usamos cookies para análise de uso, incluindo gravação de sessão, chat de suporte e medição de anúncios.",
+      "details": "Detalhes",
+      "acceptAll": "Aceitar",
+      "rejectAll": "Rejeitar",
       "customize": "Personalizar"
     },
     "dialog": {

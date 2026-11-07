@@ -60,22 +60,21 @@ export default function CookieConsent() {
           role="region"
           aria-live="polite"
           aria-label={t('cookies.banner.title')}
-          className="cookie-banner fixed inset-x-4 bottom-4 z-[9000] mx-auto max-w-6xl rounded-2xl border bg-card px-5 py-3 text-card-foreground shadow-lg sm:flex sm:items-center sm:gap-6"
+          className="cookie-banner fixed inset-x-2.5 bottom-2.5 z-[9000] mx-auto flex max-w-6xl flex-col gap-2 rounded-2xl border bg-card px-3 py-2.5 text-card-foreground shadow-lg sm:inset-x-4 sm:bottom-4 sm:flex-row sm:items-center sm:gap-5 sm:px-5 sm:py-3"
         >
-          <div className="flex-1 text-xs sm:text-sm">
-            <p className="font-medium">{t('cookies.banner.title')}</p>
-            <p className="text-muted-foreground">
-              {t('cookies.banner.body')}{' '}
-              <Link to="/lgpd" className="underline">
-                {t('cookies.banner.learnMore')}
-              </Link>
-            </p>
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2 min-[360px]:grid min-[360px]:grid-cols-3 sm:mt-0 sm:flex sm:shrink-0">
+          {/* The title only names the region (aria-label). The visible copy is one sentence so the
+              banner covers as little of a phone screen as possible. */}
+          <p className="text-xs text-muted-foreground sm:flex-1 sm:text-sm">
+            {t('cookies.banner.bodyShort')}{' '}
+            <Link to="/lgpd" className="underline">
+              {t('cookies.banner.details')}
+            </Link>
+          </p>
+          <div className="grid grid-cols-3 gap-1.5 sm:flex sm:shrink-0 sm:gap-2">
             <Button
               variant="ghost"
               size="sm"
-              className="px-2 sm:px-3"
+              className="mb-0 px-2 sm:px-3"
               onClick={() => {
                 rememberOpener();
                 setFocus(undefined);
@@ -88,7 +87,7 @@ export default function CookieConsent() {
             <Button
               variant="outline"
               size="sm"
-              className="px-2 sm:px-3"
+              className="mb-0 px-2 sm:px-3"
               onClick={() => setConsent({ analytics: false, support: false, marketing: false })}
             >
               {t('cookies.banner.rejectAll')}
@@ -96,7 +95,7 @@ export default function CookieConsent() {
             <Button
               variant="outline"
               size="sm"
-              className="px-2 sm:px-3"
+              className="mb-0 px-2 sm:px-3"
               onClick={() => setConsent({ analytics: true, support: true, marketing: true })}
             >
               {t('cookies.banner.acceptAll')}

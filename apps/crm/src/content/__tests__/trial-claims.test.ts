@@ -18,7 +18,7 @@ describe('trial and plan claims on static surfaces', () => {
   const paymentFaq = PRECOS.faq.find((item) => item.q.includes('formas de pagamento'));
 
   it('landing copy', () => {
-    expect(LANDING.hero.note).toBe('30 dias grátis em qualquer plano pago.');
+    expect(LANDING.hero.note).toBe('30 dias grátis em qualquer plano pago. Cancele quando quiser.');
     expect(LANDING.how.steps[0].description).toBe(
       'Comece o teste grátis de 30 dias, importe seus clientes por planilha e configure os modelos de contrato.',
     );

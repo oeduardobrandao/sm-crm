@@ -74,17 +74,14 @@
         })();
       }
     </script>
-    <!-- Pre-paint flags for the prerendered landing (style.css / landing.css hide stored-state UI
-         under #root[data-ssr] until hydration). ES5, storage may throw. -->
+    <!-- Pre-paint flags for the prerendered landing (style.css hides stored-state UI under
+         #root[data-ssr] until hydration). ES5, storage may throw. -->
     <script>
       (function () {
         var root = document.documentElement;
         root.setAttribute('data-js', '');
         try {
           if (localStorage.getItem('consent_v1') !== null) root.setAttribute('data-consent-stored', '');
-          if (localStorage.getItem('mesaas_promo_dismissed') === '1') {
-            root.setAttribute('data-promo-dismissed', '');
-          }
         } catch (e) {}
       })();
     </script>

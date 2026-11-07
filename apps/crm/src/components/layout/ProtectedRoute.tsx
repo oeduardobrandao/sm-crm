@@ -119,7 +119,10 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
     location.pathname !== '/workspace-setup';
 
   if (needsSetup) {
-    return <Navigate to="/workspace-setup" replace />;
+    // `next` rides the query (not router state) so a reload or a cold open of the setup page
+    // still knows where the owner was headed, e.g. /comecar?plan=…&interval=… after signup.
+    const next = encodeURIComponent(location.pathname + location.search);
+    return <Navigate to={`/workspace-setup?next=${next}`} replace />;
   }
 
   if (trialOffer.pending) {

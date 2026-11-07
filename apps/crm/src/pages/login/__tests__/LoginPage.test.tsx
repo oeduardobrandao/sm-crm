@@ -95,21 +95,17 @@ function renderRegister(initialEntry: string) {
 
 function fillRegisterForm(
   container: HTMLElement,
-  overrides: { nome?: string; empresa?: string } = {},
+  overrides: { nome?: string; email?: string; password?: string } = {},
 ) {
   const set = (id: string, value: string) =>
     fireEvent.change(container.querySelector(`#${id}`)!, { target: { value } });
   set('reg-nome', overrides.nome ?? 'Ana Souza');
-  set('reg-empresa', overrides.empresa ?? 'Studio Ana');
-  set('reg-email', 'ana@example.com');
-  set('reg-telefone', '11999999999');
-  set('reg-password', 'senha12345');
-  set('reg-confirm', 'senha12345');
+  set('reg-email', overrides.email ?? 'ana@example.com');
+  set('reg-password', overrides.password ?? 'senha12345');
 }
 
-// jsdom does not run HTML constraint validation on a programmatic submit, so
-// this reaches the handler and exercises the trim guard rather than being
-// blocked by `required`.
+// The register form is `noValidate`: every check runs in the handler, so a
+// programmatic submit exercises the same path a real tap does.
 function submitRegister(container: HTMLElement) {
   fireEvent.submit(container.querySelector('form.auth-form')!);
 }
@@ -131,7 +127,7 @@ describe('LoginPage', () => {
   it('starts on the register tab from the query string and switches between register, forgot, and login flows', () => {
     renderLoginPage('/login?tab=register');
 
-    expect(screen.getByLabelText('Nome Completo')).toBeInTheDocument();
+    expect(screen.getByLabelText('Nome completo')).toBeInTheDocument();
     expect(screen.queryByText('Esqueci minha senha')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Entrar' }));
@@ -142,19 +138,19 @@ describe('LoginPage', () => {
     fireEvent.click(screen.getByRole('link', { name: 'Esqueci minha senha' }));
 
     expect(screen.getByText(/Informe seu e-mail para receber um link/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Criar Conta' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Criar conta' })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('link', { name: /Voltar para o login/i }));
 
     expect(screen.getByLabelText('Senha')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Criar Conta' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Criar conta' })).toBeInTheDocument();
   });
 
   it('opens the forgot-password flow directly from the query string', () => {
     renderLoginPage('/login?tab=forgot');
 
     expect(screen.getByText(/Informe seu e-mail para receber um link/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Criar Conta' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Criar conta' })).not.toBeInTheDocument();
   });
 
   it('shows the translated login error when Supabase rejects the credentials', async () => {
@@ -207,70 +203,28 @@ describe('LoginPage', () => {
     });
   });
 
-  it('blocks registration when the passwords do not match', async () => {
-    renderLoginPage('/login?tab=register');
-
-    fireEvent.change(screen.getByLabelText('Nome Completo'), {
-      target: { value: 'Ana Souza' },
-    });
-    fireEvent.change(screen.getByLabelText('Nome da Empresa'), {
-      target: { value: 'Mesaas' },
-    });
-    fireEvent.change(screen.getByLabelText('E-mail'), {
-      target: { value: 'ana@mesaas.com' },
-    });
-    fireEvent.change(screen.getByLabelText('Senha'), {
-      target: { value: 'senha-123' },
-    });
-    fireEvent.change(screen.getByLabelText('Confirmar Senha'), {
-      target: { value: 'senha-999' },
-    });
-
-    fireEvent.submit(screen.getByLabelText('Nome Completo').closest('form')!);
-
-    await waitFor(() => {
-      expect(mockedToastError).toHaveBeenCalledWith('As senhas não coincidem.');
-    });
-    expect(mockedSignUp).not.toHaveBeenCalled();
-  });
-
   it('shows the verification state after a successful registration and returns to login', async () => {
     mockedSignUp.mockResolvedValue({ data: { session: null }, error: null } as never);
 
     renderLoginPage('/login?tab=register');
 
-    fireEvent.change(screen.getByLabelText('Nome Completo'), {
+    fireEvent.change(screen.getByLabelText('Nome completo'), {
       target: { value: 'Ana Souza' },
-    });
-    fireEvent.change(screen.getByLabelText('Nome da Empresa'), {
-      target: { value: 'Mesaas' },
     });
     fireEvent.change(screen.getByLabelText('E-mail'), {
       target: { value: 'ana@mesaas.com' },
     });
-    fireEvent.change(screen.getByLabelText('Telefone'), {
-      target: { value: '(11) 99999-9999' },
-    });
     fireEvent.change(screen.getByLabelText('Senha'), {
       target: { value: 'senha-123' },
     });
-    fireEvent.change(screen.getByLabelText('Confirmar Senha'), {
-      target: { value: 'senha-123' },
-    });
-    fireEvent.click(screen.getByRole('checkbox'));
 
-    fireEvent.submit(screen.getByLabelText('Nome Completo').closest('form')!);
+    fireEvent.submit(screen.getByLabelText('Nome completo').closest('form')!);
 
     await waitFor(() => {
       expect(mockedSignUp).toHaveBeenCalledWith(
         'ana@mesaas.com',
         'senha-123',
-        {
-          nome: 'Ana Souza',
-          empresa: 'Mesaas',
-          telefone: '(11) 99999-9999',
-          marketing_opt_in: true,
-        },
+        { nome: 'Ana Souza', empresa: '' },
         '/login',
       );
     });
@@ -337,23 +291,159 @@ describe('LoginPage', () => {
     expect(screen.queryByText(/Informe seu e-mail para receber um link/i)).not.toBeInTheDocument();
   });
 
-  it('rejects a whitespace-only company name instead of submitting it', () => {
+  it('rejects a whitespace-only name instead of submitting it', () => {
     const { container } = renderRegister('/login?tab=register');
-    fillRegisterForm(container, { empresa: '   ' });
+    fillRegisterForm(container, { nome: '   ' });
     submitRegister(container);
     expect(mockedSignUp).not.toHaveBeenCalled();
+    expect(screen.getByText('Informe seu nome.')).toBeInTheDocument();
   });
 
-  it('trims the name and company before sending them to signUp', async () => {
+  it('trims the name and the email before sending them to signUp', async () => {
     mockedSignUp.mockResolvedValue({
       data: { session: { access_token: 't' } },
       error: null,
     } as never);
     const { container } = renderRegister('/login?tab=register');
-    fillRegisterForm(container, { nome: '  Ana  ', empresa: '  Studio  ' });
+    fillRegisterForm(container, { nome: '  Ana  ', email: '  ana@example.com  ' });
     submitRegister(container);
     await waitFor(() => expect(mockedSignUp).toHaveBeenCalled());
-    expect(mockedSignUp.mock.calls[0][2]).toMatchObject({ nome: 'Ana', empresa: 'Studio' });
+    expect(mockedSignUp.mock.calls[0][0]).toBe('ana@example.com');
+    expect(mockedSignUp.mock.calls[0][2]).toEqual({ nome: 'Ana', empresa: '' });
+  });
+
+  it('renders only name, email and password in the register form', () => {
+    renderLoginPage('/login?tab=register');
+
+    expect(screen.getByLabelText('Nome completo')).toBeInTheDocument();
+    expect(screen.getByLabelText('E-mail')).toBeInTheDocument();
+    expect(screen.getByLabelText('Senha')).toHaveAttribute('autocomplete', 'new-password');
+    expect(screen.getByText('Mínimo de 8 caracteres.')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Depois de confirmar o e-mail, você informa o nome da agência e o telefone.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Empresa/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Telefone/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Confirmar/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+  });
+
+  it('shows inline errors and does not call signUp on an invalid submit', () => {
+    const { container } = renderRegister('/login?tab=register');
+    submitRegister(container);
+
+    expect(screen.getByText('Informe seu nome.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Informe um e-mail válido, como nome@empresa.com.'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('A senha precisa ter pelo menos 8 caracteres.')).toBeInTheDocument();
+    expect(mockedSignUp).not.toHaveBeenCalled();
+    expect(mockedToastError).not.toHaveBeenCalled();
+
+    const nome = screen.getByLabelText('Nome completo');
+    expect(nome).toHaveAttribute('aria-invalid', 'true');
+    const describedBy = nome.getAttribute('aria-describedby');
+    expect(describedBy).toBeTruthy();
+    expect(document.getElementById(describedBy!)).toHaveTextContent('Informe seu nome.');
+    expect(nome).toHaveFocus();
+    // The password help yields to the error instead of stacking under it.
+    expect(screen.queryByText('Mínimo de 8 caracteres.')).not.toBeInTheDocument();
+  });
+
+  it('re-validates as the user fixes a field after the first attempt', () => {
+    const { container } = renderRegister('/login?tab=register');
+    submitRegister(container);
+    expect(screen.getByText('Informe seu nome.')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Nome completo'), { target: { value: 'Ana' } });
+
+    expect(screen.queryByText('Informe seu nome.')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Nome completo')).not.toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByText('A senha precisa ter pelo menos 8 caracteres.')).toBeInTheDocument();
+  });
+
+  it('moves focus to the first invalid field in form order', () => {
+    const { container } = renderRegister('/login?tab=register');
+    fillRegisterForm(container, { email: 'ana@agencia', password: 'abc' });
+    submitRegister(container);
+
+    expect(screen.getByLabelText('E-mail')).toHaveFocus();
+    expect(screen.getByLabelText('Nome completo')).not.toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('signs up with empresa empty and no phone', async () => {
+    mockedSignUp.mockResolvedValue({ data: { session: null }, error: null } as never);
+    const { container } = renderRegister('/login?tab=register');
+    fillRegisterForm(container, {
+      nome: 'Ana',
+      email: '  ana@agencia.com ',
+      password: '12345678',
+    });
+    submitRegister(container);
+
+    await waitFor(() => expect(mockedSignUp).toHaveBeenCalledTimes(1));
+    expect(mockedSignUp).toHaveBeenCalledWith(
+      'ana@agencia.com',
+      '12345678',
+      { nome: 'Ana', empresa: '' },
+      '/login',
+    );
+    const meta = mockedSignUp.mock.calls[0][2] as Record<string, unknown>;
+    expect(meta).not.toHaveProperty('telefone');
+    expect(meta).not.toHaveProperty('marketing_opt_in');
+  });
+
+  it('maps a server error to Portuguese copy', async () => {
+    mockedSignUp.mockResolvedValue({
+      error: { status: 429, message: 'email rate limit exceeded' },
+    } as never);
+    const { container } = renderRegister('/login?tab=register');
+    fillRegisterForm(container);
+    submitRegister(container);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Muitas tentativas. Aguarde um minuto e tente de novo.');
+    expect(screen.queryByText(/email rate limit exceeded/)).not.toBeInTheDocument();
+    expect(mockedToastError).not.toHaveBeenCalled();
+    // Still on the form, with what the user typed.
+    expect(screen.getByLabelText('Nome completo')).toHaveValue('Ana Souza');
+  });
+
+  it('falls back to the generic copy for an unknown server error', async () => {
+    mockedSignUp.mockResolvedValue({
+      error: { message: 'Database error saving new user' },
+    } as never);
+    const { container } = renderRegister('/login?tab=register');
+    fillRegisterForm(container);
+    submitRegister(container);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Não foi possível criar a conta. Tente de novo em instantes.',
+    );
+    expect(screen.queryByText(/Database error/)).not.toBeInTheDocument();
+  });
+
+  it('submits once on a double click', async () => {
+    let resolveSignUp: (value: unknown) => void = () => {};
+    mockedSignUp.mockImplementation(
+      () => new Promise((resolve) => (resolveSignUp = resolve)) as never,
+    );
+    const { container } = renderRegister('/login?tab=register');
+    fillRegisterForm(container);
+
+    // The tab and the submit button share the label; the submit is the form's own button.
+    const submit = container.querySelector<HTMLButtonElement>(
+      'form.auth-form button[type="submit"]',
+    )!;
+    fireEvent.click(submit);
+    fireEvent.click(submit);
+
+    expect(mockedSignUp).toHaveBeenCalledTimes(1);
+    resolveSignUp({ data: { session: null }, error: null });
+    await screen.findByText('Verifique seu e-mail');
+    expect(mockedSignUp).toHaveBeenCalledTimes(1);
   });
 
   it('identifies the new user BEFORE capturing signup_completed, so the event attaches to a person', async () => {
@@ -613,14 +703,14 @@ describe('LoginPage inside the iOS app', () => {
   it('offers no "Criar Conta" tab', () => {
     renderLoginPage();
     expect(screen.getByLabelText('E-mail')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Criar Conta' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Criar conta' })).not.toBeInTheDocument();
   });
 
   it('opens the login form even with ?tab=register', () => {
     renderLoginPage('/login?tab=register');
-    expect(screen.queryByLabelText('Nome Completo')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Nome completo')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Senha')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Criar Conta' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Criar conta' })).not.toBeInTheDocument();
   });
 
   it('keeps the forgot-password flow', () => {

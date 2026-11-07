@@ -1,4 +1,4 @@
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   ArrowRight,
@@ -6,6 +6,7 @@ import {
   BookOpen,
   Calendar,
   CalendarCheck,
+  ChevronDown,
   ChevronRight,
   Kanban,
   Link2,
@@ -13,7 +14,6 @@ import {
   Plug,
   Sparkles,
   TrendingUp,
-  X,
   Eye,
   Heart,
   Users,
@@ -69,7 +69,7 @@ export default function LandingPage() {
   useLandingChrome();
 
   // The prerendered `/` ships `<div id="root" data-ssr="landing">`, and the pre-paint CSS hides
-  // stored-state UI (dismissed promo, decided cookie banner) only under `#root[data-ssr]`. This
+  // stored-state UI (the decided cookie banner) only under `#root[data-ssr]`. This
   // effect runs once this boundary has hydrated, in the same passive flush as the post-hydration
   // re-render, so the CSS hands over to React state without a gap (a frame may paint before it).
   useEffect(() => {
@@ -106,7 +106,6 @@ export default function LandingPage() {
   return (
     <div ref={rootRef} className="lp-root lp-v2">
       <SkipLink />
-      <PromoBanner />
       <LandingHeader variant="landing" skipLink={false} />
       <main id="main-content" tabIndex={-1}>
         <Hero />
@@ -124,55 +123,22 @@ export default function LandingPage() {
   );
 }
 
-const PROMO_DISMISSED_KEY = 'mesaas_promo_dismissed';
-const promoListeners = new Set<() => void>();
-/** Remembers a dismissal when storage is unavailable (private mode, blocked site data). */
-let promoDismissedThisSession = false;
+/** The part of `LANDING.hero.note` the hero pill emphasises (first line on desktop). */
+const OFFER_STRONG = '30 dias grátis';
 
-function readPromoDismissed(): boolean {
-  try {
-    return localStorage.getItem(PROMO_DISMISSED_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
-
-function subscribePromo(listener: () => void): () => void {
-  promoListeners.add(listener);
-  return () => promoListeners.delete(listener);
-}
-
-function dismissPromo(): void {
-  try {
-    localStorage.setItem(PROMO_DISMISSED_KEY, '1');
-  } catch {
-    // Storage unavailable: the session flag keeps it hidden until reload.
-    promoDismissedThisSession = true;
-  }
-  promoListeners.forEach((listener) => listener());
-}
-
-function PromoBanner() {
-  // Server and hydrating render: not dismissed (the pre-paint CSS hides it for visitors who
-  // dismissed it before). The stored value applies right after hydration.
-  const dismissed = useSyncExternalStore(
-    subscribePromo,
-    () => readPromoDismissed() || promoDismissedThisSession,
-    () => false,
-  );
-  if (dismissed) return null;
+/** `LANDING.hero.note` with its first "30 dias grátis" in `<strong>`. The note itself stays one
+ * plain sentence (landing.content.ts is the single source of the copy); the remainder keeps its
+ * leading space so the text reads as one sentence. */
+function OfferNote({ note }: { note: string }) {
+  const at = note.indexOf(OFFER_STRONG);
+  if (at < 0) return <>{note}</>;
+  const before = note.slice(0, at);
   return (
-    <div className="promo-banner" role="region" aria-label="Oferta de lançamento">
-      <span className="promo-banner-text">
-        <strong>30 dias grátis</strong> em qualquer plano pago. Sem cupom. Cancele quando quiser.
-      </span>
-      <a href="/login?tab=register" className="promo-banner-cta">
-        Começar teste grátis
-      </a>
-      <button className="promo-banner-close" aria-label="Fechar aviso" onClick={dismissPromo}>
-        <X size={16} />
-      </button>
-    </div>
+    <>
+      {before || null}
+      <strong>{OFFER_STRONG}</strong>
+      <span>{note.slice(at + OFFER_STRONG.length)}</span>
+    </>
   );
 }
 
@@ -190,7 +156,9 @@ function Hero() {
           </h1>
           <p className="hero-sub">{LANDING.hero.sub}</p>
           <div className="lp2-offer">
-            <span className="lp2-offer-text">{LANDING.hero.note}</span>
+            <span className="lp2-offer-text">
+              <OfferNote note={LANDING.hero.note} />
+            </span>
             <div className="hero-ctas">
               {!ready ? null : user ? (
                 <a href="/dashboard" className="lp-btn lp-btn-cta lg">
@@ -386,7 +354,17 @@ const FEATURE_VISUALS: {
   },
 ];
 
+/** Cards from this index on (Calendário, Automações) collapse behind "Ver todas as
+ * funcionalidades" where the bento is one column (<=900px). */
+const FIRST_EXTRA_FEATURE = 4;
+const BENTO_ID = 'lp2-bento';
+
 function Features() {
+  const { user, ready } = useLandingAuth();
+  // Collapsed on the server and on the first client render. The collapse is CSS only: every card
+  // stays in the DOM, so the `.reveal` observer attached at mount sees all six.
+  const [expanded, setExpanded] = useState(false);
+
   return (
     <section className="lp-pad" id="features">
       <div className="lp-container">
@@ -395,7 +373,7 @@ function Features() {
           <p>{LANDING.featuresSub}</p>
         </div>
 
-        <div className="lp2-bento">
+        <div className="lp2-bento" id={BENTO_ID} data-expanded={expanded ? '' : undefined}>
           {LANDING.features.map((feature, i) => {
             const { eyebrow, icon, span, visual } = FEATURE_VISUALS[i];
             const classes = [
@@ -403,6 +381,7 @@ function Features() {
               span === 2 ? 'lp2-card--wide' : '',
               visual ? 'lp2-card--visual' : '',
               i === 5 ? 'lp2-card--dm' : '',
+              i >= FIRST_EXTRA_FEATURE ? 'lp2-card--extra' : '',
               'reveal',
             ]
               .filter(Boolean)
@@ -428,6 +407,33 @@ function Features() {
               </article>
             );
           })}
+        </div>
+        {/* Siblings of the bento on purpose: CSS hides both once it has data-expanded. */}
+        <button
+          type="button"
+          className="lp2-more"
+          aria-expanded={expanded}
+          aria-controls={BENTO_ID}
+          onClick={() => setExpanded(true)}
+        >
+          Ver todas as funcionalidades <ChevronDown size={18} />
+        </button>
+        <p className="lp2-more-note">Calendário editorial e resposta automática a comentários</p>
+
+        <div className="lp2-features-cta">
+          <p className="lp2-features-cta-title">Teste tudo isso na sua agência.</p>
+          <p className="lp2-features-cta-note">
+            <OfferNote note={LANDING.hero.note} />
+          </p>
+          {!ready ? null : user ? (
+            <a href="/dashboard" className="lp-btn lp-btn-cta lg">
+              Acessar painel <ArrowRight size={16} />
+            </a>
+          ) : (
+            <a href="/login?tab=register" className="lp-btn lp-btn-cta lg">
+              Começar teste grátis <ArrowRight size={16} />
+            </a>
+          )}
         </div>
       </div>
     </section>

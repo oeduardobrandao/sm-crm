@@ -62,7 +62,7 @@ describe('IniciouCadastro (Meta)', () => {
     renderAt('/login?tab=register');
     fireEvent.focus(byId('reg-nome'));
     fireEvent.focus(byId('reg-email'));
-    fireEvent.focus(byId('reg-telefone'));
+    fireEvent.focus(byId('reg-password'));
     expect(mockedCustom).toHaveBeenCalledTimes(2);
   });
 });
