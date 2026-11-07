@@ -20,7 +20,7 @@ import { categoryLabel, typeLabel } from './email-metrics-view';
 
 export function StatusBadge({ event }: { event: string }) {
   const group = STATUS_GROUPS.find((g) => g.key === statusGroupOf(event));
-  return <Badge variant={group?.badge ?? 'neutral'}>{group?.label ?? event}</Badge>;
+  return <Badge variant={group?.badge}>{group?.label}</Badge>;
 }
 
 /** Reason, masked recipient and subject; each only when it exists. */

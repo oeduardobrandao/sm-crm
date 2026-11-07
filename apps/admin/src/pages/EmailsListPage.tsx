@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ChevronDown, Mail } from 'lucide-react';
 import { SegmentedControl } from '@mesaas/ios-kit';
@@ -85,34 +85,35 @@ export default function EmailsListPage() {
   const isPhone = useIsPhone();
   const [sp, setSp] = useSearchParams();
   const filters = useMemo(() => parseListSearch(sp, new Date()), [sp]);
-  // Raw custom dates the user is typing: the URL only keeps valid ranges.
-  const rawStart = sp.get('start') ?? '';
-  const rawEnd = sp.get('end') ?? '';
-  const customRequested = sp.get('preset') === 'custom';
-  const customError = customRequested ? validateCustomRange(rawStart, rawEnd) : null;
-  const q = useEmailList(filters, customError === null);
+  // Custom dates being typed live here; the URL only ever holds a valid range.
+  const [customOpen, setCustomOpen] = useState(filters.preset === 'custom');
+  const [customStart, setCustomStart] = useState(filters.preset === 'custom' ? filters.start : '');
+  const [customEnd, setCustomEnd] = useState(filters.preset === 'custom' ? filters.end : '');
+  const customError = customOpen ? validateCustomRange(customStart, customEnd) : null;
+  const q = useEmailList(filters);
 
   const update = (patch: Partial<ListFilters>) => {
-    const next = { ...filters, ...patch };
-    setSp(listFiltersToSearch(next));
+    setSp(listFiltersToSearch({ ...filters, ...patch }));
   };
 
   const changePreset = (p: ListPreset) => {
     if (p === 'custom') {
-      const r = presetRange('7d', new Date());
-      const next = new URLSearchParams(listFiltersToSearch({ ...filters, preset: 'custom', ...r }));
-      setSp(next);
+      setCustomOpen(true);
+      setCustomStart(filters.start);
+      setCustomEnd(filters.end);
+      update({ preset: 'custom' });
     } else {
+      setCustomOpen(false);
       update({ preset: p, ...presetRange(p, new Date()) });
     }
   };
 
   const setCustom = (key: 'start' | 'end', value: string) => {
-    const next = new URLSearchParams(sp);
-    next.set('preset', 'custom');
-    next.set('start', key === 'start' ? value : rawStart);
-    next.set('end', key === 'end' ? value : rawEnd);
-    setSp(next);
+    const start = key === 'start' ? value : customStart;
+    const end = key === 'end' ? value : customEnd;
+    setCustomStart(start);
+    setCustomEnd(end);
+    if (validateCustomRange(start, end) === null) update({ preset: 'custom', start, end });
   };
 
   const hasFilters =
@@ -131,7 +132,7 @@ export default function EmailsListPage() {
     return out.sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
   }, [q.types, filters.categories]);
 
-  const activePreset: ListPreset = customRequested ? 'custom' : filters.preset;
+  const activePreset: ListPreset = customOpen ? 'custom' : filters.preset;
 
   const segments = (
     <SegmentedControl
@@ -143,11 +144,9 @@ export default function EmailsListPage() {
   );
 
   let body;
-  if (customError) {
-    body = null;
-  } else if (q.isPending) {
+  if (q.isPending) {
     body = <Skeleton className="h-80 w-full rounded-2xl" />;
-  } else if (q.isError) {
+  } else if (q.isError && q.items.length === 0) {
     body = (
       <GlassPanel flush>
         <ErrorState message="Não foi possível carregar a lista." onRetry={() => q.refetch()} />
@@ -177,6 +176,11 @@ export default function EmailsListPage() {
           <span className="text-sm text-muted-foreground">
             {q.items.length.toLocaleString('pt-BR')} e-mails carregados
           </span>
+          {q.isFetchNextPageError ? (
+            <span role="alert" className="text-sm text-destructive">
+              Não foi possível carregar mais.
+            </span>
+          ) : null}
           {q.hasNextPage ? (
             <Button
               variant="outline"
@@ -184,7 +188,7 @@ export default function EmailsListPage() {
               disabled={q.isFetchingNextPage}
               onClick={() => q.fetchNextPage()}
             >
-              Carregar mais
+              {q.isFetchNextPageError ? 'Tentar de novo' : 'Carregar mais'}
             </Button>
           ) : null}
         </div>
@@ -202,20 +206,20 @@ export default function EmailsListPage() {
       >
         {isPhone ? segments : null}
       </PageHeader>
-      {customRequested ? (
+      {customOpen ? (
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <Input
             type="date"
             aria-label="Data inicial"
             className="w-auto"
-            value={rawStart}
+            value={customStart}
             onChange={(e) => setCustom('start', e.target.value)}
           />
           <Input
             type="date"
             aria-label="Data final"
             className="w-auto"
-            value={rawEnd}
+            value={customEnd}
             onChange={(e) => setCustom('end', e.target.value)}
           />
           {customError ? (
@@ -233,7 +237,14 @@ export default function EmailsListPage() {
             label,
           }))}
           selected={filters.categories}
-          onChange={(categories) => update({ categories })}
+          onChange={(categories) => {
+            const types = categories.length
+              ? filters.types.filter((t) =>
+                  q.types.some((x) => x.type === t && categories.includes(x.category)),
+                )
+              : filters.types;
+            update({ categories, types });
+          }}
         />
         <MultiSelect
           label="Tipo"

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, useLocation } from 'react-router-dom';
@@ -78,7 +78,8 @@ describe('EmailsListPage', () => {
     expect(screen.getByText(/a\*\*\*@x\.com/)).toBeInTheDocument();
     expect(screen.getByText('Olá mundo')).toBeInTheDocument();
     const rows = screen.getAllByRole('row');
-    expect(rows[2].querySelectorAll('td')[4]).toHaveTextContent('');
+    expect(rows[1].querySelectorAll('td')[4].textContent).toContain('Olá mundo');
+    expect(rows[2].querySelectorAll('td')[4].textContent).toBe('');
   });
 
   it('Carregar mais sends the page 1 cursor and hides at the end', async () => {
@@ -133,5 +134,50 @@ describe('EmailsListPage', () => {
     renderPage();
     await userEvent.click(await screen.findByRole('button', { name: 'Tentar novamente' }));
     expect(await screen.findByText('Bounce')).toBeInTheDocument();
+  });
+
+  it('invalid custom URL falls back to the 7d list without an error', async () => {
+    renderPage('/admin/emails/lista?preset=custom&start=2026-02-30&end=2026-03-01');
+    expect(await screen.findByText('Bounce')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
+    const call = vi.mocked(api.getEmailList).mock.calls[0][0];
+    expect(call.end > call.start).toBe(true);
+    expect(screen.getByRole('radio', { name: '7 dias' })).toBeChecked();
+  });
+
+  it('typing an invalid custom date does not change the URL', async () => {
+    renderPage();
+    await screen.findByText('Bounce');
+    await userEvent.click(screen.getByRole('radio', { name: 'Personalizado' }));
+    await waitFor(() => expect(screen.getByTestId('loc')).toHaveTextContent('preset=custom'));
+    const before = screen.getByTestId('loc').textContent;
+    const calls = vi.mocked(api.getEmailList).mock.calls.length;
+    const input = screen.getByLabelText('Data inicial');
+    fireEvent.change(input, { target: { value: '2026-02-30' } });
+    expect(screen.getByTestId('loc').textContent).toBe(before);
+    expect(vi.mocked(api.getEmailList).mock.calls.length).toBe(calls);
+  });
+
+  it('drops selected types whose category is no longer selected', async () => {
+    renderPage('/admin/emails/lista?preset=7d&cat=notificacoes,interno&type=desconhecido');
+    await screen.findByText('Bounce');
+    await userEvent.click(screen.getByRole('button', { name: /^Categoria/ }));
+    await userEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Interno' }));
+    await waitFor(() => expect(screen.getByTestId('loc')).not.toHaveTextContent('type='));
+    expect(screen.getByTestId('loc')).toHaveTextContent('cat=notificacoes');
+  });
+
+  it('a failed Carregar mais keeps the rows and retries inline', async () => {
+    vi.mocked(api.getEmailList)
+      .mockResolvedValueOnce(PAGE1)
+      .mockRejectedValueOnce(new Error('x'))
+      .mockResolvedValueOnce({ items: [item(3)], next_cursor: null, types: null });
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Carregar mais' }));
+    expect(await screen.findByText('Não foi possível carregar mais.')).toBeInTheDocument();
+    expect(screen.getByText('Bounce')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Tentar de novo' }));
+    await waitFor(() => expect(screen.getByText('3 e-mails carregados')).toBeInTheDocument());
+    expect(vi.mocked(api.getEmailList).mock.calls[2][0].cursor).toEqual(CURSOR);
   });
 });
