@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ChevronDown, Mail } from 'lucide-react';
 import { SegmentedControl } from '@mesaas/ios-kit';
@@ -89,6 +89,17 @@ export default function EmailsListPage() {
   const [customOpen, setCustomOpen] = useState(filters.preset === 'custom');
   const [customStart, setCustomStart] = useState(filters.preset === 'custom' ? filters.start : '');
   const [customEnd, setCustomEnd] = useState(filters.preset === 'custom' ? filters.end : '');
+  // Follow URL changes (browser Back/Forward). Keyed on the parsed URL values only, so typing
+  // an invalid range (which never touches the URL) does not close or reset the custom row.
+  useEffect(() => {
+    if (filters.preset === 'custom') {
+      setCustomOpen(true);
+      setCustomStart(filters.start);
+      setCustomEnd(filters.end);
+    } else {
+      setCustomOpen(false);
+    }
+  }, [filters.preset, filters.start, filters.end]);
   const customError = customOpen ? validateCustomRange(customStart, customEnd) : null;
   const q = useEmailList(filters);
 

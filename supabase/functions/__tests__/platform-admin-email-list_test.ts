@@ -109,3 +109,19 @@ Deno.test("handle: rpc error is generic 500 and not logged raw", async () => {
   assert(logged.length > 0);
   assert(!logged.join("\n").includes("SECRET_SQL_VALUE"));
 });
+
+Deno.test("handle: cursor goes to rpc byte-identical", async () => {
+  let args: Record<string, unknown> = {};
+  // deno-lint-ignore no-explicit-any
+  const svc: any = {
+    rpc: (_n: string, a: Record<string, unknown>) => {
+      args = a;
+      return Promise.resolve({ data: { items: [], next_cursor: null, types: [] }, error: null });
+    },
+  };
+  const sentAt = "2026-11-01T12:00:00.123456+00:00";
+  const res = await handleEmailList(svc, { ...base, cursor: { sent_at: sentAt, email_id: "em_1" } }, H);
+  assertEquals(res.status, 200);
+  assert(args.p_cursor_sent_at === sentAt);
+  assertEquals(args.p_cursor_id, "em_1");
+});

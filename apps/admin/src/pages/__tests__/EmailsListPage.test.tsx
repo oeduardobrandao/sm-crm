@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('../../lib/api', () => ({ getEmailList: vi.fn() }));
@@ -43,6 +43,11 @@ function Loc() {
   return <div data-testid="loc">{l.search}</div>;
 }
 
+function GoTo({ to }: { to: string }) {
+  const navigate = useNavigate();
+  return <button onClick={() => navigate(to)}>go-to-target</button>;
+}
+
 function renderPage(url = '/admin/emails/lista?preset=7d') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -50,6 +55,7 @@ function renderPage(url = '/admin/emails/lista?preset=7d') {
       <MemoryRouter initialEntries={[url]}>
         <EmailsListPage />
         <Loc />
+        <GoTo to="/admin/emails/lista?preset=7d" />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -143,6 +149,17 @@ describe('EmailsListPage', () => {
     const call = vi.mocked(api.getEmailList).mock.calls[0][0];
     expect(call.end > call.start).toBe(true);
     expect(screen.getByRole('radio', { name: '7 dias' })).toBeChecked();
+  });
+
+  it('navigating from a custom URL to 7d (Back) resets the segment and closes the custom row', async () => {
+    renderPage('/admin/emails/lista?preset=custom&start=2026-10-01&end=2026-10-15');
+    await screen.findByText('Bounce');
+    expect(screen.getByRole('radio', { name: 'Personalizado' })).toBeChecked();
+    expect(screen.getByLabelText('Data inicial')).toHaveValue('2026-10-01');
+    await userEvent.click(screen.getByRole('button', { name: 'go-to-target' }));
+    await waitFor(() => expect(screen.getByRole('radio', { name: '7 dias' })).toBeChecked());
+    expect(screen.queryByLabelText('Data inicial')).toBeNull();
+    expect(screen.queryByLabelText('Data final')).toBeNull();
   });
 
   it('typing an invalid custom date does not change the URL', async () => {

@@ -4,8 +4,8 @@ import { statusesToEvents, type ListFilters } from './email-list-view';
 
 export const EMAIL_LIST_KEY = ['admin', 'email-list'] as const;
 
-/** Infinite list of sends. `enabled` is false while a custom range is invalid. */
-export function useEmailList(filters: ListFilters, enabled = true) {
+/** Infinite list of sends. */
+export function useEmailList(filters: ListFilters) {
   const q = useInfiniteQuery({
     queryKey: [...EMAIL_LIST_KEY, filters],
     initialPageParam: null as EmailListCursor | null,
@@ -20,7 +20,6 @@ export function useEmailList(filters: ListFilters, enabled = true) {
       }),
     getNextPageParam: (last) => last.next_cursor ?? undefined,
     staleTime: 60 * 1000,
-    enabled,
   });
   const items = q.data?.pages.flatMap((p) => p.items) ?? [];
   const types = q.data?.pages[0]?.types ?? [];
