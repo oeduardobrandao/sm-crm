@@ -232,18 +232,67 @@ describe('LandingPage', () => {
     });
   });
 
-  it('shows the promo banner and hides it (persisted) after dismissing', () => {
+  it('renders no promo banner and shows the offer in the hero', () => {
     renderLandingPage();
 
-    // Scope to the banner region: the promo code also appears in the pricing callout.
-    const banner = screen.getByRole('region', { name: 'Oferta de lançamento' });
-    expect(banner).toHaveTextContent('30 dias');
-    expect(banner).not.toHaveTextContent('BEMVINDO');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Fechar aviso' }));
-
     expect(screen.queryByRole('region', { name: 'Oferta de lançamento' })).not.toBeInTheDocument();
-    expect(localStorage.getItem('mesaas_promo_dismissed')).toBe('1');
+    expect(document.querySelector('.promo-banner')).toBeNull();
+    const offer = document.querySelector('.lp2-offer-text');
+    expect(offer).toHaveTextContent(
+      '30 dias grátis em qualquer plano pago. Cancele quando quiser.',
+    );
+    expect(offer?.querySelector('strong')).toHaveTextContent('30 dias grátis');
+  });
+
+  it('keeps all six feature cards in the DOM and toggles the extra two', () => {
+    renderLandingPage();
+
+    const bento = document.querySelector<HTMLElement>('.lp2-bento');
+    expect(bento).not.toBeNull();
+    expect(bento!.querySelectorAll('.lp2-card')).toHaveLength(6);
+    const extras = [...bento!.querySelectorAll('.lp2-card--extra')];
+    expect(extras.map((card) => card.querySelector('h3')?.textContent)).toEqual([
+      'Calendário editorial por cliente ou da operação inteira',
+      'Comentou a palavra-chave, o link chega no direct. Sem ninguém precisar responder.',
+    ]);
+
+    const more = screen.getByRole('button', { name: 'Ver todas as funcionalidades' });
+    expect(bento!.id).not.toBe('');
+    expect(more).toHaveAttribute('aria-controls', bento!.id);
+    expect(more).toHaveAttribute('aria-expanded', 'false');
+    expect(bento).not.toHaveAttribute('data-expanded');
+
+    fireEvent.click(more);
+
+    expect(more).toHaveAttribute('aria-expanded', 'true');
+    expect(bento).toHaveAttribute('data-expanded');
+    expect(bento!.querySelectorAll('.lp2-card')).toHaveLength(6);
+  });
+
+  it('shows a trial CTA after the features for visitors', () => {
+    renderLandingPage();
+
+    const cta = document.querySelector<HTMLElement>('.lp2-features-cta');
+    expect(cta).not.toBeNull();
+    expect(cta).toHaveTextContent('Teste tudo isso na sua agência.');
+    expect(cta).toHaveTextContent('30 dias grátis em qualquer plano pago. Cancele quando quiser.');
+    expect(within(cta!).getByRole('link', { name: 'Começar teste grátis' })).toHaveAttribute(
+      'href',
+      '/login?tab=register',
+    );
+  });
+
+  it('shows Acessar painel in the features CTA for signed-in users', async () => {
+    authState.user = { id: 'user-123' };
+    renderLandingPage();
+
+    const cta = document.querySelector<HTMLElement>('.lp2-features-cta');
+    expect(cta).not.toBeNull();
+    expect(await within(cta!).findByRole('link', { name: 'Acessar painel' })).toHaveAttribute(
+      'href',
+      '/dashboard',
+    );
+    expect(cta!.querySelector('a[href="/login?tab=register"]')).toBeNull();
   });
 
   it('wires scroll buttons and nav links to the right sections and exposes the auth CTAs', async () => {
@@ -277,7 +326,7 @@ describe('LandingPage', () => {
       .getAllByRole('link')
       .filter((link) => link.getAttribute('href')?.startsWith('/login?tab=register'));
 
-    // Promo banner + header + hero + agent section + final CTA each link straight
+    // Header + hero + features CTA + agent section + final CTA each link straight
     // to signup, and so does the free pricing CTA and free comparison action.
     // The 3 paid pricing CTAs and 3 paid comparison actions carry plan intent.
     expect(registerLinks).toHaveLength(13);

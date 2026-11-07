@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { OPEN_PREFERENCES_EVENT } from '@/lib/consent';
 
@@ -35,6 +35,26 @@ describe('landing chrome links', () => {
       expect(screen.getByRole('link', { name })).toHaveAttribute('href', href);
     }
   });
+
+  it.each(['landing', 'subpage'] as const)(
+    'the %s header shows Entrar and one accessible name for the signup CTA',
+    (variant) => {
+      render(<LandingHeader variant={variant} />);
+      const header = within(document.querySelector<HTMLElement>('.site-hdr')!);
+
+      expect(header.getByRole('link', { name: 'Entrar' })).toHaveAttribute('href', '/login');
+
+      const signup = header.getAllByRole('link', { name: 'Criar conta grátis' });
+      expect(signup).toHaveLength(1);
+      expect(signup[0]).toHaveAttribute('href', '/login?tab=register');
+      expect(header.queryByRole('link', { name: 'Criar conta' })).not.toBeInTheDocument();
+
+      const short = signup[0].querySelector('.hdr-cta-short');
+      expect(short).not.toBeNull();
+      expect(short).toHaveAttribute('aria-hidden', 'true');
+      expect(signup[0].querySelector('.hdr-cta-long')).toHaveTextContent('Criar conta grátis');
+    },
+  );
 
   it('the subpage logo links home, the landing logo scrolls to top', () => {
     const { unmount } = render(<LandingHeader variant="subpage" />);

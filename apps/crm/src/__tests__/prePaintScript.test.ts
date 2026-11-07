@@ -38,13 +38,10 @@ describe('index.html pre-paint script', () => {
     expect(root.hasAttribute('data-consent-stored')).toBe(true);
   });
 
-  it('sets data-promo-dismissed only when the promo key is "1"', () => {
-    localStorage.setItem('mesaas_promo_dismissed', '0');
-    runPrePaint();
-    expect(root.hasAttribute('data-promo-dismissed')).toBe(false);
+  it('never sets data-promo-dismissed', () => {
     localStorage.setItem('mesaas_promo_dismissed', '1');
     runPrePaint();
-    expect(root.hasAttribute('data-promo-dismissed')).toBe(true);
+    expect(root.hasAttribute('data-promo-dismissed')).toBe(false);
   });
 
   it('keeps data-js and does not throw when localStorage throws', () => {

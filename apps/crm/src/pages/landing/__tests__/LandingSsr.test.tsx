@@ -61,11 +61,12 @@ describe('landing server render', () => {
     expect(html).not.toContain('Bem-vindo de volta');
   });
 
-  it('renders the promo banner and the build year in the footer', () => {
+  it('renders no promo banner, the hero offer and the build year in the footer', () => {
     authState.user = null;
     authState.loading = true;
     const html = renderLanding();
-    expect(html).toContain('promo-banner');
+    expect(html).not.toContain('promo-banner');
+    expect(html).toContain('<strong>30 dias grátis</strong>');
     expect(html).toContain(`© ${__BUILD_YEAR__} Mesaas`);
   });
 
@@ -90,9 +91,7 @@ describe('landing.css SSR contract', () => {
     expect(css).not.toMatch(/(^|\n)\s*\.lp-root \.reveal\s*\{[^}]*opacity:\s*0/);
   });
 
-  it('pre-paint hides a dismissed promo banner only before hydration', () => {
-    expect(css).toMatch(
-      /html\[data-promo-dismissed\] #root\[data-ssr\] \.promo-banner\s*\{\s*display:\s*none;?\s*\}/,
-    );
+  it('has no promo banner rules left', () => {
+    expect(css).not.toMatch(/promo-banner|data-promo-dismissed/);
   });
 });

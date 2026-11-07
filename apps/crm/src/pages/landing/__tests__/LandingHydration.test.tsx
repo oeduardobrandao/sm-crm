@@ -66,17 +66,24 @@ function serverHtml(): string {
 
 /** React 19 reports attribute/className/text mismatches through console.error, not only
  * through onRecoverableError. */
+/** The features section's CTA label, or null when it renders no link. */
+function featuresCta(): string | null {
+  return container.querySelector('.lp2-features-cta a')?.textContent?.trim() ?? null;
+}
+
 function hydrationConsoleErrors(): unknown[][] {
   return consoleError.mock.calls.filter((args) =>
     /hydrat|did not match|mismatch/i.test(args.map((a) => String(a)).join(' ')),
   );
 }
 
-/** The auth-dependent CTAs: header actions, hero primary CTA, final CTA row. */
+/** The auth-dependent CTAs: header actions, hero primary CTA, features CTA, final CTA row. */
 function ctaLinks(): string[] {
-  const selectors = ['.hdr-actions a', '.hero-ctas a', '.lp2-cta-row a'];
+  const selectors = ['.hdr-actions a', '.hero-ctas a', '.lp2-features-cta a', '.lp2-cta-row a'];
   return selectors.flatMap((sel) =>
-    [...container.querySelectorAll(sel)].map((a) => a.textContent?.trim() ?? ''),
+    [...container.querySelectorAll(sel)].map(
+      (a) => a.getAttribute('aria-label') ?? a.textContent?.trim() ?? '',
+    ),
   );
 }
 
@@ -85,7 +92,6 @@ beforeEach(() => {
   container = document.createElement('div');
   container.id = 'root';
   document.body.appendChild(container);
-  localStorage.setItem('mesaas_promo_dismissed', '1');
   localStorage.setItem(
     'consent_v1',
     JSON.stringify({ analytics: true, support: true, decidedAt: '2026-10-01T00:00:00.000Z' }),
@@ -128,14 +134,12 @@ describe('landing hydration', () => {
     auth.set({ user: null, loading: true });
     container.innerHTML = serverHtml();
     container.setAttribute('data-ssr', 'landing');
-    expect(container.querySelector('.promo-banner')).not.toBeNull();
 
     const spy = vi.fn();
     await hydrate(spy);
 
     expect(spy).not.toHaveBeenCalled();
     expect(hydrationConsoleErrors()).toEqual([]);
-    expect(container.querySelector('.promo-banner')).toBeNull();
     expect(container.hasAttribute('data-ssr')).toBe(false);
   });
 
@@ -151,6 +155,7 @@ describe('landing hydration', () => {
     expect(hydrationConsoleErrors()).toEqual([]);
     expect(container.textContent).toContain('Acessar painel');
     expect(container.textContent).toContain('Bem-vindo de volta');
+    expect(featuresCta()).toBe('Acessar painel');
   });
 
   it('keeps the anonymous CTAs after hydration while auth is loading, then flips', async () => {
@@ -161,6 +166,7 @@ describe('landing hydration', () => {
     expect(serverCtas).toEqual(
       expect.arrayContaining(['Entrar', 'Criar conta grátis', 'Começar teste grátis']),
     );
+    expect(featuresCta()).toBe('Começar teste grátis');
 
     const spy = vi.fn();
     await hydrate(spy);
@@ -174,6 +180,7 @@ describe('landing hydration', () => {
     await act(async () => auth.set({ user: { id: 'u' }, loading: false }));
     expect(ctaLinks()).toContain('Acessar painel');
     expect(ctaLinks()).not.toContain('Entrar');
+    expect(featuresCta()).toBe('Acessar painel');
   });
 });
 
@@ -195,6 +202,7 @@ describe('landing createRoot mount (not server-rendered)', () => {
     expect(ctaLinks()).toContain('Acessar painel');
     expect(ctaLinks()).not.toContain('Entrar');
     expect(ctaLinks()).not.toContain('Criar conta grátis');
+    expect(featuresCta()).toBe('Acessar painel');
   });
 
   it('renders no auth CTA while auth loads, then the anonymous ones', async () => {
@@ -207,5 +215,6 @@ describe('landing createRoot mount (not server-rendered)', () => {
       expect.arrayContaining(['Entrar', 'Criar conta grátis', 'Começar teste grátis']),
     );
     expect(ctaLinks()).not.toContain('Acessar painel');
+    expect(featuresCta()).toBe('Começar teste grátis');
   });
 });

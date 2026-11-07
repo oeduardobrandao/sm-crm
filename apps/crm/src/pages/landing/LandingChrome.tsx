@@ -76,8 +76,8 @@ export function SkipLink() {
   );
 }
 
-/** `skipLink={false}` when the page renders <SkipLink /> itself, ahead of content that
- * precedes the header in tab order (the landing promo banner). */
+/** `skipLink={false}` when the page renders <SkipLink /> itself (the landing does, as the
+ * first element of the page). */
 export function LandingHeader({
   variant,
   skipLink = true,
@@ -158,8 +158,17 @@ export function LandingHeader({
                   <LogIn size={15} />
                   Entrar
                 </a>
-                <a href="/login?tab=register" className="lp-btn lp-btn-primary">
-                  Criar conta grátis
+                {/* Both labels ship in the markup (SSR-stable); CSS shows the short one <=400px.
+                    The aria-label keeps one accessible name. */}
+                <a
+                  href="/login?tab=register"
+                  className="lp-btn lp-btn-primary"
+                  aria-label="Criar conta grátis"
+                >
+                  <span className="hdr-cta-long">Criar conta grátis</span>
+                  <span className="hdr-cta-short" aria-hidden="true">
+                    Criar conta
+                  </span>
                 </a>
               </>
             )}
