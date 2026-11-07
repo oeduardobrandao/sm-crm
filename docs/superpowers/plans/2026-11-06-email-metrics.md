@@ -15,7 +15,7 @@
 ## Global Constraints
 
 - Dois PRs. **PR A** = Tasks 1 a 5 (migration, webhook, classificador, tags), deployado e mergeado antes de segunda 2026-11-09 09:00 SP. **PR B** = Tasks 6 a 8 (ações do `platform-admin` e a página), depois. A migration inteira (inclusive `email_metrics`) vai no PR A, para o PR B não ter migration.
-- Migration com prefixo único acima do topo de `main` na hora do `gh pr create` (hoje o topo é `20261120000001`; use `20261121000001` e renumere se `main` andou).
+- Migration com prefixo único acima do topo de `main` na hora do `gh pr create` (hoje o topo é `20261120000001`; use `20261124000001` e renumere se `main` andou).
 - Valores de tag só `[A-Za-z0-9_-]`.
 - Categorias (valores exatos): `notificacoes`, `ciclo_de_vida`, `convites`, `cobranca`, `relatorios`, `afiliados`, `interno`, `externo`, `outros`.
 - `last_event` normalizado (valores exatos): `sent`, `delivery_delayed`, `delivered`, `failed`, `suppressed`, `canceled`, `bounced`, `complained`. Precedência: `sent` 0 < `delivery_delayed` 1 < `delivered` 2 < `failed`/`suppressed`/`canceled` 3 < `bounced` 4 < `complained` 5.
@@ -77,7 +77,7 @@
 ### Task 2: Migration: tabelas e `email_sends_apply_event`
 
 **Files:**
-- Create: `supabase/migrations/20261121000001_email_sends.sql`
+- Create: `supabase/migrations/20261124000001_email_sends.sql`
 - Test: `supabase/tests/email_sends_rpcs.sql` (roda pelo `scripts/test-entitlements.sh`, loop de `supabase/tests/*.sql`)
 
 **Interfaces:**
@@ -105,7 +105,7 @@
 ### Task 3: Função `email_metrics`
 
 **Files:**
-- Modify: `supabase/migrations/20261121000001_email_sends.sql` (anexar)
+- Modify: `supabase/migrations/20261124000001_email_sends.sql` (anexar)
 - Test: `supabase/tests/email_sends_rpcs.sql` (anexar)
 
 **Interfaces:**
