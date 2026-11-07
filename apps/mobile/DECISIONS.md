@@ -265,5 +265,23 @@ What we chose, what we considered and rejected, and why. Newest at the bottom.
 - **Chosen:** the app target's `IPHONEOS_DEPLOYMENT_TARGET` is 16.2 (was 15.0). The CRM already
   uses CSS `color-mix()` (status badges, phone pills), which WebKit only ships from iOS 16.2; on
   older versions those colours silently drop out.
-- `CapApp-SPM/Package.swift` stays at `.v15`: the Capacitor CLI owns that file and rewrites it on
-  every sync, and a package minimum below the app's is fine.
+- `CapApp-SPM/Package.swift` follows the app: the Capacitor CLI owns that file and, since phase D's
+  `cap sync`, writes `.v16` from the app's deployment target. Never edit it by hand.
+
+## D33. In-app copy never mentions plans, purchases or the website
+
+- **Chosen:** inside the app a locked feature or a hit limit states the fact and stops there:
+  "{recurso} não está disponível na sua conta", "Fale com o dono do workspace se precisar deste
+  recurso." or "Você atingiu o limite da sua conta.", with "Entendi" where a dismiss is needed. No
+  upgrade button, no "Ver planos", no billing or trial link, no dunning banner, no trial nudge and
+  no "Cobrança & Plano" help category. This supersedes D5's "Gerencie seu plano pelo site", which
+  still pointed at buying outside the app.
+- **Rejected:** a neutral pointer to the website (App Review can read it as steering to an
+  external purchase); hiding every locked surface (users would not know why a feature is
+  missing). Only pure sales prompts disappear: the Hub portal upsell, the locked "Importar CSV"
+  row, the trial nudge and the dunning banner.
+- **Why:** the approved mockups (`PlanLimit`, `NotificationPrefs`) drop every purchase mention. The
+  choke points (`UpgradeLockedScreen`, `FeatureGate`, the entitlement toast, `UsageMeter`,
+  `PhoneUsageLine`, `LockedCard`) decide it themselves with `isNativeApp()`, and
+  `nativeBillingCtas.test.ts` fails any new file that links to billing, `/comecar` or `/precos`
+  without importing `isNativeApp`. `reportPaywallHit` keeps firing in the app (signal only).

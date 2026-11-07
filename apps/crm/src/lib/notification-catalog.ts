@@ -33,6 +33,10 @@ export interface NotificationCatalogEntry {
   when: string;
   recipients: string;
   emailEligible: boolean;
+  /** Sent to the iOS app by notification-push-cron. Must equal the type array of
+   * claim_notification_pushes (latest migration) and fit notification_push_prefs'
+   * CHECK; notification-catalog.push-parity.test.ts reads both from disk. */
+  pushEligible: boolean;
 }
 
 const RESP_ADMINS = 'responsável pelo item + donos e admins';
@@ -47,6 +51,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'o cliente aprova um post no Hub',
     recipients: RESP_ADMINS,
     emailEligible: true,
+    pushEligible: true,
   },
   post_correction: {
     category: 'aprovacoes_hub',
@@ -54,6 +59,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'o cliente pede correção em um post',
     recipients: RESP_ADMINS,
     emailEligible: true,
+    pushEligible: true,
   },
   post_message: {
     category: 'aprovacoes_hub',
@@ -61,6 +67,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'o cliente comenta em um post específico',
     recipients: RESP_ADMINS,
     emailEligible: true,
+    pushEligible: true,
   },
   post_edit_suggestion: {
     category: 'aprovacoes_hub',
@@ -68,6 +75,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'o cliente sugere ou atualiza uma alteração de texto ou legenda no Hub',
     recipients: RESP_ADMINS,
     emailEligible: false,
+    pushEligible: true,
   },
   post_client_reference: {
     category: 'aprovacoes_hub',
@@ -75,6 +83,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'o cliente anexa fotos, vídeos, PDFs ou links a um post no Hub',
     recipients: RESP_ADMINS,
     emailEligible: false,
+    pushEligible: true,
   },
   post_material_complete: {
     category: 'aprovacoes_hub',
@@ -82,6 +91,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'o cliente termina de enviar o material pedido de um post no Hub',
     recipients: RESP_ADMINS,
     emailEligible: false,
+    pushEligible: true,
   },
   idea_submitted: {
     category: 'aprovacoes_hub',
@@ -89,6 +99,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'o cliente envia uma ideia ou solicitação',
     recipients: ADMINS,
     emailEligible: false,
+    pushEligible: true,
   },
   briefing_answered: {
     category: 'aprovacoes_hub',
@@ -96,6 +107,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'o cliente responde uma pergunta do briefing',
     recipients: ADMINS,
     emailEligible: false,
+    pushEligible: true,
   },
   client_message: {
     category: 'aprovacoes_hub',
@@ -103,6 +115,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'o cliente escreve no feed de mensagens',
     recipients: ADMINS,
     emailEligible: true,
+    pushEligible: true,
   },
   linha_editorial_aprovada: {
     category: 'aprovacoes_hub',
@@ -110,6 +123,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'o cliente aprova a linha editorial do mês no Hub',
     recipients: RESP_ADMINS,
     emailEligible: true,
+    pushEligible: true,
   },
   linha_editorial_ajustes: {
     category: 'aprovacoes_hub',
@@ -117,6 +131,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'o cliente pede ajustes na linha editorial do mês no Hub',
     recipients: RESP_ADMINS,
     emailEligible: true,
+    pushEligible: true,
   },
   step_activated: {
     category: 'entregas_fluxo',
@@ -124,6 +139,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'uma etapa do fluxo fica ativa',
     recipients: RESP_ADMINS,
     emailEligible: false,
+    pushEligible: false,
   },
   step_completed: {
     category: 'entregas_fluxo',
@@ -131,6 +147,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'uma etapa do fluxo é concluída',
     recipients: ADMINS,
     emailEligible: false,
+    pushEligible: false,
   },
   post_assigned: {
     category: 'entregas_fluxo',
@@ -138,6 +155,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'um post é atribuído a você',
     recipients: 'somente quem foi atribuído',
     emailEligible: true,
+    pushEligible: true,
   },
   task_assigned: {
     category: 'entregas_fluxo',
@@ -145,6 +163,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'uma tarefa é criada para você ou reatribuída',
     recipients: 'somente quem foi atribuído',
     emailEligible: true,
+    pushEligible: true,
   },
   task_comment: {
     category: 'entregas_fluxo',
@@ -153,6 +172,7 @@ export const NOTIFICATION_CATALOG = {
     recipients:
       'responsável, quem criou e quem já comentou, exceto quem escreveu e quem foi mencionado',
     emailEligible: false,
+    pushEligible: false,
   },
   workflow_completed: {
     category: 'entregas_fluxo',
@@ -160,6 +180,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'um fluxo inteiro é concluído',
     recipients: ADMINS,
     emailEligible: false,
+    pushEligible: false,
   },
   deadline_approaching: {
     category: 'entregas_fluxo',
@@ -167,6 +188,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'uma etapa ativa vence amanhã',
     recipients: RESP_ADMINS,
     emailEligible: true,
+    pushEligible: true,
   },
   post_status_automation: {
     category: 'entregas_fluxo',
@@ -174,6 +196,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'uma regra sua de status dispara uma notificação',
     recipients: 'conforme a regra configurada',
     emailEligible: false,
+    pushEligible: false,
   },
   invite_accepted: {
     category: 'equipe',
@@ -181,6 +204,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'alguém entra no workspace',
     recipients: ADMINS,
     emailEligible: false,
+    pushEligible: false,
   },
   member_role_changed: {
     category: 'equipe',
@@ -188,6 +212,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'o papel de um membro muda',
     recipients: ADMINS,
     emailEligible: false,
+    pushEligible: false,
   },
   member_removed: {
     category: 'equipe',
@@ -195,6 +220,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'um membro é removido do workspace',
     recipients: ADMINS,
     emailEligible: false,
+    pushEligible: false,
   },
   mention: {
     category: 'equipe',
@@ -202,6 +228,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'alguém menciona você com @',
     recipients: 'somente quem foi mencionado',
     emailEligible: true,
+    pushEligible: true,
   },
   event_invited: {
     category: 'agenda',
@@ -209,6 +236,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'alguém adiciona você a um evento',
     recipients: PARTICIPANTES,
     emailEligible: true,
+    pushEligible: true,
   },
   event_updated: {
     category: 'agenda',
@@ -216,6 +244,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'muda o horário, o local ou a repetição de um evento seu',
     recipients: PARTICIPANTES,
     emailEligible: true,
+    pushEligible: true,
   },
   event_cancelled: {
     category: 'agenda',
@@ -223,6 +252,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'um evento seu é cancelado ou você é removido dele',
     recipients: PARTICIPANTES,
     emailEligible: true,
+    pushEligible: true,
   },
   event_rsvp: {
     category: 'agenda',
@@ -230,6 +260,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'um participante responde a um evento que você organizou',
     recipients: 'Organizador do evento',
     emailEligible: false,
+    pushEligible: false,
   },
   event_client_rsvp: {
     category: 'agenda',
@@ -237,6 +268,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'o cliente confirma ou recusa um evento compartilhado com ele',
     recipients: ORGANIZADOR_OU_ADMINS,
     emailEligible: true,
+    pushEligible: true,
   },
   event_guest_rsvp: {
     category: 'agenda',
@@ -244,6 +276,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'um convidado externo confirma ou recusa um evento seu',
     recipients: ORGANIZADOR_OU_ADMINS,
     emailEligible: true,
+    pushEligible: true,
   },
   event_reschedule_requested: {
     category: 'agenda',
@@ -251,6 +284,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'o cliente pede para remarcar um evento compartilhado com ele',
     recipients: ORGANIZADOR_OU_ADMINS,
     emailEligible: true,
+    pushEligible: true,
   },
   event_reminder: {
     category: 'agenda',
@@ -258,6 +292,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'no horário dos lembretes que você definiu',
     recipients: PARTICIPANTES,
     emailEligible: true,
+    pushEligible: true,
   },
   team_message: {
     category: 'equipe',
@@ -265,6 +300,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'alguém envia uma mensagem em uma conversa do chat de equipe da qual você participa',
     recipients: 'participantes da conversa, exceto quem enviou',
     emailEligible: false,
+    pushEligible: false,
   },
   post_discussion: {
     category: 'equipe',
@@ -272,6 +308,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'alguém escreve na discussão de um post que você segue',
     recipients: 'quem escreveu, foi mencionado ou é responsável pelo post e segue a discussão',
     emailEligible: false,
+    pushEligible: false,
   },
   instagram_connected_by_client: {
     category: 'integracoes',
@@ -279,6 +316,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'o cliente conclui a conexão pelo link que você enviou',
     recipients: 'quem criou o link',
     emailEligible: false,
+    pushEligible: false,
   },
   post_publish_failed: {
     category: 'integracoes',
@@ -286,6 +324,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'um post agendado falha ao publicar',
     recipients: RESP_ADMINS,
     emailEligible: true,
+    pushEligible: true,
   },
   instagram_automation_failed: {
     category: 'integracoes',
@@ -293,6 +332,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'uma automação de comentário para DM para de funcionar',
     recipients: ADMINS,
     emailEligible: false,
+    pushEligible: false,
   },
   storage_autoclean_report: {
     category: 'sistema',
@@ -300,6 +340,7 @@ export const NOTIFICATION_CATALOG = {
     when: 'a limpeza noturna remove arquivos antigos',
     recipients: ADMINS,
     emailEligible: false,
+    pushEligible: false,
   },
 } as const satisfies Record<NotificationType, NotificationCatalogEntry>;
 
@@ -318,6 +359,21 @@ export function isEmailEligibleType(type: NotificationType): type is Notificatio
 export const EMAIL_ELIGIBLE_TYPES: NotificationEmailType[] = (
   Object.keys(NOTIFICATION_CATALOG) as NotificationType[]
 ).filter(isEmailEligibleType);
+
+/** Tipos que podem virar push no app, derivados das entradas pushEligible do catálogo. */
+export type NotificationPushType = {
+  [K in NotificationType]: (typeof NOTIFICATION_CATALOG)[K]['pushEligible'] extends true
+    ? K
+    : never;
+}[NotificationType];
+
+/** Takes any string (a pref row, a push payload): unknown types are not eligible. */
+export function isPushEligibleType(type: string): type is NotificationPushType {
+  return (
+    Object.prototype.hasOwnProperty.call(NOTIFICATION_CATALOG, type) &&
+    NOTIFICATION_CATALOG[type as NotificationType].pushEligible
+  );
+}
 
 /** i18next key segment for a type: `.` and `:` are key/namespace separators. */
 const catalogKey = (type: string) => type.replace(/[.:]/g, '_');

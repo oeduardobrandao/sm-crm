@@ -1,0 +1,274 @@
+import { describe, expect, it, vi } from 'vitest';
+import { createNativeAuthStorage } from '../authStorage';
+
+const KEY = 'sb-abc-auth-token';
+
+function memoryStorage(initial: Record<string, string> = {}) {
+  const data = new Map(Object.entries(initial));
+  return {
+    data,
+    getItem: vi.fn((k: string) => (data.has(k) ? data.get(k)! : null)),
+    setItem: vi.fn((k: string, v: string) => {
+      data.set(k, v);
+    }),
+    removeItem: vi.fn((k: string) => {
+      data.delete(k);
+    }),
+  };
+}
+
+function fakeKeychain(initial: Record<string, string> = {}) {
+  const data = new Map(Object.entries(initial));
+  return {
+    data,
+    keychainGet: vi.fn(async ({ key }: { key: string }) => ({ value: data.get(key) ?? null })),
+    keychainSet: vi.fn(async ({ key, value }: { key: string; value: string }) => {
+      data.set(key, value);
+    }),
+    keychainRemove: vi.fn(async ({ key }: { key: string }) => {
+      data.delete(key);
+    }),
+  };
+}
+
+describe('createNativeAuthStorage', () => {
+  it('falls back to localStorage when the plugin is missing', async () => {
+    const legacy = memoryStorage({ [KEY]: 'old' });
+    const storage = createNativeAuthStorage(() => null, legacy);
+
+    expect(await storage.getItem(KEY)).toBe('old');
+    await storage.setItem(KEY, 'new');
+    expect(legacy.data.get(KEY)).toBe('new');
+    await storage.removeItem(KEY);
+    expect(legacy.data.has(KEY)).toBe(false);
+  });
+
+  it('falls back to localStorage when getKeychain throws', async () => {
+    const legacy = memoryStorage({ [KEY]: 'old' });
+    const storage = createNativeAuthStorage(() => {
+      throw new Error('bridge gone');
+    }, legacy);
+
+    expect(await storage.getItem(KEY)).toBe('old');
+    await storage.setItem(KEY, 'new');
+    expect(legacy.data.get(KEY)).toBe('new');
+  });
+
+  it('migrates an existing localStorage session on first read', async () => {
+    const legacy = memoryStorage({ [KEY]: 'session' });
+    const keychain = fakeKeychain();
+    const storage = createNativeAuthStorage(() => keychain, legacy);
+
+    expect(await storage.getItem(KEY)).toBe('session');
+    expect(keychain.data.get(KEY)).toBe('session');
+    expect(legacy.getItem(KEY)).toBeNull();
+  });
+
+  it("keeps the localStorage copy when the migration's keychainSet rejects", async () => {
+    const legacy = memoryStorage({ [KEY]: 'session' });
+    const keychain = fakeKeychain();
+    keychain.keychainSet.mockRejectedValue(new Error('keychain locked'));
+    const storage = createNativeAuthStorage(() => keychain, legacy);
+
+    expect(await storage.getItem(KEY)).toBe('session');
+    expect(legacy.data.get(KEY)).toBe('session');
+    expect(legacy.removeItem).not.toHaveBeenCalled();
+  });
+
+  it('prefers the Keychain over a stale localStorage value', async () => {
+    const legacy = memoryStorage({ [KEY]: 'stale' });
+    const keychain = fakeKeychain({ [KEY]: 'fresh' });
+    const storage = createNativeAuthStorage(() => keychain, legacy);
+
+    expect(await storage.getItem(KEY)).toBe('fresh');
+    expect(keychain.keychainSet).not.toHaveBeenCalled();
+  });
+
+  it('setItem removes the localStorage copy', async () => {
+    const legacy = memoryStorage({ [KEY]: 'old' });
+    const keychain = fakeKeychain();
+    const storage = createNativeAuthStorage(() => keychain, legacy);
+
+    await storage.setItem(KEY, 'new');
+    expect(keychain.data.get(KEY)).toBe('new');
+    expect(legacy.data.has(KEY)).toBe(false);
+  });
+
+  it('setItem falls back to localStorage when the Keychain rejects', async () => {
+    const legacy = memoryStorage();
+    const keychain = fakeKeychain();
+    keychain.keychainSet.mockRejectedValue(new Error('keychain locked'));
+    const storage = createNativeAuthStorage(() => keychain, legacy);
+
+    await expect(storage.setItem(KEY, 'new')).resolves.toBeUndefined();
+    expect(legacy.data.get(KEY)).toBe('new');
+  });
+
+  it('setItem fallback clears a stale Keychain copy', async () => {
+    const legacy = memoryStorage();
+    const keychain = fakeKeychain({ [KEY]: 'stale' });
+    keychain.keychainSet.mockRejectedValue(new Error('keychain locked'));
+    const storage = createNativeAuthStorage(() => keychain, legacy);
+
+    await storage.setItem(KEY, 'new');
+    expect(keychain.data.has(KEY)).toBe(false);
+    expect(legacy.data.get(KEY)).toBe('new');
+    expect(await storage.getItem(KEY)).toBe('new');
+  });
+
+  it('setItem resolves when both keychainSet and keychainRemove reject', async () => {
+    const legacy = memoryStorage();
+    const keychain = fakeKeychain();
+    keychain.keychainSet.mockRejectedValue(new Error('keychain locked'));
+    keychain.keychainRemove.mockRejectedValue(new Error('keychain locked'));
+    const storage = createNativeAuthStorage(() => keychain, legacy);
+
+    await expect(storage.setItem(KEY, 'new')).resolves.toBeUndefined();
+    expect(legacy.data.get(KEY)).toBe('new');
+  });
+
+  it('removeItem clears both', async () => {
+    const legacy = memoryStorage({ [KEY]: 'a' });
+    const keychain = fakeKeychain({ [KEY]: 'b' });
+    const storage = createNativeAuthStorage(() => keychain, legacy);
+
+    await storage.removeItem(KEY);
+    expect(legacy.data.has(KEY)).toBe(false);
+    expect(keychain.data.has(KEY)).toBe(false);
+  });
+
+  it('removeItem still clears localStorage when keychainRemove rejects', async () => {
+    const legacy = memoryStorage({ [KEY]: 'a' });
+    const keychain = fakeKeychain({ [KEY]: 'b' });
+    keychain.keychainRemove.mockRejectedValue(new Error('keychain locked'));
+    const storage = createNativeAuthStorage(() => keychain, legacy);
+
+    await expect(storage.removeItem(KEY)).resolves.toBeUndefined();
+    expect(legacy.data.has(KEY)).toBe(false);
+  });
+
+  describe('logout tombstone', () => {
+    const TOMB = `mesaas.authTombstone:${KEY}`;
+
+    it('removeItem leaves a tombstone when keychainRemove rejects', async () => {
+      const legacy = memoryStorage({ [KEY]: 'a' });
+      const keychain = fakeKeychain({ [KEY]: 'b' });
+      keychain.keychainRemove.mockRejectedValue(new Error('keychain locked'));
+      const storage = createNativeAuthStorage(() => keychain, legacy);
+
+      await expect(storage.removeItem(KEY)).resolves.toBeUndefined();
+      expect(legacy.data.get(TOMB)).toBe('1');
+      expect(legacy.data.has(KEY)).toBe(false);
+    });
+
+    it('removeItem leaves a tombstone when getKeychain throws', async () => {
+      const legacy = memoryStorage({ [KEY]: 'a' });
+      const storage = createNativeAuthStorage(() => {
+        throw new Error('bridge gone');
+      }, legacy);
+
+      await storage.removeItem(KEY);
+      expect(legacy.data.get(TOMB)).toBe('1');
+    });
+
+    it('removeItem leaves no tombstone on the web (no plugin)', async () => {
+      const legacy = memoryStorage({ [KEY]: 'a' });
+      const storage = createNativeAuthStorage(() => null, legacy);
+
+      await storage.removeItem(KEY);
+      expect(legacy.data.has(TOMB)).toBe(false);
+    });
+
+    it('getItem returns null while a tombstone exists, even if the Keychain still holds a value', async () => {
+      const legacy = memoryStorage({ [TOMB]: '1' });
+      const keychain = fakeKeychain({ [KEY]: 'old session' });
+      keychain.keychainRemove.mockRejectedValue(new Error('keychain locked'));
+      const storage = createNativeAuthStorage(() => keychain, legacy);
+
+      expect(await storage.getItem(KEY)).toBeNull();
+      expect(keychain.keychainGet).not.toHaveBeenCalled();
+      expect(legacy.data.get(TOMB)).toBe('1');
+    });
+
+    it('getItem retries the removal and clears the tombstone when it succeeds', async () => {
+      const legacy = memoryStorage({ [TOMB]: '1' });
+      const keychain = fakeKeychain({ [KEY]: 'old session' });
+      const storage = createNativeAuthStorage(() => keychain, legacy);
+
+      expect(await storage.getItem(KEY)).toBeNull();
+      expect(keychain.keychainRemove).toHaveBeenCalledWith({ key: KEY });
+      expect(keychain.data.has(KEY)).toBe(false);
+      expect(legacy.data.has(TOMB)).toBe(false);
+    });
+
+    it('getItem with a tombstone never migrates a localStorage value into the Keychain', async () => {
+      const legacy = memoryStorage({ [TOMB]: '1', [KEY]: 'fallback session' });
+      const keychain = fakeKeychain({ [KEY]: 'old session' });
+      keychain.keychainRemove.mockRejectedValue(new Error('keychain locked'));
+      const storage = createNativeAuthStorage(() => keychain, legacy);
+
+      expect(await storage.getItem(KEY)).toBe('fallback session');
+      expect(keychain.keychainSet).not.toHaveBeenCalled();
+    });
+
+    it('setItem clears the tombstone', async () => {
+      const legacy = memoryStorage({ [TOMB]: '1' });
+      const keychain = fakeKeychain();
+      const storage = createNativeAuthStorage(() => keychain, legacy);
+
+      await storage.setItem(KEY, 'new session');
+      expect(legacy.data.has(TOMB)).toBe(false);
+      expect(await storage.getItem(KEY)).toBe('new session');
+    });
+
+    it('setItem fallback clears the tombstone once the stale Keychain copy is gone', async () => {
+      const legacy = memoryStorage({ [TOMB]: '1' });
+      const keychain = fakeKeychain({ [KEY]: 'old session' });
+      keychain.keychainSet.mockRejectedValue(new Error('keychain locked'));
+      const storage = createNativeAuthStorage(() => keychain, legacy);
+
+      await storage.setItem(KEY, 'new session');
+      expect(legacy.data.has(TOMB)).toBe(false);
+      expect(await storage.getItem(KEY)).toBe('new session');
+    });
+
+    it('setItem fallback never lets a stale Keychain copy shadow the new session', async () => {
+      const legacy = memoryStorage();
+      const keychain = fakeKeychain({ [KEY]: 'previous user session' });
+      keychain.keychainSet.mockRejectedValue(new Error('keychain locked'));
+      keychain.keychainRemove.mockRejectedValue(new Error('keychain locked'));
+      const storage = createNativeAuthStorage(() => keychain, legacy);
+
+      await expect(storage.setItem(KEY, 'new session')).resolves.toBeUndefined();
+      expect(await storage.getItem(KEY)).toBe('new session');
+    });
+  });
+
+  it('getItem resolves null instead of rejecting when keychainGet rejects', async () => {
+    const legacy = memoryStorage();
+    const keychain = fakeKeychain();
+    keychain.keychainGet.mockRejectedValue(new Error('keychain locked'));
+    const storage = createNativeAuthStorage(() => keychain, legacy);
+
+    await expect(storage.getItem(KEY)).resolves.toBeNull();
+  });
+
+  it('never rejects when localStorage itself throws', async () => {
+    const throwing = {
+      getItem: () => {
+        throw new Error('blocked');
+      },
+      setItem: () => {
+        throw new Error('blocked');
+      },
+      removeItem: () => {
+        throw new Error('blocked');
+      },
+    };
+    const storage = createNativeAuthStorage(() => null, throwing);
+
+    await expect(storage.getItem(KEY)).resolves.toBeNull();
+    await expect(storage.setItem(KEY, 'v')).resolves.toBeUndefined();
+    await expect(storage.removeItem(KEY)).resolves.toBeUndefined();
+  });
+});

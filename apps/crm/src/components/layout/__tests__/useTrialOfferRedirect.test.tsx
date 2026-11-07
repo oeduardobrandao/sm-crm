@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
@@ -191,5 +191,20 @@ describe('useTrialOfferRedirect', () => {
       await client.resetQueries({ queryKey: ['billing'] });
     });
     expect(seen.slice(settledAt).some((state) => state.pending)).toBe(false);
+  });
+});
+
+describe('useTrialOfferRedirect inside the iOS app', () => {
+  afterEach(() => {
+    (window as unknown as { Capacitor?: unknown }).Capacitor = undefined;
+  });
+
+  it('never sends an eligible owner to /comecar and never waits on billing', () => {
+    (window as unknown as { Capacitor?: unknown }).Capacitor = { isNativePlatform: () => true };
+    const { result, seen } = run('/dashboard');
+    expect(result.current).toEqual({ pending: false, redirect: false });
+    expect(seen.some((state) => state.pending || state.redirect)).toBe(false);
+    expect(getEffectivePlanWithSource).not.toHaveBeenCalled();
+    expect(getWorkspaceSubscription).not.toHaveBeenCalled();
   });
 });

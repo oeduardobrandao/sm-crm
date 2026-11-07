@@ -11,14 +11,23 @@ const getInapp = vi.fn();
 const setInapp = vi.fn();
 const getEmail = vi.fn();
 const setEmail = vi.fn();
+const getPush = vi.fn();
+const setPush = vi.fn();
+const hasDevice = vi.fn();
 
 vi.mock('@/store/notificationPrefs', () => ({
   getNotificationInappPrefs: (...a: unknown[]) => getInapp(...a),
   setNotificationInappPref: (...a: unknown[]) => setInapp(...a),
   getNotificationEmailPrefs: (...a: unknown[]) => getEmail(...a),
   setNotificationEmailPref: (...a: unknown[]) => setEmail(...a),
+  getNotificationPushPrefs: (...a: unknown[]) => getPush(...a),
+  setNotificationPushPref: (...a: unknown[]) => setPush(...a),
+  hasActivePushDevice: (...a: unknown[]) => hasDevice(...a),
   MASTER_PAUSE_TYPE: '__all__',
 }));
+
+const { mockNative } = vi.hoisted(() => ({ mockNative: { current: false } }));
+vi.mock('@/native/platform', () => ({ isNativeApp: () => mockNative.current }));
 
 vi.mock('@/hooks/useNotifications', () => ({
   INAPP_PREFS_KEY: ['notification-inapp-prefs'],
@@ -124,6 +133,10 @@ describe('NotificacoesTab (phone)', () => {
     setInapp.mockReset().mockResolvedValue(undefined);
     getEmail.mockReset().mockResolvedValue({});
     setEmail.mockReset().mockResolvedValue(undefined);
+    getPush.mockReset().mockResolvedValue({});
+    setPush.mockReset().mockResolvedValue(undefined);
+    hasDevice.mockReset().mockResolvedValue(false);
+    mockNative.current = false;
     setAuth();
     mockSupabaseEq.mockReset().mockResolvedValue({ error: null });
     mockSupabaseUpdate.mockReset().mockReturnValue({ eq: mockSupabaseEq });
@@ -140,7 +153,7 @@ describe('NotificacoesTab (phone)', () => {
     expect(
       await screen.findByRole('radiogroup', { name: 'Canal editado pelos botões' }),
     ).toBeInTheDocument();
-    expect(screen.getByText('Os botões abaixo ligam e desligam o canal No app.')).toBeVisible();
+    expect(screen.getByText('Os botões abaixo ligam e desligam o canal Sino.')).toBeVisible();
     expect(screen.getByRole('heading', { name: CATEGORY_LABELS.equipe })).toBeInTheDocument();
     expect(screen.getByText('E-mails automáticos')).toBeInTheDocument();
     expect(screen.getByText('Seus clientes')).toBeInTheDocument();
@@ -148,7 +161,7 @@ describe('NotificacoesTab (phone)', () => {
     expect(screen.queryByText('Suas notificações')).not.toBeInTheDocument();
   });
 
-  it('edits the No app channel by default, through the same in-app mutation', async () => {
+  it('edits the Sino channel by default, through the same in-app mutation', async () => {
     renderTab();
     const label = NOTIFICATION_CATALOG.mention.label;
     await screen.findByRole('switch', { name: label });
@@ -199,6 +212,49 @@ describe('NotificacoesTab (phone)', () => {
     expect(sw(NOTIFICATION_CATALOG.mention.label)).toBeDisabled();
     fireEvent.click(screen.getByRole('radio', { name: 'E-mail' }));
     expect(sw(NOTIFICATION_CATALOG.mention.label)).not.toBeDisabled();
+  });
+
+  describe('Celular channel', () => {
+    it('is not offered without a device or the app', async () => {
+      renderTab();
+      const group = await screen.findByRole('radiogroup', { name: 'Canal editado pelos botões' });
+      await waitFor(() => expect(hasDevice).toHaveBeenCalled());
+      expect(within(group).getByRole('radio', { name: 'Sino' })).toBeInTheDocument();
+      expect(within(group).getByRole('radio', { name: 'E-mail' })).toBeInTheDocument();
+      expect(within(group).queryByRole('radio', { name: 'Celular' })).not.toBeInTheDocument();
+    });
+
+    it('inside the app the switcher gains Celular, and its switches edit push', async () => {
+      mockNative.current = true;
+      renderTab();
+      const group = await screen.findByRole('radiogroup', { name: 'Canal editado pelos botões' });
+      fireEvent.click(within(group).getByRole('radio', { name: 'Celular' }));
+      expect(screen.getByText('Os botões abaixo ligam e desligam o canal Celular.')).toBeVisible();
+      fireEvent.click(sw(NOTIFICATION_CATALOG.mention.label));
+      await waitFor(() => expect(setPush).toHaveBeenCalledWith('mention', false));
+      expect(setInapp).not.toHaveBeenCalled();
+      expect(setEmail).not.toHaveBeenCalled();
+      expect(hasDevice).not.toHaveBeenCalled();
+    });
+
+    it('with a device on the web: Celular shows, a non-push type has no switch', async () => {
+      hasDevice.mockResolvedValue(true);
+      renderTab();
+      fireEvent.click(await screen.findByRole('radio', { name: 'Celular' }));
+      const label = NOTIFICATION_CATALOG.step_activated.label;
+      expect(screen.queryByRole('switch', { name: label })).not.toBeInTheDocument();
+      expect(screen.getByLabelText(`${label}: este tipo não chega no celular`)).toHaveTextContent(
+        'Não chega no celular',
+      );
+    });
+
+    it('Pausar tudo on Celular writes the push master pause', async () => {
+      mockNative.current = true;
+      renderTab();
+      fireEvent.click(await screen.findByRole('radio', { name: 'Celular' }));
+      fireEvent.click(sw('Pausar tudo'));
+      await waitFor(() => expect(setPush).toHaveBeenCalledWith('__all__', false));
+    });
   });
 
   it('opens E-mails automáticos as a pushed screen and Back returns', async () => {

@@ -1,16 +1,23 @@
 import { useState } from 'react';
 import { Search } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useQueryClient } from '@tanstack/react-query';
 import { i18n } from '@mesaas/i18n';
 import { GroupedList, Cell } from '@/components/mobile/GroupedList';
 import { SegmentedControl } from '@/components/mobile/SegmentedControl';
 import { PhoneConfirmSheet } from '@/components/mobile/PhoneConfirmSheet';
-import { categoryLabel, isEmailEligibleType } from '@/lib/notification-catalog';
+import { categoryLabel, isEmailEligibleType, isPushEligibleType } from '@/lib/notification-catalog';
 import { MASTER_PAUSE_TYPE } from '@/store/notificationPrefs';
 import type { Cliente } from '@/store';
 import { ConfigPhoneScreen, ConfigPhoneSkeleton } from '../../phone/ConfigPhoneScreen';
 import { useConfigSubScreen } from '../../phone/useConfigSubScreen';
-import { enabledOf, useSuasNotificacoes } from '../notificacoes/useSuasNotificacoes';
+import { isNativeApp } from '@/native/platform';
+import { PushPermissionRow } from '@/native/PushPermissionRow';
+import {
+  enabledOf,
+  PUSH_DEVICE_QUERY_KEY,
+  useSuasNotificacoes,
+} from '../notificacoes/useSuasNotificacoes';
 import {
   marketingLabel,
   tipsLabel,
@@ -20,14 +27,21 @@ import {
 import { statusTag as statusTagOf, useSeusClientes } from '../notificacoes/useSeusClientes';
 import './notificacoesPhone.css';
 
-type Channel = 'inapp' | 'email';
+type Channel = 'inapp' | 'email' | 'push';
 type SubScreen = 'emails' | 'clientes';
 type ClientSwitch = 'report' | 'event';
 
-const channelOptions = (): { value: Channel; label: string }[] => [
-  { value: 'inapp', label: i18n.t('settings:notifications.inApp') },
-  { value: 'email', label: i18n.t('settings:shared.email') },
-];
+const channelLabel = (channel: Channel) =>
+  channel === 'email'
+    ? i18n.t('settings:shared.email')
+    : channel === 'push'
+      ? i18n.t('settings:notifications.push')
+      : i18n.t('settings:notifications.inApp');
+
+const channelOptions = (pushVisible: boolean): { value: Channel; label: string }[] =>
+  (pushVisible ? (['inapp', 'email', 'push'] as const) : (['inapp', 'email'] as const)).map(
+    (value) => ({ value, label: channelLabel(value) }),
+  );
 
 const clientSwitchOptions = (): { value: ClientSwitch; label: string }[] => [
   { value: 'report', label: i18n.t('settings:notifications.clientes.monthlyReport') },
@@ -44,7 +58,8 @@ export interface NotificacoesPhoneProps {
 
 /**
  * Notificações on phones (FConfigNotificacoes). A Cell holds one switch, so a
- * segmented control picks which channel (No app / E-mail) the per-type switches edit.
+ * segmented control picks which channel (Sino / E-mail / Celular) the per-type
+ * switches edit; Celular only when `pushVisible` (inside the app, or a device exists).
  * "E-mails automáticos" and "Seus clientes" are pushed sub-screens. Every save goes
  * through the same hooks as the desktop sections.
  */
@@ -52,18 +67,31 @@ export function NotificacoesPhone({ canViewConfig }: NotificacoesPhoneProps) {
   const { t } = useTranslation('settings');
   const sub = useConfigSubScreen<SubScreen>();
   // Kept here, above the sub-screens, so coming back keeps the picked channel.
-  const [channel, setChannel] = useState<Channel>('inapp');
+  const [picked, setChannel] = useState<Channel>('inapp');
   const suas = useSuasNotificacoes();
+  const queryClient = useQueryClient();
+  // Celular picked, then the last device went away (another tab, a refetch): fall back.
+  const channel: Channel = picked === 'push' && !suas.pushVisible ? 'inapp' : picked;
 
   if (sub.screen === 'emails') return <EmailsAutomaticosScreen onBack={sub.close} />;
   if (sub.screen === 'clientes' && canViewConfig) {
     return <SeusClientesScreen onBack={sub.close} />;
   }
 
-  const isEmail = channel === 'email';
-  const paused = isEmail ? suas.emailPaused : suas.inappPaused;
-  const prefs = isEmail ? suas.emailPrefs : suas.inappPrefs;
-  const channelName = isEmail ? t('shared.email') : t('notifications.inApp');
+  const paused =
+    channel === 'email'
+      ? suas.emailPaused
+      : channel === 'push'
+        ? suas.pushPaused
+        : suas.inappPaused;
+  const prefs =
+    channel === 'email' ? suas.emailPrefs : channel === 'push' ? suas.pushPrefs : suas.inappPrefs;
+  const channelName = channelLabel(channel);
+  const saveMaster = (enabled: boolean) => {
+    if (channel === 'email') suas.saveEmail({ type: MASTER_PAUSE_TYPE, enabled });
+    else if (channel === 'push') suas.savePush({ type: MASTER_PAUSE_TYPE, enabled });
+    else suas.saveInapp({ type: MASTER_PAUSE_TYPE, enabled });
+  };
 
   return (
     <ConfigPhoneScreen title={t('tabs.notificacoes')} subtitle={t('notifications.phone.subtitle')}>
@@ -71,10 +99,18 @@ export function NotificacoesPhone({ canViewConfig }: NotificacoesPhoneProps) {
         <ConfigPhoneSkeleton groups={3} rows={4} />
       ) : (
         <>
+          {isNativeApp() && (
+            <PushPermissionRow
+              variant="phone"
+              onEnabled={() =>
+                void queryClient.invalidateQueries({ queryKey: PUSH_DEVICE_QUERY_KEY })
+              }
+            />
+          )}
           <SegmentedControl
             className="phone-config-segmented"
             aria-label={t('notifications.phone.channelAria')}
-            options={channelOptions()}
+            options={channelOptions(suas.pushVisible)}
             value={channel}
             onChange={setChannel}
           />
@@ -93,10 +129,7 @@ export function NotificacoesPhone({ canViewConfig }: NotificacoesPhoneProps) {
               subtitle={channelName}
               switch={{
                 checked: paused,
-                onCheckedChange: (v) =>
-                  isEmail
-                    ? suas.saveEmail({ type: MASTER_PAUSE_TYPE, enabled: !v })
-                    : suas.saveInapp({ type: MASTER_PAUSE_TYPE, enabled: !v }),
+                onCheckedChange: (v) => saveMaster(!v),
               }}
             />
           </GroupedList>
@@ -122,7 +155,7 @@ export function NotificacoesPhone({ canViewConfig }: NotificacoesPhoneProps) {
             <GroupedList key={category} header={categoryLabel(category)}>
               {rows.map((row) => {
                 const subtitle = whenWho(row.when, row.recipients);
-                if (!isEmail) {
+                if (channel === 'inapp') {
                   return (
                     <Cell
                       key={row.type}
@@ -133,6 +166,39 @@ export function NotificacoesPhone({ canViewConfig }: NotificacoesPhoneProps) {
                       switch={{
                         checked: enabledOf(prefs, row.type),
                         onCheckedChange: (v) => suas.saveInapp({ type: row.type, enabled: v }),
+                      }}
+                    />
+                  );
+                }
+                if (channel === 'push') {
+                  const pushType = isPushEligibleType(row.type) ? row.type : null;
+                  if (!pushType) {
+                    return (
+                      <Cell
+                        key={row.type}
+                        className="phone-notif-row"
+                        label={row.label}
+                        subtitle={subtitle}
+                        value={
+                          <span
+                            aria-label={t('notifications.noPushTypeAria', { label: row.label })}
+                          >
+                            {t('notifications.noPushShort')}
+                          </span>
+                        }
+                      />
+                    );
+                  }
+                  return (
+                    <Cell
+                      key={row.type}
+                      className="phone-notif-row"
+                      label={row.label}
+                      subtitle={subtitle}
+                      disabled={paused}
+                      switch={{
+                        checked: enabledOf(prefs, row.type),
+                        onCheckedChange: (v) => suas.savePush({ type: pushType, enabled: v }),
                       }}
                     />
                   );

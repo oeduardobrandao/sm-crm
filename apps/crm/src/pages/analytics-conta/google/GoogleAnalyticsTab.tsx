@@ -22,6 +22,7 @@ import {
   syncGoogleProduct,
 } from '../../../services/google';
 import { BILLING_PATH, StateCard } from '../AnalyticsStateCards';
+import { isNativeApp } from '@/native/platform';
 import type { TikTokPhoneFrame } from '../tiktok/TikTokAnalyticsTabPhone';
 import { dimmed } from '../tiktok/tiktokTabFormat';
 import { GbpActionsChart } from './GbpActionsChart';
@@ -178,6 +179,16 @@ export function GoogleAnalyticsTab({
       );
     }
     if (data.locked) {
+      // Inside the iOS app: the fact, no link to billing (apps/mobile DECISIONS.md D33).
+      if (isNativeApp()) {
+        return (
+          <StateCard
+            title={t('native.lockedTitle', { feature: t('states.lockedTitle') })}
+            body={t('native.lockedBody')}
+            action={null}
+          />
+        );
+      }
       return (
         <StateCard
           title={t('states.lockedTitle')}

@@ -31,6 +31,7 @@ import { CardListSkeleton } from '@/components/ui/skeletons';
 import { AuthContext } from '@/context/AuthContext';
 import { useEntitlements } from '@/hooks/useEntitlements';
 import { reportPaywallHit } from '@/lib/paywall-report';
+import { isNativeApp } from '@/native/platform';
 import { sanitizeUrl } from '@/utils/security';
 import { getInitials, type Cliente } from '@/store';
 import { ClienteFoto } from '@/components/ClienteFoto';
@@ -186,6 +187,10 @@ export function ClientesPhone(props: ClientesPhoneProps) {
     },
   ];
 
+  // Inside the iOS app a locked import is a purchase prompt: the row is hidden and the
+  // limit line states the fact (apps/mobile DECISIONS.md D33). reportPaywallHit above
+  // still fires when the sheet opens.
+  const native = isNativeApp();
   const addActions: ActionSheetAction[] = [
     {
       label: t('newClient'),
@@ -193,30 +198,38 @@ export function ClientesPhone(props: ClientesPhoneProps) {
       disabled: atLimit,
       onSelect: onNew,
     },
-    csvLocked
-      ? {
-          label: tc('actions.importCsv'),
-          icon: <Lock aria-hidden="true" />,
-          onSelect: () => {
-            if (workspaceId)
-              reportPaywallHit({ workspaceId, feature: FEATURE_CSV, clickedUpgrade: true });
-            navigate('/configuracao/cobranca');
-          },
-        }
-      : {
-          label: tc('actions.importCsv'),
-          icon: <Upload aria-hidden="true" />,
-          // The file picker needs the tap itself (iOS drops a deferred input.click()).
-          immediate: true,
-          onSelect: onImport,
-        },
+    ...(native && csvLocked
+      ? []
+      : [
+          csvLocked
+            ? {
+                label: tc('actions.importCsv'),
+                icon: <Lock aria-hidden="true" />,
+                onSelect: () => {
+                  if (workspaceId)
+                    reportPaywallHit({ workspaceId, feature: FEATURE_CSV, clickedUpgrade: true });
+                  navigate('/configuracao/cobranca');
+                },
+              }
+            : {
+                label: tc('actions.importCsv'),
+                icon: <Upload aria-hidden="true" />,
+                // The file picker needs the tap itself (iOS drops a deferred input.click()).
+                immediate: true,
+                onSelect: onImport,
+              },
+        ]),
   ];
 
   const addMessage = (
     <>
-      {atLimit && <span className="block">{t('plan.limitReached')}</span>}
+      {atLimit && (
+        <span className="block">{native ? tc('native.limitBody') : t('plan.limitReached')}</span>
+      )}
       {csvLocked ? (
-        <span className="block">{t('plan.csvLocked')}</span>
+        native ? null : (
+          <span className="block">{t('plan.csvLocked')}</span>
+        )
       ) : (
         <span className="block">{t('csvTooltip')}</span>
       )}

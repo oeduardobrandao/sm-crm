@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
+import { isNativeApp } from '@/native/platform';
 import './workspace-setup.css';
 
 export default function WorkspaceSetupPage() {
@@ -50,8 +51,9 @@ export default function WorkspaceSetupPage() {
       setDone(true);
       setTimeout(() => setProgressWidth(100), 100);
       // /comecar self-guards: a workspace that already subscribed, or a
-      // non-owner, is bounced straight to the dashboard from there.
-      setTimeout(() => navigate('/comecar'), 2800);
+      // non-owner, is bounced straight to the dashboard from there. The iOS
+      // app never offers a plan, so it goes straight to the dashboard.
+      setTimeout(() => navigate(isNativeApp() ? '/dashboard' : '/comecar'), 2800);
     } catch (err: any) {
       toast.error(err.message || 'Erro ao salvar.');
       setLoading(false);

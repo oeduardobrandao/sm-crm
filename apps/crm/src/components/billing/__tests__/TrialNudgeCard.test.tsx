@@ -1,5 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -174,5 +174,24 @@ describe('TrialNudgeCard', () => {
     } as never);
     renderCard();
     expect(await screen.findByText(TITLE)).toBeInTheDocument();
+  });
+});
+
+describe('TrialNudgeCard inside the native app', () => {
+  afterEach(() => {
+    delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+  });
+
+  it('renders nothing and fetches nothing, even for an eligible owner', async () => {
+    (window as unknown as { Capacitor?: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+      getPlatform: () => 'ios',
+    };
+    // Seeded with an eligible answer, so the card WOULD show if only the gate were missing.
+    const { container } = renderCard({ planId: 'free', hasEverSubscribed: false });
+    expect(screen.queryByText(TITLE)).not.toBeInTheDocument();
+    expect(container).toBeEmptyDOMElement();
+    expect(getEffectivePlanWithSource).not.toHaveBeenCalled();
+    expect(getWorkspaceSubscription).not.toHaveBeenCalled();
   });
 });

@@ -357,6 +357,34 @@ describe('MobileNav', () => {
     },
   );
 
+  it('opens Privacidade in Safari through the app plugin inside the iOS app', async () => {
+    setAuth();
+    const openUrl = vi.fn().mockResolvedValue(undefined);
+    (window as unknown as { Capacitor?: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+      isPluginAvailable: (name: string) => name === 'MesaasNative',
+      Plugins: { MesaasNative: { openUrl } },
+    };
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    try {
+      renderMobileNav('/dashboard');
+      const sheet = openMore();
+      expect(within(sheet).queryByRole('button', { name: /Novidades/ })).toBeNull();
+      fireEvent.click(
+        within(sheet).getByRole('button', { name: 'Privacidade (abre em nova aba)' }),
+      );
+      expect(openUrl).toHaveBeenCalledWith({
+        url: 'https://www.mesaas.com.br/politica-de-privacidade',
+      });
+      expect(open).not.toHaveBeenCalled();
+      expect(screen.getByTestId('path').textContent).toBe('/dashboard');
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Mais' })).toBeNull());
+    } finally {
+      open.mockRestore();
+      (window as unknown as { Capacitor?: unknown }).Capacitor = undefined;
+    }
+  });
+
   it('includes the sidebar routes that are not on the bar in the more sheet', () => {
     setAuth();
     renderMobileNav('/dashboard');

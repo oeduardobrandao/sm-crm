@@ -1,6 +1,7 @@
 import { toast } from 'sonner';
 import { mapEntitlementError, entitlementMessage } from './entitlement-errors';
 import { reportPaywallHit } from './paywall-report';
+import { isNativeApp } from '@/native/platform';
 
 /**
  * If `err` is an entitlement error, shows an upgrade toast and returns true.
@@ -33,6 +34,13 @@ export function handleEntitlementMutationError(err: unknown, workspaceId: string
 
   if (mapped.kind === 'feature' && workspaceId) {
     reportPaywallHit({ workspaceId, feature: mapped.key });
+  }
+
+  // Inside the iOS app the toast states the error with no upgrade action
+  // (apps/mobile DECISIONS.md D33).
+  if (isNativeApp()) {
+    toast.error(entitlementMessage(mapped));
+    return true;
   }
 
   toast.error(entitlementMessage(mapped), {
