@@ -125,6 +125,7 @@ export async function sendNotificationDigestEmail(
       to: [p.to],
       subject: digestSubject(p.items),
       html: buildDigestHtml(p.items, base),
+      tags: [{ name: "type", value: "notification_digest" }],
     }),
     signal: AbortSignal.timeout(10_000),
   });

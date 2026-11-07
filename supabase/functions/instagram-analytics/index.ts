@@ -1416,6 +1416,7 @@ O campo priorityActions deve ter entre 3 e 5 ações distribuídas entre as cont
           to: [cliente.email],
           subject: `Seu relatório de ${monthLabel} está pronto!`,
           html: emailHtml,
+          tags: [{ name: 'type', value: 'report' }],
         }),
       });
 

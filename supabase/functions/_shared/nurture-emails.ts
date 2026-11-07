@@ -25,6 +25,8 @@ import { sanitizeSubjectValue } from "./lifecycle-emails.ts";
 
 export type NurtureStep = "a1" | "a2" | "a3" | "a4" | "b1" | "b2" | "b3" | "b4";
 
+export const NURTURE_STEPS: readonly NurtureStep[] = ["a1", "a2", "a3", "a4", "b1", "b2", "b3", "b4"];
+
 export interface NurtureEmailInput {
   step: NurtureStep;
   firstName: string | null;
@@ -92,19 +94,51 @@ const trialFine = () =>
     "14px 0 0",
   );
 
+/** Subject line of a nurture step (sanitized). Shared with the e-mail classifier. */
+export function nurtureSubject(step: NurtureStep, p: { clientCount: number }): string {
+  let subject: string;
+  switch (step) {
+    case "a1":
+      subject = "Seu primeiro cliente no Mesaas leva 3 minutos";
+      break;
+    case "a2":
+      subject = "Como as agências aprovam posts sem WhatsApp";
+      break;
+    case "a3":
+      subject = "Teste tudo do Mesaas por 30 dias";
+      break;
+    case "b1": {
+      const n = Number.isFinite(p.clientCount) ? Math.max(0, Math.floor(p.clientCount)) : 0;
+      subject = n === 0
+        ? "Teste tudo do Mesaas por 30 dias"
+        : `Você já tem ${n} ${n === 1 ? "cliente" : "clientes"} no Mesaas. Teste o resto por 30 dias`;
+      break;
+    }
+    case "b2":
+      subject = "Seu cliente aprova o post pelo celular";
+      break;
+    case "b3":
+      subject = "Relatório de Instagram pronto para mandar ao cliente";
+      break;
+    case "a4":
+    case "b4":
+      subject = "Posso parar de te escrever?";
+      break;
+  }
+  return sanitizeSubjectValue(subject);
+}
+
 export function buildNurtureEmail(p: NurtureEmailInput): { subject: string; html: string } {
   const u = (path: string) => nurtureUtm(p.appBaseUrl, path, p.step);
   const greet = paragraph(p.firstName ? `Oi, ${p.firstName},` : "Oi,");
   const waBtn = p.whatsappUrl ? button(p.whatsappUrl, "Prefiro falar no WhatsApp", "outline") + spacer(24) : "";
 
-  let subject = "";
   let preheader = "";
   let eyebrow = "";
   let sections: string[] = [];
 
   switch (p.step) {
     case "a1":
-      subject = "Seu primeiro cliente no Mesaas leva 3 minutos";
       preheader = "Cadastre um cliente e o resto do Mesaas começa a fazer sentido.";
       eyebrow = "Primeiros passos";
       sections = [
@@ -129,7 +163,6 @@ export function buildNurtureEmail(p: NurtureEmailInput): { subject: string; html
       ];
       break;
     case "a2":
-      subject = "Como as agências aprovam posts sem WhatsApp";
       preheader = "Um link, o cliente aprova pelo celular, sem login.";
       eyebrow = "Dica";
       sections = [
@@ -150,7 +183,6 @@ export function buildNurtureEmail(p: NurtureEmailInput): { subject: string; html
       break;
     case "a3": {
       const trialFirst = p.workspaceCreatedAt.slice(0, 10) >= TRIAL_FIRST_LAUNCH;
-      subject = "Teste tudo do Mesaas por 30 dias";
       preheader = "Hub, equipe, Instagram e relatórios liberados por 30 dias.";
       eyebrow = "Teste grátis";
       sections = [
@@ -171,7 +203,6 @@ export function buildNurtureEmail(p: NurtureEmailInput): { subject: string; html
       break;
     }
     case "a4":
-      subject = "Posso parar de te escrever?";
       preheader = "Uma pergunta rápida, e prometo que é a última.";
       eyebrow = "Uma pergunta";
       sections = [
@@ -187,9 +218,6 @@ export function buildNurtureEmail(p: NurtureEmailInput): { subject: string; html
     case "b1": {
       const n = Number.isFinite(p.clientCount) ? Math.max(0, Math.floor(p.clientCount)) : 0;
       const atLimit = n >= 2;
-      subject = n === 0
-        ? "Teste tudo do Mesaas por 30 dias"
-        : `Você já tem ${n} ${n === 1 ? "cliente" : "clientes"} no Mesaas. Teste o resto por 30 dias`;
       preheader = atLimit ? "Seu Free parou em 2 clientes. O teste libera tudo." : "O teste libera tudo do Mesaas por 30 dias.";
       eyebrow = "Teste grátis";
       // No article before user-supplied names: "a Meu Workspace", "o Ana" read wrong.
@@ -213,7 +241,6 @@ export function buildNurtureEmail(p: NurtureEmailInput): { subject: string; html
     }
     case "b2": {
       const who = p.firstClientName?.trim() || null;
-      subject = "Seu cliente aprova o post pelo celular";
       preheader = who ? `${who} pode aprovar a semana inteira num link.` : "Seu cliente pode aprovar a semana inteira num link.";
       eyebrow = "Dica";
       sections = [
@@ -231,7 +258,6 @@ export function buildNurtureEmail(p: NurtureEmailInput): { subject: string; html
       break;
     }
     case "b3":
-      subject = "Relatório de Instagram pronto para mandar ao cliente";
       preheader = "Métricas do mês num PDF com a sua marca, sem montar no Canva.";
       eyebrow = "Dica";
       sections = [
@@ -249,7 +275,6 @@ export function buildNurtureEmail(p: NurtureEmailInput): { subject: string; html
       ];
       break;
     case "b4":
-      subject = "Posso parar de te escrever?";
       preheader = "Uma pergunta rápida, e prometo que é a última.";
       eyebrow = "Uma pergunta";
       sections = [
@@ -273,5 +298,5 @@ export function buildNurtureEmail(p: NurtureEmailInput): { subject: string; html
     footerLines: [],
     footerHtml: [`${escapeHtml(FOOTER_SENTENCE)} ${link(p.unsubUrl, "Descadastrar", EMAIL.muted)}.`],
   });
-  return { subject: sanitizeSubjectValue(subject), html };
+  return { subject: nurtureSubject(p.step, p), html };
 }

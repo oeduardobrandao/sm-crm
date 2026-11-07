@@ -234,6 +234,7 @@ function makeDeps(db: ReturnType<typeof makeFakeDb>, over?: Partial<ClientEventE
       idempotencyKey: string;
       headers: Record<string, string>;
       from: string;
+      tags: Record<string, string>;
     }
   > = [];
   const auditCalls: Array<Record<string, unknown>> = [];
@@ -252,6 +253,7 @@ function makeDeps(db: ReturnType<typeof makeFakeDb>, over?: Partial<ClientEventE
         idempotencyKey: p.idempotencyKey,
         headers: p.headers,
         from: p.from,
+        tags: p.tags,
       });
       return Promise.resolve();
     },
@@ -327,6 +329,7 @@ Deno.test("claimed client with 2 pending posts + 1 unseen message: window, one e
   const r = await runClientEventEmailCron(deps);
   assertEquals(r, { claimed: 1, emailed: 1, skippedNoContent: 0, skippedNoHub: 0, failed: 0, released: 0 });
   assertEquals(sent.length, 1);
+  assertEquals(sent[0].tags, { type: "client_event" });
   assert(sent[0].html.includes("Post A") && sent[0].html.includes("Post B"), "expected both post titles");
   // `tipo` flows from the workflow_posts embed all the way to the format pill
   // the builder renders for each post row -- Feed and Reels both present

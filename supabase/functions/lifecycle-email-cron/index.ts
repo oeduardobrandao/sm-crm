@@ -113,6 +113,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
           LIFECYCLE_FROM,
           NURTURE_REPLY_TO,
           p.headers,
+          undefined,
+          p.tags,
         ),
       report: (detail) => reportCronFailure(svc, CRON_NAME, detail),
     };

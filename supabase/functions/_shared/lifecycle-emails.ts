@@ -1,3 +1,4 @@
+import { tagValue } from "./email-tag.ts";
 import { escapeHtml } from "./report-template/escape.ts";
 import { fetchStripeAmount } from "./stripe-amount.ts";
 import { whatsAppSupportUrl } from "./whatsapp.ts";
@@ -115,6 +116,12 @@ export function formatChargeDate(iso: string): string {
   }).format(new Date(iso));
 }
 
+/** Subject of the trial reminder. Shared with the e-mail classifier. */
+export function trialReminderSubject(planName: string | null, daysLeft: number): string {
+  const name = planName ? sanitizeSubjectValue(planName) : "";
+  return `Seu teste do Mesaas${name ? ` ${name}` : ""} termina em ${daysLeft} dias`;
+}
+
 export function buildTrialReminderEmail(p: {
   firstName: string | null;
   workspaceName: string;
@@ -127,8 +134,7 @@ export function buildTrialReminderEmail(p: {
 }): { subject: string; html: string } {
   const base = p.appBaseUrl.replace(/\/+$/, "");
   const billingUrl = `${base}/configuracao/cobranca`;
-  const planName = p.planName ? sanitizeSubjectValue(p.planName) : "";
-  const subject = `Seu teste do Mesaas${planName ? ` ${planName}` : ""} termina em ${p.daysLeft} dias`;
+  const subject = trialReminderSubject(p.planName, p.daysLeft);
   const trialLead = p.planName?.trim()
     ? `Seu teste grátis do plano ${p.planName.trim()} no workspace`
     : "Seu teste grátis no workspace";
@@ -323,6 +329,10 @@ export async function sendViaResend(
    *  body entirely when absent or empty, so existing callers send the same
    *  payload as before. */
   attachments?: ResendAttachment[],
+  /** Resend tags (`type` classifies the email for the metrics webhook). Omitted
+   *  from the request body when absent or empty. Values are sanitized to
+   *  Resend's allowed charset. */
+  tags?: Record<string, string>,
 ): Promise<void> {
   const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
   if (!RESEND_API_KEY) throw new Error("RESEND_API_KEY not configured");
@@ -341,6 +351,9 @@ export async function sendViaResend(
       ...(replyTo ? { reply_to: [replyTo] } : {}),
       ...(headers ? { headers } : {}),
       ...(attachments && attachments.length > 0 ? { attachments } : {}),
+      ...(tags && Object.keys(tags).length > 0
+        ? { tags: Object.entries(tags).map(([name, value]) => ({ name, value: tagValue(value) })) }
+        : {}),
     }),
     signal: AbortSignal.timeout(10_000),
   });
@@ -359,6 +372,11 @@ export async function sendWelcomeEmail(
     WELCOME_SUBJECT,
     buildWelcomeEmail({ firstName: p.firstName, appBaseUrl: p.appBaseUrl }),
     p.idempotencyKey,
+    LIFECYCLE_FROM,
+    undefined,
+    undefined,
+    undefined,
+    { type: "welcome" },
   );
 }
 
@@ -366,7 +384,17 @@ export async function sendWelcomeEmail(
 export async function sendTrialReminderEmail(
   p: { to: string; subject: string; html: string; idempotencyKey: string },
 ): Promise<void> {
-  await sendViaResend(p.to, p.subject, p.html, p.idempotencyKey, LIFECYCLE_FROM);
+  await sendViaResend(
+    p.to,
+    p.subject,
+    p.html,
+    p.idempotencyKey,
+    LIFECYCLE_FROM,
+    undefined,
+    undefined,
+    undefined,
+    { type: "trial_reminder" },
+  );
 }
 
 export async function sendThankYouEmail(
@@ -387,6 +415,11 @@ export async function sendThankYouEmail(
       appBaseUrl: p.appBaseUrl,
     }),
     p.idempotencyKey,
+    LIFECYCLE_FROM,
+    undefined,
+    undefined,
+    undefined,
+    { type: "thank_you" },
   );
 }
 
@@ -402,7 +435,7 @@ export async function sendFounderSignupNotice(
   const to = Deno.env.get("ALERT_EMAIL");
   if (!to) return;
   const { subject, html } = buildFounderSignupNotice(p);
-  await sendViaResend(to, subject, html, p.idempotencyKey, FOUNDER_NOTICE_FROM);
+  await sendViaResend(to, subject, html, p.idempotencyKey, FOUNDER_NOTICE_FROM, undefined, undefined, undefined, { type: "founder_signup" });
 }
 
 /**
@@ -449,5 +482,5 @@ export async function sendFounderSubscriptionNotice(p: {
   if (!to) return;
   const amount = await fetchSubscriptionAmount(p.stripeSubscriptionId, p.billingInterval);
   const { subject, html } = buildFounderSubscriptionNotice({ ...p, amount });
-  await sendViaResend(to, subject, html, p.idempotencyKey, FOUNDER_NOTICE_FROM);
+  await sendViaResend(to, subject, html, p.idempotencyKey, FOUNDER_NOTICE_FROM, undefined, undefined, undefined, { type: "founder_subscription" });
 }

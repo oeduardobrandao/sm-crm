@@ -75,6 +75,8 @@ function demoExamples(c: DemoSeedCounts): string[] {
   return out;
 }
 
+export const DEMO_ACCESS_SUBJECT = "Sua conta Mesaas está pronta";
+
 /**
  * HTML body of the "Sua conta Mesaas está pronta" e-mail sent when an admin creates a demo
  * account. Text blocks escape their own values; only seeded example kinds are listed.
@@ -126,7 +128,7 @@ export async function sendDemoAccessEmail(
     body: JSON.stringify({
       from: "Mesaas <convites@mesaas.com.br>",
       to: [params.to],
-      subject: "Sua conta Mesaas está pronta",
+      subject: DEMO_ACCESS_SUBJECT,
       html: buildDemoAccessEmail(params),
     }),
   });

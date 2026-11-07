@@ -197,6 +197,7 @@ export async function runAgendaClienteEmail(
           "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
         },
         attachments,
+        { type: "agenda_cliente" },
       );
       ok = true;
     } catch (e) {

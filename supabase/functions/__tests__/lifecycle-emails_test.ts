@@ -17,6 +17,7 @@ import {
   sendFounderSignupNotice,
   sendFounderSubscriptionNotice,
   sendThankYouEmail,
+  sendTrialReminderEmail,
   sendViaResend,
   subscriptionValueLine,
   sendWelcomeEmail,
@@ -685,4 +686,78 @@ Deno.test("buildTrialReminderEmail: null or blank plan name drops the plan clean
 Deno.test("buildTrialReminderEmail: no em dash anywhere", () => {
   assert(!buildTrialReminderEmail(REMINDER).html.includes("\u2014"));
   assert(!buildTrialReminderEmail({ ...REMINDER, firstCharge: null }).subject.includes("\u2014"));
+});
+
+async function captureResendBodies(run: () => Promise<void>): Promise<Array<Record<string, unknown>>> {
+  const original = globalThis.fetch;
+  const prevKey = Deno.env.get("RESEND_API_KEY");
+  const prevAlert = Deno.env.get("ALERT_EMAIL");
+  Deno.env.set("RESEND_API_KEY", "test-key");
+  Deno.env.set("ALERT_EMAIL", "founder@example.test");
+  const bodies: Array<Record<string, unknown>> = [];
+  globalThis.fetch = ((_i: unknown, init?: RequestInit) => {
+    bodies.push(JSON.parse(String(init?.body ?? "{}")));
+    return Promise.resolve(new Response("{}", { status: 200 }));
+  }) as typeof fetch;
+  try {
+    await run();
+  } finally {
+    globalThis.fetch = original;
+    if (prevKey === undefined) Deno.env.delete("RESEND_API_KEY");
+    else Deno.env.set("RESEND_API_KEY", prevKey);
+    if (prevAlert === undefined) Deno.env.delete("ALERT_EMAIL");
+    else Deno.env.set("ALERT_EMAIL", prevAlert);
+  }
+  return bodies;
+}
+
+Deno.test("sendViaResend without tags sends a body with no tags key", async () => {
+  const [body] = await captureResendBodies(() => sendViaResend("a@x.test", "s", "<p>h</p>", "k1"));
+  assertEquals(Object.keys(body).sort(), ["from", "html", "subject", "to"]);
+});
+
+Deno.test("sendViaResend with an empty tags object sends no tags key", async () => {
+  const [body] = await captureResendBodies(() =>
+    sendViaResend("a@x.test", "s", "<p>h</p>", "k1", LIFECYCLE_FROM, undefined, undefined, undefined, {})
+  );
+  assert(!("tags" in body));
+});
+
+Deno.test("sendViaResend with tags sends them as name/value pairs, value sanitized", async () => {
+  const [body] = await captureResendBodies(() =>
+    sendViaResend("a@x.test", "s", "<p>h</p>", "k1", LIFECYCLE_FROM, undefined, undefined, undefined, {
+      type: "welcome",
+      extra: "a b.c",
+    })
+  );
+  assertEquals(body.tags, [{ name: "type", value: "welcome" }, { name: "extra", value: "a_b_c" }]);
+});
+
+Deno.test("lifecycle senders tag each email with its type", async () => {
+  const bodies = await captureResendBodies(async () => {
+    await sendWelcomeEmail({ to: "a@x.test", firstName: "Ana", appBaseUrl: BASE, idempotencyKey: "w" });
+    await sendThankYouEmail({
+      to: "a@x.test",
+      firstName: "Ana",
+      workspaceName: "WS",
+      appBaseUrl: BASE,
+      idempotencyKey: "t",
+    });
+    await sendTrialReminderEmail({ to: "a@x.test", subject: "s", html: "h", idempotencyKey: "r" });
+    await sendFounderSignupNotice({ userEmail: "u@x.test", nome: "U", idempotencyKey: "fs" });
+    await sendFounderSubscriptionNotice({
+      workspaceName: "WS",
+      ownerEmail: "o@x.test",
+      ownerNome: "O",
+      planName: "Pro",
+      subStatus: "active",
+      billingInterval: "month",
+      stripeSubscriptionId: null,
+      idempotencyKey: "fsub",
+    });
+  });
+  assertEquals(
+    bodies.map((b) => (b.tags as Array<{ value: string }>)[0].value),
+    ["welcome", "thank_you", "trial_reminder", "founder_signup", "founder_subscription"],
+  );
 });

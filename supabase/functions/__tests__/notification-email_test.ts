@@ -362,3 +362,30 @@ Deno.test("buildDigestHtml: long comment bodies are clamped so 30 rows stay unde
   assert(html.includes(`${"a".repeat(300)}…`) && !html.includes("a".repeat(301)));
   assert(new TextEncoder().encode(html).length < 102_400, "under Gmail clip");
 });
+
+Deno.test("sendNotificationDigestEmail: tags the email as notification_digest", async () => {
+  const prevKey = Deno.env.get("RESEND_API_KEY");
+  const prevBase = Deno.env.get("APP_BASE_URL");
+  Deno.env.set("RESEND_API_KEY", "test-key");
+  Deno.env.set("APP_BASE_URL", "https://app.example.test");
+  const originalFetch = globalThis.fetch;
+  let body: Record<string, unknown> = {};
+  globalThis.fetch = ((_i: unknown, init?: RequestInit) => {
+    body = JSON.parse(String(init?.body ?? "{}"));
+    return Promise.resolve(new Response("{}", { status: 200 }));
+  }) as typeof fetch;
+  try {
+    await sendNotificationDigestEmail({
+      to: "a@b.test",
+      items: [{ priority: 1, heading: "x", link: "/" }],
+      idempotencyKey: "notif-digest:u1:tag",
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (prevKey === undefined) Deno.env.delete("RESEND_API_KEY");
+    else Deno.env.set("RESEND_API_KEY", prevKey);
+    if (prevBase === undefined) Deno.env.delete("APP_BASE_URL");
+    else Deno.env.set("APP_BASE_URL", prevBase);
+  }
+  assertEquals(body.tags, [{ name: "type", value: "notification_digest" }]);
+});

@@ -122,6 +122,7 @@ export interface LifecycleCronDeps {
     html: string;
     idempotencyKey: string;
     headers: Record<string, string>;
+    tags: Record<string, string>;
   }) => Promise<void>;
   report: (detail: CronReportDetail) => Promise<void>;
 }
@@ -312,6 +313,7 @@ export async function runNurturePreview(
       html,
       idempotencyKey: `nurture_preview/${step}/${day}/${who}`,
       headers: unsubHeaders(unsub.oneClick),
+      tags: { type: `nurture_${step}` },
     });
     previewSent++;
   }
@@ -533,6 +535,7 @@ export async function runLifecycleEmailCron(
             html,
             idempotencyKey: `nurture_${step}/${c.workspace_id}`,
             headers: unsubHeaders(unsub.oneClick),
+            tags: { type: `nurture_${step}` },
           });
           await markNurtureDelivered(deps, c.workspace_id, step, nowIso);
           nurtureSent++;

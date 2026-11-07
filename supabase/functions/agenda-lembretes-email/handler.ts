@@ -106,7 +106,9 @@ export async function runAgendaLembretesEmail(
         appBaseUrl: deps.appBaseUrl,
       });
       const key = `agenda-lembrete:${r.ocorrencia_id}:${r.user_id}:${r.minutos}:${Math.floor(Date.parse(r.inicio_alvo) / 1000)}`;
-      await deps.sendEmail(email, subject, html, key, FROM);
+      await deps.sendEmail(email, subject, html, key, FROM, undefined, undefined, undefined, {
+        type: "agenda_lembrete",
+      });
       ok = true;
     } catch (e) {
       console.error(
