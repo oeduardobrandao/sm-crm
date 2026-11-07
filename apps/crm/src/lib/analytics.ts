@@ -15,6 +15,8 @@ export type AnalyticsEvent =
   | 'login_email_not_confirmed'
   | 'signup_confirmation_resent'
   | 'signup_existing_account'
+  // Post-signup step saved (pages/workspace-setup): company, phone and opt-in collected.
+  | 'workspace_setup_completed'
   // Desktop Vidro opt-out/opt-in from the account menu (src/hooks/useVidro.ts).
   | 'vidro_look_toggled'
   // Vidro launch intro (src/components/layout/VidroIntro.tsx); its "back to classic" button

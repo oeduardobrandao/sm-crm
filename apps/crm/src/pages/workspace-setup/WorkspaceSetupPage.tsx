@@ -1,213 +1,243 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { toast } from 'sonner';
+import { useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { ArrowRight, CircleAlert } from 'lucide-react';
+import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
-import { supabase } from '../../lib/supabase';
+import { captureEvent } from '@/lib/analytics';
 import { useAuth } from '../../context/AuthContext';
+import { saveWorkspaceSetup } from './saveWorkspaceSetup';
+import { isValidBrPhone, safeNextPath } from './setupHelpers';
 import './workspace-setup.css';
 
+type SetupField = 'nome' | 'empresa' | 'telefone';
+
+/** Form order: focus goes to the first invalid field. */
+const FIELDS: readonly SetupField[] = ['nome', 'empresa', 'telefone'];
+
+const FIELD_ERRORS: Record<SetupField, string> = {
+  nome: 'Informe seu nome.',
+  empresa: 'Informe o nome da empresa ou agência.',
+  telefone: 'Informe um telefone com DDD, como (11) 99999-9999.',
+};
+
+function validate(v: Record<SetupField, string>): Partial<Record<SetupField, true>> {
+  const errors: Partial<Record<SetupField, true>> = {};
+  if (!v.nome.trim()) errors.nome = true;
+  if (!v.empresa.trim()) errors.empresa = true;
+  if (!isValidBrPhone(v.telefone)) errors.telefone = true;
+  return errors;
+}
+
+function FieldError({ field }: { field: SetupField }) {
+  return (
+    <p
+      id={`setup-${field}-error`}
+      className="flex items-start gap-1.5 leading-snug"
+      style={{ color: 'var(--danger-text)', fontSize: '0.8rem' }}
+    >
+      <CircleAlert className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      <span>{FIELD_ERRORS[field]}</span>
+    </p>
+  );
+}
+
+const INVALID_INPUT =
+  'border-[color:var(--danger-text)] focus-visible:ring-[color:var(--danger-text)]';
+
+/**
+ * Step 2 of signup: the company, phone and WhatsApp opt-in the signup form no longer asks for.
+ * ProtectedRoute sends a blank-company owner here with `?next=<path>`; on success the page
+ * continues there (or to /comecar), with the profile patched in place so the gate lets go.
+ */
 export default function WorkspaceSetupPage() {
+  const { t } = useTranslation('auth');
   const navigate = useNavigate();
-  const { user, profile, refetchProfile } = useAuth();
-  const [nome, setNome] = useState(profile?.nome ?? '');
-  const [workspaceName, setWorkspaceName] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [done, setDone] = useState(false);
-  const [progressWidth, setProgressWidth] = useState(0);
+  const [searchParams] = useSearchParams();
+  const { user, profile, patchProfile } = useAuth();
+  const [values, setValues] = useState<Record<SetupField, string>>({
+    nome: profile?.nome ?? '',
+    empresa: '',
+    telefone: '',
+  });
+  const [optIn, setOptIn] = useState(false);
+  const [errors, setErrors] = useState<Partial<Record<SetupField, true>>>({});
+  const [attempted, setAttempted] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
+  const [saving, setSaving] = useState(false);
+  // `disabled={saving}` only lands after a re-render; this closes the gap for a double tap.
+  const savingRef = useRef(false);
+  const inputs = {
+    nome: useRef<HTMLInputElement>(null),
+    empresa: useRef<HTMLInputElement>(null),
+    telefone: useRef<HTMLInputElement>(null),
+  };
+
+  // A silent deploy reload must not drop a save in flight (typed fields are covered by the
+  // DOM heuristic in app-lifecycle).
+  useUnsavedWork(saving);
+
+  const target = safeNextPath(searchParams.get('next')) ?? '/comecar';
+
+  const update = (field: SetupField, value: string) => {
+    const next = { ...values, [field]: value };
+    setValues(next);
+    if (attempted) setErrors(validate(next));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nome.trim() || !workspaceName.trim()) return;
-    if (!user || !profile) return;
-
-    setLoading(true);
-    try {
-      const wsId = profile.active_workspace_id || profile.conta_id;
-
-      // Update workspace name
-      const { error: wsErr } = await supabase
-        .from('workspaces')
-        .update({ name: workspaceName.trim() })
-        .eq('id', wsId);
-      if (wsErr) throw wsErr;
-
-      // Update contas name
-      await supabase.from('contas').update({ nome: workspaceName.trim() }).eq('id', wsId);
-
-      // Update profile name + empresa
-      const { error: profileErr } = await supabase
-        .from('profiles')
-        .update({ nome: nome.trim(), empresa: workspaceName.trim() })
-        .eq('id', user.id);
-      if (profileErr) throw profileErr;
-
-      await refetchProfile();
-
-      setLoading(false);
-      setDone(true);
-      setTimeout(() => setProgressWidth(100), 100);
-      // /comecar self-guards: a workspace that already subscribed, or a
-      // non-owner, is bounced straight to the dashboard from there.
-      setTimeout(() => navigate('/comecar'), 2800);
-    } catch (err: any) {
-      toast.error(err.message || 'Erro ao salvar.');
-      setLoading(false);
+    if (savingRef.current) return;
+    setAttempted(true);
+    setSaveFailed(false);
+    const found = validate(values);
+    setErrors(found);
+    const firstInvalid = FIELDS.find((field) => found[field]);
+    if (firstInvalid) {
+      inputs[firstInvalid].current?.focus();
+      return;
     }
+    const workspaceId = profile?.active_workspace_id || profile?.conta_id;
+    if (!user || !workspaceId) {
+      setSaveFailed(true);
+      return;
+    }
+
+    const nome = values.nome.trim();
+    const empresa = values.empresa.trim();
+    const telefone = values.telefone.trim();
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      await saveWorkspaceSetup({
+        userId: user.id,
+        workspaceId,
+        nome,
+        empresa,
+        telefone,
+        marketingOptIn: optIn,
+      });
+    } catch (err) {
+      console.error('[workspace-setup] save failed:', err);
+      savingRef.current = false;
+      setSaving(false);
+      setSaveFailed(true);
+      return;
+    }
+    // Not refetchProfile(): it raises the global `loading` (ProtectedRoute swaps this page for
+    // a skeleton) and a failed forced fetch returns the cached pre-setup profile, which would
+    // bounce the owner straight back here with no error.
+    patchProfile({ nome, empresa, telefone, marketing_opt_in: optIn });
+    captureEvent('workspace_setup_completed');
+    // /comecar self-guards: a workspace that already subscribed, or a non-owner, is bounced
+    // to the dashboard from there.
+    navigate(target, { replace: true });
   };
 
+  const fieldProps = (field: SetupField) => ({
+    id: `setup-${field}`,
+    ref: inputs[field],
+    value: values[field],
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => update(field, e.target.value),
+    'aria-invalid': errors[field] ? true : undefined,
+    className: errors[field] ? INVALID_INPUT : undefined,
+  });
+
   return (
-    <div className="workspace-setup-shell">
-      <div
-        style={{
-          background: '#fff',
-          borderRadius: 16,
-          width: '100%',
-          maxWidth: 440,
-          overflow: 'hidden',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.06)',
-        }}
-      >
-        {/* Header */}
-        <div style={{ background: '#1a3d2b', padding: '2rem 2rem 1.75rem', textAlign: 'center' }}>
-          <img
-            src="/logo-white.svg"
-            alt="Mesaas"
-            style={{ display: 'block', margin: '0 auto 1.5rem', height: 24, width: 'auto' }}
-          />
-          <div
-            style={{
-              width: 52,
-              height: 52,
-              background: '#f0a832',
-              borderRadius: '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 24,
-              margin: '0 auto 1rem',
-            }}
-          >
-            🏢
-          </div>
-          <h1 style={{ color: '#fff', fontSize: 20, fontWeight: 600, margin: '0 0 0.35rem' }}>
-            Configure seu workspace
-          </h1>
-          <p style={{ color: '#9dbfa9', fontSize: 14, margin: 0 }}>
-            Quase lá! Diga como chamar você e sua empresa.
+    <div className="auth-wrapper workspace-setup-shell">
+      <div className="auth-card animate-up">
+        <div className="setup-header">
+          <img src="/logo-black.svg" alt="Mesaas" className="setup-logo" />
+          <span className="setup-step">Passo 2 de 2</span>
+          <h1 className="setup-title">Falta pouco</h1>
+          <p className="setup-sub">
+            Conte um pouco sobre sua agência para configurarmos seu espaço.
           </p>
         </div>
 
-        {!done ? (
-          <div style={{ padding: '2rem' }}>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-1">
-                <Label htmlFor="setup-nome">Seu nome completo</Label>
-                <Input
-                  id="setup-nome"
-                  placeholder="Ana dos Santos"
-                  value={nome}
-                  onChange={(e) => setNome(e.target.value)}
-                  required
-                  autoFocus
-                />
-              </div>
+        <form onSubmit={handleSubmit} className="auth-form" noValidate>
+          <div className="space-y-1">
+            <Label htmlFor="setup-nome">Seu nome</Label>
+            <Input
+              {...fieldProps('nome')}
+              placeholder="Ana dos Santos"
+              autoComplete="name"
+              aria-describedby={errors.nome ? 'setup-nome-error' : undefined}
+            />
+            {errors.nome && <FieldError field="nome" />}
+          </div>
 
-              <div className="space-y-1">
-                <Label htmlFor="setup-workspace">Nome da sua empresa ou agência</Label>
-                <Input
-                  id="setup-workspace"
-                  placeholder="Agência Digital"
-                  value={workspaceName}
-                  onChange={(e) => setWorkspaceName(e.target.value)}
-                  required
-                />
-              </div>
+          <div className="space-y-1">
+            <Label htmlFor="setup-empresa">Nome da empresa ou agência</Label>
+            <Input
+              {...fieldProps('empresa')}
+              placeholder="Agência Digital"
+              autoComplete="organization"
+              aria-describedby={errors.empresa ? 'setup-empresa-error' : undefined}
+            />
+            {errors.empresa && <FieldError field="empresa" />}
+          </div>
 
-              <Button
-                type="submit"
-                disabled={loading || !nome.trim() || !workspaceName.trim()}
-                className="w-full"
-                style={{
-                  height: 46,
-                  background: '#1a3d2b',
-                  borderColor: '#1a3d2b',
-                  fontSize: 15,
-                  fontWeight: 600,
-                }}
+          <div className="space-y-1">
+            <Label htmlFor="setup-telefone">Telefone / WhatsApp</Label>
+            <Input
+              {...fieldProps('telefone')}
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              placeholder="(11) 99999-9999"
+              aria-describedby={errors.telefone ? 'setup-telefone-error' : 'setup-telefone-hint'}
+            />
+            {errors.telefone ? (
+              <FieldError field="telefone" />
+            ) : (
+              <p
+                id="setup-telefone-hint"
+                style={{ color: 'var(--text-muted)', fontSize: '0.75rem', lineHeight: 1.4 }}
               >
-                {loading && <Spinner size="sm" />}
-                Entrar na plataforma
-              </Button>
-            </form>
+                {t('register.phoneHint')}
+              </p>
+            )}
           </div>
-        ) : (
-          <div style={{ textAlign: 'center', padding: '2rem 2rem 2.5rem' }}>
-            <div
-              style={{
-                width: 60,
-                height: 60,
-                background: '#eaf3de',
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                margin: '0 auto 1.25rem',
-              }}
-            >
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M20 6L9 17L4 12"
-                  stroke="#3b6d11"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </div>
-            <h2 style={{ fontSize: 18, fontWeight: 600, color: '#1a3d2b', margin: '0 0 0.5rem' }}>
-              Tudo pronto, {nome.split(' ')[0]}!
-            </h2>
-            <p style={{ fontSize: 14, color: '#888780', lineHeight: 1.6, margin: '0 0 1.5rem' }}>
-              Bem-vindo ao <strong style={{ color: '#444441' }}>{workspaceName}</strong>.
-              Redirecionando você agora...
-            </p>
-            <div
-              style={{
-                width: '100%',
-                height: 4,
-                background: '#f1efe8',
-                borderRadius: 4,
-                overflow: 'hidden',
-              }}
-            >
-              <div
-                style={{
-                  height: '100%',
-                  background: '#1a3d2b',
-                  width: `${progressWidth}%`,
-                  borderRadius: 4,
-                  transition: 'width 2.5s ease',
-                }}
-              />
-            </div>
-          </div>
-        )}
 
-        <div
-          style={{
-            padding: '1rem 2rem',
-            background: '#f8f7f3',
-            borderTop: '1px solid #ece9e2',
-            textAlign: 'center',
-          }}
-        >
-          <p style={{ fontSize: 12, color: '#888780', margin: 0 }}>
-            Você pode alterar essas informações depois em Configurações.
-          </p>
-        </div>
+          <div className="flex items-start gap-2">
+            <Checkbox
+              id="setup-optin"
+              checked={optIn}
+              onCheckedChange={(checked) => setOptIn(checked === true)}
+              className="mt-0.5"
+            />
+            <Label
+              htmlFor="setup-optin"
+              style={{
+                fontWeight: 400,
+                lineHeight: 1.4,
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+              }}
+            >
+              {t('register.marketingOptIn')}
+            </Label>
+          </div>
+
+          {saveFailed && (
+            <p role="alert" style={{ color: 'var(--danger-text)', fontSize: '0.85rem' }}>
+              Não foi possível salvar. Tente de novo.
+            </p>
+          )}
+
+          <Button type="submit" disabled={saving} className="btn-primary auth-submit w-full">
+            {saving && <Spinner size="sm" />}
+            Continuar
+            <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        </form>
+
+        <p className="auth-footer">Você pode alterar essas informações depois em Configurações.</p>
       </div>
     </div>
   );

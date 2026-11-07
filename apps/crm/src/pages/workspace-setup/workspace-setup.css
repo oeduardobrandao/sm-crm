@@ -1,9 +1,8 @@
-/* Page shell of /workspace-setup (outside AppLayout, so it carries its own insets). */
-.workspace-setup-shell {
-  display: flex;
+/* /workspace-setup: the auth page look (.auth-wrapper gradient + .auth-card) as step 2 of signup.
+   It sits outside AppLayout, so it carries its own insets. Rules are scoped to the
+   .workspace-setup-shell modifier: /login's .auth-wrapper is never touched. */
+.auth-wrapper.workspace-setup-shell {
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
   min-height: 100vh;
   /* dvh: on iOS 100vh is the toolbar-collapsed height, so the card sat below the fold. */
   min-height: 100dvh;
@@ -11,5 +10,70 @@
     max(1rem, env(safe-area-inset-right, 0px)) max(2rem, env(safe-area-inset-bottom, 0px))
     max(1rem, env(safe-area-inset-left, 0px));
   box-sizing: border-box;
-  background: #f5f3ee;
+  /* The page is forced light (white card), so its text tokens keep their light values even
+     when the app theme is dark (error copy stays the AA red). */
+  --danger-text: #b91c1c;
+  --text-muted: #374151;
+  --text-light: #4b5563;
+}
+
+/* style.css turns .auth-wrapper into the login split screen (row, no padding, white) at this
+   width. This page has no showcase pane: keep the centred card on the gradient. */
+@media (min-width: 901px) {
+  .auth-wrapper.workspace-setup-shell,
+  [data-theme='dark'] .auth-wrapper.workspace-setup-shell {
+    flex-direction: column;
+    align-items: center;
+    padding: 2.5rem 2rem;
+    background:
+      url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.08'/%3E%3C/svg%3E"),
+      linear-gradient(135deg, #eaf0dc 0%, #eab308 100%);
+  }
+}
+
+.workspace-setup-shell .setup-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+.workspace-setup-shell .setup-logo {
+  display: block;
+  height: 26px;
+  width: auto;
+  margin-bottom: 1.5rem;
+}
+
+.workspace-setup-shell .setup-step {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #4b5563;
+  background: #f5f6f8;
+  border-radius: 9999px;
+  padding: 4px 10px;
+}
+
+.workspace-setup-shell .setup-title {
+  margin: 12px 0 6px;
+  font-family: var(--font-heading);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  color: #12151a;
+}
+
+.workspace-setup-shell .setup-sub {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: #374151;
+}
+
+.workspace-setup-shell .auth-footer {
+  margin-top: 1.25rem;
 }

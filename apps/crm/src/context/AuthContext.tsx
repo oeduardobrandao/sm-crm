@@ -12,6 +12,7 @@ import type { User } from '@supabase/supabase-js';
 import {
   supabase,
   getCurrentProfile,
+  patchCachedProfile,
   clearProfileCache,
   signOut as supabaseSignOut,
   healPendingInvite,
@@ -191,6 +192,13 @@ interface AuthContextValue {
   membership: MyMembership | null;
   loading: boolean;
   refetchProfile: () => Promise<void>;
+  /**
+   * Applies fields the caller has just written to `profiles` (React state and the module cache
+   * in lib/supabase.ts), synchronously and with no network call. Unlike `refetchProfile` it
+   * never raises `loading` (which swaps ProtectedRoute for a skeleton and remounts the page),
+   * and it cannot silently fall back to a stale cached profile on a failed fetch.
+   */
+  patchProfile: (patch: Partial<Profile>) => void;
   signOut: () => Promise<void>;
 }
 
@@ -1064,6 +1072,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const patchProfile = useCallback((patch: Partial<Profile>) => {
+    patchCachedProfile(patch);
+    setProfile((prev) => (prev ? { ...prev, ...patch } : prev));
+  }, []);
+
   const role: 'owner' | 'admin' | 'agent' =
     (profile?.role as 'owner' | 'admin' | 'agent') ?? 'agent';
 
@@ -1138,6 +1151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         membership,
         loading,
         refetchProfile: fetchProfile,
+        patchProfile,
         signOut,
       }}
     >

@@ -172,6 +172,36 @@ describe('supabase helpers', () => {
     expect(warnSpy).toHaveBeenCalledWith('getCurrentProfile error:', { message: 'boom' });
   });
 
+  it('patchCachedProfile merges into the cached profile without a network call', async () => {
+    const { module, queryMock } = await loadSupabaseModule({ id: 'user-1' });
+    queryMock.queue('profiles', 'select', {
+      data: { id: 'user-1', nome: 'Ana', empresa: '', conta_id: 'conta-1' },
+      error: null,
+    });
+
+    await module.getCurrentProfile();
+    module.patchCachedProfile({ empresa: 'Agência', telefone: '11999999999' });
+
+    expect(module.getCachedProfile()).toMatchObject({
+      nome: 'Ana',
+      empresa: 'Agência',
+      telefone: '11999999999',
+      conta_id: 'conta-1',
+    });
+    await expect(module.getCurrentProfile()).resolves.toMatchObject({ empresa: 'Agência' });
+    expect(
+      queryMock.calls.filter((call) => call.table === 'profiles' && call.operation === 'select'),
+    ).toHaveLength(1);
+  });
+
+  it('patchCachedProfile is a no-op before any profile is cached', async () => {
+    const { module } = await loadSupabaseModule({ id: 'user-1' });
+
+    module.patchCachedProfile({ empresa: 'Agência' });
+
+    expect(module.getCachedProfile()).toBeNull();
+  });
+
   it('updates the sidebar identity and hides the switcher for a single workspace', async () => {
     const { module, queryMock } = await loadSupabaseModule({ id: 'user-1' });
     mountSidebarFixture();

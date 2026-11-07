@@ -173,6 +173,10 @@ export async function getCurrentProfile(force = false) {
   return currentProfile;
 }
 
+export function patchCachedProfile(patch: Record<string, unknown>) {
+  if (currentProfile) currentProfile = { ...currentProfile, ...patch };
+}
+
 export async function signOut() {
   return supabase.auth.signOut();
 }

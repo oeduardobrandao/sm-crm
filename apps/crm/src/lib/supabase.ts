@@ -31,6 +31,15 @@ export function getCachedProfile() {
 }
 
 /**
+ * Merges already-saved fields into the cached profile, with no network call. A no-op while
+ * nothing is cached. Called through AuthContext's `patchProfile`, which keeps this cache and
+ * the React state in step after a write the caller just confirmed.
+ */
+export function patchCachedProfile(patch: Record<string, unknown>): void {
+  if (cachedProfile) cachedProfile = { ...cachedProfile, ...patch };
+}
+
+/**
  * Returns the current authenticated user.
  * Uses getSession() directly — zero dependency on event callbacks.
  */
