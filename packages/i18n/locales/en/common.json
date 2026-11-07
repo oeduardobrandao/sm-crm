@@ -164,10 +164,10 @@
   "cookies": {
     "banner": {
       "title": "Cookies and privacy",
-      "body": "We use essential storage so Mesaas works. With your permission we also use usage analytics (including session recording and heatmaps), the support chat and measurement of our ads.",
-      "learnMore": "See details on the data protection page",
-      "acceptAll": "Accept all",
-      "rejectAll": "Reject all",
+      "bodyShort": "We use cookies for usage analytics, including session recording, support chat and ad measurement.",
+      "details": "Details",
+      "acceptAll": "Accept",
+      "rejectAll": "Reject",
       "customize": "Customize"
     },
     "dialog": {

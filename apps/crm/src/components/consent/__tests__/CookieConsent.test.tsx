@@ -40,29 +40,49 @@ describe('CookieConsent', () => {
     expect(screen.queryByRole('region', { name: t('cookies.banner.title') })).toBeNull();
   });
 
-  it('gives Accept all and Reject all the same visual weight', () => {
+  it('shows one short sentence and no visible title', () => {
     renderBanner();
-    const accept = screen.getByRole('button', { name: t('cookies.banner.acceptAll') });
-    const reject = screen.getByRole('button', { name: t('cookies.banner.rejectAll') });
-    expect(accept.className).toBe(reject.className);
+    // The title only names the region for assistive tech; it is not rendered as text.
+    const region = screen.getByRole('region', { name: 'Cookies e privacidade' });
+    expect(region).toHaveTextContent('gravação de sessão');
+    expect(within(region).getByRole('link', { name: 'Detalhes' })).toHaveAttribute('href', '/lgpd');
+    expect(within(region).queryByText('Cookies e privacidade')).toBeNull();
   });
 
-  it('Accept all stores every category as granted', async () => {
+  it('offers Personalizar, Rejeitar and Aceitar', () => {
     renderBanner();
-    await userEvent.click(screen.getByRole('button', { name: t('cookies.banner.acceptAll') }));
+    const region = screen.getByRole('region', { name: t('cookies.banner.title') });
+    expect(
+      within(region)
+        .getAllByRole('button')
+        .map((b) => b.textContent),
+    ).toEqual(['Personalizar', 'Rejeitar', 'Aceitar']);
+  });
+
+  it('gives Aceitar and Rejeitar the same visual weight', () => {
+    renderBanner();
+    const accept = screen.getByRole('button', { name: 'Aceitar' });
+    const reject = screen.getByRole('button', { name: 'Rejeitar' });
+    expect(accept.className).toBe(reject.className);
+    expect(accept.dataset.variant).toBe(reject.dataset.variant);
+  });
+
+  it('Aceitar stores every category as granted', async () => {
+    renderBanner();
+    await userEvent.click(screen.getByRole('button', { name: 'Aceitar' }));
     expect(getConsent()).toMatchObject({ analytics: true, support: true, marketing: true });
     expect(screen.queryByRole('region', { name: t('cookies.banner.title') })).toBeNull();
   });
 
-  it('Reject all stores every category as denied', async () => {
+  it('Rejeitar stores every category as denied', async () => {
     renderBanner();
-    await userEvent.click(screen.getByRole('button', { name: t('cookies.banner.rejectAll') }));
+    await userEvent.click(screen.getByRole('button', { name: 'Rejeitar' }));
     expect(getConsent()).toMatchObject({ analytics: false, support: false, marketing: false });
   });
 
-  it('Customize lets the visitor grant one category and saves that choice', async () => {
+  it('Personalizar lets the visitor grant one category and saves that choice', async () => {
     renderBanner();
-    await userEvent.click(screen.getByRole('button', { name: t('cookies.banner.customize') }));
+    await userEvent.click(screen.getByRole('button', { name: 'Personalizar' }));
     const dialog = await screen.findByRole('dialog');
     await userEvent.click(
       within(dialog).getByRole('switch', { name: t('cookies.dialog.analyticsTitle') }),
