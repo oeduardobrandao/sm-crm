@@ -185,6 +185,9 @@ export default function ConectarPage() {
       {igErrorAction?.kind === 'toast' && (
         <p className="mb-4 text-sm text-[var(--danger-text)]">{t(igErrorAction.i18nKey)}</p>
       )}
+      {igErrorAction?.kind === 'plan_limit' && (
+        <p className="mb-4 text-sm text-[var(--danger-text)]">{t('connect.igPlanLimit')}</p>
+      )}
       {igErrorAction?.kind === 'off_meta' && (
         <p className="mb-4 text-sm text-[var(--danger-text)]">{t('detail.igOffMetaIntro')}</p>
       )}

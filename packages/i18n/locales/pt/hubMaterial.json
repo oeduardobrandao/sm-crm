@@ -1,0 +1,62 @@
+{
+  "cabecalho": {
+    "posts": {
+      "um": "1 post esperando sua aprovação",
+      "varios": "{{n}} posts esperando sua aprovação"
+    },
+    "pedidos": {
+      "um": "1 pedido de material",
+      "varios": "{{n}} pedidos de material"
+    },
+    "juntos": "{{posts}} e {{pedidos}}.",
+    "so": "{{pedidos}}."
+  },
+  "pill": "Aguardando material",
+  "pillEnviado": "Material enviado",
+  "progresso_one": "{{done}} de {{count}} item enviado",
+  "progresso_other": "{{done}} de {{count}} itens enviados",
+  "progressoRotulo_one": "{{done}} de {{count}} item",
+  "progressoRotulo_other": "{{done}} de {{count}} itens",
+  "enviar": "Enviar",
+  "itemEnviado": "Enviado",
+  "itemPendente": "Pendente",
+  "semData": "Sem data",
+  "semTitulo": "Post sem título",
+  "carregando": "Carregando pedidos de material.",
+  "erro": "Não foi possível carregar os pedidos de material.",
+  "vazio": "Nenhum pedido de material no momento.",
+  "abrir": "Abrir pedido de material de {{titulo}}",
+  "dialogo": {
+    "precisa_one": "A equipe precisa de {{count}} item",
+    "precisa_other": "A equipe precisa de {{count}} itens",
+    "enviados_one": "{{done}} de {{count}} enviado",
+    "enviados_other": "{{done}} de {{count}} enviados",
+    "abaItens": "Itens pedidos",
+    "abaHistorico": "Histórico e comentários",
+    "rodape_one": "Quando o item tiver arquivo, a equipe é avisada. Não tem?",
+    "rodape_other": "Quando os {{count}} itens tiverem arquivo, a equipe é avisada. Não tem algum?",
+    "limites": "Fotos e PDFs até 25 MB, vídeos até 200 MB.",
+    "limite10": "Este post chegou ao limite de 10 arquivos. Envie o resto como link ou toque em Enviei o que tenho.",
+    "enviei": "Enviei o que tenho",
+    "confirmarTitulo": "Avisar a equipe com o que você enviou?",
+    "confirmarDescricao": "{{done}} de {{total}} itens têm arquivo. A equipe segue com o que você enviou.",
+    "confirmar": "Avisar a equipe",
+    "cancelar": "Cancelar",
+    "emProducao": "Este post ainda está em produção",
+    "emProducaoTexto": "A arte e a legenda aparecem aqui quando a equipe enviar o post para a sua aprovação.",
+    "verPost": "Ver post",
+    "historicoNoPost": "O histórico e os comentários ficam no post.",
+    "fechar": "Fechar pedido de material",
+    "enviarItem": "Enviar arquivo para {{label}}",
+    "arquivosDoItem": "Arquivos de {{label}}",
+    "encerrado": "Este pedido foi encerrado pela equipe.",
+    "saindoComEnvio": "Um envio ainda está em andamento. Sair e cancelar o envio?",
+    "tudoEnviado": "Tudo enviado. A equipe foi avisada.",
+    "avisada": "Pronto. A equipe foi avisada.",
+    "fecharBotao": "Fechar"
+  },
+  "aviso": {
+    "texto": "A equipe pediu material para este post",
+    "ver": "Ver itens"
+  }
+}

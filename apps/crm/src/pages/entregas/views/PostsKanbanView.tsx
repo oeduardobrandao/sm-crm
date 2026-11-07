@@ -53,6 +53,7 @@ import {
   type AutoSchedulePromptPost,
 } from '../components/AutoSchedulePromptDialog';
 import { AutoScheduleBadge } from '../components/AutoScheduleBadge';
+import { PostMaterialBadge } from '../materialContext';
 import { AwaitingApprovalBadge } from '../components/AwaitingApprovalBadge';
 import { Button } from '@/components/ui/button';
 import { BoardSkeleton } from '@/components/ui/skeletons';
@@ -298,6 +299,7 @@ function PostBoardCardContent({
               {prazo.shortLabel}
             </span>
           )}
+          <PostMaterialBadge postId={post.id} status={post.status} />
           {showAwaitingApproval && awaitedApprovalName && (
             <AwaitingApprovalBadge approvalName={awaitedApprovalName} />
           )}

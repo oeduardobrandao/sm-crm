@@ -15,6 +15,8 @@ interface PostReferencesPanelProps {
   onOverlayChange?: (open: boolean) => void;
   /** True while any row has an unsaved note. */
   onDirtyChange?: (dirty: boolean) => void;
+  /** Item names of the post's open material request, by item id: files sent for an item say so. */
+  itemLabels?: Record<number, string>;
 }
 
 /** The Referências tab: rows, uploads in flight, and (while enviado_cliente) the add controls. */
@@ -24,6 +26,7 @@ export function PostReferencesPanel({
   onOpen,
   onOverlayChange,
   onDirtyChange,
+  itemLabels,
 }: PostReferencesPanelProps) {
   const { t } = useTranslation('hubPosts');
   const { data, isLoading, canAdd, items, uploads } = refs;
@@ -113,6 +116,9 @@ export function PostReferencesPanel({
               key={item.id}
               item={item}
               fresh={refs.freshIds.includes(item.id)}
+              itemLabel={
+                item.material_item_id != null ? itemLabels?.[item.material_item_id] : undefined
+              }
               onOpen={onOpen}
               onSaveNote={refs.updateNote}
               onRemove={refs.remove}

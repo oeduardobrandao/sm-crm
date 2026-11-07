@@ -3,7 +3,7 @@ import { buildCorsHeaders } from "../_shared/cors.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
 import { createSignedState, verifySignedState } from "./oauth-state.ts";
-import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
+import { effectivePlanFeature, effectivePlanLimit } from "../_shared/entitlements-rpc.ts";
 import { buildMetricFields, fetchPostInsights } from "../_shared/instagram-metrics.ts";
 import { cachePostThumbnail } from "../_shared/instagram-thumbnail-cache.ts";
 import { sendCronFailureEmail } from "../_shared/notify.ts";
@@ -145,6 +145,43 @@ Deno.serve(async (req) => {
         if (!(await effectivePlanFeature(authServiceClient, authCallerProfile.conta_id, "feature_instagram"))) {
             return new Response(JSON.stringify({ error: "feature_disabled", feature: "feature_instagram" }),
                 { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } });
+        }
+
+        // Plan limit, checked here so the user is told before the Meta round-trip instead of after
+        // it. Mirrors trg_limit_instagram exactly: every instagram_accounts row of the workspace
+        // counts except the 'disconnected' ones (the user released them). A client whose row is
+        // still counted is a reconnect of a slot it already holds, so it skips the check. A client
+        // with no row, or with a 'disconnected' one, needs a free slot: the callback INSERTs the
+        // first and UPDATEs the second, and trg_limit_instagram / trg_limit_instagram_reconnect
+        // enforce the same rule there.
+        // Fails open: the trigger stays the hard gate, so if this lookup errors the user still gets
+        // the plan_limit message, only after the Meta round-trip instead of before it.
+        let igAtLimit: number | null = null;
+        try {
+            const { data: existingIgRow, error: existingErr } = await authServiceClient
+                .from('instagram_accounts').select('id, authorization_status').eq('client_id', clientId).maybeSingle();
+            if (existingErr) throw existingErr;
+            if (!existingIgRow || existingIgRow.authorization_status === 'disconnected') {
+                const igLimit = await effectivePlanLimit(authServiceClient, authCallerProfile.conta_id, 'max_instagram_accounts');
+                if (igLimit !== null) {
+                    const { count: igCount, error: igCountErr } = await authServiceClient
+                        .from('instagram_accounts')
+                        .select('id, clientes!inner(conta_id)', { count: 'exact', head: true })
+                        .eq('clientes.conta_id', authCallerProfile.conta_id)
+                        .neq('authorization_status', 'disconnected');
+                    if (igCountErr) throw igCountErr;
+                    if ((igCount ?? 0) >= igLimit) igAtLimit = igLimit;
+                }
+            }
+        } catch (e) {
+            console.error('[instagram-integration] plan-limit precheck failed:', (e as { message?: string })?.message ?? 'unknown');
+        }
+        if (igAtLimit !== null) {
+            return new Response(JSON.stringify({
+                error: 'plan_limit_exceeded',
+                message: 'plan_limit_exceeded:max_instagram_accounts',
+                limit: igAtLimit,
+            }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
 
         const state = await createSignedState(clientId, user!.id, authCallerProfile.conta_id, authServiceClient);
@@ -362,10 +399,11 @@ Deno.serve(async (req) => {
             if (!originGate.proceed) throw new Error(originGate.reason);
         }
 
-        // Upsert into DB (with insights + last_synced_at)
-        const { data: upsertedAccount, error: dbError } = await serviceClient
-            .from('instagram_accounts')
-            .upsert({
+        // Write to DB (with insights + last_synced_at). A reconnect (row already there for this
+        // client) is a plain UPDATE, never an upsert: Postgres fires BEFORE INSERT row triggers for
+        // INSERT ... ON CONFLICT DO UPDATE too, so trg_limit_instagram would count the existing row
+        // and refuse a workspace at its plan limit from re-authorising an account it already has.
+        const accountRow = {
                 client_id: clientId,
                 instagram_user_id: igBusinessId,
                 professional_account_id: igProfessionalId,
@@ -384,13 +422,23 @@ Deno.serve(async (req) => {
                 authorization_status: 'active',
                 permissions: grantedPermissions,
                 // Reset-antes-de-regravar: cobre tanto o connect (linha nova) quanto o
-                // reconnect (upsert por onConflict client_id atualiza a linha existente)
+                // reconnect (o UPDATE abaixo regrava a linha existente)
                 // -- reconectar sem o escopo opcional não pode deixar canAutomate=true
                 // por resíduo de uma assinatura anterior.
                 comments_subscribed_at: null,
-            }, { onConflict: 'client_id' })
-            .select('id')
-            .single();
+        };
+        const { data: upsertedAccount, error: dbError } = priorAccount
+            ? await serviceClient
+                .from('instagram_accounts')
+                .update(accountRow)
+                .eq('id', priorAccount.id)
+                .select('id')
+                .single()
+            : await serviceClient
+                .from('instagram_accounts')
+                .upsert(accountRow, { onConflict: 'client_id' })
+                .select('id')
+                .single();
 
         if (dbError) throw new Error(dbError.message);
 

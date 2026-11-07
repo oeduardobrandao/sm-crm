@@ -367,7 +367,8 @@
       "postResponsavel": "Responsável do post",
       "etapa": "Etapa",
       "template": "Template",
-      "tipo": "Tipo"
+      "tipo": "Tipo",
+      "material": "Material"
     },
     "rangeFrom": "de {{date}}",
     "rangeTo": "até {{date}}",
@@ -378,7 +379,11 @@
     "from": "De",
     "to": "Até",
     "descriptionPosts": "Filtre os posts",
-    "descriptionFluxos": "Filtre os fluxos"
+    "descriptionFluxos": "Filtre os fluxos",
+    "material": {
+      "aguardando": "Aguardando material",
+      "recebido": "Material recebido"
+    }
   },
   "board": {
     "dragToReorder": "Arrastar para reordenar",

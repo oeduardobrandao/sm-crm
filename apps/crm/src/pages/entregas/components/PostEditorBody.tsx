@@ -28,6 +28,7 @@ import { DiscutirNoChat } from '../discussao/DiscutirNoChat';
 import { useDiscussao } from '../discussao/useDiscussao';
 import { Badge } from '@/components/ui/badge';
 import { PostMediaGallery } from './PostMediaGallery';
+import { MaterialStatusBadge } from './references/MaterialRequestEditor';
 import { PostClientReferences } from './references/PostClientReferences';
 import { ReferenceViewerDialog } from './references/ReferenceViewerDialog';
 import { ReferenceChips } from './references/ReferenceChips';
@@ -153,7 +154,6 @@ import type { PhoneEditorChrome, PhoneMenuAction } from './postEditorPhone/types
 // existed).
 // Stable fallback so the per-bubble filter below never sees a new array identity while the
 // references query is disabled (collapsed row) or still loading.
-const EMPTY_REFERENCES: ReferenceItem[] = [];
 const EMPTY_MEDIA_NOTES: MediaNote[] = [];
 const noopAsync = async () => {};
 
@@ -185,6 +185,12 @@ export interface PostEditorBodyProps {
    * PostAutomationSection. See its own prop doc for why this replaced a
    * `currentUserRole === 'owner' || 'admin'` check. */
   canManageAutomations: boolean;
+  /**
+   * Phone only: the member may open a material request (`can('entregas','editar')` and full
+   * visibility of the post's client), so "Referências do cliente" shows even with no
+   * references and no request yet. Computed by the caller (the desktop always renders it).
+   */
+  canRequestMaterial?: boolean;
   workspaceUsers: { id: string; nome: string; avatar_url: string }[];
   hasInstagramAccount: boolean;
   igAccountStatus: { revoked: boolean; expired: boolean; canPublish: boolean } | null;
@@ -255,6 +261,7 @@ export function PostEditorBody({
   currentUserId,
   currentUserRole,
   canManageAutomations,
+  canRequestMaterial = false,
   workspaceUsers,
   hasInstagramAccount,
   igAccountStatus,
@@ -331,7 +338,7 @@ export function PostEditorBody({
 
   // Client references (Hub). One fetch per post feeds the section under the media gallery and
   // the chips on the client's correction bubbles; same expand gate as the media query above.
-  const { data: references = EMPTY_REFERENCES } = usePostReferences(post.id, isExpanded);
+  const { references, request: materialRequest } = usePostReferences(post.id, isExpanded);
   // One viewer for both entry points (tile "Abrir" and bubble chips).
   const [viewingReference, setViewingReference] = useState<ReferenceItem | null>(null);
 
@@ -614,6 +621,8 @@ export function PostEditorBody({
   );
   const suggestionFieldName = useSuggestionFieldName();
   const [referencesOpen, setReferencesOpen] = useState(false);
+  // Phone: with entregas/editar the cell is the way to open the first material request.
+  const showReferencesCell = references.length > 0 || materialRequest != null || canRequestMaterial;
   const [statusSheetOpen, setStatusSheetOpen] = useState(false);
   // One schedule/publish state per phone editor, shared by the bottom bar and the
   // "Antes de agendar" checklist (desktop keeps its own inside ScheduleButton).
@@ -1047,7 +1056,7 @@ export function PostEditorBody({
             chevron
             onClick={() => (editSuggestion ? setSuggestionOpen(true) : setRoteiroOpen(true))}
           />
-          {references.length > 0 && (
+          {showReferencesCell && (
             <Cell
               label={t('shared.clientReferences')}
               value={String(references.length)}
@@ -1385,10 +1394,13 @@ export function PostEditorBody({
             statusOpen={statusSheetOpen}
             onStatusOpenChange={setStatusSheetOpen}
             extra={
-              <OpenNotesBadge
-                approvals={approvals}
-                notes={conversationNotes?.notes ?? EMPTY_MEDIA_NOTES}
-              />
+              <>
+                <MaterialStatusBadge request={materialRequest} postStatus={post.status} />
+                <OpenNotesBadge
+                  approvals={approvals}
+                  notes={conversationNotes?.notes ?? EMPTY_MEDIA_NOTES}
+                />
+              </>
             }
           />
           {phone.banner}
@@ -1446,7 +1458,7 @@ export function PostEditorBody({
         />
         {post.id != null && (
           <BottomSheet
-            open={referencesOpen && references.length > 0}
+            open={referencesOpen && showReferencesCell}
             onOpenChange={setReferencesOpen}
             title={t('shared.clientReferences')}
             detents={['medium', 'large']}
@@ -1454,7 +1466,9 @@ export function PostEditorBody({
             <PostClientReferences
               postId={post.id}
               references={references}
+              request={materialRequest}
               onOpen={setViewingReference}
+              clienteId={post.cliente_id}
             />
           </BottomSheet>
         )}
@@ -1598,6 +1612,12 @@ export function PostEditorBody({
 
       {statusAutomationHint && <p className="drawer-status-hint">{statusAutomationHint}</p>}
 
+      {materialRequest && (
+        <div>
+          <MaterialStatusBadge request={materialRequest} postStatus={post.status} />
+        </div>
+      )}
+
       {shouldShowPublishErrorBlock(post) && (
         <PublishErrorBlock
           post={post}
@@ -1665,7 +1685,9 @@ export function PostEditorBody({
         <PostClientReferences
           postId={post.id}
           references={references}
+          request={materialRequest}
           onOpen={setViewingReference}
+          clienteId={post.cliente_id}
         />
       )}
 

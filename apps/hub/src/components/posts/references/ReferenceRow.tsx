@@ -29,6 +29,8 @@ interface ReferenceRowProps {
   onDirtyChange?: (id: number, dirty: boolean) => void;
   /** The remove confirm is a nested dialog: the card's arrow keys and close path stand down. */
   onOverlayChange?: (open: boolean) => void;
+  /** Name of the material request item this file answers. */
+  itemLabel?: string;
 }
 
 export function ReferenceRow({
@@ -39,6 +41,7 @@ export function ReferenceRow({
   onRemove,
   onDirtyChange,
   onOverlayChange,
+  itemLabel,
 }: ReferenceRowProps) {
   const { t, i18n } = useTranslation('hubPosts');
   const locale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
@@ -122,6 +125,11 @@ export function ReferenceRow({
           >
             {title}
           </ReferenceOpen>
+          {itemLabel && (
+            <p className="text-[12px] font-semibold hub-tx2 break-words">
+              {t('references.forItem', 'Item: {{label}}', { label: itemLabel })}
+            </p>
+          )}
           {item.kind === 'link' && item.link_title && item.link_domain && (
             <p className="text-[12px] hub-tx3 truncate">{item.link_domain}</p>
           )}

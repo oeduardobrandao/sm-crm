@@ -8,6 +8,7 @@ import { PautaGreeting } from './home/PautaGreeting';
 import { PautaKpiStrip } from './home/PautaKpiStrip';
 import { ResourcesSection } from './home/ResourcesSection';
 import { SectionHeader } from '../components/SectionHeader';
+import { MaterialBanner } from './home/MaterialBanner';
 import { WaitingSection } from './home/WaitingSection';
 import { numberSections, weekCount } from './home/pautaHome';
 import { RESOURCE_LINKS } from './home/resourceLinks';
@@ -74,6 +75,7 @@ export function HomePagePauta({
           { label: t('home.kpi.nextPost.label', 'Próximo post'), value: kpis.nextPost },
         ]}
       />
+      <MaterialBanner token={token} base={base} />
       {loading ? (
         <section className="hub-card p-5 sm:p-6">
           <ListSkeleton rows={3} testId="pauta-home-loading" />

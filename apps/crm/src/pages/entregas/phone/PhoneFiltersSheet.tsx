@@ -97,6 +97,12 @@ export function activeFilterChips(
         ...filters,
         filterPostStatus: without(filters.filterPostStatus, k),
       });
+  if (mode === 'posts')
+    for (const k of filters.filterMaterial ?? [])
+      push('material', k, i18n.t(`entregasPhone:filters.material.${k}`), {
+        ...filters,
+        filterMaterial: without(filters.filterMaterial ?? [], k),
+      });
   for (const id of filters.filterMembros)
     push('responsavel', String(id), nameOf(membros, id), {
       ...filters,
@@ -230,6 +236,17 @@ export function PhoneFiltersSheet({
       selected: filters.filterTemplates,
       onChange: (v) => onChange({ ...filters, filterTemplates: v as number[] }),
     },
+    material: {
+      key: 'material',
+      title: t('filters.groups.material'),
+      allLabel: t('filters.allMasc'),
+      options: [
+        { value: 'aguardando', label: t('filters.material.aguardando') },
+        { value: 'recebido', label: t('filters.material.recebido') },
+      ],
+      selected: filters.filterMaterial ?? [],
+      onChange: (v) => onChange({ ...filters, filterMaterial: v as FilterState['filterMaterial'] }),
+    },
     postStatus: {
       key: 'postStatus',
       title: t('filters.groups.postStatus'),
@@ -313,7 +330,7 @@ export function PhoneFiltersSheet({
     type: 'lists',
     key: 'listas',
     lists: isPosts
-      ? [lists.clientes, lists.postStatus, lists.membros, lists.etapas]
+      ? [lists.clientes, lists.postStatus, lists.material, lists.membros, lists.etapas]
       : [lists.clientes, lists.membros, lists.postResponsaveis, lists.etapas, lists.templates],
   });
 

@@ -8,6 +8,7 @@ import {
 } from '../../services/instagram';
 import { showToast, openModal, closeModal, escapeHTML, sanitizeUrl } from '../../router';
 import { formatDate } from '../../store';
+import { handleEntitlementMutationError } from '../../lib/entitlement-toast';
 import { i18n } from '@mesaas/i18n';
 
 function t(key: string, opts?: Record<string, unknown>) {
@@ -159,6 +160,7 @@ export function renderInstagramOverviewCard(
       } catch (err: any) {
         btnReconnect.textContent = escapeHTML(t('instagram.reconnectButton'));
         btnReconnect.disabled = false;
+        if (handleEntitlementMutationError(err, null)) return;
         showToast(t('instagram.connectError', { error: err.message }), 'error');
       }
     });

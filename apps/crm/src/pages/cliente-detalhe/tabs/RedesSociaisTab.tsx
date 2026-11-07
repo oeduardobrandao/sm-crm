@@ -163,6 +163,14 @@ export default function RedesSociaisTab() {
     const action = resolveIgError(igError);
     if (action?.kind === 'off_meta') {
       setIgOffMetaOpen(true);
+    } else if (action?.kind === 'plan_limit') {
+      toast.error(t('detail.igPlanLimit'), {
+        duration: 12000,
+        action: {
+          label: t('detail.igPlanLimitAction'),
+          onClick: () => navigate('/configuracao/cobranca'),
+        },
+      });
     } else if (action?.kind === 'toast') {
       if (action.level === 'info') toast.info(t(action.i18nKey));
       else toast.error(t(action.i18nKey));
@@ -232,7 +240,7 @@ export default function RedesSociaisTab() {
     next.delete('gbp_pick');
     next.delete('gmn_error');
     setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams, t, clienteId]);
+  }, [searchParams, setSearchParams, t, clienteId, navigate]);
 
   const {
     data: igSummary,

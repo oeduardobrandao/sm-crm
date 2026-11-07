@@ -33,6 +33,9 @@ begin
   insert into clientes (user_id, conta_id, nome, sigla, cor)
     values (v_owner, v_ws, 'C2', 'C2', '#000');
   insert into instagram_accounts (client_id, instagram_user_id) values (v_cli, 'ig-1');
+  -- a disconnected account on C2 does not count (20261123000001)
+  insert into instagram_accounts (client_id, instagram_user_id, authorization_status)
+    select id, 'ig-gone', 'disconnected' from clientes where conta_id = v_ws and nome = 'C2';
   insert into client_hub_tokens (cliente_id, conta_id, expires_at)
     values (v_cli, v_ws, now() + interval '10 days');
   insert into invites (conta_id, email, role, invited_by, status, expires_at)
@@ -58,7 +61,7 @@ begin
   assert (v_usage->>'leads')::int = 0, format('leads: %s', v_usage->>'leads');
   assert (v_usage->>'hub_tokens')::int = 1, format('hub_tokens: %s', v_usage->>'hub_tokens');
   assert (v_usage->>'workflow_templates')::int = 0, 'workflow_templates';
-  assert (v_usage->>'instagram_accounts')::int = 1, 'instagram via clientes join';
+  assert (v_usage->>'instagram_accounts')::int = 1, 'instagram via clientes join, disconnected excluded';
   assert (v_usage->>'mcp_keys')::int = 1, 'revoked mcp key must free the slot';
   assert (v_usage->>'storage_used_bytes')::bigint = 12345, 'storage_used_bytes';
 

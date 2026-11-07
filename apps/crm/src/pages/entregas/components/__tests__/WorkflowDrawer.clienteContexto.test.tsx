@@ -86,6 +86,7 @@ vi.mock('../../../../services/postMedia', () => ({ listPostMedia: vi.fn().mockRe
 // PostEditorBody and WorkflowDrawer read client references from this module by path.
 vi.mock('@/store/postReferences', () => ({
   getPostReferences: vi.fn(async () => []),
+  getPostReferencesData: vi.fn(async () => ({ items: [], request: null })),
   getPostReferenceCounts: vi.fn(async () => ({})),
   deletePostReference: vi.fn(),
 }));

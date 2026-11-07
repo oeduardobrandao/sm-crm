@@ -114,6 +114,7 @@ vi.mock('@/pages/entregas/components/TikTokSettingsPanel', () => ({
 // Referências do cliente (#649): fora do escopo destes testes.
 vi.mock('@/store/postReferences', () => ({
   getPostReferences: vi.fn(async () => []),
+  getPostReferencesData: vi.fn(async () => ({ items: [], request: null })),
   getPostReferenceCounts: vi.fn(async () => ({})),
   deletePostReference: vi.fn(),
 }));

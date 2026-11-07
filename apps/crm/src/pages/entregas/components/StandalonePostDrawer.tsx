@@ -255,6 +255,8 @@ export function StandalonePostDrawer({
   const { user, role, can, membership } = useAuth();
   // Own post in a client outside a restricted member's scope: remove_post_process is refused.
   const canRemoveProcess = !isOutsideClientScope(membership, clienteId, post?.cliente_nome);
+  // Phone "Referências do cliente": opening a material request needs full visibility.
+  const canRequestMaterial = can('entregas', 'editar') === true && canRemoveProcess;
   // Was `currentUserRole === 'owner' || 'admin'` inside PostAutomationSection
   // -- AGENT_ROLE_PRESET.automacoes is 'editar' (lib/permissions.ts), so a
   // legacy agent already gets full write on instagram_comment_automations
@@ -1060,6 +1062,7 @@ export function StandalonePostDrawer({
               currentUserId={user?.id}
               currentUserRole={role}
               canManageAutomations={canManageAutomations}
+              canRequestMaterial={canRequestMaterial}
               workspaceUsers={workspaceUsers}
               hasInstagramAccount={hasInstagramAccount}
               igAccountStatus={igAccountStatus}

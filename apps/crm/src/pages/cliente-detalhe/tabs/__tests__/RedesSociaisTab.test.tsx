@@ -270,6 +270,23 @@ describe('RedesSociaisTab', () => {
       await waitFor(() => expect(screen.getByTestId('search')).toHaveTextContent(''));
     });
 
+    it('ig_error=plan_limit: toasts the plan-limit message with an upgrade action', async () => {
+      getInstagramSummaryMock.mockResolvedValue(null);
+      renderTab('/clientes/42/redes-sociais?ig_error=plan_limit');
+
+      await waitFor(() =>
+        expect(toastErrorMock).toHaveBeenCalledWith(
+          'O seu plano já está no limite de contas do Instagram. Faça upgrade para conectar esta conta.',
+          expect.objectContaining({
+            action: expect.objectContaining({ label: 'Ver planos' }),
+          }),
+        ),
+      );
+      expect(toastErrorMock).not.toHaveBeenCalledWith(
+        'Ocorreu um erro ao conectar a conta Instagram. Tente novamente.',
+      );
+    });
+
     it('ig_error with an unrecognised code: toasts the generic error message', async () => {
       getInstagramSummaryMock.mockResolvedValue(null);
       renderTab('/clientes/42/redes-sociais?ig_error=some_unknown_code');

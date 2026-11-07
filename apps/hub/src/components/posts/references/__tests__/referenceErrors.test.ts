@@ -44,6 +44,30 @@ describe('referenceErrorMessage', () => {
     }
   });
 
+  it('has its own copy for every material-request code (no generic fallback)', () => {
+    expect(referenceErrorMessage('request_closed', t)).toBe(
+      'Este pedido foi encerrado pela equipe.',
+    );
+    expect(referenceErrorMessage('item_required', t)).toBe(
+      'Este post está aguardando material. Envie o arquivo pelo item pedido.',
+    );
+    expect(referenceErrorMessage('nothing_sent', t)).toBe(
+      'Envie pelo menos um arquivo antes de avisar a equipe.',
+    );
+    expect(referenceErrorMessage('too_many_items', t)).toBe(
+      'Este post chegou ao limite de 10 arquivos.',
+    );
+    expect(referenceErrorMessage('items_required', t)).toBe(
+      'O pedido precisa de pelo menos um item.',
+    );
+    expect(referenceErrorMessage('post_not_requestable', t)).toBe(
+      'Este post não aceita mais pedido de material.',
+    );
+    expect(referenceErrorMessage('invalid_item', t)).toBe(
+      'Um dos itens do pedido não é válido. Avise a equipe.',
+    );
+  });
+
   it('never returns an em dash', () => {
     const codes = [
       'unsupported_type',
@@ -58,6 +82,13 @@ describe('referenceErrorMessage', () => {
       'locked',
       'rate_limited',
       'upload_mismatch',
+      'item_required',
+      'request_closed',
+      'nothing_sent',
+      'too_many_items',
+      'items_required',
+      'post_not_requestable',
+      'invalid_item',
       'internal',
     ] as const;
     for (const code of codes) expect(referenceErrorMessage(code, t)).not.toMatch(/—/);

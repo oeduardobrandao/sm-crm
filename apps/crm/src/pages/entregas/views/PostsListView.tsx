@@ -17,6 +17,7 @@ import { ListGroupsToggle } from '../components/ListGroupsToggle';
 import type { PostEntity } from '../boardEntity';
 import { POST_STATUS_ORDER, TIPO_LABELS } from '../postLabels';
 import { useStatusRegistry } from '@/hooks/useStatusRegistry';
+import { PostMaterialBadge } from '../materialContext';
 import { PostStatusChip } from '../components/PostStatusChip';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import {
@@ -313,7 +314,10 @@ export function PostsListView({
           )}
         </td>
         <td style={{ padding: '0.6rem 1rem', whiteSpace: 'nowrap' }}>
-          <PostStatusChip post={p} registry={statusRegistry} />
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+            <PostStatusChip post={p} registry={statusRegistry} />
+            <PostMaterialBadge postId={p.id} status={p.status} />
+          </span>
         </td>
         <td
           style={{ padding: '0.6rem 1rem', whiteSpace: 'nowrap' }}
@@ -406,7 +410,12 @@ export function PostsListView({
           .join(' · '),
         aside: (
           <PhoneRowAside
-            status={<PostStatusChip post={p} registry={statusRegistry} />}
+            status={
+              <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+                <PostStatusChip post={p} registry={statusRegistry} />
+                <PostMaterialBadge postId={p.id} status={p.status} />
+              </span>
+            }
             deadline={prazo?.label}
             overdue={!!stage?.deadline.estourado}
           />

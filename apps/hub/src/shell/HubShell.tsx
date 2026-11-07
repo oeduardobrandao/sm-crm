@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { Toaster } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { HubContext } from '../HubContext';
 import { HubSidebar } from './HubSidebar';
@@ -182,6 +183,12 @@ export function HubShell() {
       >
         <HubSidebar />
         <HubMobileNav />
+        {/* Inside .hub-root so the Hub's fonts apply; clears the phone bottom nav. */}
+        <Toaster
+          position="bottom-center"
+          theme={theme === 'dark' ? 'dark' : 'light'}
+          mobileOffset={{ bottom: 96 }}
+        />
         <main
           className={look === 'pauta' ? 'flex-1 md:pl-[240px]' : 'hub-noise flex-1 md:pl-[240px]'}
         >

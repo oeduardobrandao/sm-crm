@@ -278,8 +278,16 @@
       "locked": "A equipe já recebeu esta referência. Ela não pode mais ser alterada.",
       "notFound": "Esta referência não está mais disponível.",
       "rateLimited": "Muitas tentativas seguidas. Aguarde um minuto e tente novamente.",
+      "requestClosed": "Este pedido foi encerrado pela equipe.",
+      "itemRequired": "Este post está aguardando material. Envie o arquivo pelo item pedido.",
+      "nothingSent": "Envie pelo menos um arquivo antes de avisar a equipe.",
+      "tooManyItems": "Este post chegou ao limite de 10 arquivos.",
+      "itemsRequired": "O pedido precisa de pelo menos um item.",
+      "postNotRequestable": "Este post não aceita mais pedido de material.",
+      "invalidItem": "Um dos itens do pedido não é válido. Avise a equipe.",
       "generic": "Algo deu errado. Tente novamente."
-    }
+    },
+    "forItem": "Item: {{label}}"
   },
   "mediaNotes": {
     "title": "Comentários na mídia",
