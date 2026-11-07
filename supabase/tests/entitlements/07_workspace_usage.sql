@@ -33,7 +33,7 @@ begin
   insert into clientes (user_id, conta_id, nome, sigla, cor)
     values (v_owner, v_ws, 'C2', 'C2', '#000');
   insert into instagram_accounts (client_id, instagram_user_id) values (v_cli, 'ig-1');
-  -- a disconnected account on C2 does not count (20261122000001)
+  -- a disconnected account on C2 does not count (20261123000001)
   insert into instagram_accounts (client_id, instagram_user_id, authorization_status)
     select id, 'ig-gone', 'disconnected' from clientes where conta_id = v_ws and nome = 'C2';
   insert into client_hub_tokens (cliente_id, conta_id, expires_at)
