@@ -11,7 +11,7 @@ A lista não pode pesar na página principal. A página E-mails continua fazendo
 ## Decisões do usuário
 
 - **Detalhe por linha:** data, categoria, tipo e status. Motivo do bounce, destinatário mascarado e assunto aparecem **só quando já estão guardados**, ou seja, nos estados com dado pessoal (bounce, reclamação, falha, supressão) com menos de 90 dias. Cada linha tem o link "Ver no Resend", que abre o e-mail no painel do Resend para ver o resto. Nenhum dado pessoal novo é guardado e a regra dos 90 dias não muda.
-- **Onde abre:** página própria em `/emails/lista`, com os filtros na URL, para poder compartilhar o link e usar o botão voltar. A página E-mails só tem um link para ela.
+- **Onde abre:** página própria em `/admin/emails/lista` (rota filha `emails/lista` de `/admin`), com os filtros na URL, para poder compartilhar o link e usar o botão voltar. A página E-mails só tem um link para ela.
 
 ## Objetivos
 
@@ -41,7 +41,7 @@ A lista não pode pesar na página principal. A página E-mails continua fazendo
 - Mesma arquitetura das métricas: RPC `SECURITY DEFINER` só `service_role` (REVOKE explícito de `public, anon, authenticated`), chamada pelo `platform-admin`, que já confere `platform_admins`. CORS por `buildCorsHeaders`, erro genérico para fora.
 - Migration nova com prefixo acima do último de `main` (hoje `20261124000001`); conferir na hora de abrir o PR.
 - Copy em português, sem travessão.
-- Ordem de deploy: migration, depois `platform-admin`, depois merge (o merge publica o Admin na hora).
+- Ordem de deploy: migration, depois `platform-admin`, depois merge (o merge publica o Admin na hora). Rollback na ordem inversa: Admin (revert do frontend), `platform-admin`, e só então a migration (drop da RPC e do índice novo; o índice antigo nunca sai).
 
 ## Desenho
 
@@ -49,13 +49,13 @@ A lista não pode pesar na página principal. A página E-mails continua fazendo
 
 Migration nova:
 
-- Índice `email_sends (sent_at desc, email_id desc)` para a paginação por cursor. Filtro de categoria ou tipo vira varredura da janela de datas pelo índice com filtro; no volume atual (milhares de linhas por mês) isso é aceito, e o antiobjetivo é só nunca varrer fora da janela. Pode substituir `email_sends_sent_at_idx` (decisão do builder, desde que `email_metrics` siga usando um índice no filtro de data).
+- Índice `email_sends (sent_at desc, email_id desc)` para a paginação por cursor. Filtro de categoria ou tipo vira varredura da janela de datas pelo índice com filtro; no volume atual (milhares de linhas por mês) isso é aceito, e o antiobjetivo é só nunca varrer fora da janela. `email_sends_sent_at_idx` fica como está (a migration só cria o índice novo, nada é removido), então reverter nunca tira o índice que `email_metrics` usa no filtro de data.
 - RPC `email_sends_list(p_start date, p_end date, p_categories text[], p_types text[], p_events text[], p_cursor_sent_at timestamptz, p_cursor_id text, p_limit int) returns jsonb`:
   - O período usa as mesmas regras de `email_metrics`: dia de São Paulo, erro se `p_end < p_start` ou se o intervalo passar de 365 dias, filtro direto em `sent_at` para usar o índice.
   - Arrays nulos ou vazios não filtram. `p_events` recebe os valores de `last_event`; o agrupamento por status é feito no frontend.
   - Cursor por chave: `(sent_at, email_id) < (p_cursor_sent_at, p_cursor_id)`, ordem `sent_at desc, email_id desc`. `p_limit` fica entre 1 e 100, padrão 50. A função busca `limit + 1` linhas para saber se há próxima página.
   - Devolve `{ items: [...], next_cursor: { sent_at, email_id } | null, types: [...] | null }`. O cursor é opaco: `sent_at` sai como o texto do jsonb (com microssegundos) e volta igual, sem passar por `Date` no Admin nem no edge, senão linhas empatadas se repetem ou somem.
-  - `types` vem só na primeira página (sem cursor): a lista distinta de `{category, type}` do período, ignorando os filtros de tipo e status. É ela que alimenta o filtro de tipo no Admin, então o Admin não precisa duplicar o catálogo de `EMAIL_TYPES` (que também não cobre `desconhecido`, `alerta_interno` e `notificacao`, gravados pelo classificador por remetente). Cada item tem `email_id`, `sent_at`, `category`, `type`, `last_event`, `source`, `bounce_type`, `bounce_message`, `recipient_masked` e `subject`. Os quatro últimos usam as mesmas regras de `recent` em `email_metrics` (nulos com mais de 90 dias; mascarado como `a***@dominio`).
+  - `types` vem só na primeira página (sem cursor): a lista distinta de `{category, type}` do período, ignorando os filtros de tipo e status. É ela que alimenta o filtro de tipo no Admin, então o Admin não precisa duplicar o catálogo de `EMAIL_TYPES` (que também não cobre `desconhecido`, `alerta_interno` e `notificacao`, gravados pelo classificador por remetente). Cada item tem `email_id`, `sent_at`, `category`, `type`, `last_event`, `source`, `bounce_type`, `bounce_message`, `recipient_masked` e `subject`. `bounce_message`, `recipient_masked` e `subject` seguem as regras de `recent` em `email_metrics`: nulos com mais de 90 dias, destinatário mascarado como `a***@dominio`. `bounce_type` (Permanent, Transient, etc.) não é dado pessoal: o `email_sends_cleanup` também o mantém, então ele aparece sempre, como em `recent`.
 - Testes psql no padrão de `supabase/tests/email_sends_rpcs.sql`: filtros, cursor sem repetir nem pular linha com `sent_at` empatado, limite, PII com mais de 90 dias nula, `authenticated` sem EXECUTE.
 
 ### Edge (`platform-admin`)
@@ -79,7 +79,7 @@ Depois chama a RPC. Testes Deno no padrão de `platform-admin-email-metrics_test
   - o mesmo `SegmentedControl` de período e os campos de data do personalizado;
   - seleção múltipla para categoria, tipo e status, com os rótulos de `email-metrics-view.ts`;
   - "Limpar filtros".
-- Desktop: tabela com Data e hora (São Paulo, `DD/MM/AAAA HH:mm`), Categoria, Tipo, Status (badge na cor que a página E-mails já usa), Detalhe e o link "Ver no Resend". O Detalhe mostra motivo, destinatário mascarado e assunto, só quando existem; o assunto vai truncado numa linha.
+- Desktop: tabela com Data e hora (São Paulo, `DD/MM/AAAA HH:mm`), Categoria, Tipo, Status (`Badge` do Admin, `tone` padrão: Entregue `success`, Atrasado `warning`, Pendente `neutral`, Bounce `danger`, Reclamação `danger`, Não enviado `neutral`; o rótulo do badge é o do grupo, e nas linhas de Não enviado o Detalhe diz se foi falha, supressão ou cancelamento), Detalhe e o link "Ver no Resend". O Detalhe mostra motivo, destinatário mascarado e assunto, só quando existem; o assunto vai truncado numa linha.
 - O link "Ver no Resend" aponta para `https://resend.com/emails/<email_id>`, com o id em `encodeURIComponent`, `target="_blank"` e `rel="noopener noreferrer"`. Linhas importadas pelo backfill também têm id real do Resend.
 - Phone: lista compacta, como `EmailsPhoneList`.
 - Estados:
@@ -87,10 +87,9 @@ Depois chama a RPC. Testes Deno no padrão de `platform-admin-email-metrics_test
   - erro: `ErrorState` com tentar de novo;
   - sem resultado: "Nenhum e-mail com esses filtros" e o botão de limpar;
   - "Carregar mais" no fim, com "N e-mails carregados".
-- Página E-mails: botão secundário "Ver lista completa" no cabeçalho, que é um `Link` para `/emails/lista?preset=…` (com `start`/`end` no personalizado), montado do estado local da página. Fica desabilitado enquanto o período personalizado for inválido. Nenhuma outra mudança.
+- Página E-mails: botão secundário "Ver lista completa" no cabeçalho, que é um `Link` para `/admin/emails/lista?preset=…` (caminho absoluto: `/emails/lista` cai no wildcard fora do Admin) (com `start`/`end` no personalizado), montado do estado local da página. Fica desabilitado enquanto o período personalizado for inválido. Nenhuma outra mudança.
 
 ## Deixado para o builder
 
 - Componente exato da seleção múltipla: reaproveitar o que o Admin já tem, ou um `DropdownMenu` com checkboxes.
-- Manter ou trocar o índice antigo de `sent_at`.
 - Layout fino dos filtros no phone.
