@@ -20,7 +20,7 @@ function claimTypes(): string[] {
 
 /** Types notification_push_prefs accepts (the widened CHECK). */
 function checkTypes(): string[] {
-  const sql = readMigration('20261123000001_push_prefs_linha_editorial.sql');
+  const sql = readMigration('20261122000001_push_prefs_linha_editorial.sql');
   const match = sql.match(
     /add constraint notification_push_prefs_type_check\s+check\s*\(\s*type\s+in\s*\(([\s\S]*?)\)\s*\)/i,
   );

@@ -2,7 +2,7 @@
 \i supabase/tests/entitlements/_helpers.sql
 
 -- A push device follows the session that registered it
--- (20261123000002_push_devices_session.sql): register_push_device stores the
+-- (20261122000002_push_devices_session.sql): register_push_device stores the
 -- JWT's session_id, and deleting that auth.sessions row disables the device,
 -- so a sign-out the app could not report still stops the pushes.
 

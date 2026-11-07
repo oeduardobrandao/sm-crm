@@ -1,4 +1,4 @@
--- 20261123000001_push_prefs_linha_editorial.sql
+-- 20261122000001_push_prefs_linha_editorial.sql
 -- Widens notification_push_prefs_type_check to every type the push cron sends.
 --
 -- 20261015000001 created the CHECK with the push-eligible types of the time.
