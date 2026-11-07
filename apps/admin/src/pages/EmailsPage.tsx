@@ -1,14 +1,17 @@
 import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { Mail } from 'lucide-react';
 import { SegmentedControl } from '@mesaas/ios-kit';
 import { PageHeader } from '../components/PageHeader';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
 import { GlassPanel } from '../components/shell/GlassPanel';
+import { buttonVariants } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Skeleton } from '../components/ui/skeleton';
 import { useIsPhone } from '../hooks/useIsPhone';
+import { cn } from '../lib/utils';
 import { EmailsBackfill } from './emails/EmailsBackfill';
 import { EmailsDailyChart } from './emails/EmailsDailyChart';
 import { EmailsKpis } from './emails/EmailsKpis';
@@ -67,6 +70,26 @@ export default function EmailsPage() {
   );
   const q = useEmailMetrics(range, customError === null);
   const view = useMemo(() => (q.data ? buildEmailView(q.data) : null), [q.data]);
+
+  const listSearch = new URLSearchParams({ preset });
+  if (preset === 'custom') {
+    listSearch.set('start', customStart);
+    listSearch.set('end', customEnd);
+  }
+  const listLink = (
+    <Link
+      to={`/admin/emails/lista?${listSearch.toString()}`}
+      aria-disabled={customError ? 'true' : undefined}
+      tabIndex={customError ? -1 : undefined}
+      onClick={customError ? (e) => e.preventDefault() : undefined}
+      className={cn(
+        buttonVariants({ variant: 'secondary', size: 'sm' }),
+        customError && 'pointer-events-none opacity-50',
+      )}
+    >
+      Ver lista completa
+    </Link>
+  );
 
   const segments = (
     <SegmentedControl
@@ -148,12 +171,18 @@ export default function EmailsPage() {
         actions={
           <>
             {segments}
+            {listLink}
             {backfill}
           </>
         }
         phoneActions={backfill}
       >
-        {isPhone ? segments : null}
+        {isPhone ? (
+          <>
+            {segments}
+            <div className="mt-3">{listLink}</div>
+          </>
+        ) : null}
       </PageHeader>
       {preset === 'custom' ? (
         <div className="mb-4 flex flex-wrap items-center gap-2">

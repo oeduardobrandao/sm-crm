@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 vi.mock('../../lib/api', () => ({
   getEmailMetrics: vi.fn(),
   runEmailBackfill: vi.fn(),
+  getEmailList: vi.fn(),
 }));
 vi.mock('react-chartjs-2', () => ({ Bar: () => null }));
 vi.mock('../../hooks/useIsPhone', () => ({ useIsPhone: vi.fn(() => false) }));
@@ -86,6 +87,26 @@ describe('EmailsPage', () => {
     expect(screen.queryByText('Resumo de notificações')).toBeNull();
     fireEvent.click(row);
     expect(screen.getByText('Resumo de notificações')).toBeInTheDocument();
+  });
+
+  it('links to the full list with the selected period and never calls the list', async () => {
+    renderPage();
+    await screen.findByTestId('email-kpi-sent');
+    expect(screen.getByRole('link', { name: 'Ver lista completa' })).toHaveAttribute(
+      'href',
+      '/admin/emails/lista?preset=7d',
+    );
+    expect(api.getEmailList).not.toHaveBeenCalled();
+  });
+
+  it('disables the list link while the custom range is invalid', async () => {
+    renderPage();
+    await screen.findByTestId('email-kpi-sent');
+    fireEvent.click(screen.getByRole('radio', { name: 'Personalizado' }));
+    expect(screen.getByRole('link', { name: 'Ver lista completa' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
   });
 
   it('shows the empty state', async () => {
