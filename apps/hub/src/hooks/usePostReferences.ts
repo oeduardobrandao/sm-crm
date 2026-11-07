@@ -12,6 +12,7 @@ import {
   uploadPostReference,
   validateReferenceFile,
 } from '../services/postReferences';
+import { HUB_MATERIAL_KEY } from '../queries';
 import type { ReferenceErrorCode, ReferenceFileKind, ReferenceItem } from '../types/postReferences';
 
 /** Per post, no token: the contract key. The Hub serves one token per tab. */
@@ -31,12 +32,16 @@ export interface UploadEntry {
   total: number;
   status: 'uploading' | 'error';
   error?: ReferenceErrorCode;
+  /** Set when the upload answers an item of the post's material request. */
+  materialItemId?: number;
 }
 
 export interface AddReferenceLinkInput {
   url: string;
   title?: string;
   note?: string;
+  /** Attaches the link to one item of the post's open material request. */
+  materialItemId?: number;
 }
 
 type ReferencesData = { can_add: boolean; items: ReferenceItem[] };
@@ -46,6 +51,7 @@ interface Job {
   file: File;
   settle: (item: ReferenceItem | null) => void;
   onUploaded?: (item: ReferenceItem) => void;
+  materialItemId?: number;
 }
 
 let localSeq = 0;
@@ -54,6 +60,19 @@ const nextLocalId = () => `reference-upload-${++localSeq}`;
 function codeOf(err: unknown): ReferenceErrorCode {
   return err instanceof PostReferenceError ? err.code : 'internal';
 }
+
+/** The server's state moved under the client: the list (can_add) has to be reread. */
+const STALE_LIST_CODES: ReadonlySet<ReferenceErrorCode> = new Set([
+  'post_not_pending',
+  'reference_limit',
+  'request_closed',
+  'item_required',
+]);
+/** The material request closed or opened meanwhile: the requests list (and badge) too. */
+const STALE_REQUEST_CODES: ReadonlySet<ReferenceErrorCode> = new Set([
+  'request_closed',
+  'item_required',
+]);
 
 /**
  * The post's references and every write the Hub makes to them. Called once per post card
@@ -78,6 +97,8 @@ export function usePostReferences(token: string, postId: number) {
   const files = useRef(new Map<string, File>());
   /** onUploaded per entry, so a retried composer upload still reaches the composer. */
   const uploadedCallbacks = useRef(new Map<string, (item: ReferenceItem) => void>());
+  /** The material item per entry, so a retry still goes to the same item. */
+  const itemIds = useRef(new Map<string, number>());
   const controllers = useRef(new Map<string, AbortController>());
   /** Cancelled while running: the entry stays (and counts as in flight) until the call settles. */
   const cancelled = useRef(new Set<string>());
@@ -105,6 +126,7 @@ export function usePostReferences(token: string, postId: number) {
   const dropUpload = useCallback((localId: string) => {
     files.current.delete(localId);
     uploadedCallbacks.current.delete(localId);
+    itemIds.current.delete(localId);
     controllers.current.delete(localId);
     cancelled.current.delete(localId);
     if (mounted.current) setUploads((list) => list.filter((u) => u.localId !== localId));
@@ -139,6 +161,17 @@ export function usePostReferences(token: string, postId: number) {
     [qc, key],
   );
 
+  const invalidateAfterError = useCallback(
+    (code: ReferenceErrorCode, forItem: boolean) => {
+      if (STALE_LIST_CODES.has(code)) void qc.invalidateQueries({ queryKey: key });
+      // On a draft the handler's own gate answers post_not_pending once the request closes.
+      if (STALE_REQUEST_CODES.has(code) || (forItem && code === 'post_not_pending')) {
+        void qc.invalidateQueries({ queryKey: [HUB_MATERIAL_KEY, token] });
+      }
+    },
+    [qc, key, token],
+  );
+
   const replaceItem = useCallback(
     (item: ReferenceItem) => {
       qc.setQueryData<ReferencesData>(key, (old) =>
@@ -159,6 +192,7 @@ export function usePostReferences(token: string, postId: number) {
       uploadPostReference(token, postId, job.file, {
         signal: controller.signal,
         onProgress: (loaded, total) => patchUpload(job.localId, { loaded, total }),
+        ...(job.materialItemId !== undefined ? { materialItemId: job.materialItemId } : {}),
       })
         .then(
           (item) => {
@@ -181,9 +215,7 @@ export function usePostReferences(token: string, postId: number) {
             } else {
               const code = codeOf(err);
               patchUpload(job.localId, { status: 'error', error: code });
-              if (code === 'post_not_pending' || code === 'reference_limit') {
-                void qc.invalidateQueries({ queryKey: key });
-              }
+              invalidateAfterError(code, job.materialItemId !== undefined);
             }
             job.settle(null);
           },
@@ -198,9 +230,14 @@ export function usePostReferences(token: string, postId: number) {
   const startUploads = useCallback(
     (
       list: File[],
-      opts?: { onUploaded?: (item: ReferenceItem) => void; source?: UploadSource },
+      opts?: {
+        onUploaded?: (item: ReferenceItem) => void;
+        source?: UploadSource;
+        materialItemId?: number;
+      },
     ) => {
       const source = opts?.source ?? 'tab';
+      const materialItemId = opts?.materialItemId;
       const current = qc.getQueryData<ReferencesData>(key);
       let room =
         MAX_REFERENCES_PER_POST -
@@ -213,7 +250,15 @@ export function usePostReferences(token: string, postId: number) {
         const localId = nextLocalId();
         const fileKind = referenceFileKind(file) ?? 'document';
         const invalid = validateReferenceFile(file) ?? (room <= 0 ? 'reference_limit' : null);
-        const base = { localId, source, name: file.name, fileKind, loaded: 0, total: file.size };
+        const base = {
+          localId,
+          source,
+          name: file.name,
+          fileKind,
+          loaded: 0,
+          total: file.size,
+          ...(materialItemId !== undefined ? { materialItemId } : {}),
+        };
         if (invalid) {
           entries.push({ ...base, status: 'error', error: invalid });
           results.push(Promise.resolve(null));
@@ -222,10 +267,17 @@ export function usePostReferences(token: string, postId: number) {
         room -= 1;
         files.current.set(localId, file);
         if (opts?.onUploaded) uploadedCallbacks.current.set(localId, opts.onUploaded);
+        if (materialItemId !== undefined) itemIds.current.set(localId, materialItemId);
         entries.push({ ...base, status: 'uploading' });
         results.push(
           new Promise<ReferenceItem | null>((settle) =>
-            queue.current.push({ localId, file, settle, onUploaded: opts?.onUploaded }),
+            queue.current.push({
+              localId,
+              file,
+              settle,
+              onUploaded: opts?.onUploaded,
+              materialItemId,
+            }),
           ),
         );
       }
@@ -271,6 +323,7 @@ export function usePostReferences(token: string, postId: number) {
         file,
         settle: () => undefined,
         onUploaded: uploadedCallbacks.current.get(localId),
+        materialItemId: itemIds.current.get(localId),
       });
       pump.current();
     },
@@ -284,13 +337,11 @@ export function usePostReferences(token: string, postId: number) {
         appendItem(item);
         return item;
       } catch (err) {
-        if (codeOf(err) === 'post_not_pending' || codeOf(err) === 'reference_limit') {
-          void qc.invalidateQueries({ queryKey: key });
-        }
+        invalidateAfterError(codeOf(err), input.materialItemId !== undefined);
         throw err;
       }
     },
-    [token, postId, appendItem, qc, key],
+    [token, postId, appendItem, invalidateAfterError],
   );
 
   const updateNote = useCallback(

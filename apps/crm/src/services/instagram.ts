@@ -44,7 +44,12 @@ export async function getInstagramAuthUrl(clientId: number): Promise<string> {
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.message || 'Error generating auth url');
+    // Keep the edge function's `error` code on the thrown Error so callers can hand it to
+    // handleEntitlementMutationError (plan_limit_exceeded / feature_disabled -> upgrade toast).
+    throw Object.assign(new Error(data.message || data.error || 'Error generating auth url'), {
+      error: data.error,
+      feature: data.feature,
+    });
   }
 
   const data = await res.json();

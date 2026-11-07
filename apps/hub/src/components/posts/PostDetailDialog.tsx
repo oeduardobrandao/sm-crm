@@ -17,6 +17,7 @@ import {
   ChevronRight,
   FolderKanban,
   ImageOff,
+  FolderUp,
   Lock,
   PencilLine,
   Users,
@@ -38,6 +39,11 @@ import { useEditSuggestion } from '../../hooks/useEditSuggestion';
 import { computePostNavigation, usePostNavigation } from '../../hooks/usePostNavigation';
 import { usePostAdvance, type ConfirmFlash, type SlideDir } from '../../hooks/usePostAdvance';
 import { usePostReferences } from '../../hooks/usePostReferences';
+import {
+  useOpenMaterialRequest,
+  useStickyMaterialRequest,
+} from '../../hooks/useOpenMaterialRequest';
+import { MaterialRequestDialog } from '../material/MaterialRequestDialog';
 import type { ReferenceItem } from '../../types/postReferences';
 import {
   autoPublishDestinations,
@@ -287,6 +293,7 @@ function PostDetailContent({
 }: ContentProps) {
   const { t, i18n } = useTranslation('hubPosts');
   const { t: tCard } = useTranslation('hubPostCard');
+  const { t: tMaterial } = useTranslation('hubMaterial');
   const platformNames = usePlatformNames();
   const dateLang = i18n.language === 'en' ? 'en-US' : 'pt-BR';
   const kind = pickPostCardKind(post);
@@ -329,7 +336,20 @@ function PostDetailContent({
     (open: boolean) => setOverlayDepth((d) => Math.max(0, d + (open ? 1 : -1))),
     [],
   );
-  const overlayOpen = viewerItem !== null || overlayDepth > 0;
+  // The post's open material request (shared requests list, not the per-post references).
+  const materialRequest = useOpenMaterialRequest(token, post.id);
+  const [materialOpen, setMaterialOpen] = useState(false);
+  // While the items dialog is up it keeps the request even after a refetch drops it (closed).
+  const materialDialog = useStickyMaterialRequest(materialRequest, post.id, materialOpen);
+  const materialDialogOpen = materialOpen && materialDialog.entry !== null;
+  const materialItemLabels = useMemo(
+    () =>
+      materialRequest
+        ? Object.fromEntries(materialRequest.request.items.map((i) => [i.id, i.label]))
+        : undefined,
+    [materialRequest],
+  );
+  const overlayOpen = viewerItem !== null || overlayDepth > 0 || materialDialogOpen;
 
   // Media notes: pin placement is an explicit mode so a plain tap still opens the lightbox.
   const postNotes = useMemo(() => notesForPost(mediaNotes, post.id), [mediaNotes, post.id]);
@@ -1029,6 +1049,20 @@ function PostDetailContent({
               </div>
             </div>
 
+            {materialRequest && !ghost && (
+              <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 px-4 py-2 text-[12.5px] hub-tx2 hub-bg-soft border-b hub-border">
+                <FolderUp size={14} aria-hidden="true" className="shrink-0 hub-tx3" />
+                <span>{tMaterial('aviso.texto')}</span>
+                <span aria-hidden="true">·</span>
+                <button
+                  type="button"
+                  onClick={() => setMaterialOpen(true)}
+                  className="font-semibold hub-txt underline-offset-2 hover:underline"
+                >
+                  {tMaterial('aviso.ver')}
+                </button>
+              </p>
+            )}
             <div
               role="tablist"
               className="sticky top-0 z-10 hub-bg-card md:static flex gap-5 px-4 border-b hub-border overflow-x-auto"
@@ -1109,6 +1143,7 @@ function PostDetailContent({
                     onOpen={setViewerItem}
                     onOverlayChange={handleOverlayChange}
                     onDirtyChange={handleReferencesDirtyChange}
+                    itemLabels={materialItemLabels}
                   />
                 </div>
               )}
@@ -1323,6 +1358,16 @@ function PostDetailContent({
       )}
       {!ghost && viewerItem && (
         <ReferenceViewer item={viewerItem} onClose={() => setViewerItem(null)} />
+      )}
+      {!ghost && materialDialog.entry && (
+        <MaterialRequestDialog
+          token={token}
+          entry={materialDialog.entry}
+          closed={materialDialog.closed}
+          open={materialDialogOpen}
+          onOpenChange={setMaterialOpen}
+          showViewPost={false}
+        />
       )}
     </>
   );

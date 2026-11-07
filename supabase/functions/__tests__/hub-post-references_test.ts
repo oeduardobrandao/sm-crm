@@ -598,3 +598,299 @@ Deno.test("hub-post-references: an exhausted write budget is 429 rate_limited wi
   assertEquals((await readJson(res)).error, "rate_limited");
   assertEquals(rpcCall(db, "post_reference_client_delete"), undefined);
 });
+
+// ── Pedidos de material ─────────────────────────────────────────
+
+function request(postId: number, fields: Record<string, unknown> = {}) {
+  return {
+    id: 500 + postId, post_id: postId, status: "aberto", closed_by: null, closed_at: null,
+    opened_by: "user-1", opened_at: "2026-11-01T10:00:00.000Z",
+    items: [{ id: 31, label: "Fotos", detail: null, position: 0, done: false, file_count: 0 }],
+    ...fields,
+  };
+}
+
+function postRow(id: number, fields: Record<string, unknown> = {}) {
+  return {
+    id, titulo: `Post ${id}`, tipo: "feed", scheduled_at: null, platform: "instagram",
+    status: "enviado_cliente", ...fields,
+  };
+}
+
+Deno.test("hub-post-references: GET /requests returns the exact whitelist, ordered, debiting hub-read", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  db.queueRpc("post_material_requests_for", {
+    data: [
+      { post_id: 1, request: request(1, { opened_at: "2026-11-02T10:00:00.000Z" }) },
+      { post_id: 2, request: request(2) },
+      { post_id: 3, request: request(3) },
+      { post_id: 4, request: request(4) },
+    ],
+    error: null,
+  });
+  db.queue("workflow_posts", "select", {
+    data: [
+      // extra columns a leaky select could return must never be forwarded
+      { ...postRow(1), ig_caption: "SECRET", conteudo: "SECRET", media: ["x"] },
+      postRow(2, { scheduled_at: "2026-12-01T10:00:00.000Z" }),
+      postRow(3, { scheduled_at: "2026-11-20T10:00:00.000Z" }),
+      postRow(4, { status: "rascunho" }),
+    ],
+    error: null,
+  });
+  db.queue("post_status_events", "select", { data: [], error: null });
+  db.queueRpc("post_reference_list", { data: [fileRow({ material_item_id: 31 }), linkRow()], error: null });
+  const rateKeys: string[] = [];
+  const res = await makeHandler(db, { rateKeys })(getReq("/requests?token=t"));
+  assertEquals(res.status, 200);
+  assertEquals(rateKeys, [READ_KEY]);
+  const body = await readJson(res);
+  assertEquals(body.requests.map((r: { post_id: number }) => r.post_id), [3, 2, 4, 1]);
+  for (const r of body.requests) {
+    assertEquals(Object.keys(r).sort(), [
+      "client_visible", "files_by_item", "platform", "post_id", "request", "scheduled_at", "tipo", "titulo",
+    ]);
+  }
+  for (const r of body.requests) {
+    assertEquals("opened_by" in r.request, false);
+    assertEquals("opened_by_name" in r.request, false);
+    assertEquals(Object.keys(r.request).sort(), ["closed_at", "closed_by", "id", "items", "opened_at", "post_id", "status"]);
+  }
+  assertEquals(JSON.stringify(body).includes("user-1"), false);
+  const first = body.requests.find((r: { post_id: number }) => r.post_id === 1);
+  assertEquals(Object.keys(first.files_by_item), ["31"]);
+  assertEquals(first.files_by_item["31"].length, 1);
+  assertEquals(JSON.stringify(body).includes("SECRET"), false);
+  const sel = db.calls.find((c) => c.table === "workflow_posts");
+  assert(!JSON.stringify(sel?.selectArgs).includes("ig_caption"));
+});
+
+Deno.test("hub-post-references: /requests client_visible follows isHubVisiblePost", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  db.queueRpc("post_material_requests_for", {
+    data: [{ post_id: 1, request: request(1) }, { post_id: 2, request: request(2) }, {
+      post_id: 3, request: request(3),
+    }],
+    error: null,
+  });
+  db.queue("workflow_posts", "select", {
+    data: [
+      postRow(1, { status: "enviado_cliente" }),
+      postRow(2, { status: "rascunho" }),
+      postRow(3, { status: "rascunho" }),
+    ],
+    error: null,
+  });
+  // post 3 was sent once and is back in production
+  db.queue("post_status_events", "select", {
+    data: [{ id: 1, post_id: 3, from_status: "rascunho", to_status: "enviado_cliente", created_at: "2026-11-01T00:00:00Z" }],
+    error: null,
+  });
+  db.queueRpc("post_reference_list", { data: [], error: null });
+  const res = await makeHandler(db)(getReq("/requests?token=t"));
+  const body = await readJson(res);
+  const vis = Object.fromEntries(body.requests.map((r: { post_id: number; client_visible: boolean }) => [r.post_id, r.client_visible]));
+  assertEquals(vis, { 1: true, 2: false, 3: true });
+});
+
+Deno.test("hub-post-references: /requests drops posts of another client and filters the select", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  db.queueRpc("post_material_requests_for", { data: [{ post_id: 1, request: request(1) }], error: null });
+  db.queue("workflow_posts", "select", { data: [], error: null });
+  const res = await makeHandler(db)(getReq("/requests?token=t"));
+  assertEquals((await readJson(res)).requests, []);
+  const sel = db.calls.find((c) => c.table === "workflow_posts");
+  const mods = JSON.stringify(sel?.modifiers);
+  assert(mods.includes("cliente_id") || mods.includes("14"));
+  assertEquals(rpcCall(db, "post_material_requests_for")?.payload, { p_conta: "conta-1", p_cliente: 14 });
+});
+
+Deno.test("hub-post-references: /requests with no open requests skips the post query", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  db.queueRpc("post_material_requests_for", { data: [], error: null });
+  const res = await makeHandler(db)(getReq("/requests?token=t"));
+  assertEquals((await readJson(res)).requests, []);
+  assertEquals(db.calls.some((c) => c.table === "workflow_posts"), false);
+});
+
+Deno.test("hub-post-references: /requests RPC failure is 500 internal", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  db.queueRpc("post_material_requests_for", { data: null, error: { message: "boom" } });
+  const res = await makeHandler(db)(getReq("/requests?token=t"));
+  assertEquals(res.status, 500);
+  assertEquals((await readJson(res)).error, "internal");
+});
+
+Deno.test("hub-post-references: GET list adds the open request (or null)", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  queuePost(db, { status: "rascunho" });
+  db.queueRpc("post_reference_list", { data: [fileRow({ material_item_id: 31 })], error: null });
+  db.queueRpc("post_material_requests_for", { data: [{ post_id: 99, request: request(99) }], error: null });
+  const body = await readJson(await makeHandler(db)(getReq("?token=t&post_id=99")));
+  assertEquals(body.request.id, 599);
+  assertEquals("opened_by" in body.request, false);
+  assertEquals(JSON.stringify(body).includes("user-1"), false);
+  assertEquals(body.items[0].material_item_id, 31);
+  assertEquals(body.can_add, false);
+
+  const db2 = createSupabaseQueryMock();
+  setupToken(db2);
+  queuePost(db2);
+  db2.queueRpc("post_reference_list", { data: [], error: null });
+  db2.queueRpc("post_material_requests_for", { data: [], error: null });
+  assertEquals((await readJson(await makeHandler(db2)(getReq("?token=t&post_id=99")))).request, null);
+});
+
+Deno.test("hub-post-references: upload on another client's post is 404 even with an open request", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  queuePost(db, { cliente_id: 15, status: "rascunho" });
+  db.queueRpc("post_material_requests_for", { data: [{ post_id: 99, request: request(99) }], error: null });
+  const res = await makeHandler(db)(jsonReq("POST", "/upload-url", IMAGE_UPLOAD));
+  assertEquals(res.status, 404);
+});
+
+Deno.test("hub-post-references: /files on a rascunho with an open request passes the gate and forwards material_item_id", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  queuePost(db, { status: "rascunho" });
+  db.queueRpc("post_material_requests_for", { data: [{ post_id: 99, request: request(99) }], error: null });
+  db.queue("files", "select", { data: [], error: null });
+  db.queueRpc("post_reference_file_insert", { data: insertedRow(), error: null });
+  const res = await makeHandler(db)(jsonReq("POST", "/files", { ...IMAGE_FINALIZE, material_item_id: 31 }));
+  assert(res.status !== 409, `status ${res.status}`);
+  const call = db.calls.find((c) => c.table === "rpc:post_reference_file_insert");
+  assertEquals(((call?.payload as { p: Record<string, unknown> })?.p).material_item_id, 31);
+});
+
+Deno.test("hub-post-references: /files on a rascunho without a request is 409 post_not_pending", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  queuePost(db, { status: "rascunho" });
+  db.queueRpc("post_material_requests_for", { data: [], error: null });
+  const res = await makeHandler(db)(jsonReq("POST", "/files", IMAGE_FINALIZE));
+  assertEquals(res.status, 409);
+  assertEquals((await readJson(res)).error, "post_not_pending");
+});
+
+Deno.test("hub-post-references: item upload still notifies the team", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  queuePost(db, { status: "rascunho" });
+  db.queueRpc("post_material_requests_for", { data: [{ post_id: 99, request: request(99) }], error: null });
+  db.queueRpc("post_reference_link_insert", { data: insertedRow({ kind: "link", file_id: null, url: "https://www.exemplo.com/post" }), error: null });
+  const res = await makeHandler(db)(jsonReq("POST", "/links", {
+    post_id: 99, url: "https://www.exemplo.com/post", material_item_id: 31,
+  }));
+  assert(res.status < 300, `status ${res.status}`);
+  assertEquals(rpcCall(db, "create_post_reference_notification")?.payload, { p_post_id: 99 });
+});
+
+Deno.test("hub-post-references: POST /requests/:id/close ok, debiting the write key", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  db.queueRpc("post_material_client_close", { data: "ok", error: null });
+  const rateKeys: string[] = [];
+  const res = await makeHandler(db, { rateKeys })(jsonReq("POST", "/requests/99/close"));
+  assertEquals(res.status, 200);
+  assertEquals(await readJson(res), { ok: true });
+  assertEquals(rateKeys, [WRITE_KEY]);
+  assertEquals(rpcCall(db, "post_material_client_close")?.payload, {
+    p_conta: "conta-1", p_cliente: 14, p_post: 99,
+  });
+});
+
+Deno.test("hub-post-references: close outcomes map to 409/404/500", async () => {
+  const cases: [unknown, number, string][] = [
+    ["nothing_sent", 409, "nothing_sent"],
+    ["request_closed", 409, "request_closed"],
+    ["not_found", 404, "not_found"],
+    ["weird", 500, "internal"],
+  ];
+  for (const [data, status, code] of cases) {
+    const db = createSupabaseQueryMock();
+    setupToken(db);
+    db.queueRpc("post_material_client_close", { data, error: null });
+    const res = await makeHandler(db)(jsonReq("POST", "/requests/99/close"));
+    assertEquals(res.status, status, String(data));
+    assertEquals((await readJson(res)).error, code);
+  }
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  db.queueRpc("post_material_client_close", { data: null, error: { message: "boom" } });
+  assertEquals((await makeHandler(db)(jsonReq("POST", "/requests/99/close"))).status, 500);
+});
+
+Deno.test("hub-post-references: close with a bad post id is 404 before any DB call", async () => {
+  const db = createSupabaseQueryMock();
+  const res = await makeHandler(db)(jsonReq("POST", "/requests/abc/close"));
+  assertEquals(res.status, 404);
+  assertEquals(db.calls.length, 0);
+});
+
+// Seleção múltipla no último item: o primeiro arquivo conclui o pedido (concluido/auto); os
+// seguintes da mesma seleção ainda passam o gate do rascunho por 10 minutos (o RPC confere igual).
+function queueRecentRequest(db: Db, fields: Record<string, unknown>) {
+  db.queue("post_material_requests", "select", {
+    data: { status: "concluido", closed_by: "auto", closed_at: "2026-10-08T11:55:00.000Z", ...fields },
+    error: null,
+  });
+}
+
+Deno.test("hub-post-references: rascunho gate lets item uploads through for 10 min after an auto close", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  queuePost(db, { status: "rascunho" });
+  db.queueRpc("post_material_requests_for", { data: [], error: null });
+  queueRecentRequest(db, {});
+  db.queue("files", "select", { data: [], error: null });
+  db.queueRpc("post_reference_file_insert", { data: insertedRow({ material_item_id: 31 }), error: null });
+  const res = await makeHandler(db)(jsonReq("POST", "/files", { ...IMAGE_FINALIZE, material_item_id: 31 }));
+  assert(res.status < 300, `status ${res.status}`);
+  assert(rpcCall(db, "post_reference_file_insert"));
+
+  const db2 = createSupabaseQueryMock();
+  setupToken(db2);
+  queuePost(db2, { status: "rascunho" });
+  db2.queueRpc("post_material_requests_for", { data: [], error: null });
+  queueRecentRequest(db2, {});
+  db2.queue("post_references", "select", { data: null, error: null, count: 3 });
+  db2.queueRpc("effective_plan_limit", { data: null, error: null });
+  const presign = await makeHandler(db2)(jsonReq("POST", "/upload-url", IMAGE_UPLOAD));
+  assert(presign.status < 300, `presign status ${presign.status}`);
+});
+
+Deno.test("hub-post-references: rascunho gate refuses an older auto close, a client close or a cancel", async () => {
+  for (const fields of [
+    { closed_at: "2026-10-08T11:49:00.000Z" },
+    { closed_by: "client" },
+    { status: "cancelado", closed_by: "team" },
+  ]) {
+    const db = createSupabaseQueryMock();
+    setupToken(db);
+    queuePost(db, { status: "rascunho" });
+    db.queueRpc("post_material_requests_for", { data: [], error: null });
+    queueRecentRequest(db, fields);
+    const res = await makeHandler(db)(jsonReq("POST", "/files", { ...IMAGE_FINALIZE, material_item_id: 31 }));
+    assertEquals(res.status, 409, JSON.stringify(fields));
+    assertEquals((await readJson(res)).error, "post_not_pending");
+    assertEquals(rpcCall(db, "post_reference_file_insert"), undefined);
+  }
+});
+
+Deno.test("hub-post-references: rascunho gate request lookup failure is 500 internal", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  queuePost(db, { status: "rascunho" });
+  db.queueRpc("post_material_requests_for", { data: [], error: null });
+  db.queue("post_material_requests", "select", { data: null, error: { message: "boom" } });
+  const res = await makeHandler(db)(jsonReq("POST", "/files", { ...IMAGE_FINALIZE, material_item_id: 31 }));
+  assertEquals(res.status, 500);
+  assertEquals((await readJson(res)).error, "internal");
+});

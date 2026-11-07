@@ -80,6 +80,32 @@ export function referenceErrorMessage(
         'references.errors.rateLimited',
         'Muitas tentativas seguidas. Aguarde um minuto e tente novamente.',
       );
+    case 'request_closed':
+      return t('references.errors.requestClosed', 'Este pedido foi encerrado pela equipe.');
+    case 'item_required':
+      return t(
+        'references.errors.itemRequired',
+        'Este post está aguardando material. Envie o arquivo pelo item pedido.',
+      );
+    case 'nothing_sent':
+      return t(
+        'references.errors.nothingSent',
+        'Envie pelo menos um arquivo antes de avisar a equipe.',
+      );
+    case 'too_many_items':
+      return t('references.errors.tooManyItems', 'Este post chegou ao limite de 10 arquivos.');
+    case 'items_required':
+      return t('references.errors.itemsRequired', 'O pedido precisa de pelo menos um item.');
+    case 'post_not_requestable':
+      return t(
+        'references.errors.postNotRequestable',
+        'Este post não aceita mais pedido de material.',
+      );
+    case 'invalid_item':
+      return t(
+        'references.errors.invalidItem',
+        'Um dos itens do pedido não é válido. Avise a equipe.',
+      );
     default:
       return t('references.errors.generic', 'Algo deu errado. Tente novamente.');
   }

@@ -1,6 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import i18n from 'i18next';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import ptHubLinha from '../../../../../packages/i18n/locales/pt/hubLinha.json';
+import ptHubMaterial from '../../../../../packages/i18n/locales/pt/hubMaterial.json';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { HubContext } from '../../HubContext';
 import type { HubPost, HubPostMedia, HubPostsResponse } from '../../types';
@@ -13,6 +16,10 @@ vi.mock('../../api', () => ({
   submitApproval: submitApprovalMock,
   submitEditSuggestion: vi.fn(),
   fetchPostHistory: vi.fn().mockResolvedValue({ events: [], approvals: [] }),
+}));
+vi.mock('../../services/materialRequests', async (orig) => ({
+  ...(await orig<typeof import('../../services/materialRequests')>()),
+  fetchMaterialRequests: vi.fn(),
 }));
 vi.mock('../../hooks/usePostReferences', async () => {
   const { makePostReferencesStub } = await import('../../hooks/__tests__/postReferencesStub');
@@ -37,10 +44,40 @@ vi.mock('../../components/InstagramGridPreview', () => ({
 }));
 
 import { fetchPosts, fetchInstagramFeed } from '../../api';
+import { fetchMaterialRequests } from '../../services/materialRequests';
 import { AprovacoesPage } from '../AprovacoesPage';
 import { CONFIRM_HOLD_MS } from '../../hooks/usePostAdvance';
 const mockedFetchPosts = vi.mocked(fetchPosts);
 const mockedFetchInstagramFeed = vi.mocked(fetchInstagramFeed);
+const mockedFetchMaterial = vi.mocked(fetchMaterialRequests);
+
+function materialReq(postId: number, done: boolean[] = [false]) {
+  return {
+    post_id: postId,
+    titulo: `Pedido ${postId}`,
+    tipo: 'carrossel',
+    scheduled_at: null,
+    platform: null,
+    client_visible: false,
+    files_by_item: {},
+    request: {
+      id: postId,
+      post_id: postId,
+      status: 'aberto',
+      closed_by: null,
+      closed_at: null,
+      opened_at: '2026-11-01T10:00:00.000Z',
+      items: done.map((d, i) => ({
+        id: postId * 10 + i,
+        label: `Item ${postId}-${i}`,
+        detail: null,
+        position: i,
+        file_count: d ? 1 : 0,
+        done: d,
+      })),
+    },
+  };
+}
 
 const hubValue = {
   bootstrap: {
@@ -105,7 +142,7 @@ function response(over: Partial<HubPostsResponse> = {}): HubPostsResponse {
 
 function LocationProbe() {
   const loc = useLocation();
-  return <span data-testid="location">{loc.pathname}</span>;
+  return <span data-testid="location">{`${loc.pathname}${loc.search}`}</span>;
 }
 
 function renderPage(path: string, resp?: HubPostsResponse) {
@@ -129,7 +166,14 @@ function renderPage(path: string, resp?: HubPostsResponse) {
 const BASE = '/mesaas/hub/token-publico/aprovacoes';
 
 describe('AprovacoesPage', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeAll(() => {
+    i18n.addResourceBundle('pt', 'hubLinha', ptHubLinha, true, true);
+    i18n.addResourceBundle('pt', 'hubMaterial', ptHubMaterial, true, true);
+  });
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedFetchMaterial.mockResolvedValue([]);
+  });
 
   it('never lists an em-produção post among pending approvals', async () => {
     renderPage(
@@ -465,6 +509,109 @@ describe('AprovacoesPage', () => {
       await pickMedia('Sem mídia (1)');
       fireEvent.click(screen.getByRole('button', { name: /Visualizar no Feed \(1\)/ }));
       expect(await screen.findByTestId('grid-selected-count')).toHaveTextContent('1');
+    });
+  });
+
+  describe('material section', () => {
+    const twoPosts = () =>
+      response({ posts: [post({ id: 1, titulo: 'A' }), post({ id: 2, titulo: 'B' })] });
+
+    it('flag off with open requests: shows Posts and Material pills', async () => {
+      mockedFetchMaterial.mockResolvedValue([materialReq(7), materialReq(8)] as never);
+      renderPage(BASE, twoPosts());
+      expect(await screen.findByRole('tab', { name: 'Material · 2' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Posts · 2' })).toBeInTheDocument();
+      expect(screen.queryByRole('tab', { name: /Linha editorial/ })).not.toBeInTheDocument();
+    });
+
+    it('flag off with zero requests: no tab bar', async () => {
+      renderPage(BASE, twoPosts());
+      await screen.findByText('A');
+      await waitFor(() => expect(mockedFetchMaterial).toHaveBeenCalled());
+      expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    });
+
+    it('?aba=material renders the tiles and the combined header', async () => {
+      mockedFetchMaterial.mockResolvedValue([
+        materialReq(7, [true, false, false]),
+        materialReq(8),
+        materialReq(9),
+      ] as never);
+      renderPage(`${BASE}?aba=material`, twoPosts());
+      expect(
+        await screen.findByText('2 posts esperando sua aprovação e 3 pedidos de material.'),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Pedido 7')).toBeInTheDocument();
+      expect(screen.queryByText('A')).not.toBeInTheDocument();
+    });
+
+    it('header: singular forms and only the non-zero parts', async () => {
+      mockedFetchMaterial.mockResolvedValue([materialReq(7)] as never);
+      renderPage(`${BASE}?aba=material`, response({ posts: [post({ id: 1 })] }));
+      expect(
+        await screen.findByText('1 post esperando sua aprovação e 1 pedido de material.'),
+      ).toBeInTheDocument();
+    });
+
+    it('header: zero pending posts reads only the requests', async () => {
+      mockedFetchMaterial.mockResolvedValue([
+        materialReq(7),
+        materialReq(8),
+        materialReq(9),
+      ] as never);
+      renderPage(`${BASE}?aba=material`, response({ posts: [] }));
+      expect(await screen.findByText('3 pedidos de material.')).toBeInTheDocument();
+    });
+
+    it("the combined header also shows on the Posts tab; zero requests keeps today's line", async () => {
+      mockedFetchMaterial.mockResolvedValue([materialReq(7), materialReq(8)] as never);
+      const { unmount } = renderPage(BASE, twoPosts());
+      expect(
+        await screen.findByText('2 posts esperando sua aprovação e 2 pedidos de material.'),
+      ).toBeInTheDocument();
+      unmount();
+      mockedFetchMaterial.mockResolvedValue([]);
+      renderPage(BASE, twoPosts());
+      expect(await screen.findByText('2 posts aguardando sua aprovação.')).toBeInTheDocument();
+    });
+
+    it('keeps the Material view and shows its error when the fetch fails', async () => {
+      mockedFetchMaterial.mockRejectedValue(new Error('boom'));
+      renderPage(`${BASE}?aba=material`, twoPosts());
+      expect(
+        await screen.findByText('Não foi possível carregar os pedidos de material.'),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: /Material/ })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+    });
+
+    it('clicking a tile sets ?pedido=<postId>', async () => {
+      mockedFetchMaterial.mockResolvedValue([materialReq(7)] as never);
+      renderPage(`${BASE}?aba=material`, twoPosts());
+      fireEvent.click(await screen.findByRole('button', { name: /Pedido 7/ }));
+      await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('pedido=7'));
+      expect(screen.getByTestId('location')).toHaveTextContent('aba=material');
+    });
+
+    it('?pedido=<postId> opens the request dialog; closing it keeps aba and drops pedido', async () => {
+      mockedFetchMaterial.mockResolvedValue([materialReq(7)] as never);
+      renderPage(`${BASE}?aba=material&pedido=7`, twoPosts());
+      expect(await screen.findByRole('dialog', { name: 'Pedido 7' })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Fechar pedido de material' }));
+      await waitFor(() => expect(screen.getByTestId('location')).not.toHaveTextContent('pedido'));
+      expect(screen.getByTestId('location')).toHaveTextContent('aba=material');
+      expect(screen.queryByRole('dialog', { name: 'Pedido 7' })).not.toBeInTheDocument();
+    });
+
+    it('an enviado_cliente post with an open request is in both Posts and Material', async () => {
+      mockedFetchMaterial.mockResolvedValue([materialReq(1)] as never);
+      const { unmount } = renderPage(BASE, response({ posts: [post({ id: 1, titulo: 'Duplo' })] }));
+      expect(await screen.findByText('Duplo')).toBeInTheDocument();
+      unmount();
+      renderPage(`${BASE}?aba=material`);
+      expect(await screen.findByText('Pedido 1')).toBeInTheDocument();
     });
   });
 });

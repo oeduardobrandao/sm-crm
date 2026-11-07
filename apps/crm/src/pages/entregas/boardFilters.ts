@@ -4,6 +4,8 @@ import type { FilterState, StatusFilter } from './components/EntregasFilters';
 import { postResponsavelIdOf, type PostStage } from './postStage';
 import { matchesDeadlineFilter, matchesEtapaPrazo } from './etapaPrazo';
 import { postMatchesStatusFilter } from './statusRegistry';
+import { matchesMaterialFilter } from './materialSummary';
+import type { MaterialSummaryRow } from '@/store/postReferences';
 
 // As duas cadeias de filtro da página de Entregas, fora do componente para
 // rodarem duas vezes: a lista com todos os filtros, e a base das contagens do
@@ -80,6 +82,7 @@ export function filterActivePosts(
   posts: ActivePost[],
   filters: FilterState,
   stageOf: (p: ActivePost) => PostStage | undefined,
+  materialOf?: (postId: number) => MaterialSummaryRow | undefined,
 ): ActivePost[] {
   let ps = posts;
   if (filters.filterSearch) {
@@ -106,6 +109,10 @@ export function filterActivePosts(
   if (filters.filterTipos.length) ps = ps.filter((p) => filters.filterTipos.includes(p.tipo));
   if (filters.filterPostStatus.length)
     ps = ps.filter((p) => postMatchesStatusFilter(p, filters.filterPostStatus));
+  // Pedido de material: lê o mesmo selo do card (materialBadge), então filtro e selo concordam.
+  const material = filters.filterMaterial ?? [];
+  if (material.length)
+    ps = ps.filter((p) => matchesMaterialFilter(materialOf?.(p.id), p.status, material));
   // Sem etapa, matchesDeadlineFilter devolve false enquanto um preset/intervalo
   // estiver ativo, e true incondicionalmente com o filtro vazio.
   ps = ps.filter((p) => {

@@ -2,7 +2,8 @@
   "abas": {
     "rotulo": "Approval sections",
     "posts": "Posts · {{n}}",
-    "linha": "Editorial plan · {{n}}"
+    "linha": "Editorial plan · {{n}}",
+    "material": "Material · {{n}}"
   },
   "titulo": "Editorial plan for {{mes}}",
   "resumo": {

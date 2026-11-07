@@ -18,6 +18,7 @@ import {
   fetchPostsInRange,
   CONVITE_INDISPONIVEL,
 } from './api';
+import { fetchMaterialRequests } from './services/materialRequests';
 import type { HubAgendaCursor, HubAgendaItem, HubAgendaResponse } from './types';
 
 // Fetched once per visit, like the effect it replaced: a refetch on window
@@ -93,6 +94,18 @@ export const hubLinhasQuery = (token: string) =>
   queryOptions({
     queryKey: [HUB_LINHAS_KEY, token],
     queryFn: () => fetchLinhas(token),
+    staleTime: 30_000,
+  });
+
+// ── Material requests ───────────────────────────────────────────────────────
+
+export const HUB_MATERIAL_KEY = 'hub-material';
+
+/** Open requests only. Shared by the nav badge, Home and Aprovações. */
+export const hubMaterialRequestsQuery = (token: string) =>
+  queryOptions({
+    queryKey: [HUB_MATERIAL_KEY, token],
+    queryFn: () => fetchMaterialRequests(token),
     staleTime: 30_000,
   });
 
