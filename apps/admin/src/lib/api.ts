@@ -1314,3 +1314,42 @@ export function getEmailMetrics(start: string, end: string) {
 export function runEmailBackfill(cursor: string | null) {
   return adminApi<EmailBackfillResult>('email-backfill', { cursor });
 }
+
+export interface EmailListCursor {
+  sent_at: string;
+  email_id: string;
+}
+
+export interface EmailListParams {
+  start: string;
+  end: string;
+  categories?: string[];
+  types?: string[];
+  events?: string[];
+  cursor?: EmailListCursor | null;
+  limit?: number;
+}
+
+export interface EmailListItem {
+  email_id: string;
+  sent_at: string;
+  category: string;
+  type: string;
+  last_event: string;
+  source: string;
+  bounce_type: string | null;
+  bounce_message: string | null;
+  recipient_masked: string | null;
+  subject: string | null;
+}
+
+export interface EmailListResponse {
+  items: EmailListItem[];
+  next_cursor: EmailListCursor | null;
+  /** Only on the first page. */
+  types: { category: string; type: string }[] | null;
+}
+
+export function getEmailList(params: EmailListParams) {
+  return adminApi<EmailListResponse>('email-list', { ...params });
+}
