@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { isNativeApp } from '@/native/platform';
 import { setConsent, type ConsentCategory } from '@/lib/consent';
 import { useConsent } from '@/lib/useConsent';
 
@@ -31,9 +32,11 @@ function PreferencesForm({ focus, onClose }: { focus?: ConsentCategory; onClose:
   const [analytics, setAnalytics] = useState(consent?.analytics === true);
   const [support, setSupport] = useState(focus === 'support' ? true : consent?.support === true);
   const [marketing, setMarketing] = useState(consent?.marketing === true);
+  // The iOS app never loads ad tags (App Store tracking rules), so it does not offer them.
+  const native = isNativeApp();
 
   const save = () => {
-    setConsent({ analytics, support, marketing });
+    setConsent({ analytics, support, marketing: native ? false : marketing });
     onClose();
   };
 
@@ -74,17 +77,19 @@ function PreferencesForm({ focus, onClose }: { focus?: ConsentCategory; onClose:
           <Switch id="cookie-support" checked={support} onCheckedChange={setSupport} />
         </div>
 
-        <div className="flex items-start justify-between gap-4 rounded-lg border p-3">
-          <div>
-            <Label htmlFor="cookie-marketing" className="text-sm font-medium">
-              {t('cookies.dialog.marketingTitle')}
-            </Label>
-            <p className="text-sm text-muted-foreground">
-              {t('cookies.dialog.marketingDescription')}
-            </p>
+        {!native && (
+          <div className="flex items-start justify-between gap-4 rounded-lg border p-3">
+            <div>
+              <Label htmlFor="cookie-marketing" className="text-sm font-medium">
+                {t('cookies.dialog.marketingTitle')}
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                {t('cookies.dialog.marketingDescription')}
+              </p>
+            </div>
+            <Switch id="cookie-marketing" checked={marketing} onCheckedChange={setMarketing} />
           </div>
-          <Switch id="cookie-marketing" checked={marketing} onCheckedChange={setMarketing} />
-        </div>
+        )}
 
         <p className="text-xs text-muted-foreground">{t('cookies.dialog.revokeNote')}</p>
       </div>

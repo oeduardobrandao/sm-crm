@@ -165,6 +165,7 @@
     "banner": {
       "title": "Cookies and privacy",
       "bodyShort": "We use cookies for usage analytics, including session recording, support chat and ad measurement.",
+      "bodyShortApp": "We use cookies for usage analytics, including session recording, and for the support chat.",
       "details": "Details",
       "acceptAll": "Accept",
       "rejectAll": "Reject",

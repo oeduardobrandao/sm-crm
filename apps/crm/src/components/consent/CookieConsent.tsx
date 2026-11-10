@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { isNativeApp } from '@/native/platform';
 import { OPEN_PREFERENCES_EVENT, setConsent, type ConsentCategory } from '@/lib/consent';
 import { clearPendingSupportChat } from '@/lib/supportChat';
 import { useConsent } from '@/lib/useConsent';
@@ -65,7 +66,7 @@ export default function CookieConsent() {
           {/* The title only names the region (aria-label). The visible copy is one sentence so the
               banner covers as little of a phone screen as possible. */}
           <p className="text-xs text-muted-foreground sm:flex-1 sm:text-sm">
-            {t('cookies.banner.bodyShort')}{' '}
+            {t(isNativeApp() ? 'cookies.banner.bodyShortApp' : 'cookies.banner.bodyShort')}{' '}
             <Link to="/lgpd" className="underline">
               {t('cookies.banner.details')}
             </Link>
@@ -96,7 +97,9 @@ export default function CookieConsent() {
               variant="outline"
               size="sm"
               className="mb-0 px-2 sm:px-3"
-              onClick={() => setConsent({ analytics: true, support: true, marketing: true })}
+              onClick={() =>
+                setConsent({ analytics: true, support: true, marketing: !isNativeApp() })
+              }
             >
               {t('cookies.banner.acceptAll')}
             </Button>

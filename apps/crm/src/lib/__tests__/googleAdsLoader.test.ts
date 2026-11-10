@@ -40,6 +40,20 @@ describe('googleAdsLoader', () => {
     );
   });
 
+  // App Store: an ad tag inside the iOS app is "tracking" and would need the ATT prompt.
+  it('does nothing inside the iOS app, even with marketing consent', async () => {
+    seedConsent({ marketing: true });
+    vi.stubGlobal('Capacitor', { isNativePlatform: () => true, getPlatform: () => 'ios' });
+    try {
+      const { loadGoogleAds } = await import('../googleAdsLoader');
+      loadGoogleAds();
+      expect(tagScripts()).toHaveLength(0);
+      expect(window.dataLayer).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('does nothing when VITE_GOOGLE_ADS_ID is unset (dev, staging)', async () => {
     vi.stubEnv('VITE_GOOGLE_ADS_ID', '');
     const { loadGoogleAds } = await import('../googleAdsLoader');
