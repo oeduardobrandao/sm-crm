@@ -122,18 +122,21 @@ export default function KbVideoEditorPage() {
     qc.invalidateQueries({ queryKey: kbVideoKey(videoId) });
   };
 
+  // The payload is built at click time and passed to mutate(): useMutation applies a new
+  // mutationFn only in an effect after the render, so a closure over the form state could
+  // still hold the pre-hydration values (an empty title) when Salvar is clicked right away.
+  const buildPayload = (): Parameters<typeof upsertKbVideo>[0] => ({
+    ...(video ? { video_id: video.id } : {}),
+    title,
+    slug,
+    description: description || null,
+    series_id: seriesId,
+    article_id: articleId || null,
+    display_order: Math.max(0, parseInt(displayOrder, 10) || 0),
+    status,
+  });
   const saveMut = useMutation({
-    mutationFn: () =>
-      upsertKbVideo({
-        ...(video ? { video_id: video.id } : {}),
-        title,
-        slug,
-        description: description || null,
-        series_id: seriesId,
-        article_id: articleId || null,
-        display_order: Math.max(0, parseInt(displayOrder, 10) || 0),
-        status,
-      }),
+    mutationFn: (payload: Parameters<typeof upsertKbVideo>[0]) => upsertKbVideo(payload),
     onSuccess: (data) => {
       invalidate();
       toast.success(isEdit ? 'Vídeo atualizado' : 'Vídeo criado. Agora envie o arquivo.');
@@ -240,7 +243,7 @@ export default function KbVideoEditorPage() {
       onFile={handleFile}
       onCancelUpload={() => abortRef.current?.abort()}
       fetching={videoQuery.isFetching}
-      onSave={() => saveMut.mutate()}
+      onSave={() => saveMut.mutate(buildPayload())}
       saving={saveMut.isPending}
       saveDisabled={!title || !slug || !seriesId || !!slugError}
       onDelete={() => {
