@@ -1,5 +1,6 @@
 import { assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
+import { encryptText } from "../_shared/crypto.ts";
 import { createHubDashboardHandler } from "../hub-dashboard/handler.ts";
 
 const now = () => "2026-04-17T12:00:00.000Z";
@@ -712,4 +713,55 @@ Deno.test("hub-dashboard: an unknown platform value falls back to the default", 
 
   const body = await (await getP(makeHandler(db), "&platform=youtube")).json();
   assertEquals(body.platform, "instagram");
+});
+
+Deno.test("hub-dashboard: the Graph call carries a timeout signal and a timeout keeps stored thumbnails", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", HUB_TOKEN);
+  db.queue("instagram_accounts", "select", {
+    data: igRow({ encrypted_access_token: await encryptText("tok", "test-secret", "instagram-access-token") }),
+    error: null,
+  });
+  db.queue("instagram_posts", "select", {
+    data: [{
+      instagram_post_id: "ig-post-1",
+      thumbnail_url: "https://cdn.ig/old.jpg",
+      media_type: "IMAGE",
+      permalink: "https://instagram.com/p/abc",
+      posted_at: "2026-04-10T10:00:00.000Z",
+      likes: 10, comments: 2, reach: 100, impressions: 150, saved: 5, shares: 1,
+    }],
+    error: null,
+  });
+  db.queue("instagram_follower_history", "select", { data: [], error: null });
+  db.queue("instagram_posts", "select", { data: [], error: null });
+
+  const original = globalThis.fetch;
+  let init: RequestInit | undefined;
+  globalThis.fetch = ((_input: unknown, i?: RequestInit) => {
+    init = i;
+    return Promise.reject(new DOMException("timed out", "TimeoutError"));
+  }) as typeof fetch;
+  try {
+    const response = await get(makeHandler(db));
+    const body = await response.json();
+    assertEquals(response.status, 200);
+    assertEquals(body.topPosts[0].thumbnailUrl, "https://cdn.ig/old.jpg");
+    assertEquals(init?.signal instanceof AbortSignal, true);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+Deno.test("hub-dashboard: platform=tiktok&period=90 queries TikTok videos from a 90-day lower bound", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", HUB_TOKEN);
+  db.queue("instagram_accounts", "select", { data: null, error: null });
+  queueTikTokDetail(db);
+
+  await getP(makeHandler(db, tiktokOn), "&platform=tiktok&period=90");
+
+  const gte = callsTo(db, "tiktok_posts")[0].modifiers.find((m) => m.method === "gte");
+  // now 2026-04-17 (SP) minus 89 days = 2026-01-18, opening at the SP midnight
+  assertEquals(gte?.args, ["posted_at", "2026-01-18T03:00:00.000Z"]);
 });

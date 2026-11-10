@@ -26,6 +26,8 @@ interface HubDashboardHandlerDeps {
   rateLimit: (db: DbClient, key: string, max: number, windowSeconds: number) => Promise<boolean>;
 }
 
+const GRAPH_TIMEOUT_MS = 3000;
+
 const VALID_PERIODS = new Set([30, 60, 90]);
 
 function parsePeriod(raw: string | null): number {
@@ -43,6 +45,30 @@ function computeEngagementRate(post: {
   if (post.reach <= 0) return 0;
   const interactions = post.likes + post.comments + post.saved + post.shares;
   return Math.round((interactions / post.reach) * 1000) / 10;
+}
+
+interface BodyParts {
+  instagram?: Record<string, unknown>;
+  accounts: HubAccountSummary[];
+  platform: "instagram" | "tiktok";
+  tiktok?: Record<string, unknown>;
+  period: number;
+}
+
+/** The one place the response keys are assembled: legacy Instagram keys (empty when there is no
+ * Instagram detail), then accounts, platform and, only when present, the tiktok block. */
+function buildBody(p: BodyParts) {
+  return {
+    topPosts: [],
+    followerHistory: [],
+    reachHistory: [],
+    account: null,
+    ...p.instagram,
+    accounts: p.accounts,
+    platform: p.platform,
+    ...(p.tiktok ? { tiktok: p.tiktok } : {}),
+    period: p.period,
+  };
 }
 
 export function createHubDashboardHandler(deps: HubDashboardHandlerDeps) {
@@ -121,16 +147,12 @@ export function createHubDashboardHandler(deps: HubDashboardHandlerDeps) {
       const parts = tiktokParts(tt, resolvePlatform(requested, tt ? [{ platform: "tiktok" }] : []));
       if (parts.summary) accounts.push(parts.summary);
       const platform = resolvePlatform(requested, accounts);
-      return json({
-        topPosts: [],
-        followerHistory: [],
-        reachHistory: [],
-        account: null,
+      return json(buildBody({
         accounts,
         platform,
-        ...(platform === "tiktok" && accounts.length > 0 ? { tiktok: tiktokParts(tt, platform).detail } : {}),
+        tiktok: platform === "tiktok" && accounts.length > 0 ? tiktokParts(tt, platform).detail : undefined,
         period,
-      });
+      }));
     }
 
     const igPlatform = resolvePlatform(requested, [{ platform: "instagram" }]);
@@ -149,16 +171,7 @@ export function createHubDashboardHandler(deps: HubDashboardHandlerDeps) {
       const tt = await tiktokP;
       const parts = tiktokParts(tt, "tiktok");
       if (parts.summary) accounts.push(parts.summary);
-      return json({
-        topPosts: [],
-        followerHistory: [],
-        reachHistory: [],
-        account: null,
-        accounts,
-        platform: "tiktok",
-        ...(parts.detail ? { tiktok: parts.detail } : {}),
-        period,
-      });
+      return json(buildBody({ accounts, platform: "tiktok", tiktok: parts.detail, period }));
     }
 
     const cutoff = new Date(
@@ -209,6 +222,7 @@ export function createHubDashboardHandler(deps: HubDashboardHandlerDeps) {
         const ids = topPosts.map((p: { id: string }) => p.id).join(",");
         const res = await fetch(
           `https://graph.instagram.com/?ids=${ids}&fields=thumbnail_url,media_url&access_token=${accessToken}`,
+          { signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS) },
         );
         if (res.ok) {
           const data = await res.json();
@@ -255,26 +269,28 @@ export function createHubDashboardHandler(deps: HubDashboardHandlerDeps) {
     const tiktokSum = tiktokParts(await tiktokP, "instagram").summary;
     if (tiktokSum) accounts.push(tiktokSum);
 
-    return json({
-      topPosts: postsWithRate,
-      followerHistory: (followerRows ?? []).map((r: any) => ({
-        date: r.date,
-        followerCount: r.follower_count,
-      })),
-      reachHistory: Array.from(reachByDate.entries())
-        .map(([date, val]) => ({ date, reach: val.reach, impressions: val.impressions }))
-        .sort((a, b) => a.date.localeCompare(b.date)),
-      account: {
-        followerCount: igAccount.follower_count,
-        followingCount: igAccount.following_count,
-        mediaCount: igAccount.media_count,
-        reach28d: igAccount.reach_28d,
-        impressions28d: igAccount.impressions_28d,
-        lastSyncedAt: igAccount.last_synced_at,
+    return json(buildBody({
+      instagram: {
+        topPosts: postsWithRate,
+        followerHistory: (followerRows ?? []).map((r: any) => ({
+          date: r.date,
+          followerCount: r.follower_count,
+        })),
+        reachHistory: Array.from(reachByDate.entries())
+          .map(([date, val]) => ({ date, reach: val.reach, impressions: val.impressions }))
+          .sort((a, b) => a.date.localeCompare(b.date)),
+        account: {
+          followerCount: igAccount.follower_count,
+          followingCount: igAccount.following_count,
+          mediaCount: igAccount.media_count,
+          reach28d: igAccount.reach_28d,
+          impressions28d: igAccount.impressions_28d,
+          lastSyncedAt: igAccount.last_synced_at,
+        },
       },
       accounts,
       platform: "instagram",
       period,
-    });
+    }));
   };
 }

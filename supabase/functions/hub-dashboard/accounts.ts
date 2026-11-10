@@ -154,9 +154,9 @@ export function tiktokSummary(
   now: Date,
 ): HubAccountSummary {
   const w30 = windowFromDays(SUMMARY_DAYS, now);
-  const from = spDayStartIso(w30.start);
+  const from = Date.parse(spDayStartIso(w30.start));
   const views30d = data.videos
-    .filter((v) => v.posted_at != null && v.posted_at >= from)
+    .filter((v) => v.posted_at != null && Date.parse(v.posted_at) >= from)
     .reduce((acc, v) => acc + (v.views || 0), 0);
   return {
     platform: "tiktok",

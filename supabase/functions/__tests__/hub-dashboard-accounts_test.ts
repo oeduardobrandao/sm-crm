@@ -1,5 +1,5 @@
 import { assertEquals } from "./assert.ts";
-import { followersDelta, instagramState, tiktokState } from "../hub-dashboard/accounts.ts";
+import { followersDelta, tiktokSummary, instagramState, tiktokState } from "../hub-dashboard/accounts.ts";
 import { resolvePlatform, topVideos, viewsHistory } from "../hub-dashboard/tiktok-detail.ts";
 import type { TikTokVideoDetailRow } from "../_shared/tiktok-analytics/queries.ts";
 
@@ -131,4 +131,18 @@ Deno.test("viewsHistory: sums per São Paulo day", () => {
     vid("d", null, 99),
   ]);
   assertEquals(out, [{ date: "2026-11-09", views: 12 }, { date: "2026-11-10", views: 3 }]);
+});
+
+Deno.test("tiktokSummary: a video posted exactly at the window start in +00:00 form counts", () => {
+  const now = new Date("2026-11-10T12:00:00.000Z"); // window start 2026-10-12 -> 2026-10-12T03:00:00Z
+  const card = {
+    account: { username: "u", follower_count: 1, likes_count: 1, video_count: 1, last_synced_at: null },
+    state: "connected" as const,
+  };
+  const s = tiktokSummary(
+    card as never,
+    { videos: [vid("edge", "2026-10-12T03:00:00+00:00", 40), vid("before", "2026-10-12T02:59:59+00:00", 7)], history: [] },
+    now,
+  );
+  assertEquals(s.tiktok?.views30d, 40);
 });
