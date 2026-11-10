@@ -1,10 +1,10 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useHub } from '../../HubContext';
 import { hubDashboardQuery } from '../../queries';
 import { formatDayMonth, syncAge } from '../../lib/dashboardFormat';
-import type { DashboardPlatform, HubAccountSummary } from '../../types';
+import type { DashboardPlatform, HubAccountSummary, HubDashboardResponse } from '../../types';
 import { PeriodSelector } from './PeriodSelector';
 import { TopPostsRow } from './TopPostsRow';
 import { TopVideosRow } from './TopVideosRow';
@@ -68,6 +68,37 @@ function AccountLine({ account, locale }: { account: HubAccountSummary; locale: 
   );
 }
 
+const bodySkeleton = (
+  <>
+    <div className="flex gap-3 mb-6">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <div
+          key={i}
+          className="min-w-[160px] h-[220px] rounded-2xl hub-bg-soft animate-pulse flex-shrink-0"
+        />
+      ))}
+    </div>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{chartSkeleton}</div>
+  </>
+);
+
+interface View {
+  data: HubDashboardResponse;
+  platform: DashboardPlatform;
+}
+
+/**
+ * What a response can show. A TikTok answer without its `tiktok` block has no TikTok content:
+ * it shows Instagram only when the response really carries Instagram detail, else nothing.
+ * Instagram content never renders under a TikTok account line.
+ */
+function resolveView(data: HubDashboardResponse | undefined): View | null {
+  if (!data) return null;
+  if (data.platform !== 'tiktok') return { data, platform: 'instagram' };
+  if (data.tiktok) return { data, platform: 'tiktok' };
+  return data.account ? { data, platform: 'instagram' } : null;
+}
+
 export function DashboardSection({
   sectionNumber,
   selectedPlatform = null,
@@ -95,45 +126,44 @@ export function DashboardSection({
     !selectedPlatform || !defaultPlatform || selectedPlatform === defaultPlatform
       ? 'default'
       : selectedPlatform;
-  const own = useQuery(hubDashboardQuery(token, period, requestKey));
-  const { isLoading, isError } = own;
+  // The previous answer stays on screen as a placeholder while a new platform or period
+  // loads, so the header (and the focused control in it) never unmounts.
+  const own = useQuery({
+    ...hubDashboardQuery(token, period, requestKey),
+    placeholderData: keepPreviousData,
+  });
+  const pending = own.isPlaceholderData;
 
-  // A TikTok pick whose detail is missing (account gone, plan changed): back to the default.
-  const tiktokMissing =
+  // A failed explicit request falls back to the default view when that is available.
+  const ownView = own.isError ? null : resolveView(own.data);
+  const view = ownView ?? resolveView(base.data);
+
+  // A pick whose settled answer has no TikTok detail: back to the default.
+  const pickMissing =
     selectedPlatform === 'tiktok' &&
+    !pending &&
     own.data?.platform === 'tiktok' &&
-    !own.data.tiktok &&
-    !own.isFetching;
+    !own.data.tiktok;
   useEffect(() => {
-    if (tiktokMissing) onSelectPlatform?.(null);
-  }, [tiktokMissing, onSelectPlatform]);
+    if (pickMissing) onSelectPlatform?.(null);
+  }, [pickMissing, onSelectPlatform]);
 
-  if (isError) return null;
-
-  if (isLoading) {
+  if (own.isLoading) {
     return (
       <div id={DASHBOARD_SECTION_ID} className="mb-12">
         <div className="flex justify-between items-center mb-5">
           <div className="h-7 w-36 rounded-lg hub-bg-soft animate-pulse" />
           <div className="h-8 w-32 rounded-lg hub-bg-soft animate-pulse" />
         </div>
-        <div className="flex gap-3 mb-6">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div
-              key={i}
-              className="min-w-[160px] h-[220px] rounded-2xl hub-bg-soft animate-pulse flex-shrink-0"
-            />
-          ))}
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{chartSkeleton}</div>
+        {bodySkeleton}
       </div>
     );
   }
 
-  const data = tiktokMissing ? base.data : own.data;
-  if (!data) return null;
+  if (!view) return null;
+  const { data, platform } = view;
 
-  if (data.platform !== 'tiktok' && !data.account) {
+  if (platform !== 'tiktok' && !data.account) {
     return (
       <div id={DASHBOARD_SECTION_ID} className="mb-12 hub-card p-8 text-center">
         <p className="text-sm hub-tx3">
@@ -143,14 +173,15 @@ export function DashboardSection({
     );
   }
 
-  const platform: DashboardPlatform = data.platform ?? 'instagram';
   const accounts = data.accounts ?? [];
   const account = accounts.find((a) => a.platform === platform);
+  // The pick shows immediately; the data catches up once it arrives.
+  const switchValue: DashboardPlatform = pending && selectedPlatform ? selectedPlatform : platform;
 
   const controls = (
     <div className="flex flex-wrap items-center justify-end gap-2">
       {accounts.length === 2 && (
-        <PlatformSwitch value={platform} onChange={(p) => onSelectPlatform?.(p)} />
+        <PlatformSwitch value={switchValue} onChange={(p) => onSelectPlatform?.(p)} />
       )}
       <PeriodSelector value={period} onChange={setPeriod} />
     </div>
@@ -188,44 +219,50 @@ export function DashboardSection({
         </div>
       )}
 
-      {account && <AccountLine account={account} locale={locale} />}
-
-      {platform === 'tiktok' && data.tiktok ? (
-        <>
-          <div className="mb-6">
-            <h3 className="text-[13px] font-semibold hub-tx2 mb-3">
-              {t('dashboard.topVideosTitle', 'Melhores vídeos')}
-            </h3>
-            <TopVideosRow videos={data.tiktok.topVideos} />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Suspense fallback={chartSkeleton}>
-              <DashboardCharts
-                platform="tiktok"
-                followerHistory={data.tiktok.followerHistory}
-                viewsHistory={data.tiktok.viewsHistory}
-                followerCaption={followerCaption}
-              />
-            </Suspense>
-          </div>
-        </>
+      {pending ? (
+        <div aria-busy="true">{bodySkeleton}</div>
       ) : (
         <>
-          <div className="mb-6">
-            <h3 className="text-[13px] font-semibold hub-tx2 mb-3">
-              {t('dashboard.topPostsTitle', 'Melhores Posts')}
-            </h3>
-            <TopPostsRow posts={data.topPosts} />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Suspense fallback={chartSkeleton}>
-              <DashboardCharts
-                platform="instagram"
-                followerHistory={data.followerHistory}
-                reachHistory={data.reachHistory}
-              />
-            </Suspense>
-          </div>
+          {account && <AccountLine account={account} locale={locale} />}
+
+          {platform === 'tiktok' && data.tiktok ? (
+            <>
+              <div className="mb-6">
+                <h3 className="text-[13px] font-semibold hub-tx2 mb-3">
+                  {t('dashboard.topVideosTitle', 'Melhores vídeos')}
+                </h3>
+                <TopVideosRow videos={data.tiktok.topVideos} />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Suspense fallback={chartSkeleton}>
+                  <DashboardCharts
+                    platform="tiktok"
+                    followerHistory={data.tiktok.followerHistory}
+                    viewsHistory={data.tiktok.viewsHistory}
+                    followerCaption={followerCaption}
+                  />
+                </Suspense>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="mb-6">
+                <h3 className="text-[13px] font-semibold hub-tx2 mb-3">
+                  {t('dashboard.topPostsTitle', 'Melhores Posts')}
+                </h3>
+                <TopPostsRow posts={data.topPosts} />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Suspense fallback={chartSkeleton}>
+                  <DashboardCharts
+                    platform="instagram"
+                    followerHistory={data.followerHistory}
+                    reachHistory={data.reachHistory}
+                  />
+                </Suspense>
+              </div>
+            </>
+          )}
         </>
       )}
     </div>

@@ -271,6 +271,85 @@ describe('DashboardSection', () => {
     expect(container.querySelector('#hub-desempenho')).not.toBeNull();
   });
 
+  it('keeps the header mounted, focused and pressed while the picked platform loads', async () => {
+    let release: (v: HubDashboardResponse) => void = () => {};
+    dashboard.mockImplementation((_t, _p, platform) =>
+      platform === 'tiktok'
+        ? new Promise<HubDashboardResponse>((r) => {
+            release = r;
+          })
+        : Promise.resolve(igBody()),
+    );
+    renderSection();
+    const tiktok = await screen.findByRole('button', { name: 'TikTok' });
+    tiktok.focus();
+    fireEvent.click(tiktok);
+    await waitFor(() => expect(dashboard).toHaveBeenCalledWith('tok', 30, 'tiktok'));
+    const same = screen.getByRole('button', { name: 'TikTok' });
+    expect(same).toBe(tiktok);
+    expect(document.activeElement).toBe(tiktok);
+    expect(same).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Instagram' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    // Neither platform's content shows under the other's label while pending.
+    expect(screen.queryByText('Melhores Posts')).toBeNull();
+    expect(screen.queryByText('Melhores vídeos')).toBeNull();
+    release(ttBody());
+    expect(await screen.findByText('Melhores vídeos')).toBeInTheDocument();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'TikTok' }));
+  });
+
+  it('keeps the period selector mounted and focused while a new period loads', async () => {
+    let release: (v: HubDashboardResponse) => void = () => {};
+    dashboard.mockImplementation((_t, period) =>
+      period === 60
+        ? new Promise<HubDashboardResponse>((r) => {
+            release = r;
+          })
+        : Promise.resolve(igBody()),
+    );
+    renderSection();
+    const btn = await screen.findByRole('button', { name: '60d' });
+    btn.focus();
+    fireEvent.click(btn);
+    await waitFor(() => expect(dashboard).toHaveBeenCalledWith('tok', 60, undefined));
+    expect(screen.getByRole('button', { name: '60d' })).toBe(btn);
+    expect(document.activeElement).toBe(btn);
+    release(igBody({ period: 60 }));
+    expect(await screen.findByText('Melhores Posts')).toBeInTheDocument();
+  });
+
+  it('a TikTok answer without its block and no pick shows Instagram only when it carries detail', async () => {
+    mockApi({ ig: igBody({ platform: 'tiktok' }) });
+    renderSection();
+    expect(await screen.findByText('Melhores Posts')).toBeInTheDocument();
+    expect(screen.queryByText('@clinica_tt')).toBeNull();
+    expect(screen.queryByText('Melhores vídeos')).toBeNull();
+  });
+
+  it('a TikTok answer without its block and no usable detail renders nothing', async () => {
+    mockApi({ ig: ttBody(undefined, { tiktok: undefined }) });
+    const { container } = renderSection();
+    await waitFor(() => expect(dashboard).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 20));
+    expect(container.querySelector('#hub-desempenho')).toBeNull();
+    expect(screen.queryByText('Melhores Posts')).toBeNull();
+    expect(screen.queryByText('@clinica_tt')).toBeNull();
+  });
+
+  it('falls back to the default view when the explicit platform request fails', async () => {
+    dashboard.mockImplementation(async (_t, _p, platform) => {
+      if (platform === 'tiktok') throw new Error('boom');
+      return igBody();
+    });
+    renderSection();
+    fireEvent.click(await screen.findByRole('button', { name: 'TikTok' }));
+    await waitFor(() => expect(dashboard).toHaveBeenCalledWith('tok', 30, 'tiktok'));
+    expect(await screen.findByText('Melhores Posts')).toBeInTheDocument();
+  });
+
   it('first load makes exactly one request when the strip and the section share a client', async () => {
     mockApi();
     const { ConnectedAccounts } = await import('../dashboard/ConnectedAccounts');

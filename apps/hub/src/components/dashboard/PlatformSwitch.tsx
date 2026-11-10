@@ -24,7 +24,7 @@ export function PlatformSwitch({
           type="button"
           aria-pressed={p === value}
           onClick={() => p !== value && onChange(p)}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold rounded-md transition-colors ${
+          className={`inline-flex items-center gap-1.5 min-h-[44px] md:min-h-0 px-3 py-1.5 text-[12px] font-semibold rounded-md transition-colors ${
             p === value ? 'hub-btn-primary' : 'hub-tab-btn hub-tx3'
           }`}
         >
