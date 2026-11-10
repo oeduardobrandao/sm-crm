@@ -220,6 +220,12 @@ function DialogBody({
                   {date && <StatusPill tone="neutral">{date}</StatusPill>}
                 </div>
                 {viewPostLink && <span className="md:hidden">{viewPostLink}</span>}
+                {/* The phone has no left pane: say here why there is no post to open yet. */}
+                {!entry.client_visible && (
+                  <p className="md:hidden text-[12.5px] leading-[1.45] hub-tx2">
+                    {t('dialogo.emProducao')}. {t('dialogo.emProducaoTexto')}
+                  </p>
+                )}
               </div>
               <button
                 type="button"
