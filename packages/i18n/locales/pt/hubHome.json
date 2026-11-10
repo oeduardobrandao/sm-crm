@@ -124,7 +124,9 @@
   "dashboard": {
     "connectInstagram": "Conecte o Instagram para ver métricas de desempenho.",
     "title": "Desempenho",
-    "topPostsTitle": "Melhores Posts"
+    "topPostsTitle": "Melhores Posts",
+    "platformLabel": "Plataforma",
+    "topVideosTitle": "Melhores vídeos"
   },
   "reachChart": {
     "title": "Alcance",
@@ -138,7 +140,8 @@
   "followerChart": {
     "title": "Seguidores",
     "tooltip": "{{value}} seguidores",
-    "noData": "Nenhum dado de seguidores disponível."
+    "noData": "Nenhum dado de seguidores disponível.",
+    "historySince": "Histórico disponível desde {{date}}."
   },
   "topPosts": {
     "noPosts": "Nenhum post no período selecionado.",
@@ -153,5 +156,59 @@
       "engagement": "Engajamento",
       "saved": "Salvos"
     }
+  },
+  "accounts": {
+    "title": "Contas conectadas",
+    "subtitle": "Seus números, atualizados automaticamente ao longo do dia",
+    "platform": {
+      "instagram": "Instagram",
+      "tiktok": "TikTok"
+    },
+    "status": {
+      "connected": "Conectada",
+      "needsReconnect": "Reconexão necessária"
+    },
+    "followers": "seguidores",
+    "followersOn": "seguidores em {{date}}",
+    "delta": {
+      "window": "{{value}} em 30 dias",
+      "since": "{{value}} desde {{date}}",
+      "noneWindow": "Sem variação em 30 dias",
+      "noneSince": "Sem variação desde {{date}}"
+    },
+    "stats": {
+      "reach28d": "Alcance, 28 dias",
+      "views28d": "Visualizações, 28 dias",
+      "posts": "Publicações",
+      "views30d": "Visualizações, 30 dias",
+      "likesTotal": "Curtidas no total",
+      "videos": "Vídeos"
+    },
+    "sync": {
+      "minutes": "Atualizado há {{n}} min",
+      "hours": "Atualizado há {{n}} h",
+      "date": "Atualizado em {{date}}",
+      "never": "Aguardando a primeira atualização",
+      "last": "Última atualização em {{date}}"
+    },
+    "reconnect": {
+      "stopped": "Os números pararam de atualizar em {{date}}. Fale com a sua agência para reconectar a conta.",
+      "never": "Os números não estão sendo atualizados. Fale com a sua agência para reconectar a conta."
+    },
+    "seePerformance": "Ver desempenho",
+    "seeHistory": "Ver histórico",
+    "goToAccount": "Ir para conta {{index}}"
+  },
+  "topVideos": {
+    "noVideos": "Nenhum vídeo no período selecionado.",
+    "goToVideo": "Ir para vídeo {{index}}",
+    "stats": {
+      "shares": "Compartilhamentos"
+    }
+  },
+  "viewsChart": {
+    "title": "Visualizações por dia de postagem",
+    "caption": "Soma das visualizações dos vídeos publicados em cada dia.",
+    "tooltip": "{{value}} visualizações"
   }
 }

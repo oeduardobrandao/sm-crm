@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import type { HubPost } from '../types';
+import type { DashboardPlatform, HubPost } from '../types';
 import { DashboardSection } from '../components/dashboard/DashboardSection';
 import { HomeAgendaPauta } from './agenda/HomeAgendaPauta';
 import { PautaGreeting } from './home/PautaGreeting';
@@ -24,6 +24,9 @@ export function HomePagePauta({
   pendingCount,
   agendaEnabled,
   kpis,
+  accountsStrip,
+  dashboardPlatform,
+  onDashboardPlatform,
   calendar,
   eventDialog,
 }: {
@@ -35,6 +38,9 @@ export function HomePagePauta({
   pendingCount: number;
   agendaEnabled: boolean;
   kpis: { thisMonth: string; pending: string; approvalRate: string; nextPost: string };
+  accountsStrip: ReactNode;
+  dashboardPlatform: DashboardPlatform | null;
+  onDashboardPlatform: (p: DashboardPlatform | null) => void;
   calendar: ReactNode;
   eventDialog: ReactNode;
 }) {
@@ -75,6 +81,7 @@ export function HomePagePauta({
           { label: t('home.kpi.nextPost.label', 'Próximo post'), value: kpis.nextPost },
         ]}
       />
+      {accountsStrip}
       <MaterialBanner token={token} base={base} />
       {loading ? (
         <section className="hub-card p-5 sm:p-6">
@@ -99,7 +106,11 @@ export function HomePagePauta({
             )}
             <ResourcesSection number={sections.resources} base={base} links={RESOURCE_LINKS} />
           </div>
-          <DashboardSection sectionNumber={sections.results} />
+          <DashboardSection
+            sectionNumber={sections.results}
+            selectedPlatform={dashboardPlatform}
+            onSelectPlatform={onDashboardPlatform}
+          />
         </>
       )}
       {eventDialog}

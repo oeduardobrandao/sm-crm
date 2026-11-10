@@ -16,6 +16,7 @@ vi.mock('../../api', () => ({
     `https://x.supabase.co/functions/v1/hub-agenda/ocorrencia/${id}.ics?token=${token}`,
 }));
 vi.mock('../../components/dashboard/DashboardSection', () => ({ DashboardSection: () => null }));
+vi.mock('../../components/dashboard/ConnectedAccounts', () => ({ ConnectedAccounts: () => null }));
 // The fake calendar exposes what Home passes and lets the test pick the shown month.
 vi.mock('../../components/PostCalendar', () => ({
   PostCalendar: (props: {

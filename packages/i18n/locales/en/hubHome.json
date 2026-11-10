@@ -124,7 +124,9 @@
   "dashboard": {
     "connectInstagram": "Connect Instagram to see performance metrics.",
     "title": "Performance",
-    "topPostsTitle": "Top Posts"
+    "topPostsTitle": "Top Posts",
+    "platformLabel": "Platform",
+    "topVideosTitle": "Top videos"
   },
   "reachChart": {
     "title": "Reach",
@@ -138,7 +140,8 @@
   "followerChart": {
     "title": "Followers",
     "tooltip": "{{value}} followers",
-    "noData": "No follower data available."
+    "noData": "No follower data available.",
+    "historySince": "History available since {{date}}."
   },
   "topPosts": {
     "noPosts": "No posts in the selected period.",
@@ -153,5 +156,59 @@
       "engagement": "Engagement",
       "saved": "Saved"
     }
+  },
+  "accounts": {
+    "title": "Connected accounts",
+    "subtitle": "Your numbers, updated automatically through the day",
+    "platform": {
+      "instagram": "Instagram",
+      "tiktok": "TikTok"
+    },
+    "status": {
+      "connected": "Connected",
+      "needsReconnect": "Reconnection needed"
+    },
+    "followers": "followers",
+    "followersOn": "followers on {{date}}",
+    "delta": {
+      "window": "{{value}} in 30 days",
+      "since": "{{value}} since {{date}}",
+      "noneWindow": "No change in 30 days",
+      "noneSince": "No change since {{date}}"
+    },
+    "stats": {
+      "reach28d": "Reach, 28 days",
+      "views28d": "Views, 28 days",
+      "posts": "Posts",
+      "views30d": "Views, 30 days",
+      "likesTotal": "Total likes",
+      "videos": "Videos"
+    },
+    "sync": {
+      "minutes": "Updated {{n}} min ago",
+      "hours": "Updated {{n}} h ago",
+      "date": "Updated on {{date}}",
+      "never": "Waiting for the first update",
+      "last": "Last updated on {{date}}"
+    },
+    "reconnect": {
+      "stopped": "The numbers stopped updating on {{date}}. Ask your agency to reconnect the account.",
+      "never": "The numbers are not being updated. Ask your agency to reconnect the account."
+    },
+    "seePerformance": "See performance",
+    "seeHistory": "See history",
+    "goToAccount": "Go to account {{index}}"
+  },
+  "topVideos": {
+    "noVideos": "No videos in the selected period.",
+    "goToVideo": "Go to video {{index}}",
+    "stats": {
+      "shares": "Shares"
+    }
+  },
+  "viewsChart": {
+    "title": "Views by posting day",
+    "caption": "Sum of the views of the videos posted each day.",
+    "tooltip": "{{value}} views"
   }
 }

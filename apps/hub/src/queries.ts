@@ -12,6 +12,7 @@ import {
   fetchAgendaPeriodo,
   fetchBootstrap,
   fetchConvite,
+  fetchDashboard,
   fetchLinhas,
   fetchPost,
   fetchPosts,
@@ -19,7 +20,7 @@ import {
   CONVITE_INDISPONIVEL,
 } from './api';
 import { fetchMaterialRequests } from './services/materialRequests';
-import type { HubAgendaCursor, HubAgendaItem, HubAgendaResponse } from './types';
+import type { DashboardPlatform, HubAgendaCursor, HubAgendaItem, HubAgendaResponse } from './types';
 
 // Fetched once per visit, like the effect it replaced: a refetch on window
 // focus would spend the shared hub-read budget for data that never changes
@@ -32,6 +33,19 @@ export const hubBootstrapQuery = (workspace: string, token: string) =>
     staleTime: Infinity,
     retry: false,
     retryOnMount: false,
+  });
+
+export type DashboardPlatformKey = DashboardPlatform | 'default';
+
+export const hubDashboardQuery = (
+  token: string,
+  period: number,
+  platform: DashboardPlatformKey = 'default',
+) =>
+  queryOptions({
+    queryKey: ['hub-dashboard', token, period, platform],
+    queryFn: () => fetchDashboard(token, period, platform === 'default' ? undefined : platform),
+    staleTime: 5 * 60 * 1000,
   });
 
 // Every hub-posts reader (HomePage, Postagens, Aprovações, the nav badges)

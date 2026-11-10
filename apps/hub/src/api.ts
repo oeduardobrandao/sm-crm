@@ -19,6 +19,7 @@ import type {
   IdeiaReaction,
   InstagramFeedData,
   HubPostsResponse,
+  DashboardPlatform,
   HubDashboardResponse,
   PendingEditSuggestion,
   SuggestionBases,
@@ -413,8 +414,10 @@ export function deleteIdeiaAudio(token: string, ideiaId: string) {
   return del<{ ok: boolean }>('hub-ideias', `${ideiaId}/audio`, token);
 }
 
-export function fetchDashboard(token: string, period: number) {
-  return get<HubDashboardResponse>('hub-dashboard', { token, period: String(period) });
+export function fetchDashboard(token: string, period: number, platform?: DashboardPlatform) {
+  const params: Record<string, string> = { token, period: String(period) };
+  if (platform) params.platform = platform;
+  return get<HubDashboardResponse>('hub-dashboard', params);
 }
 
 export interface HubReport {

@@ -1,6 +1,6 @@
 // supabase/functions/tiktok-sync-cron/core.ts
 //
-// TikTok Phase C, Task C4: daily sync — profile stats, video import/metric refresh, daily
+// TikTok Phase C, Task C4: hourly sync — profile stats, video import/metric refresh, daily
 // snapshot + follower-history rows, and webhook-event purge. Clone of instagram-sync-cron's
 // shape (select -> workspace feature gate -> concurrency pool -> per-account try/catch),
 // reusing this integration's OWN already-built pieces instead of re-deriving them:
@@ -16,6 +16,15 @@
 // `svc` is created and hoisted by the caller (index.ts) BEFORE the outer try, so a broken
 // account query still reaches reportCronFailure (see tiktok-refresh-cron/core.ts's identical
 // comment — the retention initiative's cron-failure silent-death lesson).
+//
+// Scheduling (same model as instagram-sync-cron, reusing its select.ts unchanged): the cron runs
+// hourly (`30 * * * *`). An account is eligible when BOTH its last success and its last attempt
+// are older than 6h; candidates are paged least-recently-attempted first, filtered by workspace
+// (feature_auto_sync_cron AND feature_tiktok, not internal), then cut to `batchLimit`
+// (SYNC_BATCH_LIMIT, default 25, shared with the Instagram cron). The selected batch is CLAIMED
+// before any TikTok call: one conditional UPDATE stamps last_sync_attempt_at and returns the
+// rows it actually won, so an overlapping run or a run that dies partway never re-picks the same
+// accounts, and only the claimed ids are synced. A failed claim aborts the run (500 + report).
 //
 // Profile stats come back from tiktokFetch's `user/info` call already unwrapped one level
 // (tiktokFetch returns the envelope's `data` field), but TikTok nests the actual fields ONE
@@ -45,6 +54,7 @@ import {
   refreshStoredPostMetrics as realRefreshStoredPostMetrics,
 } from "../tiktok-integration/import.ts";
 import { runPool } from "../instagram-sync-cron/pool.ts";
+import { collectSyncCandidates, contaIdOf, selectAccountsToSync } from "../instagram-sync-cron/select.ts";
 import { fetchInternalWorkspaceIds as realFetchInternalWorkspaceIds } from "../_shared/internal-workspaces.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -57,6 +67,10 @@ const WEBHOOK_EVENT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 // 100 videos / 10 pages on the OAuth-callback initial import) — 2 pages * 20/page.
 const SYNC_IMPORT_MAX_VIDEOS = 40;
 const DEFAULT_CONCURRENCY = 5;
+const DEFAULT_BATCH_LIMIT = 25;
+const CANDIDATE_PAGE_SIZE = 200;
+const MAX_CANDIDATE_PAGES = 10;
+const CLAIM_CHUNK_SIZE = 100;
 
 const PROFILE_FIELDS = "follower_count,following_count,likes_count,video_count";
 
@@ -67,6 +81,7 @@ interface TikTokAccountRow {
   following_count: number | null;
   likes_count: number | null;
   video_count: number | null;
+  last_sync_attempt_at?: string | null;
   clientes: { conta_id: string } | { conta_id: string }[];
 }
 
@@ -96,6 +111,8 @@ export interface TikTokSyncCronDeps {
   now?: () => Date;
   /** Defaults to SYNC_CONCURRENCY env var (index.ts) or 5. */
   concurrency?: number;
+  /** Max accounts claimed and synced per invocation. Defaults to 25 (SYNC_BATCH_LIMIT in index.ts). */
+  batchLimit?: number;
 }
 
 function json(body: unknown, status: number): Response {
@@ -103,11 +120,6 @@ function json(body: unknown, status: number): Response {
     status,
     headers: { "Content-Type": "application/json" },
   });
-}
-
-function contaIdOf(account: TikTokAccountRow): string {
-  const clientes = account.clientes;
-  return Array.isArray(clientes) ? clientes[0]?.conta_id : clientes.conta_id;
 }
 
 /** Syncs a single TikTok account: fresh token -> profile stats -> video import -> stored-post
@@ -220,51 +232,88 @@ export async function runTikTokSyncCron(deps: TikTokSyncCronDeps): Promise<Respo
   try {
     const sixHoursAgoIso = new Date(now.getTime() - LAST_SYNCED_WINDOW_MS).toISOString();
 
-    const { data: accounts, error } = await svc
-      .from("tiktok_accounts")
-      .select(
-        "id, client_id, follower_count, following_count, likes_count, video_count, clientes!inner(conta_id)",
-      )
-      .eq("authorization_status", "active")
-      .eq("auto_sync_enabled", true)
-      .or(`last_synced_at.is.null,last_synced_at.lt.${sixHoursAgoIso}`);
+    const batchLimit = Math.max(1, deps.batchLimit ?? DEFAULT_BATCH_LIMIT);
+    const staleClause = (column: string) => `${column}.is.null,${column}.lt.${sixHoursAgoIso}`;
+    const internalWorkspaces = await (deps.fetchInternalWorkspaceIds ?? realFetchInternalWorkspaceIds)(svc);
 
-    if (error) throw error;
+    const { candidates, allowedWorkspaces } = await collectSyncCandidates<TikTokAccountRow>(
+      {
+        internalWorkspaces,
+        fetchPage: async (from, size) => {
+          const { data, error } = await svc
+            .from("tiktok_accounts")
+            .select(
+              "id, client_id, follower_count, following_count, likes_count, video_count, last_sync_attempt_at, clientes!inner(conta_id)",
+            )
+            .eq("authorization_status", "active")
+            .eq("auto_sync_enabled", true)
+            // Eligibility needs a stale success AND a stale attempt: a failing account is
+            // retried at most every 6h instead of on every hourly run.
+            .or(staleClause("last_synced_at"))
+            .or(staleClause("last_sync_attempt_at"))
+            .order("last_sync_attempt_at", { ascending: true, nullsFirst: true })
+            // Tie-break on id so .range() has a total order across pages.
+            .order("id", { ascending: true })
+            .range(from, from + size - 1);
+          if (error) throw error;
+          return (data ?? []) as TikTokAccountRow[];
+        },
+        // One RPC pair per distinct workspace: it needs the cron flag AND the TikTok flag.
+        resolveAllowedWorkspaces: async (wsIds) => {
+          const results = await Promise.all(wsIds.map(async (wsId) => {
+            const [autoSync, tiktok] = await Promise.all([
+              deps.effectivePlanFeature(svc, wsId, "feature_auto_sync_cron"),
+              deps.effectivePlanFeature(svc, wsId, "feature_tiktok"),
+            ]);
+            return autoSync && tiktok ? wsId : null;
+          }));
+          return results.filter((ws): ws is string => ws !== null);
+        },
+      },
+      { pageSize: CANDIDATE_PAGE_SIZE, maxPages: MAX_CANDIDATE_PAGES, targetEligible: batchLimit },
+    );
 
-    const rows = (accounts ?? []) as TikTokAccountRow[];
+    const { selected, deferred, skippedInternal } = selectAccountsToSync(candidates, {
+      allowedWorkspaces,
+      internalWorkspaces,
+      limit: batchLimit,
+    });
+    if (skippedInternal > 0) {
+      console.log(`[${CRON_NAME}] Skipped ${skippedInternal} account(s) in internal workspaces`);
+    }
 
     let syncedCount = 0;
     let failedCount = 0;
     const errors: Array<{ accountId: string; error: string }> = [];
+    let claimedCount = 0;
 
-    if (rows.length > 0) {
-      // Keep only accounts whose workspace has feature_auto_sync_cron (same gate as
-      // instagram-sync-cron) AND feature_tiktok, one RPC pair per distinct workspace, not per
-      // account, and is not flagged is_internal.
-      const wsIds = [...new Set(rows.map(contaIdOf))];
-      const allowed = new Set<string>();
-      const internalLookup = deps.fetchInternalWorkspaceIds ?? realFetchInternalWorkspaceIds;
-      const [internal] = await Promise.all([
-        internalLookup(svc),
-        Promise.all(wsIds.map(async (wsId) => {
-          const [autoSync, tiktok] = await Promise.all([
-            deps.effectivePlanFeature(svc, wsId, "feature_auto_sync_cron"),
-            deps.effectivePlanFeature(svc, wsId, "feature_tiktok"),
-          ]);
-          if (autoSync && tiktok) allowed.add(wsId);
-        })),
-      ]);
-      const eligible = rows.filter((a) => {
-        const wsId = contaIdOf(a);
-        return allowed.has(wsId) && !internal.has(wsId);
-      });
-      const skippedInternal = rows.filter((a) => internal.has(contaIdOf(a))).length;
-      if (skippedInternal > 0) {
-        console.log(`[${CRON_NAME}] Skipped ${skippedInternal} account(s) in internal workspaces`);
+    if (selected.length > 0) {
+      // Claim the batch before any TikTok call. The conditional `or` makes the update win only
+      // rows still stale, so a concurrent run cannot claim the same account twice.
+      // `last_sync_attempt_at` MUST stay in the projection below: prod's PostgREST resolves
+      // columns named inside an or-filter of an UPDATE against the ?select= projection and
+      // raises `42703 column tiktok_accounts.last_sync_attempt_at does not exist` when it is
+      // absent (staging and the mock do not reproduce it; same rule as the refresh-lock claim
+      // in _shared/tiktok.ts, reproduced against prod 2026-08-20). Ids go in chunks so the
+      // `in.(...)` URL stays short; a failure in any chunk aborts the run.
+      const claimedIds = new Set<string>();
+      const selectedIds = selected.map((a) => a.id);
+      for (let i = 0; i < selectedIds.length; i += CLAIM_CHUNK_SIZE) {
+        const { data: claimed, error: claimErr } = await svc
+          .from("tiktok_accounts")
+          .update({ last_sync_attempt_at: now.toISOString() })
+          .in("id", selectedIds.slice(i, i + CLAIM_CHUNK_SIZE))
+          .or(staleClause("last_sync_attempt_at"))
+          .select("id, last_sync_attempt_at");
+        if (claimErr) throw claimErr;
+        for (const r of (claimed ?? []) as Array<{ id: string }>) claimedIds.add(r.id);
       }
 
+      const toSync = selected.filter((a) => claimedIds.has(a.id));
+      claimedCount = toSync.length;
+
       const concurrency = Math.max(1, deps.concurrency ?? DEFAULT_CONCURRENCY);
-      await runPool(eligible, concurrency, async (account) => {
+      await runPool(toSync, concurrency, async (account) => {
         try {
           await processAccount(deps, account);
           syncedCount++;
@@ -287,10 +336,10 @@ export async function runTikTokSyncCron(deps: TikTokSyncCronDeps): Promise<Respo
     console.log(`[${CRON_NAME}] Done. Synced: ${syncedCount}, Failed: ${failedCount}`);
 
     if (failedCount > 0) {
-      await reportCronFailure(svc, CRON_NAME, { total: rows.length, failed: failedCount, errors });
+      await reportCronFailure(svc, CRON_NAME, { total: claimedCount, failed: failedCount, errors });
     }
 
-    return json({ success: true, synced: syncedCount, failed: failedCount, total: rows.length }, 200);
+    return json({ success: true, synced: syncedCount, failed: failedCount, total: claimedCount, deferred }, 200);
   } catch (err) {
     const message = errorMessage(err);
     console.error(`[${CRON_NAME}] failed:`, message);
