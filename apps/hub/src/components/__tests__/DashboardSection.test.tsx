@@ -333,8 +333,7 @@ describe('DashboardSection', () => {
     mockApi({ ig: ttBody(undefined, { tiktok: undefined }) });
     const { container } = renderSection();
     await waitFor(() => expect(dashboard).toHaveBeenCalled());
-    await new Promise((r) => setTimeout(r, 20));
-    expect(container.querySelector('#hub-desempenho')).toBeNull();
+    await waitFor(() => expect(container.querySelector('#hub-desempenho')).toBeNull());
     expect(screen.queryByText('Melhores Posts')).toBeNull();
     expect(screen.queryByText('@clinica_tt')).toBeNull();
   });
@@ -348,6 +347,83 @@ describe('DashboardSection', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'TikTok' }));
     await waitFor(() => expect(dashboard).toHaveBeenCalledWith('tok', 30, 'tiktok'));
     expect(await screen.findByText('Melhores Posts')).toBeInTheDocument();
+  });
+
+  it('after a failed TikTok request the controls match the default data and a click retries', async () => {
+    let failing = true;
+    dashboard.mockImplementation(async (_t, _p, platform) => {
+      if (platform === 'tiktok') {
+        if (failing) throw new Error('boom');
+        return ttBody();
+      }
+      return igBody();
+    });
+    renderSection();
+    fireEvent.click(await screen.findByRole('button', { name: 'TikTok' }));
+    await waitFor(() => expect(dashboard).toHaveBeenCalledWith('tok', 30, 'tiktok'));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Instagram' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      ),
+    );
+    expect(screen.getByRole('button', { name: '30d' })).toHaveAttribute('data-active', 'true');
+    const calls = dashboard.mock.calls.filter((c) => c[2] === 'tiktok').length;
+    failing = false;
+    fireEvent.click(screen.getByRole('button', { name: 'TikTok' }));
+    expect(await screen.findByText('Melhores vídeos')).toBeInTheDocument();
+    expect(dashboard.mock.calls.filter((c) => c[2] === 'tiktok').length).toBeGreaterThan(calls);
+  });
+
+  it('a failed period request puts the selector back on 30d', async () => {
+    dashboard.mockImplementation(async (_t, period) => {
+      if (period === 60) throw new Error('boom');
+      return igBody();
+    });
+    renderSection();
+    fireEvent.click(await screen.findByRole('button', { name: '60d' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '30d' })).toHaveAttribute('data-active', 'true'),
+    );
+    expect(screen.getByText('Melhores Posts')).toBeInTheDocument();
+  });
+
+  it('resets a stored pick whose account is gone', async () => {
+    mockApi({ ig: igBody({ accounts: [igAccount] }) });
+    const onSelect = vi.fn();
+    renderSection(<DashboardSection selectedPlatform="tiktok" onSelectPlatform={onSelect} />);
+    await waitFor(() => expect(onSelect).toHaveBeenCalledWith(null));
+  });
+
+  it('a failed background refetch keeps the selected view on screen', async () => {
+    mockApi();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <HubContext.Provider value={{ token: 'tok', bootstrap: {}, workspace: 'w' } as never}>
+          <Harness />
+        </HubContext.Provider>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'TikTok' }));
+    await screen.findByText('Melhores vídeos');
+    dashboard.mockRejectedValue(new Error('boom'));
+    await qc.refetchQueries({ queryKey: ['hub-dashboard', 'tok', 30, 'tiktok'] }).catch(() => {});
+    await waitFor(() =>
+      expect(qc.getQueryState(['hub-dashboard', 'tok', 30, 'tiktok'])?.status).toBe('error'),
+    );
+    expect(screen.getByText('Melhores vídeos')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'TikTok' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('the section wrapper keeps a scroll margin for the fixed mobile header', async () => {
+    mockApi();
+    const { container } = renderSection();
+    await screen.findByText('Melhores Posts');
+    const el = container.querySelector('#hub-desempenho') as HTMLElement;
+    expect(el.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(['scroll-mt-24', 'md:scroll-mt-6']),
+    );
   });
 
   it('first load makes exactly one request when the strip and the section share a client', async () => {

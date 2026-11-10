@@ -18,7 +18,7 @@ export function AccountCard({
   className = '',
 }: {
   account: HubAccountSummary;
-  /** 'wide' is the single-account horizontal layout, from md up. */
+  /** 'wide' is the single-account horizontal layout, from xl up; below it the card stacks like the others. */
   layout: 'stacked' | 'wide';
   onOpen: () => void;
   className?: string;
@@ -114,7 +114,7 @@ export function AccountCard({
   );
 
   const head = (
-    <div className={`flex items-center gap-3 ${wide ? 'md:min-w-[250px]' : ''}`}>
+    <div className={`flex items-center gap-3 ${wide ? 'xl:shrink-0' : ''}`}>
       <span className="w-9 h-9 rounded-[10px] hub-bg-soft hub-txt flex items-center justify-center shrink-0">
         <PlatformIcon platform={account.platform} size={18} />
       </span>
@@ -130,26 +130,17 @@ export function AccountCard({
 
   const number = (
     <div
-      className={`flex flex-wrap items-baseline gap-x-2.5 gap-y-1 ${wide ? 'md:flex-col md:items-start' : ''}`}
+      className={`flex flex-wrap items-baseline gap-x-2.5 gap-y-1 ${wide ? 'xl:flex-col xl:items-start xl:shrink-0' : ''}`}
     >
       <span
         className={`font-display text-[2.1rem] font-medium tracking-tight leading-none ${reconnect ? 'hub-tx2' : 'hub-txt'}`}
       >
         {formatCount(account.followerCount, locale)}
       </span>
-      <span className="text-[13px] hub-tx3">
-        {followersLabel}
-        {wide && deltaText && (
-          <span
-            className={`ml-2 text-[12.5px] font-semibold ${deltaPositive ? 'text-emerald-600 dark:text-emerald-400' : 'hub-tx2'}`}
-          >
-            {deltaText}
-          </span>
-        )}
-      </span>
-      {!wide && deltaText && (
+      <span className="text-[13px] hub-tx3">{followersLabel}</span>
+      {deltaText && (
         <span
-          className={`ml-auto text-[12.5px] font-semibold ${deltaPositive ? 'text-emerald-600 dark:text-emerald-400' : 'hub-tx2'}`}
+          className={`ml-auto ${wide ? 'xl:ml-0' : ''} text-[12.5px] font-semibold ${deltaPositive ? 'text-emerald-600 dark:text-emerald-400' : 'hub-tx2'}`}
         >
           {deltaText}
         </span>
@@ -159,12 +150,12 @@ export function AccountCard({
 
   const statsBlock = (
     <div
-      className={`grid grid-cols-3 border-y border-[var(--hub-bd)] ${wide ? 'md:flex-1 md:min-w-[380px] md:border-0' : ''}`}
+      className={`grid grid-cols-3 border-y border-[var(--hub-bd)] ${wide ? 'xl:flex-1 xl:min-w-0 xl:border-0' : ''}`}
     >
       {stats.map((s, i) => (
         <div
           key={s.key}
-          className={`min-w-0 py-3 ${i === 0 ? '' : 'pl-3.5 border-l border-[var(--hub-bd)]'}`}
+          className={`min-w-0 py-3 pr-2 ${i === 0 ? '' : 'pl-3.5 border-l border-[var(--hub-bd)]'}`}
         >
           <div className="text-[17px] font-semibold tracking-tight hub-txt">
             {formatCompact(s.value, locale)}
@@ -176,7 +167,9 @@ export function AccountCard({
   );
 
   const reconnectBlock = (
-    <p className="m-0 px-3.5 py-3 rounded-[10px] hub-bg-soft hub-tx2 text-[13px] leading-[1.45] md:flex-1">
+    <p
+      className={`m-0 px-3.5 py-3 rounded-[10px] hub-bg-soft hub-tx2 text-[13px] leading-[1.45] ${wide ? 'xl:flex-1' : ''}`}
+    >
       {account.lastSyncedAt
         ? t(
             'accounts.reconnect.stopped',
@@ -194,7 +187,7 @@ export function AccountCard({
     <button
       type="button"
       onClick={onOpen}
-      className="inline-flex items-center gap-1 font-semibold hub-txt min-h-[44px] md:min-h-0 text-[12.5px]"
+      className="inline-flex items-center gap-1 whitespace-nowrap font-semibold hub-txt min-h-[44px] md:min-h-0 text-[12.5px]"
     >
       {reconnect
         ? t('accounts.seeHistory', 'Ver histórico')
@@ -204,7 +197,7 @@ export function AccountCard({
   );
 
   const sync = syncText && (
-    <span className="inline-flex items-center gap-1.5 text-[12.5px] hub-tx3">
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[12.5px] hub-tx3">
       <Clock size={13} aria-hidden="true" />
       {syncText}
     </span>
@@ -212,13 +205,13 @@ export function AccountCard({
 
   return (
     <article
-      className={`hub-card p-5 flex flex-col gap-4 ${wide ? 'md:flex-row md:items-center md:gap-7' : ''} ${className}`}
+      className={`hub-card p-5 flex flex-col gap-4 ${wide ? 'xl:flex-row xl:items-center xl:gap-6' : ''} ${className}`}
     >
       {head}
       {number}
       {reconnect ? reconnectBlock : statsBlock}
       {wide ? (
-        <div className="flex items-center justify-between gap-3 md:flex-col md:items-end md:gap-1.5">
+        <div className="flex items-center justify-between gap-3 xl:shrink-0 xl:flex-col xl:items-end xl:gap-1.5">
           {link}
           {sync}
         </div>

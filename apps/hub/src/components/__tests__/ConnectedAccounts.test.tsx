@@ -53,11 +53,24 @@ function respond(accounts: HubAccountSummary[] | undefined) {
   dashboard.mockResolvedValue(body);
 }
 
-function renderStrip(onOpenPlatform = vi.fn()) {
+function renderStrip(
+  opts:
+    { pauta?: boolean; onOpenPlatform?: ReturnType<typeof vi.fn> } | ReturnType<typeof vi.fn> = {},
+) {
+  const o = typeof opts === 'function' ? { onOpenPlatform: opts } : opts;
+  const onOpenPlatform = o.onOpenPlatform ?? vi.fn();
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
-      <HubContext.Provider value={{ token: 'tok', bootstrap: {}, workspace: 'w' } as never}>
+      <HubContext.Provider
+        value={
+          {
+            token: 'tok',
+            bootstrap: { feature_hub_pauta: o.pauta === true },
+            workspace: 'w',
+          } as never
+        }
+      >
         <ConnectedAccounts onOpenPlatform={onOpenPlatform} />
       </HubContext.Provider>
     </QueryClientProvider>,
@@ -244,6 +257,63 @@ describe('ConnectedAccounts', () => {
     await waitFor(() =>
       expect(screen.queryByRole('heading', { name: 'Contas conectadas' })).toBeNull(),
     );
+  });
+
+  it('single account stacks until xl; two accounts swipe until lg', async () => {
+    respond([makeAccount()]);
+    renderStrip();
+    const card = (await screen.findByRole('article')) as HTMLElement;
+    const tokens = card.className.split(/\s+/);
+    expect(tokens).toContain('flex-col');
+    expect(tokens).toContain('xl:flex-row');
+    expect(tokens.some((c) => c.startsWith('md:flex-row'))).toBe(false);
+    expect(card.innerHTML).not.toMatch(/min-w-\[\d+px\]/);
+    cleanup();
+
+    respond([makeAccount(), makeTikTok()]);
+    renderStrip();
+    const track = (await screen.findAllByRole('article'))[0].parentElement as HTMLElement;
+    const t = track.className.split(/\s+/);
+    expect(t).toContain('lg:grid');
+    expect(t).toContain('lg:grid-cols-2');
+    expect(t).not.toContain('md:grid');
+  });
+
+  it('a failed refetch keeps the strip', async () => {
+    respond([makeAccount()]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <HubContext.Provider value={{ token: 'tok', bootstrap: {}, workspace: 'w' } as never}>
+          <ConnectedAccounts onOpenPlatform={vi.fn()} />
+        </HubContext.Provider>
+      </QueryClientProvider>,
+    );
+    await screen.findByText('12.480');
+    dashboard.mockRejectedValue(new Error('boom'));
+    await qc.refetchQueries({ queryKey: ['hub-dashboard', 'tok', 30, 'default'] }).catch(() => {});
+    await waitFor(() =>
+      expect(qc.getQueryState(['hub-dashboard', 'tok', 30, 'default'])?.status).toBe('error'),
+    );
+    expect(screen.getByText('12.480')).toBeInTheDocument();
+  });
+
+  it('the status pill: classic has a green-token dot, Pauta uses StatusPill without our marker', async () => {
+    respond([makeAccount()]);
+    renderStrip();
+    const classic = (await screen.findByText('Conectada')) as HTMLElement;
+    expect(classic.className).toContain('hub-pill-neutral');
+    expect(classic.querySelector('span[class*="--hub-st-ok-fg"]')).not.toBeNull();
+    cleanup();
+
+    respond([makeAccount({ state: 'needs_reconnect' }), makeTikTok()]);
+    renderStrip({ pauta: true });
+    const ok = await screen.findByText('Conectada');
+    expect(ok.className).toContain('hub-pill-st-ok');
+    expect(ok.querySelector('span, svg')).toBeNull();
+    const fix = screen.getByText('Reconexão necessária');
+    expect(fix.className).toContain('hub-pill-st-fix');
+    expect(fix.querySelector('span, svg')).toBeNull();
   });
 
   it('requests period 30 without a platform', async () => {

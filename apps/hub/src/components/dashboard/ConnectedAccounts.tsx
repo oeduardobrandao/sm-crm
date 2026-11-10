@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useHub } from '../../HubContext';
@@ -18,28 +18,40 @@ export function ConnectedAccounts({
   const { t } = useTranslation('hubHome');
   const { token } = useHub();
   const { data, isLoading, isError } = useQuery(hubDashboardQuery(token, 30));
+  const rafRef = useRef(0);
+  useEffect(
+    () => () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    },
+    [],
+  );
   const [activeIndex, setActiveIndex] = useState(0);
   const trackRef = useRef<HTMLDivElement>(null);
 
-  if (isError) return null;
+  // A failed refetch keeps what is on screen; only an error with nothing to show hides the strip.
+  if (isError && !data) return null;
   const accounts = data?.accounts ?? [];
   if (!isLoading && accounts.length === 0) return null;
 
   function handleScroll() {
-    const el = trackRef.current;
-    if (!el) return;
-    const center = el.scrollLeft + el.clientWidth / 2;
-    let nearest = 0;
-    let best = Infinity;
-    Array.from(el.children).forEach((child, i) => {
-      const c = child as HTMLElement;
-      const distance = Math.abs(c.offsetLeft + c.offsetWidth / 2 - center);
-      if (distance < best) {
-        best = distance;
-        nearest = i;
-      }
+    if (rafRef.current) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = 0;
+      const el = trackRef.current;
+      if (!el) return;
+      const center = el.scrollLeft + el.clientWidth / 2;
+      let nearest = 0;
+      let best = Infinity;
+      Array.from(el.children).forEach((child, i) => {
+        const c = child as HTMLElement;
+        const distance = Math.abs(c.offsetLeft + c.offsetWidth / 2 - center);
+        if (distance < best) {
+          best = distance;
+          nearest = i;
+        }
+      });
+      setActiveIndex(nearest);
     });
-    setActiveIndex(nearest);
   }
 
   function scrollToCard(index: number) {
@@ -62,7 +74,7 @@ export function ConnectedAccounts({
         {t('accounts.subtitle', 'Seus números, atualizados automaticamente ao longo do dia')}
       </div>
       {isLoading ? (
-        <Skeleton className="h-[230px] w-full" />
+        <Skeleton className="h-[270px] md:h-[255px] w-full" />
       ) : single ? (
         <AccountCard
           account={accounts[0]}
@@ -74,7 +86,7 @@ export function ConnectedAccounts({
           <div
             ref={trackRef}
             onScroll={handleScroll}
-            className="flex items-start gap-3 overflow-x-auto snap-x snap-mandatory pb-1 -mx-1 px-1 md:grid md:grid-cols-2 md:gap-4 md:overflow-visible md:mx-0 md:px-0 md:pb-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            className="flex items-start gap-3 overflow-x-auto snap-x snap-mandatory pb-1 -mx-1 px-1 lg:grid lg:grid-cols-2 lg:gap-4 lg:overflow-visible lg:mx-0 lg:px-0 lg:pb-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           >
             {accounts.map((a) => (
               <AccountCard
@@ -82,11 +94,11 @@ export function ConnectedAccounts({
                 account={a}
                 layout="stacked"
                 onOpen={() => onOpenPlatform(a.platform)}
-                className="snap-start shrink-0 basis-[86%] md:shrink md:basis-auto"
+                className="snap-start shrink-0 basis-[86%] lg:shrink lg:basis-auto"
               />
             ))}
           </div>
-          <div className="flex md:hidden justify-center gap-1.5 mt-3">
+          <div className="flex lg:hidden justify-center gap-1.5 mt-3">
             {accounts.map((a, i) => {
               const active = i === activeIndex;
               return (

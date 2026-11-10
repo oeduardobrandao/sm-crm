@@ -135,8 +135,30 @@ export function DashboardSection({
   const pending = own.isPlaceholderData;
 
   // A failed explicit request falls back to the default view when that is available.
-  const ownView = own.isError ? null : resolveView(own.data);
+  // Only an error with nothing to show counts: a failed refetch keeps the data on screen.
+  const ownView = own.isLoadingError ? null : resolveView(own.data);
   const view = ownView ?? resolveView(base.data);
+
+  // The explicit request failed outright (not the shared default one): the data on screen is
+  // the 30-day default, so put the controls back in line with it. The next click then issues
+  // a fresh request instead of being a dead click on an already-selected value.
+  const ownIsBase = period === 30 && requestKey === 'default';
+  const resetAfterFailure = own.isLoadingError && !ownIsBase;
+  useEffect(() => {
+    if (!resetAfterFailure) return;
+    setPeriod(30);
+    onSelectPlatform?.(null);
+  }, [resetAfterFailure, onSelectPlatform]);
+
+  // A stored pick whose account is gone (disconnected mid-session).
+  const baseAccounts = base.data?.accounts;
+  const pickGone =
+    !!selectedPlatform &&
+    !!baseAccounts &&
+    !baseAccounts.some((a) => a.platform === selectedPlatform);
+  useEffect(() => {
+    if (pickGone) onSelectPlatform?.(null);
+  }, [pickGone, onSelectPlatform]);
 
   // A pick whose settled answer has no TikTok detail: back to the default.
   const pickMissing =
@@ -150,7 +172,7 @@ export function DashboardSection({
 
   if (own.isLoading) {
     return (
-      <div id={DASHBOARD_SECTION_ID} className="mb-12">
+      <div id={DASHBOARD_SECTION_ID} className="mb-12 scroll-mt-24 md:scroll-mt-6">
         <div className="flex justify-between items-center mb-5">
           <div className="h-7 w-36 rounded-lg hub-bg-soft animate-pulse" />
           <div className="h-8 w-32 rounded-lg hub-bg-soft animate-pulse" />
@@ -165,7 +187,10 @@ export function DashboardSection({
 
   if (platform !== 'tiktok' && !data.account) {
     return (
-      <div id={DASHBOARD_SECTION_ID} className="mb-12 hub-card p-8 text-center">
+      <div
+        id={DASHBOARD_SECTION_ID}
+        className="mb-12 scroll-mt-24 md:scroll-mt-6 hub-card p-8 text-center"
+      >
         <p className="text-sm hub-tx3">
           {t('dashboard.connectInstagram', 'Conecte o Instagram para ver métricas de desempenho.')}
         </p>
@@ -202,7 +227,7 @@ export function DashboardSection({
   }
 
   return (
-    <div id={DASHBOARD_SECTION_ID} className="mb-12">
+    <div id={DASHBOARD_SECTION_ID} className="mb-12 scroll-mt-24 md:scroll-mt-6">
       {sectionNumber !== undefined ? (
         <SectionHeader
           number={sectionNumber}

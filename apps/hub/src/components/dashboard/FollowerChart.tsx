@@ -12,14 +12,10 @@ import { Line } from 'react-chartjs-2';
 import { useTranslation } from 'react-i18next';
 import { useHub } from '../../HubContext';
 import { chartInk, chartFont, useFontsReady } from './chartInk';
+import { formatAbbrev, formatFollowerTick, isNarrowRange } from '../../lib/followerTicks';
 import type { DashboardFollowerEntry } from '../../types';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip);
-
-function formatAbbrev(n: number): string {
-  if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k`;
-  return String(n);
-}
 
 interface FollowerChartProps {
   followerHistory: DashboardFollowerEntry[];
@@ -27,7 +23,8 @@ interface FollowerChartProps {
 }
 
 export function FollowerChart({ followerHistory, caption }: FollowerChartProps) {
-  const { t } = useTranslation('hubHome');
+  const { t, i18n } = useTranslation('hubHome');
+  const locale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
   const canvasRef = useRef<ChartJS<'line'>>(null);
   const { theme } = useHub();
   const ink = chartInk(theme);
@@ -42,6 +39,7 @@ export function FollowerChart({ followerHistory, caption }: FollowerChartProps) 
     return `${d}/${m}`;
   });
 
+  const narrow = isNarrowRange(followerHistory.map((e) => e.followerCount));
   const dataPoints = followerHistory.map((e) => e.followerCount);
 
   const earliest = followerHistory.length > 0 ? followerHistory[0].followerCount : 0;
@@ -102,7 +100,8 @@ export function FollowerChart({ followerHistory, caption }: FollowerChartProps) 
         ticks: {
           font: { family: chartFont(), size: 10 },
           color: '#9ca3af',
-          callback: (value: number | string) => formatAbbrev(Number(value)),
+          precision: 0,
+          callback: (value: number | string) => formatFollowerTick(Number(value), narrow, locale),
         },
       },
     },
