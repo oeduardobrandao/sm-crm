@@ -2,6 +2,7 @@ import { createJsonResponder } from "../_shared/http.ts";
 import { decryptText } from "../_shared/crypto.ts";
 import { resolveHubToken } from "../_shared/hub-token.ts";
 import { getClientIP } from "../_shared/rate-limit.ts";
+import { type HubAccountSummary, instagramState, instagramSummary, loadTikTokSummary } from "./accounts.ts";
 
 type DbClient = {
   from: (table: string) => any;
@@ -13,6 +14,7 @@ interface HubDashboardHandlerDeps {
   createDb: () => DbClient;
   now: () => string;
   encryptionSecret: string;
+  effectivePlanFeature: (db: DbClient, workspaceId: string, key: string) => Promise<boolean>;
   rateLimit: (db: DbClient, key: string, max: number, windowSeconds: number) => Promise<boolean>;
 }
 
@@ -64,16 +66,35 @@ export function createHubDashboardHandler(deps: HubDashboardHandlerDeps) {
 
     const { data: igAccount } = await db
       .from("instagram_accounts")
-      .select("id, encrypted_access_token, follower_count, following_count, media_count, reach_28d, impressions_28d, last_synced_at")
+      .select("id, username, authorization_status, token_expires_at, created_at, encrypted_access_token, follower_count, following_count, media_count, reach_28d, impressions_28d, last_synced_at")
       .eq("client_id", hubToken.cliente_id)
       .maybeSingle();
 
-    if (!igAccount) {
+    const nowIso = deps.now();
+    const igState = igAccount ? instagramState(igAccount, nowIso) : null;
+
+    // TikTok is secondary: a failure there must not take the Instagram detail down with it.
+    const loadTikTok = async () => {
+      try {
+        return await loadTikTokSummary(
+          db, hubToken.cliente_id, hubToken.conta_id, new Date(nowIso),
+          (key) => deps.effectivePlanFeature(db, hubToken.conta_id, key),
+        );
+      } catch (err) {
+        console.error("hub-dashboard: tiktok summary failed", err);
+        return null;
+      }
+    };
+
+    if (!igAccount || igState === null) {
+      const tiktok = await loadTikTok();
       return json({
         topPosts: [],
         followerHistory: [],
         reachHistory: [],
         account: null,
+        accounts: tiktok ? [tiktok.summary] : [],
+        platform: "instagram",
         period,
       });
     }
@@ -116,7 +137,7 @@ export function createHubDashboardHandler(deps: HubDashboardHandlerDeps) {
         }),
       }));
 
-    if (topPosts.length > 0 && igAccount.encrypted_access_token) {
+    if (igState === "connected" && topPosts.length > 0 && igAccount.encrypted_access_token) {
       try {
         const accessToken = await decryptText(
           igAccount.encrypted_access_token,
@@ -166,6 +187,12 @@ export function createHubDashboardHandler(deps: HubDashboardHandlerDeps) {
       reachByDate.set(date, existing);
     }
 
+    const accounts: HubAccountSummary[] = [];
+    const igSummary = instagramSummary(igAccount, followerRows ?? [], nowIso);
+    if (igSummary) accounts.push(igSummary);
+    const tiktok = await loadTikTok();
+    if (tiktok) accounts.push(tiktok.summary);
+
     return json({
       topPosts: postsWithRate,
       followerHistory: (followerRows ?? []).map((r: any) => ({
@@ -183,6 +210,8 @@ export function createHubDashboardHandler(deps: HubDashboardHandlerDeps) {
         impressions28d: igAccount.impressions_28d,
         lastSyncedAt: igAccount.last_synced_at,
       },
+      accounts,
+      platform: "instagram",
       period,
     });
   };
