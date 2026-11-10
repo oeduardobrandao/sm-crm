@@ -63,6 +63,11 @@ function queueDefaultWebhookPurge(db: ReturnType<typeof createSupabaseQueryMock>
   db.queue("tiktok_webhook_events", "delete", { data: null });
 }
 
+/** The claim is the first `update` on tiktok_accounts, before any per-account stats write. */
+function queueClaim(db: ReturnType<typeof createSupabaseQueryMock>, ids: string[]) {
+  db.queue("tiktok_accounts", "update", { data: ids.map((id) => ({ id })), error: null });
+}
+
 // ── (a) auth gate rejects before any DB access ──────────────────────────────────
 
 Deno.test("tiktok-sync-cron: missing x-cron-secret returns 401 before any DB access", async () => {
@@ -119,6 +124,140 @@ Deno.test("tiktok-sync-cron: selects active + auto_sync_enabled accounts not syn
     orModifiers.some((m) => String(m.args[0]).includes("last_synced_at")),
     "must filter on last_synced_at (null or older than the sync window)",
   );
+  assert(
+    orModifiers.some((m) => String(m.args[0]).includes("last_sync_attempt_at")),
+    "must also gate on last_sync_attempt_at",
+  );
+});
+
+Deno.test("tiktok-sync-cron: eligibility requires a stale success AND a stale attempt", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("tiktok_accounts", "select", { data: [] });
+  queueDefaultWebhookPurge(db);
+  const now = new Date("2026-11-10T12:00:00Z");
+  const cutoff = new Date(now.getTime() - 6 * 60 * 60 * 1000).toISOString();
+
+  await runTikTokSyncCron({ ...baseDeps(db), now: () => now });
+
+  const selectCall = db.calls.find((c) => c.table === "tiktok_accounts" && c.operation === "select")!;
+  const ors = selectCall.modifiers.filter((m) => m.method === "or").map((m) => m.args[0]);
+  assertEquals(ors.length, 2);
+  assertEquals(ors[0], `last_synced_at.is.null,last_synced_at.lt.${cutoff}`);
+  assertEquals(ors[1], `last_sync_attempt_at.is.null,last_sync_attempt_at.lt.${cutoff}`);
+  const orders = selectCall.modifiers.filter((m) => m.method === "order");
+  assertEquals(orders.length, 2);
+  assertEquals(orders[0].args, ["last_sync_attempt_at", { ascending: true, nullsFirst: true }]);
+  assertEquals(orders[1].args, ["id", { ascending: true }]);
+  assert(selectCall.modifiers.some((m) => m.method === "range"), "must page with range()");
+});
+
+function acct(id: string, ws: string, attemptHoursAgo: number | null) {
+  return {
+    id,
+    client_id: 1,
+    follower_count: 1,
+    following_count: 1,
+    likes_count: 1,
+    video_count: 1,
+    last_sync_attempt_at: attemptHoursAgo === null ? null : isoHoursAgo(attemptHoursAgo),
+    clientes: { conta_id: ws },
+  };
+}
+
+Deno.test("tiktok-sync-cron: batch limit applies after the workspace filters, least recently attempted first", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("tiktok_accounts", "select", {
+    data: [acct("A", "ws-no-feature", null), acct("B", "ws-1", 9), acct("C", "ws-1", 7), acct("D", "ws-1", 8)],
+  });
+  queueClaim(db, ["B", "D"]);
+  queueDefaultWebhookPurge(db);
+
+  const claimed: string[] = [];
+  const response = await runTikTokSyncCron(happyPathDeps(db, {
+    batchLimit: 2,
+    effectivePlanFeature: async (_svc, ws) => ws !== "ws-no-feature",
+    getFreshTikTokToken: async (_svc, id: string) => {
+      claimed.push(id);
+      return { accessToken: "t", openId: "o" };
+    },
+  }));
+  const body = await response.json();
+
+  const claim = db.calls.find(
+    (c) => c.table === "tiktok_accounts" && c.operation === "update" && "last_sync_attempt_at" in (c.payload as object),
+  )!;
+  const inMod = claim.modifiers.find((m) => m.method === "in")!;
+  assertEquals(inMod.args, ["id", ["B", "D"]]);
+  assertEquals(body.deferred, 1);
+  assertEquals(body.total, 2);
+  assert(!claimed.includes("A"), "A must never be claimed");
+});
+
+Deno.test("tiktok-sync-cron: only accounts returned by the claim are synced", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("tiktok_accounts", "select", { data: [acct("one", "ws-1", null), acct("two", "ws-1", null)] });
+  queueClaim(db, ["one"]);
+  queueDefaultWebhookPurge(db);
+
+  const tokenCalls: string[] = [];
+  const response = await runTikTokSyncCron(happyPathDeps(db, {
+    getFreshTikTokToken: async (_svc, id: string) => {
+      tokenCalls.push(id);
+      return { accessToken: "t", openId: "o" };
+    },
+  }));
+  const body = await response.json();
+
+  assertEquals(tokenCalls, ["one"]);
+  assertEquals(body.synced, 1);
+});
+
+Deno.test("tiktok-sync-cron: the claim stamps last_sync_attempt_at before any TikTok call", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("tiktok_accounts", "select", { data: [acct("one", "ws-1", null)] });
+  queueClaim(db, ["one"]);
+  queueDefaultWebhookPurge(db);
+
+  const order: string[] = [];
+  const now = new Date("2026-11-10T12:00:00Z");
+  await runTikTokSyncCron(happyPathDeps(db, {
+    now: () => now,
+    getFreshTikTokToken: async () => {
+      // The mock records a call when it executes, so the claim is already in db.calls here.
+      const claimed = db.calls.some(
+        (c) => c.table === "tiktok_accounts" && c.operation === "update" && "last_sync_attempt_at" in (c.payload as object),
+      );
+      order.push(claimed ? "claim-before-token" : "token-before-claim");
+      return { accessToken: "t", openId: "o" };
+    },
+  }));
+
+  assertEquals(order, ["claim-before-token"]);
+  const claim = db.calls.find(
+    (c) => c.table === "tiktok_accounts" && c.operation === "update" && "last_sync_attempt_at" in (c.payload as object),
+  )!;
+  assertEquals((claim.payload as Record<string, unknown>).last_sync_attempt_at, now.toISOString());
+  assert(
+    claim.modifiers.some((m) => m.method === "or" && String(m.args[0]).includes("last_sync_attempt_at")),
+    "claim must be conditional on the attempt still being stale",
+  );
+});
+
+Deno.test("tiktok-sync-cron: a failed claim is reported and syncs nothing", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("tiktok_accounts", "select", { data: [acct("one", "ws-1", null)] });
+  db.queue("tiktok_accounts", "update", { data: null, error: { message: "boom" } });
+  const { fn: reportCronFailure, calls: failureCalls } = fakeReportCronFailure();
+
+  const response = await runTikTokSyncCron({
+    ...happyPathDeps(db, { reportCronFailure }),
+    getFreshTikTokToken: async () => {
+      throw new Error("must not be called");
+    },
+  });
+
+  assertEquals(response.status, 500);
+  assertEquals(failureCalls.length, 1);
 });
 
 // ── (c) workspace feature gate ──────────────────────────────────────────────────
@@ -239,6 +378,7 @@ Deno.test("tiktok-sync-cron: profile stats are read through the `user` envelope 
     ],
   });
   db.queue("tiktok_follower_history", "select", { data: null });
+  queueClaim(db, ["acct-1"]);
   db.queue("tiktok_accounts", "update", { data: null });
   db.queue("tiktok_follower_history", "upsert", { data: null });
   db.queue("tiktok_account_metrics_daily", "upsert", { data: null });
@@ -250,8 +390,10 @@ Deno.test("tiktok-sync-cron: profile stats are read through the `user` envelope 
   assertEquals(body.synced, 1);
   assertEquals(body.failed, 0);
 
-  const updateCall = db.calls.find((c) => c.table === "tiktok_accounts" && c.operation === "update");
-  assert(updateCall, "expected an update against tiktok_accounts");
+  const updateCall = db.calls.find(
+    (c) => c.table === "tiktok_accounts" && c.operation === "update" && "follower_count" in (c.payload as object),
+  );
+  assert(updateCall, "expected a stats update against tiktok_accounts");
   const payload = updateCall!.payload as Record<string, unknown>;
   assertEquals(payload.follower_count, 500);
   assertEquals(payload.following_count, 20);
@@ -276,6 +418,7 @@ Deno.test("tiktok-sync-cron: writes the daily snapshot row exactly once with the
     ],
   });
   db.queue("tiktok_follower_history", "select", { data: null });
+  queueClaim(db, ["acct-1"]);
   db.queue("tiktok_accounts", "update", { data: null });
   db.queue("tiktok_follower_history", "upsert", { data: null });
   db.queue("tiktok_account_metrics_daily", "upsert", { data: null });
@@ -317,6 +460,7 @@ Deno.test("tiktok-sync-cron: uses the São Paulo date for follower history and t
     ],
   });
   db.queue("tiktok_follower_history", "select", { data: null });
+  queueClaim(db, ["acct-1"]);
   db.queue("tiktok_accounts", "update", { data: null });
   db.queue("tiktok_follower_history", "upsert", { data: null });
   db.queue("tiktok_account_metrics_daily", "upsert", { data: null });
@@ -354,6 +498,7 @@ Deno.test("tiktok-sync-cron: an existing manual follower_history row for today i
     ],
   });
   db.queue("tiktok_follower_history", "select", { data: { source: "manual" } });
+  queueClaim(db, ["acct-1"]);
   db.queue("tiktok_accounts", "update", { data: null });
   db.queue("tiktok_account_metrics_daily", "upsert", { data: null });
   queueDefaultWebhookPurge(db);
@@ -385,6 +530,7 @@ Deno.test("tiktok-sync-cron: no follower_history row for today (api or absent) t
     ],
   });
   db.queue("tiktok_follower_history", "select", { data: null });
+  queueClaim(db, ["acct-1"]);
   db.queue("tiktok_accounts", "update", { data: null });
   db.queue("tiktok_follower_history", "upsert", { data: null });
   db.queue("tiktok_account_metrics_daily", "upsert", { data: null });
@@ -434,6 +580,7 @@ Deno.test("tiktok-sync-cron: one account's TOKEN_EXPIRED does not crash the batc
     ],
   });
   db.queue("tiktok_follower_history", "select", { data: null });
+  queueClaim(db, ["acct-expired", "acct-ok"]);
   db.queue("tiktok_accounts", "update", { data: null });
   db.queue("tiktok_follower_history", "upsert", { data: null });
   db.queue("tiktok_account_metrics_daily", "upsert", { data: null });
@@ -463,7 +610,9 @@ Deno.test("tiktok-sync-cron: one account's TOKEN_EXPIRED does not crash the batc
   assertEquals(body.failed, 1);
   assertEquals(processedAccountIds.sort(), ["acct-expired", "acct-ok"]);
 
-  const updateCalls = db.calls.filter((c) => c.table === "tiktok_accounts" && c.operation === "update");
+  const updateCalls = db.calls.filter(
+    (c) => c.table === "tiktok_accounts" && c.operation === "update" && "follower_count" in (c.payload as object),
+  );
   assertEquals(updateCalls.length, 1, "only the successful account should have been written");
   assertEquals((updateCalls[0] as { modifiers: Array<{ method: string; args: unknown[] }> }).modifiers
     .find((m) => m.method === "eq")?.args[1], "acct-ok");

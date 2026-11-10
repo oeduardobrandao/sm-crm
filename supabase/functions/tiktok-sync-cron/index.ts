@@ -21,6 +21,7 @@ Deno.serve(createTikTokSyncCronHandler({
   run: async () => {
     const svc = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const concurrency = Math.max(1, parseInt(Deno.env.get("SYNC_CONCURRENCY") || "5", 10) || 5);
+    const batchLimit = Math.max(1, parseInt(Deno.env.get("SYNC_BATCH_LIMIT") || "25", 10) || 25);
     return runTikTokSyncCron({
       // deno-lint-ignore no-explicit-any
       svc: svc as any,
@@ -31,6 +32,7 @@ Deno.serve(createTikTokSyncCronHandler({
       importTikTokVideos,
       refreshStoredPostMetrics,
       concurrency,
+      batchLimit,
     });
   },
 }));
