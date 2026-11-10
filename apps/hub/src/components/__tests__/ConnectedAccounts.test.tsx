@@ -148,7 +148,8 @@ describe('ConnectedAccounts', () => {
     ]);
     renderStrip();
     const loss = await screen.findByText('-12 em 30 dias');
-    expect(loss.className).not.toMatch(/emerald|green|red/);
+    const tokens = loss.className.split(/\s+/);
+    expect(tokens.some((c) => /(emerald|green|red)-/.test(c))).toBe(false);
     cleanup();
 
     respond([makeAccount({ followersDelta: { value: 0, since: '2026-10-12', fullWindow: true } })]);
@@ -158,7 +159,11 @@ describe('ConnectedAccounts', () => {
 
     respond([makeAccount()]);
     renderStrip();
-    expect((await screen.findByText('+312 em 30 dias')).className).toMatch(/emerald/);
+    expect(
+      (await screen.findByText('+312 em 30 dias')).className
+        .split(/\s+/)
+        .some((c) => c.includes('emerald')),
+    ).toBe(true);
   });
 
   it('null figures render as a dash, never "null" or "NaN"', async () => {

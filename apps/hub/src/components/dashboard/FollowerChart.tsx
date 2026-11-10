@@ -23,9 +23,10 @@ function formatAbbrev(n: number): string {
 
 interface FollowerChartProps {
   followerHistory: DashboardFollowerEntry[];
+  caption?: string;
 }
 
-export function FollowerChart({ followerHistory }: FollowerChartProps) {
+export function FollowerChart({ followerHistory, caption }: FollowerChartProps) {
   const { t } = useTranslation('hubHome');
   const canvasRef = useRef<ChartJS<'line'>>(null);
   const { theme } = useHub();
@@ -140,6 +141,7 @@ export function FollowerChart({ followerHistory }: FollowerChartProps) {
           </span>
         )}
       </div>
+      {caption && <p className="mt-2 text-[12px] hub-tx3">{caption}</p>}
     </div>
   );
 }

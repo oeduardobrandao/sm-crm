@@ -344,7 +344,7 @@ export function HomePage() {
         </div>
       </section>
 
-      <DashboardSection />
+      <DashboardSection selectedPlatform={platform} onSelectPlatform={setPlatform} />
     </div>
   );
 }

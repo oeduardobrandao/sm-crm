@@ -4,16 +4,9 @@ import { useTranslation } from 'react-i18next';
 import { useHub } from '../../HubContext';
 import { hubDashboardQuery } from '../../queries';
 import type { DashboardPlatform } from '../../types';
+import { prefersReducedMotion } from '../../lib/prefersReducedMotion';
 import { Skeleton } from '../Skeleton';
 import { AccountCard } from './AccountCard';
-
-function prefersReducedMotion(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  );
-}
 
 export function ConnectedAccounts({
   onOpenPlatform,

@@ -25,6 +25,8 @@ export function HomePagePauta({
   agendaEnabled,
   kpis,
   accountsStrip,
+  dashboardPlatform,
+  onDashboardPlatform,
   calendar,
   eventDialog,
 }: {
@@ -37,7 +39,6 @@ export function HomePagePauta({
   agendaEnabled: boolean;
   kpis: { thisMonth: string; pending: string; approvalRate: string; nextPost: string };
   accountsStrip: ReactNode;
-  /** Wired to the performance section by the next task. */
   dashboardPlatform: DashboardPlatform | null;
   onDashboardPlatform: (p: DashboardPlatform | null) => void;
   calendar: ReactNode;
@@ -105,7 +106,11 @@ export function HomePagePauta({
             )}
             <ResourcesSection number={sections.resources} base={base} links={RESOURCE_LINKS} />
           </div>
-          <DashboardSection sectionNumber={sections.results} />
+          <DashboardSection
+            sectionNumber={sections.results}
+            selectedPlatform={dashboardPlatform}
+            onSelectPlatform={onDashboardPlatform}
+          />
         </>
       )}
       {eventDialog}
