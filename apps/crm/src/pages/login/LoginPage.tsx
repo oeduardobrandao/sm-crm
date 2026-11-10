@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
-import { Sparkles, ChevronRight, Images, Film, Camera, MailCheck, CircleAlert } from 'lucide-react';
+import { Sparkles, ArrowLeft, Play, Check, MailCheck, CircleAlert } from 'lucide-react';
 import { signIn, signUp, resetPassword, resendSignupConfirmation } from '../../lib/supabase';
 import { clearStoredReferral, getStoredReferral } from '../../lib/referral';
 import { captureEvent, identifySignup } from '@/lib/analytics';
@@ -30,10 +30,6 @@ type TabKey = 'login' | 'register' | 'forgot';
 
 /** Seconds a resend button stays disabled; Supabase rate-limits resends to about one a minute. */
 const RESEND_COOLDOWN_S = 60;
-
-/** Red border on a signup field that failed validation (login page is always light). */
-const REG_INVALID_INPUT =
-  'border-[color:var(--danger-text)] focus-visible:ring-[color:var(--danger-text)]';
 
 /**
  * With email confirmation on, Supabase answers a signup for an address that already has a
@@ -315,430 +311,377 @@ export default function LoginPage() {
         { key: 'register', label: t('tabs.register') },
       ];
 
+  // The confirmation and existing-account states carry their own title.
+  const registerState = activeTab === 'register' && (existingAccount || registerSuccess);
+  const heading = registerState
+    ? null
+    : activeTab === 'register'
+      ? { title: t('register.title'), sub: t('register.subtitle') }
+      : activeTab === 'forgot'
+        ? { title: t('forgot.title'), sub: t('forgot.description') }
+        : { title: t('login.title'), sub: t('login.subtitle') };
+
+  const resendButton = (email: string) => (
+    <Button
+      type="button"
+      variant="outline"
+      className="auth-secondary"
+      disabled={resending || resendCooldown > 0}
+      onClick={() => handleResend(email)}
+    >
+      {resending && <Spinner size="sm" />}
+      {resendCooldown > 0 ? t('resend.cooldown', { seconds: resendCooldown }) : t('resend.button')}
+    </Button>
+  );
+
   return (
     <div className="auth-wrapper">
-      <div className="auth-pane">
-        <div className="auth-card animate-up">
-          <div className="auth-header">
-            <div className="auth-logo" style={{ display: 'flex', justifyContent: 'center' }}>
-              {native ? (
-                <img src="/logo-black.svg" alt="Mesaas" style={{ height: 20, width: 'auto' }} />
-              ) : (
-                <Link to="/" aria-label={t('homeLink')} style={{ display: 'inline-flex' }}>
-                  <img src="/logo-black.svg" alt="Mesaas" style={{ height: 20, width: 'auto' }} />
-                </Link>
+      <main className="auth-panel">
+        <div className="auth-pane">
+          <div className="auth-card animate-up">
+            <div className="auth-header">
+              <div className="auth-logo">
+                {native ? (
+                  <img src="/logo-black.svg" alt="Mesaas" />
+                ) : (
+                  <Link to="/" aria-label={t('homeLink')}>
+                    <img src="/logo-black.svg" alt="Mesaas" />
+                  </Link>
+                )}
+              </div>
+              {heading && (
+                <>
+                  <h1 className="auth-title">{heading.title}</h1>
+                  <p className="auth-sub">{heading.sub}</p>
+                </>
               )}
             </div>
-            <div className="auth-logo-sub" style={{ marginTop: 5, letterSpacing: 1 }}>
-              {t('tagline')}
-            </div>
-          </div>
 
-          {activeTab !== 'forgot' && tabItems.length > 1 && (
-            <div className="auth-tabs">
-              {tabItems.map((tab) => (
-                <button
-                  key={tab.key}
-                  className={`auth-tab${activeTab === tab.key ? ' active' : ''}`}
-                  onClick={() => {
-                    setActiveTab(tab.key as TabKey);
-                    setRegisterSuccess(false);
-                    setExistingAccount(false);
-                    setUnconfirmedEmail('');
-                  }}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {activeTab === 'login' && (
-            <form onSubmit={handleLogin} className="auth-form">
-              <div className="space-y-1">
-                <Label htmlFor="login-email">{t('login.email')}</Label>
-                <Input
-                  id="login-email"
-                  type="email"
-                  placeholder={t('login.emailPlaceholder')}
-                  autoComplete="email"
-                  value={loginEmail}
-                  onChange={(e) => setLoginEmail(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="login-password">{t('login.password')}</Label>
-                <PasswordInput
-                  id="login-password"
-                  placeholder="••••••••"
-                  autoComplete="current-password"
-                  minLength={8}
-                  value={loginPassword}
-                  onChange={(e) => setLoginPassword(e.target.value)}
-                  required
-                />
-              </div>
-              {unconfirmedEmail && (
-                <div
-                  role="status"
-                  className="rounded-md border p-3 text-sm"
-                  style={{
-                    borderColor: 'var(--border-color)',
-                    background: 'var(--surface-hover)',
-                  }}
-                >
-                  <p style={{ fontWeight: 600, marginBottom: '0.25rem' }}>
-                    {t('unconfirmed.title')}
-                  </p>
-                  <p style={{ color: 'var(--text-muted)' }}>
-                    {t('unconfirmed.description', { email: unconfirmedEmail })}
-                  </p>
-                  <Button
+            {activeTab !== 'forgot' && tabItems.length > 1 && (
+              <div className="auth-tabs">
+                {tabItems.map((tab) => (
+                  <button
+                    key={tab.key}
                     type="button"
-                    variant="outline"
-                    size="sm"
-                    className="mt-3 mb-0 w-full"
-                    disabled={resending || resendCooldown > 0}
-                    onClick={() => handleResend(unconfirmedEmail)}
-                  >
-                    {resending && <Spinner size="sm" />}
-                    {resendCooldown > 0
-                      ? t('resend.cooldown', { seconds: resendCooldown })
-                      : t('resend.button')}
-                  </Button>
-                </div>
-              )}
-              <Button type="submit" disabled={loading} className="btn-primary auth-submit w-full">
-                {loading && <Spinner size="sm" />}
-                {t('login.submit')}
-              </Button>
-              <p style={{ textAlign: 'center', marginTop: '0.75rem' }}>
-                <a
-                  href="#"
-                  className="auth-text-link"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setActiveTab('forgot');
-                  }}
-                >
-                  {t('login.forgotPassword')}
-                </a>
-              </p>
-            </form>
-          )}
-
-          {activeTab === 'register' &&
-            (existingAccount ? (
-              <div className="auth-form" style={{ textAlign: 'center' }}>
-                <p style={{ fontWeight: 600, marginBottom: '0.25rem' }}>
-                  {t('existingAccount.title')}
-                </p>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                  {t('existingAccount.description', { email: regEmail.trim() })}
-                </p>
-                <Button
-                  className="btn-primary auth-submit w-full"
-                  onClick={() => {
-                    setExistingAccount(false);
-                    setActiveTab('login');
-                  }}
-                >
-                  {t('existingAccount.goToLogin')}
-                </Button>
-                <p style={{ textAlign: 'center' }}>
-                  <a
-                    href="#"
-                    className="auth-text-link"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setForgotEmail(regEmail.trim());
+                    className={`auth-tab${activeTab === tab.key ? ' active' : ''}`}
+                    aria-pressed={activeTab === tab.key}
+                    onClick={() => {
+                      setActiveTab(tab.key as TabKey);
+                      setRegisterSuccess(false);
                       setExistingAccount(false);
-                      setActiveTab('forgot');
+                      setUnconfirmedEmail('');
                     }}
                   >
-                    {t('login.forgotPassword')}
-                  </a>
-                </p>
+                    {tab.label}
+                  </button>
+                ))}
               </div>
-            ) : registerSuccess ? (
-              <div className="auth-form" style={{ textAlign: 'center' }}>
-                <div
-                  aria-hidden="true"
-                  className="mx-auto flex h-12 w-12 items-center justify-center rounded-full"
-                  style={{ background: 'var(--surface-hover)', color: 'var(--text-main)' }}
-                >
-                  <MailCheck className="h-6 w-6" strokeWidth={1.75} />
+            )}
+
+            {activeTab === 'login' && (
+              <form onSubmit={handleLogin} className="auth-form">
+                <div className="auth-fields">
+                  <div className="auth-field">
+                    <Label htmlFor="login-email">{t('login.email')}</Label>
+                    <Input
+                      id="login-email"
+                      type="email"
+                      placeholder={t('login.emailPlaceholder')}
+                      autoComplete="email"
+                      value={loginEmail}
+                      onChange={(e) => setLoginEmail(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="auth-field">
+                    <div className="auth-label-row">
+                      <Label htmlFor="login-password">{t('login.password')}</Label>
+                      <a
+                        href="#"
+                        className="auth-text-link"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setActiveTab('forgot');
+                        }}
+                      >
+                        {t('login.forgotPassword')}
+                      </a>
+                    </div>
+                    <PasswordInput
+                      id="login-password"
+                      placeholder="••••••••"
+                      autoComplete="current-password"
+                      minLength={8}
+                      value={loginPassword}
+                      onChange={(e) => setLoginPassword(e.target.value)}
+                      required
+                    />
+                  </div>
                 </div>
-                <p style={{ fontWeight: 600, marginBottom: '0.25rem' }}>
-                  {t('registerSuccess.title')}
-                </p>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                  {t('registerSuccess.description', { email: pendingEmail })}
-                </p>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                  {t('registerSuccess.spamHint')}
-                </p>
-                {isGmail(pendingEmail) && (
-                  <Button asChild className="btn-primary auth-submit w-full">
-                    <a
-                      href="https://mail.google.com/mail/u/0/#search/in%3Aanywhere+mesaas"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      {t('registerSuccess.openGmail')}
-                    </a>
-                  </Button>
+                {unconfirmedEmail && (
+                  <div role="status" className="auth-notice">
+                    <p className="auth-notice-title">{t('unconfirmed.title')}</p>
+                    <p className="auth-notice-text">
+                      {t('unconfirmed.description', { email: unconfirmedEmail })}
+                    </p>
+                    {resendButton(unconfirmedEmail)}
+                  </div>
                 )}
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
-                  disabled={resending || resendCooldown > 0}
-                  onClick={() => handleResend(pendingEmail)}
-                >
-                  {resending && <Spinner size="sm" />}
-                  {resendCooldown > 0
-                    ? t('resend.cooldown', { seconds: resendCooldown })
-                    : t('resend.button')}
+                <Button type="submit" disabled={loading} className="btn-primary auth-submit">
+                  {loading && <Spinner size="sm" />}
+                  {t('login.submit')}
                 </Button>
-                <p style={{ textAlign: 'center' }}>
-                  <a
-                    href="#"
-                    className="auth-text-link"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setRegisterSuccess(false);
+              </form>
+            )}
+
+            {activeTab === 'register' &&
+              (existingAccount ? (
+                <div className="auth-form">
+                  <div className="auth-state">
+                    <p className="auth-state-title">{t('existingAccount.title')}</p>
+                    <p className="auth-state-text">
+                      {t('existingAccount.description', { email: regEmail.trim() })}
+                    </p>
+                  </div>
+                  <Button
+                    className="btn-primary auth-submit"
+                    onClick={() => {
+                      setExistingAccount(false);
                       setActiveTab('login');
                     }}
                   >
-                    {t('registerSuccess.alreadyConfirmed')}
-                  </a>
-                </p>
-              </div>
-            ) : (
-              <form
-                onSubmit={handleRegister}
-                onFocus={markSignupStarted}
-                className="auth-form"
-                noValidate
-              >
-                <div className="space-y-1">
-                  <Label htmlFor="reg-nome">{t('register.fullName')}</Label>
-                  <Input
-                    id="reg-nome"
-                    ref={regInputs.nome}
-                    placeholder={t('register.fullNamePlaceholder')}
-                    autoComplete="name"
-                    value={regNome}
-                    onChange={(e) => updateRegField('nome', e.target.value)}
-                    aria-invalid={regErrors.nome ? true : undefined}
-                    aria-describedby={regErrors.nome ? 'reg-nome-error' : undefined}
-                    className={regErrors.nome ? REG_INVALID_INPUT : undefined}
-                  />
-                  {regErrors.nome && (
-                    <FieldError id="reg-nome-error">{regErrorText('nome')!}</FieldError>
-                  )}
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="reg-email">{t('register.email')}</Label>
-                  <Input
-                    id="reg-email"
-                    ref={regInputs.email}
-                    type="email"
-                    inputMode="email"
-                    placeholder={t('register.emailPlaceholder')}
-                    autoComplete="email"
-                    value={regEmail}
-                    onChange={(e) => updateRegField('email', e.target.value)}
-                    aria-invalid={regErrors.email ? true : undefined}
-                    aria-describedby={regErrors.email ? 'reg-email-error' : undefined}
-                    className={regErrors.email ? REG_INVALID_INPUT : undefined}
-                  />
-                  {regErrors.email && (
-                    <FieldError id="reg-email-error">{regErrorText('email')!}</FieldError>
-                  )}
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="reg-password">{t('register.password')}</Label>
-                  <PasswordInput
-                    id="reg-password"
-                    ref={regInputs.password}
-                    placeholder={t('register.passwordPlaceholder')}
-                    autoComplete="new-password"
-                    value={regPassword}
-                    onChange={(e) => updateRegField('password', e.target.value)}
-                    aria-invalid={regErrors.password ? true : undefined}
-                    aria-describedby={
-                      regErrors.password ? 'reg-password-error' : 'reg-password-help'
-                    }
-                    className={regErrors.password ? REG_INVALID_INPUT : undefined}
-                  />
-                  {regErrors.password ? (
-                    <FieldError id="reg-password-error">{regErrorText('password')!}</FieldError>
-                  ) : (
-                    <p
-                      id="reg-password-help"
-                      style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}
+                    {t('existingAccount.goToLogin')}
+                  </Button>
+                  <p className="auth-link-row">
+                    <a
+                      href="#"
+                      className="auth-text-link"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setForgotEmail(regEmail.trim());
+                        setExistingAccount(false);
+                        setActiveTab('forgot');
+                      }}
                     >
-                      {t('register.passwordHelp')}
+                      {t('login.forgotPassword')}
+                    </a>
+                  </p>
+                </div>
+              ) : registerSuccess ? (
+                <div className="auth-form">
+                  <div className="auth-state">
+                    <div aria-hidden="true" className="auth-state-icon">
+                      <MailCheck className="h-6 w-6" strokeWidth={1.75} />
+                    </div>
+                    <p className="auth-state-title">{t('registerSuccess.title')}</p>
+                    <p className="auth-state-text">
+                      {t('registerSuccess.description', { email: pendingEmail })}
+                    </p>
+                    <p className="auth-state-hint">{t('registerSuccess.spamHint')}</p>
+                  </div>
+                  {isGmail(pendingEmail) && (
+                    <Button asChild className="btn-primary auth-submit">
+                      <a
+                        href="https://mail.google.com/mail/u/0/#search/in%3Aanywhere+mesaas"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {t('registerSuccess.openGmail')}
+                      </a>
+                    </Button>
+                  )}
+                  {resendButton(pendingEmail)}
+                  <p className="auth-link-row">
+                    <a
+                      href="#"
+                      className="auth-text-link"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setRegisterSuccess(false);
+                        setActiveTab('login');
+                      }}
+                    >
+                      {t('registerSuccess.alreadyConfirmed')}
+                    </a>
+                  </p>
+                </div>
+              ) : (
+                <form
+                  onSubmit={handleRegister}
+                  onFocus={markSignupStarted}
+                  className="auth-form"
+                  noValidate
+                >
+                  <div className="auth-fields">
+                    <div className="auth-field">
+                      <Label htmlFor="reg-nome">{t('register.fullName')}</Label>
+                      <Input
+                        id="reg-nome"
+                        ref={regInputs.nome}
+                        placeholder={t('register.fullNamePlaceholder')}
+                        autoComplete="name"
+                        value={regNome}
+                        onChange={(e) => updateRegField('nome', e.target.value)}
+                        aria-invalid={regErrors.nome ? true : undefined}
+                        aria-describedby={regErrors.nome ? 'reg-nome-error' : undefined}
+                      />
+                      {regErrors.nome && (
+                        <FieldError id="reg-nome-error">{regErrorText('nome')!}</FieldError>
+                      )}
+                    </div>
+                    <div className="auth-field">
+                      <Label htmlFor="reg-email">{t('register.email')}</Label>
+                      <Input
+                        id="reg-email"
+                        ref={regInputs.email}
+                        type="email"
+                        inputMode="email"
+                        placeholder={t('register.emailPlaceholder')}
+                        autoComplete="email"
+                        value={regEmail}
+                        onChange={(e) => updateRegField('email', e.target.value)}
+                        aria-invalid={regErrors.email ? true : undefined}
+                        aria-describedby={regErrors.email ? 'reg-email-error' : undefined}
+                      />
+                      {regErrors.email && (
+                        <FieldError id="reg-email-error">{regErrorText('email')!}</FieldError>
+                      )}
+                    </div>
+                    <div className="auth-field">
+                      <Label htmlFor="reg-password">{t('register.password')}</Label>
+                      <PasswordInput
+                        id="reg-password"
+                        ref={regInputs.password}
+                        placeholder={t('register.passwordPlaceholder')}
+                        autoComplete="new-password"
+                        value={regPassword}
+                        onChange={(e) => updateRegField('password', e.target.value)}
+                        aria-invalid={regErrors.password ? true : undefined}
+                        aria-describedby={
+                          regErrors.password ? 'reg-password-error' : 'reg-password-help'
+                        }
+                      />
+                      {regErrors.password ? (
+                        <FieldError id="reg-password-error">{regErrorText('password')!}</FieldError>
+                      ) : (
+                        <p id="reg-password-help" className="auth-help">
+                          {t('register.passwordHelp')}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  {regFormError && (
+                    <p role="alert" className="auth-form-error">
+                      {regFormErrorText(regFormError)}
                     </p>
                   )}
+                  <Button type="submit" disabled={loading} className="btn-primary auth-submit">
+                    {loading && <Spinner size="sm" />}
+                    {t('register.submit')}
+                  </Button>
+                  <p className="auth-note">{t('register.nextStepNote')}</p>
+                </form>
+              ))}
+
+            {activeTab === 'forgot' && (
+              <form onSubmit={handleForgot} className="auth-form">
+                <div className="auth-fields">
+                  <div className="auth-field">
+                    <Label htmlFor="forgot-email">{t('forgot.email')}</Label>
+                    <Input
+                      id="forgot-email"
+                      type="email"
+                      placeholder={t('forgot.emailPlaceholder')}
+                      autoComplete="email"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      required
+                    />
+                  </div>
                 </div>
-                {regFormError && (
-                  <p role="alert" style={{ color: 'var(--danger-text)', fontSize: '0.85rem' }}>
-                    {regFormErrorText(regFormError)}
-                  </p>
-                )}
-                <Button type="submit" disabled={loading} className="btn-primary auth-submit w-full">
+                <Button type="submit" disabled={loading} className="btn-primary auth-submit">
                   {loading && <Spinner size="sm" />}
-                  {t('register.submit')}
+                  {t('forgot.submit')}
                 </Button>
-                <p
-                  style={{
-                    color: 'var(--text-muted)',
-                    fontSize: '0.8rem',
-                    lineHeight: 1.45,
-                    textAlign: 'center',
-                  }}
-                >
-                  {t('register.nextStepNote')}
+                <p className="auth-link-row">
+                  <a
+                    href="#"
+                    className="auth-text-link"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setActiveTab('login');
+                    }}
+                  >
+                    <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+                    {t('forgot.backToLogin')}
+                  </a>
                 </p>
               </form>
-            ))}
+            )}
+          </div>
 
-          {activeTab === 'forgot' && (
-            <form onSubmit={handleForgot} className="auth-form">
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1rem' }}>
-                {t('forgot.description')}
-              </p>
-              <div className="space-y-1">
-                <Label htmlFor="forgot-email">{t('forgot.email')}</Label>
-                <Input
-                  id="forgot-email"
-                  type="email"
-                  placeholder={t('forgot.emailPlaceholder')}
-                  autoComplete="email"
-                  value={forgotEmail}
-                  onChange={(e) => setForgotEmail(e.target.value)}
-                  required
-                />
-              </div>
-              <Button type="submit" disabled={loading} className="btn-primary auth-submit w-full">
-                {loading && <Spinner size="sm" />}
-                {t('forgot.submit')}
-              </Button>
-              <p style={{ textAlign: 'center', marginTop: '0.75rem' }}>
-                <a
-                  href="#"
-                  className="auth-text-link"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setActiveTab('login');
-                  }}
-                >
-                  {t('forgot.backToLogin')}
-                </a>
-              </p>
-            </form>
-          )}
-
-          <p className="auth-footer">{t('footer')}</p>
-          <p className="auth-footer">
-            <CookiePreferencesLink />
+          <p className="auth-cookie">
+            <CookiePreferencesLink className="auth-cookie-link" />
           </p>
         </div>
-      </div>
 
-      <aside className="auth-showcase" aria-hidden="true">
-        <div className="auth-showcase-inner">
-          <div className="auth-showcase-gallery">
-            <div className="auth-thumb">
-              <div className="auth-thumb-media auth-thumb-media--carousel">
-                <Images size={18} />
-              </div>
-              <span className="auth-thumb-line" />
-              <span className="auth-thumb-line auth-thumb-line--short" />
+        <aside className="auth-showcase" aria-hidden="true">
+          <div className="auth-showcase-head">
+            <span className="auth-showcase-badge">
+              <Sparkles size={13} strokeWidth={2.2} />
+              {t('showcase.badge')}
+            </span>
+            <h2 className="auth-showcase-title">{t('showcase.title')}</h2>
+            <p className="auth-showcase-desc">{t('showcase.description')}</p>
+          </div>
+
+          <div className="auth-post-card">
+            <div className="auth-post-video">
+              <span className="auth-post-play">
+                <Play size={16} fill="currentColor" />
+              </span>
             </div>
-            <div className="auth-thumb">
-              <div className="auth-thumb-media auth-thumb-media--reel">
-                <Film size={18} />
+            <div className="auth-post-body">
+              <div className="auth-post-top">
+                <p className="auth-post-title">{t('showcase.postTitle')}</p>
+                <span className="auth-post-status">{t('showcase.postStatus')}</span>
               </div>
-              <span className="auth-thumb-line" />
-              <span className="auth-thumb-line auth-thumb-line--short" />
-            </div>
-            <div className="auth-thumb">
-              <div className="auth-thumb-media auth-thumb-media--post">
-                <Camera size={18} />
+              <p className="auth-post-label">{t('showcase.publishTo')}</p>
+              <div className="auth-post-targets">
+                <div className="auth-post-target">
+                  <span>{t('showcase.targetInstagram')}</span>
+                  <span className="auth-post-switch" />
+                </div>
+                <div className="auth-post-target">
+                  <span className="auth-post-target-name">
+                    {t('showcase.targetTiktok')}
+                    <span className="auth-post-new">{t('showcase.newTag')}</span>
+                  </span>
+                  <span className="auth-post-switch" />
+                </div>
               </div>
-              <span className="auth-thumb-line" />
-              <span className="auth-thumb-line auth-thumb-line--short" />
+              <p className="auth-post-foot">{t('showcase.postFoot')}</p>
             </div>
           </div>
-          <span className="auth-showcase-badge">
-            <Sparkles size={13} strokeWidth={2.2} />
-            {t('showcase.badge')}
-          </span>
-          <h2 className="auth-showcase-title">{t('showcase.title')}</h2>
-          <p className="auth-showcase-desc">{t('showcase.description')}</p>
 
-          <div className="auth-showcase-collage">
-            <div className="auth-collage-bg">
-              <div className="auth-frag auth-frag--post-a">
-                <div className="auth-frag-media auth-frag-media--a" />
-                <span className="auth-frag-line" />
-                <span className="auth-frag-line auth-frag-line--short" />
-              </div>
-              <div className="auth-frag auth-frag--post-b">
-                <div className="auth-frag-media auth-frag-media--b" />
-                <span className="auth-frag-line auth-frag-line--short" />
-              </div>
-              <div className="auth-frag auth-frag--chart">
-                <span className="auth-frag-line auth-frag-line--short" />
-                <div className="auth-frag-bars">
-                  <span style={{ height: '50%' }} />
-                  <span style={{ height: '75%' }} />
-                  <span style={{ height: '45%' }} />
-                  <span style={{ height: '90%' }} />
-                  <span style={{ height: '65%' }} />
-                </div>
-              </div>
-              <div className="auth-frag auth-frag--palette">
-                <span className="auth-frag-line auth-frag-line--short" />
-                <div className="auth-frag-swatches">
-                  <span style={{ background: '#3462ee' }} />
-                  <span style={{ background: '#eab308' }} />
-                  <span style={{ background: '#3ecf8e' }} />
-                  <span style={{ background: '#f542c8' }} />
-                </div>
-              </div>
-              <div className="auth-frag auth-frag--client">
-                <div className="auth-frag-avatar" />
-                <span className="auth-frag-line" />
-                <span className="auth-frag-line auth-frag-line--short" />
-              </div>
-            </div>
+          <ul className="auth-showcase-list">
+            <li>
+              <Check size={16} strokeWidth={2.2} />
+              {t('showcase.bullet1')}
+            </li>
+            <li>
+              <Check size={16} strokeWidth={2.2} />
+              {t('showcase.bullet2')}
+            </li>
+            <li>
+              <Check size={16} strokeWidth={2.2} />
+              {t('showcase.bullet3')}
+            </li>
+          </ul>
+        </aside>
+      </main>
 
-            <div className="auth-chat-card">
-              <p className="auth-chat-prompt">{t('showcase.chatPrompt')}</p>
-              <div className="auth-chat-options">
-                <div className="auth-chip">
-                  <span>{t('showcase.chip1')}</span>
-                  <ChevronRight size={14} />
-                </div>
-                <div className="auth-chip">
-                  <span>{t('showcase.chip2')}</span>
-                  <ChevronRight size={14} />
-                </div>
-                <div className="auth-chip auth-chip-agent">
-                  <Sparkles size={13} />
-                  <span>{t('showcase.agentInput')}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </aside>
+      <p className="auth-footer">{t('footer')}</p>
     </div>
   );
 }

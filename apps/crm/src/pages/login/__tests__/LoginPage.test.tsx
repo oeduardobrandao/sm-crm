@@ -637,7 +637,7 @@ describe('signup confirmation leaks', () => {
     submitRegister(container);
 
     fireEvent.click(await screen.findByRole('link', { name: 'Esqueci minha senha' }));
-    expect(screen.getByRole('button', { name: 'Enviar Link' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Enviar link' })).toBeInTheDocument();
     expect(container.querySelector('input[type="email"]')).toHaveValue('ana@example.com');
   });
 

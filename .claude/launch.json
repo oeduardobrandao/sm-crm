@@ -87,6 +87,13 @@
         "dev:admin"
       ],
       "port": 5177
+    },
+    {
+      "name": "crm-env",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:env"],
+      "port": 5173,
+      "autoPort": true
     }
   ]
 }
