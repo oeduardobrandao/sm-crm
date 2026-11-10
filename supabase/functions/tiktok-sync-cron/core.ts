@@ -70,6 +70,7 @@ const DEFAULT_CONCURRENCY = 5;
 const DEFAULT_BATCH_LIMIT = 25;
 const CANDIDATE_PAGE_SIZE = 200;
 const MAX_CANDIDATE_PAGES = 10;
+const CLAIM_CHUNK_SIZE = 100;
 
 const PROFILE_FIELDS = "follower_count,following_count,likes_count,video_count";
 
@@ -289,15 +290,25 @@ export async function runTikTokSyncCron(deps: TikTokSyncCronDeps): Promise<Respo
     if (selected.length > 0) {
       // Claim the batch before any TikTok call. The conditional `or` makes the update win only
       // rows still stale, so a concurrent run cannot claim the same account twice.
-      const { data: claimed, error: claimErr } = await svc
-        .from("tiktok_accounts")
-        .update({ last_sync_attempt_at: now.toISOString() })
-        .in("id", selected.map((a) => a.id))
-        .or(staleClause("last_sync_attempt_at"))
-        .select("id");
-      if (claimErr) throw claimErr;
+      // `last_sync_attempt_at` MUST stay in the projection below: prod's PostgREST resolves
+      // columns named inside an or-filter of an UPDATE against the ?select= projection and
+      // raises `42703 column tiktok_accounts.last_sync_attempt_at does not exist` when it is
+      // absent (staging and the mock do not reproduce it; same rule as the refresh-lock claim
+      // in _shared/tiktok.ts, reproduced against prod 2026-08-20). Ids go in chunks so the
+      // `in.(...)` URL stays short; a failure in any chunk aborts the run.
+      const claimedIds = new Set<string>();
+      const selectedIds = selected.map((a) => a.id);
+      for (let i = 0; i < selectedIds.length; i += CLAIM_CHUNK_SIZE) {
+        const { data: claimed, error: claimErr } = await svc
+          .from("tiktok_accounts")
+          .update({ last_sync_attempt_at: now.toISOString() })
+          .in("id", selectedIds.slice(i, i + CLAIM_CHUNK_SIZE))
+          .or(staleClause("last_sync_attempt_at"))
+          .select("id, last_sync_attempt_at");
+        if (claimErr) throw claimErr;
+        for (const r of (claimed ?? []) as Array<{ id: string }>) claimedIds.add(r.id);
+      }
 
-      const claimedIds = new Set(((claimed ?? []) as Array<{ id: string }>).map((r) => r.id));
       const toSync = selected.filter((a) => claimedIds.has(a.id));
       claimedCount = toSync.length;
 

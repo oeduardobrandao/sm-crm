@@ -679,3 +679,53 @@ Deno.test("tiktok-sync-cron: purge runs even when there are zero accounts to syn
   const purgeCall = db.calls.find((c) => c.table === "tiktok_webhook_events" && c.operation === "delete");
   assert(purgeCall, "purge must run regardless of account-selection outcome");
 });
+
+Deno.test("tiktok-sync-cron: the claim keeps last_sync_attempt_at in its projection and uses the exact 6h cutoff", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("tiktok_accounts", "select", { data: [acct("one", "ws-1", null)] });
+  queueClaim(db, ["one"]);
+  queueDefaultWebhookPurge(db);
+  const now = new Date("2026-11-10T12:00:00Z");
+  const cutoff = new Date(now.getTime() - 6 * 60 * 60 * 1000).toISOString();
+
+  await runTikTokSyncCron(happyPathDeps(db, { now: () => now }));
+
+  const claim = db.calls.find(
+    (c) => c.table === "tiktok_accounts" && c.operation === "update" && "last_sync_attempt_at" in (c.payload as object),
+  )!;
+  // Prod's PostgREST resolves or-filter columns of an UPDATE against the projection (42703).
+  assert(
+    claim.selectArgs.some((a) => String(a[0]).split(",").map((c) => c.trim()).includes("last_sync_attempt_at")),
+    "claim .select() must include last_sync_attempt_at",
+  );
+  const or = claim.modifiers.find((m) => m.method === "or")!;
+  assertEquals(or.args[0], `last_sync_attempt_at.is.null,last_sync_attempt_at.lt.${cutoff}`);
+});
+
+Deno.test("tiktok-sync-cron: the claim is chunked at 100 ids per UPDATE", async () => {
+  const db = createSupabaseQueryMock();
+  const ids = Array.from({ length: 150 }, (_, i) => `a${String(i).padStart(3, "0")}`);
+  db.queue("tiktok_accounts", "select", { data: ids.map((id) => acct(id, "ws-1", null)) });
+  queueClaim(db, ids.slice(0, 100));
+  queueClaim(db, ids.slice(100));
+  queueDefaultWebhookPurge(db);
+
+  const synced: string[] = [];
+  const response = await runTikTokSyncCron(happyPathDeps(db, {
+    batchLimit: 150,
+    getFreshTikTokToken: async (_svc, id: string) => {
+      synced.push(id);
+      return { accessToken: "t", openId: "o" };
+    },
+  }));
+  const body = await response.json();
+
+  const claims = db.calls.filter(
+    (c) => c.table === "tiktok_accounts" && c.operation === "update" && "last_sync_attempt_at" in (c.payload as object),
+  );
+  assertEquals(claims.length, 2);
+  assertEquals((claims[0].modifiers.find((m) => m.method === "in")!.args[1] as string[]).length, 100);
+  assertEquals((claims[1].modifiers.find((m) => m.method === "in")!.args[1] as string[]).length, 50);
+  assertEquals(body.total, 150);
+  assertEquals(synced.length, 150);
+});
