@@ -479,12 +479,66 @@ export interface DashboardAccount {
   lastSyncedAt: string | null;
 }
 
+export type DashboardPlatform = 'instagram' | 'tiktok';
+
+export type HubAccountState = 'connected' | 'needs_reconnect';
+
+/** Fixed 30-day window. */
+export interface FollowersDelta {
+  value: number;
+  since: string;
+  fullWindow: boolean;
+}
+
+export interface HubAccountSummary {
+  platform: DashboardPlatform;
+  state: HubAccountState;
+  username: string | null;
+  followerCount: number | null;
+  /** null with fewer than two usable points. */
+  followersDelta: FollowersDelta | null;
+  lastSyncedAt: string | null;
+  /** Present for the matching platform only. */
+  instagram?: { reach28d: number | null; impressions28d: number | null; mediaCount: number | null };
+  tiktok?: { views30d: number; likesTotal: number | null; videoCount: number | null };
+}
+
+export interface DashboardTopVideo {
+  id: string;
+  coverUrl: string | null;
+  shareUrl: string | null;
+  postedAt: string | null;
+  durationSeconds: number | null;
+  views: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  /** One decimal; null when the video has no views. */
+  engagementRate: number | null;
+}
+
+export interface DashboardViewsEntry {
+  date: string;
+  views: number;
+}
+
 export interface HubDashboardResponse {
   topPosts: DashboardTopPost[];
   followerHistory: DashboardFollowerEntry[];
   reachHistory: DashboardReachEntry[];
   account: DashboardAccount | null;
   period: number;
+  // The three below are optional: an older function may answer during the deploy window.
+  /** The platform the detail in this response is for. */
+  platform?: DashboardPlatform;
+  /** Only the accounts that get a card, Instagram first. */
+  accounts?: HubAccountSummary[];
+  /** Only when the resolved platform is tiktok and its account has a card. */
+  tiktok?: {
+    topVideos: DashboardTopVideo[];
+    followerHistory: DashboardFollowerEntry[];
+    viewsHistory: DashboardViewsEntry[];
+  };
 }
 
 export interface MensagemFeedItem {

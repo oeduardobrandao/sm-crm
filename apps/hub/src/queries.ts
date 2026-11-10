@@ -6,12 +6,14 @@ import {
 } from '@tanstack/react-query';
 import { matchPath } from 'react-router-dom';
 import { canonicalHubToken } from './lib/hubLinks';
+import type { DashboardPlatform } from './types';
 import {
   fetchAgenda,
   fetchAgendaItem,
   fetchAgendaPeriodo,
   fetchBootstrap,
   fetchConvite,
+  fetchDashboard,
   fetchLinhas,
   fetchPost,
   fetchPosts,
@@ -36,6 +38,19 @@ export const hubBootstrapQuery = (workspace: string, token: string) =>
 
 // Every hub-posts reader (HomePage, Postagens, Aprovações, the nav badges)
 // shares this key and inherits the staleTime below.
+export type DashboardPlatformKey = DashboardPlatform | 'default';
+
+export const hubDashboardQuery = (
+  token: string,
+  period: number,
+  platform: DashboardPlatformKey = 'default',
+) =>
+  queryOptions({
+    queryKey: ['hub-dashboard', token, period, platform],
+    queryFn: () => fetchDashboard(token, period, platform === 'default' ? undefined : platform),
+    staleTime: 5 * 60 * 1000,
+  });
+
 export const HUB_POSTS_KEY = 'hub-posts';
 
 export const hubPostsQuery = (token: string) =>
