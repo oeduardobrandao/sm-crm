@@ -22,6 +22,8 @@
 - Never use `useBlocker`.
 - Migration filename needs a unique version prefix above main's tail. `20261126000001` is free today; re-check against `origin/main` before opening the PR and renumber if taken.
 - Format only the files you touched (`npx prettier --write <paths>`), never the whole repo.
+- Work only in the worktree `/Users/eduardosouza/projects/sm-crm/.claude/worktrees/visane-meta-activity-report-9a1167` (lowercase `projects`: a hook refuses writes through the capital-P spelling). Before the first edit, run `pwd` and `git branch --show-current` and confirm the branch is `claude/client-connected-accounts-c43ee3`.
+- Task order: Task 1, Tasks 2 then 3, and Task 4 are independent of each other and can run in parallel. Tasks 4, 5, 6 are sequential (5 and 6 both edit `HomePage.tsx` and `HomePagePauta.tsx`). Task 7 is last.
 - Run every command from the worktree root. Deno single-file runs: `deno test --no-check --node-modules-dir=auto --allow-env --allow-read --allow-net --allow-sys <file>`.
 
 ## Review Focus
@@ -95,7 +97,7 @@ Expected: the five new tests FAIL; older tests that process accounts fail until 
 Replace the single account query and the inline feature filter in `runTikTokSyncCron` with:
 - `collectSyncCandidates({ fetchPage, resolveAllowedWorkspaces, internalWorkspaces }, { pageSize: 200, maxPages: 10, targetEligible: batchLimit })`. `fetchPage` is today's query plus `last_sync_attempt_at` in the select, the second `.or('last_sync_attempt_at.is.null,last_sync_attempt_at.lt.<sixHoursAgoIso>')`, the two `.order(...)` calls from the test, and `.range(from, from + size - 1)`. `resolveAllowedWorkspaces` returns the workspaces that have **both** `feature_auto_sync_cron` and `feature_tiktok`.
 - `selectAccountsToSync(candidates, { allowedWorkspaces, internalWorkspaces, limit: batchLimit })`.
-- The claim: `svc.from("tiktok_accounts").update({ last_sync_attempt_at: now.toISOString() }).in("id", selectedIds).or('last_sync_attempt_at.is.null,last_sync_attempt_at.lt.<sixHoursAgoIso>').select("id")`. An error throws (the outer catch reports it and answers 500). Only the returned ids go to `runPool`.
+- The claim: `svc.from("tiktok_accounts").update({ last_sync_attempt_at: now.toISOString() }).in("id", selectedIds).or('last_sync_attempt_at.is.null,last_sync_attempt_at.lt.<sixHoursAgoIso>').select("id")`. An error throws (the outer catch reports it and answers 500). Only the returned ids go to `runPool`. With nothing selected, skip the claim entirely (no `update` call).
 - Response: `{ success, synced, failed, total, deferred }` where `total` is the claimed count.
 
 `batchLimit = Math.max(1, deps.batchLimit ?? 25)`. The webhook purge and the per-account `processAccount` are untouched. Update the file's header comment: hourly schedule, attempt gate, claim, shared dials.
@@ -365,8 +367,8 @@ describe('dashboardFormat', () => {
   });
   it('formatCompact keeps small numbers whole and compacts from 1000', () => {
     expect(formatCompact(214, 'pt-BR')).toBe('214');
-    expect(formatCompact(48200, 'pt-BR')).toBe('48,2 mil');
-    expect(formatCompact(126000, 'pt-BR')).toBe('126 mil');
+    expect(formatCompact(48200, 'pt-BR')).toBe('48,2\u00a0mil');
+    expect(formatCompact(126000, 'pt-BR')).toBe('126\u00a0mil');
     expect(formatCompact(undefined, 'pt-BR')).toBe('—');
   });
   it('syncAge buckets', () => {
@@ -399,7 +401,7 @@ Expected: FAIL, module not found.
 
 - [ ] **Step 3: Implement `dashboardFormat.ts`, the types, `fetchDashboard` and `hubDashboardQuery`**
 
-`Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 })` for the compact form.
+`Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 })` for the compact form. In pt-BR it puts a non-breaking space before "mil" (U+00A0): keep it, so the figure never wraps. That is why the unit test above spells `\u00a0`. In component tests `getByText('48,2 mil')` with a plain space still matches, because Testing Library's default normalizer collapses whitespace.
 
 - [ ] **Step 4: Add the copy to both `hubHome.json` files**
 
@@ -541,7 +543,7 @@ Follow the mockup boards "A. Início", "Estados" and "Celular" for structure and
 
 - [ ] **Step 5: Fix the home tests**
 
-The three home test files mock `../../api`; `fetchDashboard` there is a bare `vi.fn()`. Give it `mockResolvedValue({ topPosts: [], followerHistory: [], reachHistory: [], account: null, period: 30, platform: 'instagram', accounts: [] })` in each file's setup so the strip resolves to nothing. Add to `homePauta.test.tsx`: `'renders the accounts strip right after the KPI strip'` (with one account in the mock, the "Contas conectadas" heading follows the KPI strip in document order).
+`HomePage` now always renders the strip, so every test that renders `HomePage` makes the dashboard request. Grep for them (`grep -rln "HomePage" apps/hub/src --include="*.test.tsx"`). Where the file's `../../api` mock already has `fetchDashboard` as a bare `vi.fn()` (`homeMaterial.test.tsx`, `homePauta.test.tsx`), give it `mockResolvedValue({ topPosts: [], followerHistory: [], reachHistory: [], account: null, period: 30, platform: 'instagram', accounts: [] })` in the setup so the strip resolves to nothing. Where the mock has no `fetchDashboard` (`homeCalendarRange.test.tsx`), stub the component instead, next to the existing `DashboardSection` stub: `vi.mock('../../components/dashboard/ConnectedAccounts', () => ({ ConnectedAccounts: () => null }))`. Add to `homePauta.test.tsx`: `'renders the accounts strip right after the KPI strip'` (with one account in the mock, the "Contas conectadas" heading follows the KPI strip in document order).
 
 - [ ] **Step 6: Run the Hub suites and typecheck**
 
