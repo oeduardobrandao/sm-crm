@@ -13,6 +13,8 @@ import { mergeById } from '../lib/mergeById';
 import { isInProduction, localMonthRange } from '../lib/postView';
 import { PostCalendar } from '../components/PostCalendar';
 import { DashboardSection } from '../components/dashboard/DashboardSection';
+import { ConnectedAccounts } from '../components/dashboard/ConnectedAccounts';
+import { useDashboardPlatform } from '../components/dashboard/useDashboardPlatform';
 import { ClientAvatar } from '../components/ClientAvatar';
 import { HomeAgenda } from './agenda/HomeAgenda';
 import { useHubLook } from '../hooks/useHubLook';
@@ -43,6 +45,7 @@ export function HomePage() {
   const navigate = useNavigate();
   const look = useHubLook();
   const base = `/${workspace}/hub/${compactHubToken(token)}`;
+  const { platform, setPlatform, openPlatform } = useDashboardPlatform();
 
   const { data, isLoading } = useQuery(hubPostsQuery(token));
 
@@ -186,6 +189,7 @@ export function HomePage() {
   );
 
   if (look === 'pauta') {
+    const accountsStrip = <ConnectedAccounts onOpenPlatform={openPlatform} />;
     return (
       <HomePagePauta
         base={base}
@@ -201,6 +205,9 @@ export function HomePage() {
           approvalRate,
           nextPost: nextPostLabel,
         }}
+        accountsStrip={accountsStrip}
+        dashboardPlatform={platform}
+        onDashboardPlatform={setPlatform}
         calendar={calendarBody}
         eventDialog={eventDialog}
       />
@@ -209,50 +216,55 @@ export function HomePage() {
 
   return (
     <div className="hub-fade-up flex flex-col gap-6">
-      <section>
-        <ClientAvatar
-          name={bootstrap.cliente_nome}
-          photoUrl={bootstrap.cliente_foto_url}
-          size={128}
-        />
-        <p className="text-[13px] font-medium hub-tx3 mb-1.5 mt-4">{bootstrap.workspace.name}</p>
-        <h1 className="font-display font-medium text-[clamp(2rem,5vw,3rem)] leading-[1.04] tracking-tight hub-txt mb-1.5">
-          {t('home.greeting', 'Olá,')} <em className="italic font-normal">{firstName}</em> 👋
-        </h1>
-      </section>
+      <div className="flex flex-col gap-6">
+        <section>
+          <ClientAvatar
+            name={bootstrap.cliente_nome}
+            photoUrl={bootstrap.cliente_foto_url}
+            size={128}
+          />
+          <p className="text-[13px] font-medium hub-tx3 mb-1.5 mt-4">{bootstrap.workspace.name}</p>
+          <h1 className="font-display font-medium text-[clamp(2rem,5vw,3rem)] leading-[1.04] tracking-tight hub-txt mb-1.5">
+            {t('home.greeting', 'Olá,')} <em className="italic font-normal">{firstName}</em> 👋
+          </h1>
+        </section>
 
-      <section
-        className="grid gap-3"
-        style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}
-      >
-        {kpis.map((k) => {
-          const content = (
-            <>
-              <div>
-                <div className="text-[15px] font-semibold tracking-tight hub-txt">{k.label}</div>
-                <div className="text-[12.5px] hub-tx3 mt-0.5">{k.hint}</div>
+        {/* Phones: strip above the KPIs. md and up: order-last drops it under them. */}
+        <ConnectedAccounts onOpenPlatform={openPlatform} className="md:order-last" />
+
+        <section
+          className="grid gap-3"
+          style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}
+        >
+          {kpis.map((k) => {
+            const content = (
+              <>
+                <div>
+                  <div className="text-[15px] font-semibold tracking-tight hub-txt">{k.label}</div>
+                  <div className="text-[12.5px] hub-tx3 mt-0.5">{k.hint}</div>
+                </div>
+                <div className="font-display text-[2.1rem] font-medium tracking-tight leading-none hub-txt mt-3.5">
+                  {k.value}
+                </div>
+              </>
+            );
+            return k.onClick ? (
+              <button
+                key={k.label}
+                type="button"
+                onClick={k.onClick}
+                className="hub-card hub-card-hover cursor-pointer p-4 text-left w-full flex flex-col justify-between"
+              >
+                {content}
+              </button>
+            ) : (
+              <div key={k.label} className="hub-card p-4 flex flex-col justify-between">
+                {content}
               </div>
-              <div className="font-display text-[2.1rem] font-medium tracking-tight leading-none hub-txt mt-3.5">
-                {k.value}
-              </div>
-            </>
-          );
-          return k.onClick ? (
-            <button
-              key={k.label}
-              type="button"
-              onClick={k.onClick}
-              className="hub-card hub-card-hover cursor-pointer p-4 text-left w-full flex flex-col justify-between"
-            >
-              {content}
-            </button>
-          ) : (
-            <div key={k.label} className="hub-card p-4 flex flex-col justify-between">
-              {content}
-            </div>
-          );
-        })}
-      </section>
+            );
+          })}
+        </section>
+      </div>
 
       {pendingCount > 0 && (
         <button

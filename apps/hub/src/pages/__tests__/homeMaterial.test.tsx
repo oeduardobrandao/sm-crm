@@ -67,6 +67,15 @@ describe.each([
       .mockReset()
       .mockResolvedValue({ posts: [], historyCutoff: null } as never);
     vi.mocked(fetchDashboard).mockReset();
+    vi.mocked(fetchDashboard).mockResolvedValue({
+      topPosts: [],
+      followerHistory: [],
+      reachHistory: [],
+      account: null,
+      period: 30,
+      platform: 'instagram',
+      accounts: [],
+    });
     material.mockReset();
   });
   afterEach(cleanup);

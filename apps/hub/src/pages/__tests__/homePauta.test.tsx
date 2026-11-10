@@ -84,6 +84,16 @@ describe('Home, Pauta look', () => {
     vi.setSystemTime(new Date(2026, 9, 8, 9, 0)); // Thursday 09:00 local
     posts.mockReset();
     agenda.mockReset();
+    dashboard.mockReset();
+    dashboard.mockResolvedValue({
+      topPosts: [],
+      followerHistory: [],
+      reachHistory: [],
+      account: null,
+      period: 30,
+      platform: 'instagram',
+      accounts: [],
+    });
   });
 
   afterEach(async () => {
@@ -136,6 +146,36 @@ describe('Home, Pauta look', () => {
       'href',
       '/mesaas/hub/tk/aprovacoes',
     );
+  });
+
+  it('renders the accounts strip right after the KPI strip', async () => {
+    posts.mockResolvedValue({ posts: [], historyCutoff: null } as never);
+    dashboard.mockResolvedValue({
+      topPosts: [],
+      followerHistory: [],
+      reachHistory: [],
+      account: null,
+      period: 30,
+      platform: 'instagram',
+      accounts: [
+        {
+          platform: 'instagram',
+          state: 'connected',
+          username: 'ana',
+          followerCount: 1200,
+          followersDelta: null,
+          lastSyncedAt: null,
+          instagram: { reach28d: 1, impressions28d: 2, mediaCount: 3 },
+        },
+      ],
+    });
+    renderHome();
+    const strip = await screen.findByRole('heading', { name: 'Contas conectadas' });
+    const kpi = screen.getByText('Posts este mês');
+    expect(kpi.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Nothing but the strip sits between the KPI strip and the next block.
+    const kpiBlock = kpi.closest('section, div[class*="grid"]') as HTMLElement;
+    expect(kpiBlock.nextElementSibling).toContainElement(strip);
   });
 
   it('no pending: "Tudo em dia por aqui.", no Esperando você, calendar is 01', async () => {
