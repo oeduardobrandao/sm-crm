@@ -55,7 +55,8 @@ function respond(accounts: HubAccountSummary[] | undefined) {
 
 function renderStrip(
   opts:
-    { pauta?: boolean; onOpenPlatform?: ReturnType<typeof vi.fn> } | ReturnType<typeof vi.fn> = {},
+    | { pauta?: boolean; onOpenPlatform?: ReturnType<typeof vi.fn> }
+    | ReturnType<typeof vi.fn> = {},
 ) {
   const o = typeof opts === 'function' ? { onOpenPlatform: opts } : opts;
   const onOpenPlatform = o.onOpenPlatform ?? vi.fn();
