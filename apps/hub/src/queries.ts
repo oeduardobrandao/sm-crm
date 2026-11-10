@@ -6,7 +6,6 @@ import {
 } from '@tanstack/react-query';
 import { matchPath } from 'react-router-dom';
 import { canonicalHubToken } from './lib/hubLinks';
-import type { DashboardPlatform } from './types';
 import {
   fetchAgenda,
   fetchAgendaItem,
@@ -21,7 +20,7 @@ import {
   CONVITE_INDISPONIVEL,
 } from './api';
 import { fetchMaterialRequests } from './services/materialRequests';
-import type { HubAgendaCursor, HubAgendaItem, HubAgendaResponse } from './types';
+import type { DashboardPlatform, HubAgendaCursor, HubAgendaItem, HubAgendaResponse } from './types';
 
 // Fetched once per visit, like the effect it replaced: a refetch on window
 // focus would spend the shared hub-read budget for data that never changes
@@ -36,8 +35,6 @@ export const hubBootstrapQuery = (workspace: string, token: string) =>
     retryOnMount: false,
   });
 
-// Every hub-posts reader (HomePage, Postagens, Aprovações, the nav badges)
-// shares this key and inherits the staleTime below.
 export type DashboardPlatformKey = DashboardPlatform | 'default';
 
 export const hubDashboardQuery = (
@@ -51,6 +48,8 @@ export const hubDashboardQuery = (
     staleTime: 5 * 60 * 1000,
   });
 
+// Every hub-posts reader (HomePage, Postagens, Aprovações, the nav badges)
+// shares this key and inherits the staleTime below.
 export const HUB_POSTS_KEY = 'hub-posts';
 
 export const hubPostsQuery = (token: string) =>

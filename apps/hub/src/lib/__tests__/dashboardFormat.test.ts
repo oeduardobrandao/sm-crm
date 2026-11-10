@@ -14,8 +14,8 @@ describe('dashboardFormat', () => {
   });
   it('formatCompact keeps small numbers whole and compacts from 1000', () => {
     expect(formatCompact(214, 'pt-BR')).toBe('214');
-    expect(formatCompact(48200, 'pt-BR')).toBe('48,2 mil');
-    expect(formatCompact(126000, 'pt-BR')).toBe('126 mil');
+    expect(formatCompact(48200, 'pt-BR')).toBe('48,2\u00a0mil');
+    expect(formatCompact(126000, 'pt-BR')).toBe('126\u00a0mil');
     expect(formatCompact(undefined, 'pt-BR')).toBe('—');
   });
   it('syncAge buckets', () => {
