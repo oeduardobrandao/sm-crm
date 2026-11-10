@@ -2,7 +2,15 @@ import { createJsonResponder } from "../_shared/http.ts";
 import { decryptText } from "../_shared/crypto.ts";
 import { resolveHubToken } from "../_shared/hub-token.ts";
 import { getClientIP } from "../_shared/rate-limit.ts";
-import { type HubAccountSummary, instagramState, instagramSummary, loadTikTokSummary } from "./accounts.ts";
+import {
+  type HubAccountSummary,
+  instagramState,
+  instagramSummary,
+  loadTikTokCard,
+  loadTikTokData,
+  tiktokSummary,
+} from "./accounts.ts";
+import { resolvePlatform, topVideos, viewsHistory } from "./tiktok-detail.ts";
 
 type DbClient = {
   from: (table: string) => any;
@@ -73,28 +81,82 @@ export function createHubDashboardHandler(deps: HubDashboardHandlerDeps) {
     const nowIso = deps.now();
     const igState = igAccount ? instagramState(igAccount, nowIso) : null;
 
-    // TikTok is secondary: a failure there must not take the Instagram detail down with it.
-    const loadTikTok = async () => {
+    const requested = url.searchParams.get("platform");
+    const now = new Date(nowIso);
+    const feature = (key: string) => deps.effectivePlanFeature(db, hubToken.conta_id, key);
+    const igHasCard = !!igAccount && igState !== null;
+
+    // TikTok is secondary: a failure there must not take the Instagram detail down with it. It
+    // starts now and is awaited at the end, so it overlaps the Instagram queries. One query set
+    // serves both the 30-day summary and, when TikTok is the platform shown, the detail.
+    const tiktokP = (async () => {
       try {
-        return await loadTikTokSummary(
-          db, hubToken.cliente_id, hubToken.conta_id, new Date(nowIso),
-          (key) => deps.effectivePlanFeature(db, hubToken.conta_id, key),
-        );
+        const card = await loadTikTokCard(db, hubToken.cliente_id, feature);
+        if (!card) return null;
+        const shown = resolvePlatform(requested, [{ platform: igHasCard ? "instagram" : "tiktok" }]);
+        const data = await loadTikTokData(db, card.account, shown === "tiktok" ? period : 30, now);
+        return { card, data };
       } catch (err) {
-        console.error("hub-dashboard: tiktok summary failed", err);
+        console.error("hub-dashboard: tiktok load failed", err);
         return null;
       }
-    };
+    })();
+
+    const tiktokParts = (tt: Awaited<typeof tiktokP>, platform: "instagram" | "tiktok") => ({
+      summary: tt ? tiktokSummary(tt.card, tt.data, now) : null,
+      detail: tt && platform === "tiktok"
+        ? {
+          topVideos: topVideos(tt.data.videos),
+          followerHistory: tt.data.history
+            .filter((r) => r.follower_count != null)
+            .map((r) => ({ date: r.date, followerCount: r.follower_count })),
+          viewsHistory: viewsHistory(tt.data.videos),
+        }
+        : undefined,
+    });
 
     if (!igAccount || igState === null) {
-      const tiktok = await loadTikTok();
+      const tt = await tiktokP;
+      const accounts: HubAccountSummary[] = [];
+      const parts = tiktokParts(tt, resolvePlatform(requested, tt ? [{ platform: "tiktok" }] : []));
+      if (parts.summary) accounts.push(parts.summary);
+      const platform = resolvePlatform(requested, accounts);
       return json({
         topPosts: [],
         followerHistory: [],
         reachHistory: [],
         account: null,
-        accounts: tiktok ? [tiktok.summary] : [],
-        platform: "instagram",
+        accounts,
+        platform,
+        ...(platform === "tiktok" && accounts.length > 0 ? { tiktok: tiktokParts(tt, platform).detail } : {}),
+        period,
+      });
+    }
+
+    const igPlatform = resolvePlatform(requested, [{ platform: "instagram" }]);
+    if (igPlatform === "tiktok") {
+      // The Instagram card still needs its 30-day change: one history query, no detail.
+      const sinceDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const { data: rows } = await db
+        .from("instagram_follower_history")
+        .select("date, follower_count")
+        .eq("instagram_account_id", igAccount.id)
+        .gte("date", sinceDate)
+        .order("date", { ascending: true });
+      const accounts: HubAccountSummary[] = [];
+      const igSum = instagramSummary(igAccount, rows ?? [], nowIso);
+      if (igSum) accounts.push(igSum);
+      const tt = await tiktokP;
+      const parts = tiktokParts(tt, "tiktok");
+      if (parts.summary) accounts.push(parts.summary);
+      return json({
+        topPosts: [],
+        followerHistory: [],
+        reachHistory: [],
+        account: null,
+        accounts,
+        platform: "tiktok",
+        ...(parts.detail ? { tiktok: parts.detail } : {}),
         period,
       });
     }
@@ -190,8 +252,8 @@ export function createHubDashboardHandler(deps: HubDashboardHandlerDeps) {
     const accounts: HubAccountSummary[] = [];
     const igSummary = instagramSummary(igAccount, followerRows ?? [], nowIso);
     if (igSummary) accounts.push(igSummary);
-    const tiktok = await loadTikTok();
-    if (tiktok) accounts.push(tiktok.summary);
+    const tiktokSum = tiktokParts(await tiktokP, "instagram").summary;
+    if (tiktokSum) accounts.push(tiktokSum);
 
     return json({
       topPosts: postsWithRate,

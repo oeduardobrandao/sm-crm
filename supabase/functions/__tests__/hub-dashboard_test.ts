@@ -110,6 +110,7 @@ Deno.test("hub-dashboard returns top posts with fresh thumbnails from Graph API"
   assertEquals(body.reachHistory.length, 2);
   assertEquals(body.account.followerCount, 15300);
   assertEquals(body.period, 30);
+  assertEquals(body.tiktok, undefined);
 });
 
 Deno.test("hub-dashboard returns empty data when no Instagram account is linked", async () => {
@@ -543,5 +544,172 @@ Deno.test("hub-dashboard: accounts is an empty array when nothing is connected",
   const body = await (await get(makeHandler(db, async () => true))).json();
 
   assertEquals(body.accounts, []);
+  assertEquals(body.platform, "instagram");
+});
+
+// ---------------------------------------------------------------------------
+// platform parameter and TikTok detail
+// ---------------------------------------------------------------------------
+
+function queueTikTokDetail(db: Mock, row = ttRow()) {
+  db.queue("tiktok_accounts", "select", { data: row, error: null });
+  db.queue("tiktok_posts", "select", {
+    data: [
+      { tiktok_video_id: "v-old", posted_at: "2026-04-01T15:00:00.000Z", views: 500, likes: 5, comments: 0, shares: 0,
+        title: null, video_description: null, duration: 12, share_url: null, cover_image_url: null },
+      { tiktok_video_id: "v-new", posted_at: "2026-04-15T15:00:00.000Z", views: 1200, likes: 60, comments: 12, shares: 12,
+        title: null, video_description: null, duration: 30, share_url: "https://t/v", cover_image_url: "https://c/v" },
+      { tiktok_video_id: "v-90", posted_at: "2026-02-15T15:00:00.000Z", views: 9000, likes: 0, comments: 0, shares: 0,
+        title: null, video_description: null, duration: 5, share_url: null, cover_image_url: null },
+    ],
+    error: null,
+  });
+  db.queue("tiktok_follower_history", "select", {
+    data: [
+      { date: "2026-02-20", follower_count: 3000, source: "sync" },
+      { date: "2026-03-25", follower_count: 3800, source: "sync" },
+      { date: "2026-04-16", follower_count: 4000, source: "sync" },
+    ],
+    error: null,
+  });
+}
+
+const tiktokOn = async (key: string) => key === "feature_tiktok";
+const getP = (h: (r: Request) => Promise<Response>, qs: string) =>
+  h(new Request(`https://example.test/hub-dashboard?token=hub-123${qs}`));
+
+Deno.test("hub-dashboard: platform=tiktok returns the tiktok block and empty Instagram keys", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", HUB_TOKEN);
+  db.queue("instagram_accounts", "select", { data: igRow({ encrypted_access_token: "enc" }), error: null });
+  db.queue("instagram_follower_history", "select", { data: [], error: null });
+  queueTikTokDetail(db);
+
+  const original = globalThis.fetch;
+  let fetchCalls = 0;
+  globalThis.fetch = (() => {
+    fetchCalls++;
+    return Promise.resolve(new Response("{}"));
+  }) as typeof fetch;
+  try {
+    const body = await (await getP(makeHandler(db, tiktokOn), "&platform=tiktok&period=90")).json();
+    assertEquals(body.platform, "tiktok");
+    assertEquals([body.topPosts, body.followerHistory, body.reachHistory, body.account], [[], [], [], null]);
+    assertEquals(body.tiktok.topVideos.map((v: { id: string }) => v.id), ["v-90", "v-new", "v-old"]);
+    assertEquals(body.tiktok.topVideos[1].engagementRate, 7);
+    assertEquals(body.tiktok.viewsHistory, [
+      { date: "2026-02-15", views: 9000 },
+      { date: "2026-04-01", views: 500 },
+      { date: "2026-04-15", views: 1200 },
+    ]);
+    assertEquals(body.tiktok.followerHistory[0], { date: "2026-02-20", followerCount: 3000 });
+    assertEquals(body.accounts.map((a: { platform: string }) => a.platform), ["instagram", "tiktok"]);
+    assertEquals(callsTo(db, "instagram_posts").length, 0);
+    assertEquals(callsTo(db, "tiktok_posts").length, 1);
+    assertEquals(callsTo(db, "tiktok_follower_history").length, 1);
+    assertEquals(fetchCalls, 0);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+Deno.test("hub-dashboard: a TikTok-only client gets TikTok detail without sending platform", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", HUB_TOKEN);
+  db.queue("instagram_accounts", "select", { data: null, error: null });
+  queueTikTokDetail(db);
+
+  // period=90 so the fixture's 60-day-old video is inside the (mock-ignored) window
+  const body = await (await getP(makeHandler(db, tiktokOn), "&period=90")).json();
+
+  assertEquals(body.platform, "tiktok");
+  assertEquals(body.account, null);
+  assertEquals(body.accounts.map((a: { platform: string }) => a.platform), ["tiktok"]);
+  assertEquals(body.tiktok.topVideos.length, 3);
+});
+
+Deno.test("hub-dashboard: a TikTok card shows on the disconnected-Instagram path", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", HUB_TOKEN);
+  db.queue("instagram_accounts", "select", { data: igRow({ authorization_status: "disconnected" }), error: null });
+  queueTikTokDetail(db);
+
+  const body = await (await getP(makeHandler(db, tiktokOn), "&platform=instagram")).json();
+
+  assertEquals(body.platform, "instagram");
+  assertEquals(body.accounts.map((a: { platform: string }) => a.platform), ["tiktok"]);
+  assertEquals(body.tiktok, undefined);
+});
+
+Deno.test("hub-dashboard: platform=tiktok without a TikTok card answers 200 with no tiktok block", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", HUB_TOKEN);
+  db.queue("instagram_accounts", "select", { data: igRow(), error: null });
+  db.queue("instagram_follower_history", "select", { data: [], error: null });
+  db.queue("tiktok_accounts", "select", { data: null, error: null });
+
+  const response = await getP(makeHandler(db, tiktokOn), "&platform=tiktok");
+  const body = await response.json();
+
+  assertEquals(response.status, 200);
+  assertEquals(body.platform, "tiktok");
+  assertEquals(body.tiktok, undefined);
+  assertEquals(body.accounts.map((a: { platform: string }) => a.platform), ["instagram"]);
+});
+
+Deno.test("hub-dashboard: with period=90 the TikTok summary still uses 30 days", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", HUB_TOKEN);
+  db.queue("instagram_accounts", "select", { data: null, error: null });
+  queueTikTokDetail(db);
+
+  const body = await (await getP(makeHandler(db, tiktokOn), "&period=90")).json();
+
+  assertEquals(body.accounts[0].tiktok.views30d, 1700);
+  assertEquals(body.accounts[0].followersDelta, { value: 200, since: "2026-03-25", fullWindow: false });
+  assertEquals(body.tiktok.topVideos.length, 3);
+});
+
+Deno.test("hub-dashboard: a TikTok that needs reconnection still returns its stored history", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", HUB_TOKEN);
+  db.queue("instagram_accounts", "select", { data: null, error: null });
+  queueTikTokDetail(db, ttRow({ authorization_status: "expired" }));
+
+  const body = await (await getP(makeHandler(db, tiktokOn), "&period=90")).json();
+
+  assertEquals(body.accounts[0].state, "needs_reconnect");
+  assertEquals(body.tiktok.topVideos.length, 3);
+});
+
+Deno.test("hub-dashboard: a throwing TikTok loader is swallowed and Instagram stays intact", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", HUB_TOKEN);
+  queueInstagramEmpty(db);
+  db.queue("tiktok_accounts", "select", { data: ttRow(), error: null });
+  db.queue("tiktok_posts", "select", { data: null, error: { message: "boom" } });
+  db.queue("tiktok_follower_history", "select", { data: [], error: null });
+
+  const origErr = console.error;
+  const logged: unknown[][] = [];
+  console.error = (...a: unknown[]) => void logged.push(a);
+  try {
+    const response = await get(makeHandler(db, tiktokOn));
+    const body = await response.json();
+    assertEquals(response.status, 200);
+    assertEquals(body.accounts.map((a: { platform: string }) => a.platform), ["instagram"]);
+    assertEquals(body.account.followerCount, 15300);
+    assertEquals(logged.length, 1);
+  } finally {
+    console.error = origErr;
+  }
+});
+
+Deno.test("hub-dashboard: an unknown platform value falls back to the default", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", HUB_TOKEN);
+  queueInstagramEmpty(db);
+
+  const body = await (await getP(makeHandler(db), "&platform=youtube")).json();
   assertEquals(body.platform, "instagram");
 });

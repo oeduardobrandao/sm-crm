@@ -1,12 +1,14 @@
 // Connected-account summary shown by the Hub strip: one entry per Instagram/TikTok account the
 // client has connected. Pure state/delta helpers plus the two loaders the handler calls.
 import {
+  type FollowerHistoryRow,
   loadFollowerHistory,
   loadTikTokAccount,
   loadVideosInWindow,
   type TikTokAccountRow,
+  type TikTokVideoDetailRow,
 } from "../_shared/tiktok-analytics/queries.ts";
-import { windowFromDays } from "../_shared/tiktok-analytics/window.ts";
+import { spDayStartIso, windowFromDays } from "../_shared/tiktok-analytics/window.ts";
 
 // deno-lint-ignore no-explicit-any
 type Db = any;
@@ -14,7 +16,7 @@ type Db = any;
 export type AccountState = "connected" | "needs_reconnect";
 export interface FollowerPoint {
   date: string;
-  follower_count: number;
+  follower_count: number | null;
 }
 export interface FollowersDelta {
   value: number;
@@ -76,13 +78,13 @@ export function followersDelta(
   minDate?: string | null,
 ): FollowersDelta | null {
   const used = points
-    .filter((p) => p.date >= windowStart && (!minDate || p.date >= minDate))
+    .filter((p) => p.follower_count != null && p.date >= windowStart && (!minDate || p.date >= minDate))
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   if (used.length < 2) return null;
   const first = used[0];
   const last = used[used.length - 1];
   return {
-    value: last.follower_count - first.follower_count,
+    value: (last.follower_count as number) - (first.follower_count as number),
     since: first.date,
     fullWindow: first.date <= addDays(windowStart, 1),
   };
@@ -114,48 +116,55 @@ export function instagramSummary(
   };
 }
 
-/** TikTok card for the client, or null when there is no connected account or the workspace lacks
- * feature_tiktok. A failing entitlement lookup reads as "no". */
-export async function loadTikTokSummary(
+/** The client's TikTok account when it gets a card: connected or needing reconnection, and the
+ * workspace has feature_tiktok. A failing entitlement lookup reads as "no". The feature is only
+ * looked up once an account that could show exists. */
+export async function loadTikTokCard(
   db: Db,
   clienteId: number,
-  contaId: string,
-  now: Date,
   feature: (key: string) => Promise<boolean>,
-): Promise<{ summary: HubAccountSummary; account: TikTokAccountRow } | null> {
-  void contaId;
+): Promise<{ account: TikTokAccountRow; state: AccountState } | null> {
   const account = await loadTikTokAccount(db, clienteId);
   if (!account) return null;
   const state = tiktokState(account);
   if (state === null) return null;
-
   let enabled = false;
   try {
     enabled = await feature("feature_tiktok");
   } catch {
     enabled = false;
   }
-  if (!enabled) return null;
+  return enabled ? { account, state } : null;
+}
 
-  const w = windowFromDays(SUMMARY_DAYS, now);
+/** Videos and follower history of the last `days` São Paulo days: one query of each. */
+export async function loadTikTokData(db: Db, account: TikTokAccountRow, days: number, now: Date) {
+  const w = windowFromDays(days, now);
   const [videos, history] = await Promise.all([
     loadVideosInWindow(db, account.id, w.start, w.end),
     loadFollowerHistory(db, account.id, w.start, w.end),
   ]);
+  return { videos, history };
+}
+
+/** The fixed 30-day summary, derived in memory from rows loaded for a window of 30 days or more. */
+export function tiktokSummary(
+  card: { account: TikTokAccountRow; state: AccountState },
+  data: { videos: TikTokVideoDetailRow[]; history: FollowerHistoryRow[] },
+  now: Date,
+): HubAccountSummary {
+  const w30 = windowFromDays(SUMMARY_DAYS, now);
+  const from = spDayStartIso(w30.start);
+  const views30d = data.videos
+    .filter((v) => v.posted_at != null && v.posted_at >= from)
+    .reduce((acc, v) => acc + (v.views || 0), 0);
   return {
-    account,
-    summary: {
-      platform: "tiktok",
-      state,
-      username: account.username,
-      followerCount: account.follower_count,
-      followersDelta: followersDelta(history, w.start),
-      lastSyncedAt: account.last_synced_at,
-      tiktok: {
-        views30d: videos.reduce((acc, v) => acc + (v.views || 0), 0),
-        likesTotal: account.likes_count,
-        videoCount: account.video_count,
-      },
-    },
+    platform: "tiktok",
+    state: card.state,
+    username: card.account.username,
+    followerCount: card.account.follower_count,
+    followersDelta: followersDelta(data.history, w30.start),
+    lastSyncedAt: card.account.last_synced_at,
+    tiktok: { views30d, likesTotal: card.account.likes_count, videoCount: card.account.video_count },
   };
 }
