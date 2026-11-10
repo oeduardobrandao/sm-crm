@@ -712,7 +712,8 @@ git commit -m "docs: contas conectadas do Hub e sync horário do TikTok"
 
 ## Rollout (run by a person, in this order)
 
-1. `npx supabase db push --linked` for the migration (staging first). Safe before any deploy: the old function just runs hourly.
+1. `npx supabase db push --linked` for the migration (staging first). Safe before any deploy: the old function just runs hourly. Run steps 1 and 2 back to back.
+1b. Probe production before step 2 (staging cannot validate this): a zero-mutation REST `PATCH` on `tiktok_accounts` with `id=in.(<a uuid that matches nothing>)`, the or-filter `or=(last_sync_attempt_at.is.null,last_sync_attempt_at.lt.<iso>)`, `select=id,last_sync_attempt_at` and `Prefer: return=representation`. Expect 200 with `[]`. A 42703 means the projection rule changed: do not deploy.
 2. Deploy `tiktok-sync-cron` with `--no-verify-jwt`. Never before step 1: it selects the new column.
 3. Deploy `hub-dashboard` with `--no-verify-jwt`. Additive: the current Hub bundle ignores the new keys.
 4. Merge. The Hub frontend deploys on merge.
@@ -720,3 +721,5 @@ git commit -m "docs: contas conectadas do Hub e sync horário do TikTok"
 Check after: one hourly run in the function logs with `synced`/`deferred`; a Hub link of a client with both accounts.
 
 Rollback: frontend first. Functions and the column can stay. To go back to a daily TikTok sync, reschedule the job with SQL.
+
+> **Amended after the final review (2026-11-10):** Task 1 Step 4's claim uses `.select("id, last_sync_attempt_at")` in chunks of 100 ids, not `.select("id")`; the strip breakpoints are `lg`/`xl`, not `md`. See the spec's "Amended after the final review" section, which wins over the task text above.

@@ -407,3 +407,27 @@ Claude's calls, to confirm while reviewing:
 7. In the Pauta look the strip follows the KPI strip, without a section number.
 8. The follower chart's caption is the neutral "Histórico disponível desde dd/mm", without
    "quando o TikTok foi conectado".
+
+## Amended after the final review (2026-11-10)
+
+These replace the matching statements above. The code follows this section.
+
+- **Breakpoints.** The Hub content column is only about 464px wide at `md`, because the 240px sidebar
+  appears at the same breakpoint. Two accounts keep the swipe carousel up to `lg` and use the
+  two-column grid from `lg` (1024px). A single account uses the stacked card up to `xl` and the
+  horizontal row only from `xl` (1280px). The phone order (strip above the KPIs below `md`) is unchanged.
+- **Status pill.** In the Pauta look the pill renders through `StatusPill` (`ok` / `fix`), which already
+  draws its own dot. In the classic look the "Conectada" dot uses `--hub-st-ok-fg`.
+- **Failed requests.** A failed background refetch keeps what is on screen. A failed request for a
+  non-default period or platform resets the period to 30 days and clears the platform pick, so the
+  controls match the data shown and the next click retries.
+- **TikTok claim.** The claim UPDATE must project `last_sync_attempt_at` (`.select("id, last_sync_attempt_at")`):
+  production's PostgREST resolves or-filter columns of an UPDATE against the projection and raises 42703
+  otherwise. Staging does not reproduce it. The claim runs in chunks of 100 ids, and a claim error aborts
+  the run.
+- **`hub-dashboard`.** The Instagram Graph call that refreshes thumbnails has a 3 second timeout; on
+  timeout the stored thumbnails are returned.
+- **Scroll.** `#hub-desempenho` carries `scroll-mt-24 md:scroll-mt-6` so the title lands below the fixed
+  phone header.
+- **Follower chart axis.** When the visible range is under 1,000 the y-axis shows full integers.
+
