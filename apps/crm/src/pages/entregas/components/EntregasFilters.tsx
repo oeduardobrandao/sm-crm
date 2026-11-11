@@ -83,10 +83,11 @@ export const EMPTY_FILTERS: FilterState = {
 };
 
 /** 'posts': the Publicações modes — busca, cliente, status do post, tipo,
- *  responsável, etapa and prazo are shown; "Responsável" and "Todas as etapas"
- *  read the etapa the post is IN (postStageOf: a do fluxo, ou a do processo
- *  individual), not the post's own responsavel_id. Só "Responsável do post",
- *  templates e o status de prazo ficam escondidos, com o estado preservado. */
+ *  responsável, responsável do post, etapa and prazo are shown; "Responsável"
+ *  and "Todas as etapas" read the etapa the post is IN (postStageOf: a do
+ *  fluxo, ou a do processo individual), while "Responsável do post" reads the
+ *  post's own responsavel_id. Só templates e o status de prazo ficam
+ *  escondidos, com o estado preservado. */
 export type FiltersMode = 'entregas' | 'posts';
 
 interface EntregasFiltersProps {
@@ -131,6 +132,7 @@ export function countActiveFilters(filters: FilterState, mode: FiltersMode): num
       ? [
           filters.filterClientes,
           filters.filterMembros,
+          filters.filterPostResponsaveis,
           filters.filterEtapas,
           filters.filterTipos,
           filters.filterPostStatus,
@@ -532,6 +534,16 @@ export function EntregasFilters({
           options={membroOptions}
           selected={filters.filterMembros}
           onSelectedChange={(filterMembros) => onChange({ ...filters, filterMembros })}
+          isStacked={isStacked}
+        />
+        <MultiSelectFilter
+          placeholder={t('entregasFilters.postResponsavel')}
+          icon={UserPen}
+          options={membroOptions}
+          selected={filters.filterPostResponsaveis}
+          onSelectedChange={(filterPostResponsaveis) =>
+            onChange({ ...filters, filterPostResponsaveis })
+          }
           isStacked={isStacked}
         />
         <MultiSelectFilter

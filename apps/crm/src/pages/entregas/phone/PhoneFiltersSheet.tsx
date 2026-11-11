@@ -108,12 +108,11 @@ export function activeFilterChips(
       ...filters,
       filterMembros: without(filters.filterMembros, id),
     });
-  if (mode === 'entregas')
-    for (const id of filters.filterPostResponsaveis)
-      push('postResponsavel', String(id), nameOf(membros, id), {
-        ...filters,
-        filterPostResponsaveis: without(filters.filterPostResponsaveis, id),
-      });
+  for (const id of filters.filterPostResponsaveis)
+    push('postResponsavel', String(id), nameOf(membros, id), {
+      ...filters,
+      filterPostResponsaveis: without(filters.filterPostResponsaveis, id),
+    });
   for (const e of filters.filterEtapas)
     push('etapa', e, e, { ...filters, filterEtapas: without(filters.filterEtapas, e) });
   if (mode === 'entregas')
@@ -330,7 +329,14 @@ export function PhoneFiltersSheet({
     type: 'lists',
     key: 'listas',
     lists: isPosts
-      ? [lists.clientes, lists.postStatus, lists.material, lists.membros, lists.etapas]
+      ? [
+          lists.clientes,
+          lists.postStatus,
+          lists.material,
+          lists.membros,
+          lists.postResponsaveis,
+          lists.etapas,
+        ]
       : [lists.clientes, lists.membros, lists.postResponsaveis, lists.etapas, lists.templates],
   });
 
