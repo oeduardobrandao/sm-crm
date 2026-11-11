@@ -140,12 +140,17 @@ demo, seeded with sample data). Put the password only in App Store Connect, neve
 
 ## Screenshots
 
-Required sizes (portrait, no alpha):
+Required sizes (portrait, no alpha). App Store Connect asks for the medium iPhone first ("iPhone
+with Dynamic Island (medium display)", 6.1" or 6.3") and refuses 6.9" files there; it scales the
+set down to the other sizes. The iPhone Duo and Apple Watch tabs stay empty.
 
-| Display     | Simulator             | Pixels      |
-| ----------- | --------------------- | ----------- |
-| iPhone 6.9" | iPhone 18 Pro Max     | 1320 x 2868 |
-| iPad 13"    | iPad Pro 13-inch (M5) | 2064 x 2752 |
+| Display              | Simulator             | Pixels      |
+| -------------------- | --------------------- | ----------- |
+| iPhone 6.3" (medium) | iPhone 18 Pro         | 1206 x 2622 |
+| iPad 13"             | iPad Pro 13-inch (M5) | 2064 x 2752 |
+
+The 1.0 set was captured on the 6.9" iPhone (1320 x 2868) and resized, which is safe because the
+two screens have the same proportions: `sips -z 2622 1206 -s format jpeg in.jpg --out out.jpg`.
 
 Captured from the demo account, so no real client data shows, with the status bar overridden
 (`xcrun simctl status_bar <udid> override --time 9:41 ...`). `simctl io screenshot` writes PNGs
@@ -154,5 +159,6 @@ with an alpha channel, which App Store Connect rejects: convert them with
 
 Version 1.0 set (kept outside the repo, in `~/Documents/Mesaas/AppStore/`):
 
-- iPhone: Início, Entregas (Kanban), Agenda (lista), Clientes, post aberto.
+- iPhone (`iphone-6.3/`, uploaded; `iphone-6.9/` holds the originals): Início, Entregas
+  (Kanban), Agenda (lista), Clientes, post aberto.
 - iPad: Início, Entregas (Kanban), Agenda (semana), Clientes.

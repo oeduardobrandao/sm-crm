@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readCrmCss } from '@/test/readCrmCss';
 
 vi.mock('../../../context/AuthContext', () => ({
   useAuth: vi.fn(),
@@ -953,5 +954,15 @@ describe('Sidebar', () => {
       await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
       expect(keyAtReload).toBeNull();
     });
+  });
+});
+
+describe('account menu CSS', () => {
+  // Opening the menu is what widens a tablet rail, so the popover renders while the sidebar is
+  // still 64px. Sized only off the sidebar (calc(100% + 1.5rem)) it was 88px wide on the iPad and
+  // its own overflow: hidden cut every label off.
+  it('keeps the popover at least 15rem wide while the rail is widening', () => {
+    const rule = readCrmCss().match(/\.sidebar--overlay \.user-menu-popover\s*\{([^}]*)\}/);
+    expect(rule?.[1]).toMatch(/min-width:\s*15rem/);
   });
 });

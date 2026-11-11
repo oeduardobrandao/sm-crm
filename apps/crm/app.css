@@ -10117,6 +10117,13 @@ a.mention-chip:hover {
     opacity: 0;
   }
 
+  /* The account menu is sized off the sidebar (calc(100% + 1.5rem)), and opening it is what
+     widens the rail: on a tablet tap the menu appeared while the rail was still 64px and its
+     own overflow: hidden cut every label off. A floor keeps it readable during the widening. */
+  .sidebar--overlay .user-menu-popover {
+    min-width: 15rem;
+  }
+
   /* A short dash where each group header sits. */
   .sidebar--rail .sidebar-group-label::after {
     content: '';
