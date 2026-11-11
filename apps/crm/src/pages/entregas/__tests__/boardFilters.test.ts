@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 // EMPTY_FILTERS (EntregasFilters) puxa useStatusRegistry -> store -> supabase.
 vi.mock('../../../lib/supabase');
 import { filterActivePosts, filterBoardCards, withoutPostados } from '../boardFilters';
-import { EMPTY_FILTERS, type FilterState } from '../components/EntregasFilters';
+import { countActiveFilters, EMPTY_FILTERS, type FilterState } from '../components/EntregasFilters';
 import type { ActivePost } from '../../../store';
 import type { BoardCard } from '../hooks/useEntregasData';
 import type { PostStage } from '../postStage';
@@ -60,6 +60,24 @@ describe('filterActivePosts', () => {
     expect(ids([7])).toEqual([1]);
     expect(ids([99])).toEqual([]);
     expect(ids([9])).toEqual([2]);
+  });
+
+  it('Responsável do post lê o responsavel_id do próprio post, não a etapa', () => {
+    const wired = makePost({ id: 1, workflow_id: 10, responsavel_id: 99 });
+    const avulso = makePost({ id: 2, workflow_id: null, responsavel_id: 9 });
+    const semResp = makePost({ id: 3, workflow_id: null, responsavel_id: null });
+    const stageOf = (p: ActivePost) => (p.id === 1 ? stage(7) : undefined);
+    const ids = (filterPostResponsaveis: number[]) =>
+      filterActivePosts(
+        [wired, avulso, semResp],
+        { ...EMPTY_FILTERS, filterPostResponsaveis },
+        stageOf,
+      ).map((p) => p.id);
+    expect(ids([])).toEqual([1, 2, 3]);
+    expect(ids([99])).toEqual([1]);
+    expect(ids([7])).toEqual([]);
+    expect(ids([99, 9])).toEqual([1, 2]);
+    expect(countActiveFilters({ ...EMPTY_FILTERS, filterPostResponsaveis: [9] }, 'posts')).toBe(1);
   });
 
   it('combina busca e cliente com os demais filtros', () => {

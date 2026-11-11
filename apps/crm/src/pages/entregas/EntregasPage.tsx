@@ -1112,6 +1112,7 @@ export default function EntregasPage() {
     !!filters.filterSearch ||
     filters.filterClientes.length > 0 ||
     filters.filterMembros.length > 0 ||
+    filters.filterPostResponsaveis.length > 0 ||
     filters.filterEtapas.length > 0 ||
     filters.filterTipos.length > 0 ||
     filters.filterPostStatus.length > 0 ||

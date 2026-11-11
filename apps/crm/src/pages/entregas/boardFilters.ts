@@ -71,7 +71,8 @@ export function filterBoardCards(
 }
 
 /**
- * Filtros de Publicações: busca / cliente / status / tipo aplicam ao post;
+ * Filtros de Publicações: busca / cliente / responsável do post / status /
+ * tipo aplicam ao post;
  * etapa, responsável e prazo aplicam à etapa em que ele está (`stageOf`: a do
  * fluxo para um post amarrado, a do processo individual para um avulso que
  * tenha um). Templates e o status de prazo são de fluxo e não são lidos aqui.
@@ -99,6 +100,12 @@ export function filterActivePosts(
       const respId = postResponsavelIdOf(p, stageOf(p));
       return respId != null && filters.filterMembros.includes(respId);
     });
+  // "Responsável do post": o responsavel_id do próprio post, como no modo Fluxos
+  // (matchesPostEntityFilters), independente de quem está com a etapa agora.
+  if (filters.filterPostResponsaveis.length)
+    ps = ps.filter(
+      (p) => p.responsavel_id != null && filters.filterPostResponsaveis.includes(p.responsavel_id),
+    );
   // Um post "está em" a etapa do seu fluxo ou a do seu processo individual;
   // sem nenhum dos dois este filtro (como o de prazo abaixo) o exclui.
   if (filters.filterEtapas.length)
