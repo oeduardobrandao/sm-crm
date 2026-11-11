@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { isNativeApp } from '@/native/platform';
 import { OPEN_PREFERENCES_EVENT, setConsent, type ConsentCategory } from '@/lib/consent';
 import { clearPendingSupportChat } from '@/lib/supportChat';
 import { useConsent } from '@/lib/useConsent';
@@ -55,7 +56,9 @@ export default function CookieConsent() {
 
   return (
     <>
-      {consent === null && (
+      {/* No banner inside the iOS app: undecided already means nothing non-essential loads, the
+          support chat asks for its own consent when opened, and Perfil keeps the preferences link. */}
+      {consent === null && !isNativeApp() && (
         <section
           role="region"
           aria-live="polite"

@@ -1,3 +1,4 @@
+import { isNativeApp } from '../native/platform';
 import { getConsent } from './consent';
 import { purgeMarketingStorage } from './legacyStorage';
 import { trackMetaEvent } from './metaPixelLoader';
@@ -44,6 +45,9 @@ function gtag(...args: unknown[]): void {
  * lands from an ad and consents only after navigating inside the SPA loses that attribution.
  */
 export function loadGoogleAds(): void {
+  // Never inside the iOS app: an ad tag there is App Store "tracking" and would need the ATT
+  // prompt. The app does not offer the Publicidade category either (CookiePreferencesDialog).
+  if (isNativeApp()) return;
   if (requested || !GOOGLE_ADS_ID || typeof document === 'undefined') return;
   requested = true;
   const dataLayer = (window.dataLayer = window.dataLayer ?? []);

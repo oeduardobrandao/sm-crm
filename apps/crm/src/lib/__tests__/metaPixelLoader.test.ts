@@ -43,6 +43,20 @@ describe('metaPixelLoader', () => {
     expect(window.fbq?.disablePushState).toBe(true);
   });
 
+  // App Store: an ad pixel inside the iOS app is "tracking" and would need the ATT prompt.
+  it('does nothing inside the iOS app, even with marketing consent', async () => {
+    seedConsent({ marketing: true });
+    vi.stubGlobal('Capacitor', { isNativePlatform: () => true, getPlatform: () => 'ios' });
+    try {
+      const { loadMetaPixel } = await import('../metaPixelLoader');
+      loadMetaPixel();
+      expect(pixelScripts()).toHaveLength(0);
+      expect(window.fbq).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('does nothing when VITE_META_PIXEL_ID is unset (dev, staging)', async () => {
     vi.stubEnv('VITE_META_PIXEL_ID', '');
     const { loadMetaPixel } = await import('../metaPixelLoader');

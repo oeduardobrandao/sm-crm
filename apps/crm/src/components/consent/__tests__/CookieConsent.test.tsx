@@ -74,6 +74,32 @@ describe('CookieConsent', () => {
     expect(screen.queryByRole('region', { name: t('cookies.banner.title') })).toBeNull();
   });
 
+  // App Store: ad tags inside the iOS app count as tracking (ATT), so the app never offers them.
+  describe('inside the iOS app', () => {
+    beforeEach(() =>
+      vi.stubGlobal('Capacitor', { isNativePlatform: () => true, getPlatform: () => 'ios' }),
+    );
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('shows no banner and leaves consent undecided, so nothing non-essential loads', () => {
+      renderBanner();
+      expect(screen.queryByRole('region', { name: t('cookies.banner.title') })).toBeNull();
+      expect(getConsent()).toBeNull();
+    });
+
+    it('Personalizar has no advertising switch and saves it as denied', async () => {
+      seedConsent({ analytics: true, support: true, marketing: true });
+      renderBanner();
+      act(() => openConsentPreferences());
+      const dialog = await screen.findByRole('dialog');
+      expect(
+        within(dialog).queryByRole('switch', { name: t('cookies.dialog.marketingTitle') }),
+      ).toBeNull();
+      await userEvent.click(within(dialog).getByRole('button', { name: t('cookies.dialog.save') }));
+      expect(getConsent()).toMatchObject({ analytics: true, support: true, marketing: false });
+    });
+  });
+
   it('Rejeitar stores every category as denied', async () => {
     renderBanner();
     await userEvent.click(screen.getByRole('button', { name: 'Rejeitar' }));

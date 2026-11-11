@@ -1,3 +1,4 @@
+import { isNativeApp } from '../native/platform';
 import { getConsent } from './consent';
 import { purgeMarketingStorage } from './legacyStorage';
 
@@ -37,6 +38,8 @@ function fbq(...args: unknown[]): void {
  * a PageView per SPA route change, which would leak signed-in CRM URLs (`/clientes/123`).
  */
 export function loadMetaPixel(): void {
+  // Never inside the iOS app (App Store tracking / ATT), same as loadGoogleAds.
+  if (isNativeApp()) return;
   if (requested || !META_PIXEL_ID || typeof document === 'undefined') return;
   requested = true;
   if (!window.fbq) {
