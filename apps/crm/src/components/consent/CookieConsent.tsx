@@ -56,7 +56,9 @@ export default function CookieConsent() {
 
   return (
     <>
-      {consent === null && (
+      {/* No banner inside the iOS app: undecided already means nothing non-essential loads, the
+          support chat asks for its own consent when opened, and Perfil keeps the preferences link. */}
+      {consent === null && !isNativeApp() && (
         <section
           role="region"
           aria-live="polite"
@@ -66,7 +68,7 @@ export default function CookieConsent() {
           {/* The title only names the region (aria-label). The visible copy is one sentence so the
               banner covers as little of a phone screen as possible. */}
           <p className="text-xs text-muted-foreground sm:flex-1 sm:text-sm">
-            {t(isNativeApp() ? 'cookies.banner.bodyShortApp' : 'cookies.banner.bodyShort')}{' '}
+            {t('cookies.banner.bodyShort')}{' '}
             <Link to="/lgpd" className="underline">
               {t('cookies.banner.details')}
             </Link>
@@ -97,9 +99,7 @@ export default function CookieConsent() {
               variant="outline"
               size="sm"
               className="mb-0 px-2 sm:px-3"
-              onClick={() =>
-                setConsent({ analytics: true, support: true, marketing: !isNativeApp() })
-              }
+              onClick={() => setConsent({ analytics: true, support: true, marketing: true })}
             >
               {t('cookies.banner.acceptAll')}
             </Button>

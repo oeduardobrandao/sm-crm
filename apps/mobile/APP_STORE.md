@@ -75,6 +75,10 @@ social media,agência,crm,instagram,tiktok,calendário editorial,aprovação,pos
 Tracking: **No**. The app loads no ad tags (Meta Pixel and Google Ads are off inside the app,
 see `googleAdsLoader.ts` / `metaPixelLoader.ts`), and no data is shared with data brokers.
 
+The app shows no cookie banner. Nothing optional runs until the user turns it on: PostHog only
+after enabling "Análise" in Perfil > Preferências de cookies, and Crisp only after granting
+"Suporte" when the support chat is first opened.
+
 Answer "Yes, we collect data", then declare these. None is used for tracking.
 
 | Apple data type                  | Why (Apple purpose)                 | Linked to the user | Source                                       |
@@ -126,9 +130,9 @@ demo, seeded with sample data). Put the password only in App Store Connect, neve
 > assigned tasks, deadlines), photo and video upload from the camera or library, session stored
 > in the iOS Keychain, and a phone-specific interface with a bottom tab bar.
 >
-> To see a notification: sign in, allow notifications, then lock the device. Notifications
-> arrive when a client acts in the client portal, so on a demo account the list under the bell
-> icon shows earlier examples.
+> Notifications are sent when a client acts in the client portal (approves a post, asks for a
+> change, sends a message) or a teammate assigns work, so the demo account starts with an empty
+> list under the bell icon. Sign in and allow notifications when asked to register the device.
 >
 > Account deletion: accounts are created on the website by the agency owner, who can request
 > deletion of the whole account at privacidade@mesaas.com.br, as described in our privacy policy
@@ -136,12 +140,19 @@ demo, seeded with sample data). Put the password only in App Store Connect, neve
 
 ## Screenshots
 
-Required sizes (portrait, PNG, no alpha):
+Required sizes (portrait, no alpha):
 
 | Display     | Simulator             | Pixels      |
 | ----------- | --------------------- | ----------- |
 | iPhone 6.9" | iPhone 18 Pro Max     | 1320 x 2868 |
 | iPad 13"    | iPad Pro 13-inch (M5) | 2064 x 2752 |
 
-Captured from the demo account so no real client data shows. Suggested set, in order:
-Entregas (fluxos e etapas), Calendário editorial, post aberto, Agenda, notificações, Relatórios.
+Captured from the demo account, so no real client data shows, with the status bar overridden
+(`xcrun simctl status_bar <udid> override --time 9:41 ...`). `simctl io screenshot` writes PNGs
+with an alpha channel, which App Store Connect rejects: convert them with
+`sips -s format jpeg -s formatOptions 95 in.png --out out.jpg`.
+
+Version 1.0 set (kept outside the repo, in `~/Documents/Mesaas/AppStore/`):
+
+- iPhone: Início, Entregas (Kanban), Agenda (lista), Clientes, post aberto.
+- iPad: Início, Entregas (Kanban), Agenda (semana), Clientes.

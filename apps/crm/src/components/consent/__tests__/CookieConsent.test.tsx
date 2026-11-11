@@ -81,17 +81,10 @@ describe('CookieConsent', () => {
     );
     afterEach(() => vi.unstubAllGlobals());
 
-    it('does not mention ads in the banner', () => {
+    it('shows no banner and leaves consent undecided, so nothing non-essential loads', () => {
       renderBanner();
-      const region = screen.getByRole('region', { name: t('cookies.banner.title') });
-      expect(region).toHaveTextContent(t('cookies.banner.bodyShortApp'));
-      expect(region).not.toHaveTextContent(/anúncio/i);
-    });
-
-    it('Aceitar grants analytics and support but never advertising', async () => {
-      renderBanner();
-      await userEvent.click(screen.getByRole('button', { name: 'Aceitar' }));
-      expect(getConsent()).toMatchObject({ analytics: true, support: true, marketing: false });
+      expect(screen.queryByRole('region', { name: t('cookies.banner.title') })).toBeNull();
+      expect(getConsent()).toBeNull();
     });
 
     it('Personalizar has no advertising switch and saves it as denied', async () => {
