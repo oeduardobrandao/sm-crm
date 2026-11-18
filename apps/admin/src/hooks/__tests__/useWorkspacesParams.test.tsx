@@ -16,7 +16,7 @@ describe('useWorkspacesParams', () => {
     const { result } = renderHook(() => useWorkspacesParams(), {
       wrapper: wrap('/admin/workspaces?status=pendente&pag=3&ord=name&dir=asc'),
     });
-    expect(result.current.params.status).toBe('pendente');
+    expect(result.current.params.status).toEqual(['pendente']);
     expect(result.current.params.pag).toBe(3);
     expect(result.current.params.ord).toBe('name');
   });
@@ -25,8 +25,8 @@ describe('useWorkspacesParams', () => {
     const { result } = renderHook(() => useWorkspacesParams(), {
       wrapper: wrap('/admin/workspaces?pag=3'),
     });
-    act(() => result.current.set({ status: 'teste' }));
-    expect(result.current.params.status).toBe('teste');
+    act(() => result.current.set({ status: ['teste'] }));
+    expect(result.current.params.status).toEqual(['teste']);
     expect(result.current.params.pag).toBe(1);
   });
 
@@ -45,11 +45,11 @@ describe('useWorkspacesParams', () => {
       wrapper: wrap('/admin/workspaces?status=ativo&plano=pro&pag=2'),
     });
     act(() => {
-      result.current.set({ status: '' });
-      result.current.set({ plano: '' });
+      result.current.set({ status: [] });
+      result.current.set({ plano: [] });
     });
-    expect(result.current.params.status).toBe('');
-    expect(result.current.params.plano).toBe('');
+    expect(result.current.params.status).toEqual([]);
+    expect(result.current.params.plano).toEqual([]);
     expect(result.current.params.pag).toBe(1);
   });
 
@@ -60,10 +60,10 @@ describe('useWorkspacesParams', () => {
     act(() => result.current.reset());
     expect(result.current.params).toEqual({
       q: '',
-      plano: '',
-      status: '',
+      plano: [],
+      status: [],
       overrides: '',
-      atividade: '',
+      atividade: [],
       criado: '',
       ord: 'name',
       dir: 'asc',
@@ -90,17 +90,26 @@ describe('useWorkspacesParams history action', () => {
 
   it('set() pushes a history entry for a filter change', () => {
     const { router, hook } = mountInRouter('/admin/workspaces');
-    act(() => hook.current!.set({ status: 'teste' }));
+    act(() => hook.current!.set({ status: ['teste'] }));
     expect(router.state.historyAction).toBe('PUSH');
     expect(router.state.location.search).toBe('?status=teste');
   });
 
+  it('an updater patch reads the latest params, so two toggles in one tick both apply', () => {
+    const { router, hook } = mountInRouter('/admin/workspaces?status=ativo');
+    act(() => {
+      hook.current!.set((p) => ({ status: [...p.status, 'teste'] }));
+      hook.current!.set((p) => ({ status: [...p.status, 'cancelado'] }));
+    });
+    expect(router.state.location.search).toBe('?status=ativo%2Cteste%2Ccancelado');
+  });
+
   it('set(patch, { replace: true }) REPLACEs the entry instead of pushing', () => {
     const { router, hook } = mountInRouter('/admin/workspaces');
-    act(() => hook.current!.set({ status: 'teste' }, { replace: true }));
+    act(() => hook.current!.set({ status: ['teste'] }, { replace: true }));
     expect(router.state.historyAction).toBe('REPLACE');
     expect(router.state.location.search).toBe('?status=teste');
-    act(() => hook.current!.set({ plano: 'pro' }, { replace: true }));
+    act(() => hook.current!.set({ plano: ['pro'] }, { replace: true }));
     expect(router.state.historyAction).toBe('REPLACE');
     expect(router.state.location.search).toBe('?plano=pro&status=teste');
   });

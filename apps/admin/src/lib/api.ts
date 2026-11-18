@@ -187,15 +187,20 @@ export type SortDir = 'asc' | 'desc';
 // setWorkspaceOverrides below): none of them are declared as `interface`.
 export type ListWorkspacesParams = {
   search?: string;
+  /** One plan id or a comma-separated list (OR); see admin_list_workspaces v9. */
   plan_id?: string;
   offset?: number;
   limit?: number;
   /** Freezes the filtered set to how it looked at this instant (ISO), for multi-call exports. */
   as_of?: string;
-  /** Subscription status group; mirrors the CASE on p_status in admin_list_workspaces. */
-  status?: WorkspaceStatusGroup;
+  /**
+   * One subscription status group (WorkspaceStatusGroup) or a comma-separated list of them
+   * (OR); mirrors the arms on p_status in admin_list_workspaces v9.
+   */
+  status?: WorkspaceStatusGroup | (string & {});
   has_overrides?: boolean;
-  activity?: WorkspaceActivityBucket;
+  /** One WorkspaceActivityBucket or a comma-separated list of them (OR). */
+  activity?: WorkspaceActivityBucket | (string & {});
   /** ISO timestamp; created_at >= created_since. */
   created_since?: string;
   sort?: WorkspaceSortKey;

@@ -23,7 +23,7 @@ import {
 import { Badge } from '../../components/ui/badge';
 import { Skeleton } from '../../components/ui/skeleton';
 import { PageHeader } from '../../components/PageHeader';
-import type { WorkspaceSummary } from '../../lib/api';
+import type { WorkspaceActivityBucket, WorkspaceSummary } from '../../lib/api';
 import { avatarColor, avatarLetter } from '../../lib/avatar-color';
 import { workspaceDetailPath } from '../../lib/routes';
 import {
@@ -36,12 +36,16 @@ import {
 import { ACTIVITY_TONE_CLASS, describeActivity } from '../workspace-activity';
 import { WORKSPACE_COLUMNS } from '../workspaces-columns';
 import {
+  ACTIVITY_BUCKETS,
   ACTIVITY_LABELS,
   CREATED_LABELS,
   OVERRIDES_LABELS,
   clearSheetFiltersPatch,
   countSheetFilters,
+  rebaseListChange,
+  toggleInList,
   type WorkspacesListParams,
+  type WorkspacesParamsPatch,
 } from '../workspaces-params';
 import { CreateDemoDialog } from './CreateDemoDialog';
 import { filterChipsFor } from './WorkspacesFilterChips';
@@ -186,9 +190,9 @@ export function WorkspacesPhone({
   // Every change made from inside the open sheet REPLACEs the history entry: the sheet
   // already owns one entry (Back closes it), and a push per tap would make Back replay
   // each filter instead of closing the sheet.
-  const setInSheet = (patch: Partial<WorkspacesListParams>) => set(patch, { replace: true });
+  const setInSheet = (patch: WorkspacesParamsPatch) => set(patch, { replace: true });
   const activeCount = countSheetFilters(params);
-  const chips = filterChipsFor(params, plans).filter((chip) => chip.key !== 'q');
+  const chips = filterChipsFor(params, plans).filter((chip) => chip.id !== 'q');
 
   const sortColumn = WORKSPACE_COLUMNS.find((c) => c.sortKey === params.ord);
   const SortArrow = params.dir === 'asc' ? ArrowUp : ArrowDown;
@@ -200,21 +204,21 @@ export function WorkspacesPhone({
   const statusChips: SheetChip[] = STATUS_GROUPS.map((g) => ({
     key: g,
     label: STATUS_GROUP_LABELS[g],
-    selected: params.status === g,
-    onToggle: () => setInSheet({ status: params.status === g ? '' : g }),
+    selected: params.status.includes(g),
+    onToggle: () => setInSheet((latest) => ({ status: toggleInList(latest.status, g) })),
   }));
   const planChips: SheetChip[] = [
     {
       key: 'todos',
       label: 'Todos',
-      selected: params.plano === '',
-      onToggle: () => setInSheet({ plano: '' }),
+      selected: params.plano.length === 0,
+      onToggle: () => setInSheet({ plano: [] }),
     },
     ...plans.map((p) => ({
       key: p.id,
       label: p.name,
-      selected: params.plano === p.id,
-      onToggle: () => setInSheet({ plano: params.plano === p.id ? '' : p.id }),
+      selected: params.plano.includes(p.id),
+      onToggle: () => setInSheet((latest) => ({ plano: toggleInList(latest.plano, p.id) })),
     })),
   ];
 
@@ -229,21 +233,16 @@ export function WorkspacesPhone({
       type: 'custom',
       key: 'atividade',
       content: (
-        <CheckList
+        <CheckList<WorkspaceActivityBucket>
+          multiple
           header="Atividade"
           emptyOption={{ label: 'Qualquer' }}
-          options={(Object.keys(ACTIVITY_LABELS) as (keyof typeof ACTIVITY_LABELS)[]).map((k) => ({
-            value: k,
-            label: ACTIVITY_LABELS[k],
-          }))}
-          value={params.atividade || null}
-          // The kit's single list re-picks the current value; tapping it again deselects.
-          onChange={(v) =>
-            setInSheet({
-              atividade: (v === params.atividade
-                ? ''
-                : (v ?? '')) as WorkspacesListParams['atividade'],
-            })
+          options={ACTIVITY_BUCKETS.map((k) => ({ value: k, label: ACTIVITY_LABELS[k] }))}
+          value={params.atividade}
+          onChange={(next) =>
+            setInSheet((latest) => ({
+              atividade: rebaseListChange(latest.atividade, params.atividade, next),
+            }))
           }
         />
       ),
@@ -401,10 +400,10 @@ export function WorkspacesPhone({
           <ChipRow aria-label="Filtros ativos" className="mt-2.5">
             {chips.map((chip) => (
               <Chip
-                key={chip.key}
+                key={chip.id}
                 label={`${chip.label}: ${chip.value}`}
-                removeLabel={`Remover filtro ${chip.label}`}
-                onRemove={() => set({ [chip.key]: '' } as Partial<WorkspacesListParams>)}
+                removeLabel={`Remover filtro ${chip.label}: ${chip.value}`}
+                onRemove={() => set(chip.remove)}
               />
             ))}
             <button

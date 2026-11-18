@@ -1,10 +1,10 @@
 import type { Plan, WorkspaceSortKey, WorkspaceSummary } from '../../lib/api';
-import type { WorkspacesListParams } from '../workspaces-params';
+import type { WorkspacesListParams, WorkspacesParamsPatch } from '../workspaces-params';
 
 /** What WorkspacesPage hands to its desktop and phone views. The page owns every query. */
 export interface WorkspacesViewProps {
   params: WorkspacesListParams;
-  set: (patch: Partial<WorkspacesListParams>, opts?: { replace?: boolean }) => void;
+  set: (patch: WorkspacesParamsPatch, opts?: { replace?: boolean }) => void;
   reset: () => void;
   plans: Plan[];
   workspaces: WorkspaceSummary[];

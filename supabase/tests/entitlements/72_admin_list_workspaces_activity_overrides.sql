@@ -40,6 +40,23 @@ begin
   v := admin_list_workspaces(p_search := 'ET act', p_activity := 'dormente');
   assert (v ->> 'total')::int = 0, 'dormente: nobody has old activity here';
 
+  -- v9: comma-separated activity buckets are ORed.
+  v := admin_list_workspaces(p_search := 'ET act', p_activity := '7d,nunca');
+  assert (v ->> 'total')::int = 3, format('7d,nunca: expected all 3, got %s', v ->> 'total');
+  v := admin_list_workspaces(p_search := 'ET act', p_activity := 'dormente,7d');
+  assert (v ->> 'total')::int = 1 and (v -> 'workspaces' -> 0 ->> 'id')::uuid = v_over,
+    'dormente,7d: only the active one';
+  -- Activity lists still page correctly (the needs_full path).
+  v := admin_list_workspaces(p_search := 'ET act', p_activity := 'nunca,dormente', p_limit := 1);
+  assert (v ->> 'total')::int = 2 and jsonb_array_length(v -> 'workspaces') = 1,
+    format('activity list + limit: got total %s', v ->> 'total');
+
+  -- v9: comma-separated plan ids are ORed; an unknown id matches nothing.
+  v := admin_list_workspaces(p_search := 'ET act', p_plan_id := 'max,free');
+  assert (v ->> 'total')::int = 3, format('plan list: expected 3, got %s', v ->> 'total');
+  v := admin_list_workspaces(p_search := 'ET act', p_plan_id := 'nope');
+  assert (v ->> 'total')::int = 0, 'unknown plan id must match nothing';
+
   -- asc on last_activity_at puts never-active (NULL) rows first.
   v := admin_list_workspaces(p_search := 'ET act', p_sort := 'last_activity_at', p_dir := 'asc');
   assert (v -> 'workspaces' -> 2 ->> 'id')::uuid = v_over,

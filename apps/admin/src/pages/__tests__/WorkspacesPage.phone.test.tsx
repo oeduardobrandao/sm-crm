@@ -134,6 +134,12 @@ describe('WorkspacesPage on phones', () => {
     await waitFor(() => expect(search(router)).toBe('?plano=pro&status=teste'));
     expect(router.state.historyAction).toBe('REPLACE');
 
+    // Status chips are multi-select: a second group adds to the first.
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Ativo' }));
+    await waitFor(() => expect(search(router)).toBe('?plano=pro&status=ativo%2Cteste'));
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Teste' }));
+    await waitFor(() => expect(search(router)).toBe('?plano=pro&status=ativo'));
+
     // Limpar (also from inside the sheet) replaces too.
     fireEvent.click(within(sheet).getByRole('button', { name: 'Limpar' }));
     await waitFor(() => expect(search(router)).toBe(''));
@@ -146,11 +152,16 @@ describe('WorkspacesPage on phones', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Filtros' }));
     const sheet = await screen.findByRole('dialog', { name: 'Filtros' });
 
-    // Atividade is an inline single-choice list.
+    // Atividade is an inline multi-choice list.
     fireEvent.click(within(sheet).getByRole('button', { name: 'Dormente (30d+)' }));
     await waitFor(() => expect(search(router)).toBe('?atividade=dormente'));
     expect(router.state.historyAction).toBe('REPLACE');
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Nunca ativou' }));
+    await waitFor(() => expect(search(router)).toBe('?atividade=dormente%2Cnunca'));
     fireEvent.click(within(sheet).getByRole('button', { name: 'Dormente (30d+)' }));
+    await waitFor(() => expect(search(router)).toBe('?atividade=nunca'));
+    // "Qualquer" clears the list.
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Qualquer' }));
     await waitFor(() => expect(search(router)).toBe(''));
     expect(router.state.historyAction).toBe('REPLACE');
 
@@ -167,9 +178,13 @@ describe('WorkspacesPage on phones', () => {
   it('shows removable chips for the active filters and clears one', async () => {
     const router = renderPage('/admin/workspaces?status=teste&atividade=7d');
     await screen.findByRole('link', { name: /Alpha/ });
-    expect(screen.getByRole('button', { name: 'Remover filtro Status' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Remover filtro Atividade' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Remover filtro Status' }));
+    expect(
+      screen.getByRole('button', { name: 'Remover filtro Status: Teste' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Remover filtro Atividade: Ativo (7 dias)' }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Remover filtro Status: Teste' }));
     expect(search(router)).toBe('?atividade=7d');
     fireEvent.click(screen.getByRole('button', { name: 'Limpar' }));
     expect(search(router)).toBe('');
