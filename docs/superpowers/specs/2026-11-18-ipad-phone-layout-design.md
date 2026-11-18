@@ -58,10 +58,14 @@ Owner picked approach 1 on 2026-11-18.
 ### The trigger
 
 - `PHONE_SHELL_QUERY = '(max-width: 767px), (hover: none) and (pointer: coarse)'`.
-- Its complement, for desktop-only CSS: `(min-width: 768px) and (hover: hover), (min-width:
-  768px) and (pointer: fine)`. Where a rule is `screen and (min-width: 768px)` (all of Vidro),
-  `screen` stays on each branch:
-  `screen and (min-width: 768px) and (hover: hover), screen and (min-width: 768px) and (pointer: fine)`.
+- Its exact logical inverse, for desktop-only CSS. `NOT (hover: none AND pointer: coarse)` is
+  `hover: hover OR pointer: fine OR pointer: none`, so:
+  `DESKTOP_SHELL_QUERY = '(min-width: 768px) and (hover: hover), (min-width: 768px) and (pointer: fine), (min-width: 768px) and (pointer: none)'`.
+  Leaving out the `pointer: none` branch would let a wide device with no pointer match neither
+  query. Where a rule is `screen and (min-width: 768px)` (all of Vidro), `screen` stays on each
+  branch. A unit test enumerates every combination of width (767/768), `hover` (none/hover) and
+  `pointer` (none/coarse/fine), evaluates both query strings with a small matcher, and asserts
+  exactly one matches each time.
 - Width ranges that today mean "tablet desktop" (`(min-width: 768px) and (max-width: 1100px)`,
   `useIsTablet` in `AppLayout`) also need the "has a pointer" condition, so they only match
   desktops.
@@ -74,9 +78,11 @@ Owner picked approach 1 on 2026-11-18.
   is a centered column, `max-width: 680px`. Pushed screens (`PhoneNavBar` screens, the full-screen
   post editor, the fluxo screen) follow the same column.
 - **Tab bar:** at 768px and up, the floating tab bar is centered and capped at 420px wide.
-- **Full width:** Entregas, Agenda/Calendário and Analytics (account analytics, TikTok,
-  YouTube, Google Meu Negócio overviews) opt out of the column. In that mode their collections
-  use the width:
+- **Full width:** these route roots opt out of the column, and nothing else does:
+  `/entregas`, `/calendario` (every tab, Agenda included), `/analytics`, `/analytics/tiktok`,
+  `/analytics/youtube`, `/analytics/google`, `/analytics/:id/:tab?` and `/analytics-fluxos`.
+  The client detail's Entregas tab (`/clientes/:id/entregas`) stays in the column, like the rest
+  of the client detail. In that mode their collections use the width:
   - Entregas Kanban and Status boards: the phone columns sit side by side, each at least 260px,
     scrolling sideways when they don't all fit (mockup: 3 visible in portrait, 4 in landscape).
     The other Entregas views (lista, calendário, gráfico, concluídos) stay in the column unless
@@ -95,12 +101,23 @@ Owner picked approach 1 on 2026-11-18.
   form that lays out side by side at 768px). Default to "phone shell" when unsure; jsdom's
   matchMedia stub returns false, so tests that render the mobile branch today keep doing so.
   Tests that mock `useIsDesktop` need the same review.
-- CSS: every `max-width: 767px` block in `style.css`, `app.css` and the page `.css` files is
-  reviewed. Blocks styling the signed-in shell or its pages take the full phone query. Blocks
-  styling public pages (`.auth-card` and the rest of what `cssSplitBoundary.test.ts` treats as
-  public) keep `max-width: 767px`.
-- `useIsDesktop(901)` and other 900/1100 page branches are left alone: under the new rule a
-  touch tablet never reaches them, and narrow desktop windows keep their behavior.
+- CSS, phone side: every `max-width: 767px` block in `style.css`, `app.css` and the page `.css`
+  files is reviewed. Blocks styling the signed-in shell or its pages take the full phone query.
+  Blocks styling public pages (`.auth-card` and the rest of what `cssSplitBoundary.test.ts`
+  treats as public) keep `max-width: 767px`.
+- CSS, desktop side: every `min-width: 768px`, `(min-width: 768px) and (max-width: 1100px)`,
+  `min-width: 901px` and `min-width: 1101px` rule that styles the signed-in shell is audited
+  too, not only Vidro. Shell rules take `DESKTOP_SHELL_QUERY` (or add its condition to the
+  range). Known cases: `app.css` hides `.mobile-more-sheet`/`.mobile-more-overlay` at
+  `min-width: 768px`, which would hide the Mais sheet on an iPad and strand every route only
+  Mais reaches; `.guide-pill` and the sidebar/drawer rules are shown at `min-width: 768px` and
+  must not appear in the phone shell.
+- Wider page branches (`useIsDesktop(901)` in EntregasPage, Leads, Financeiro, Automações,
+  ContactsTab, AutomationContactsSection, Arquivos, and any CSS at 900/901/1100) stay
+  width-based for desktops but must also check the shell: a landscape iPad is 1180px wide, so a
+  bare `useIsDesktop(901)` would render the desktop variant (for example the Entregas
+  Responsáveis aside) inside the phone shell. Each becomes `!isPhoneShell && useIsDesktop(901)`
+  or the equivalent, and the audit lists each one in the PR.
 - A guard test fails when a phone media query in CRM CSS or a JS `matchMedia` call uses a bare
   767/768 width where the shared query was expected. The test needs an explicit allowlist for
   the public-page blocks.
