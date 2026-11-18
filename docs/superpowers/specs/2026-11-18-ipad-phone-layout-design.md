@@ -131,9 +131,11 @@ Owner picked approach 1 on 2026-11-18.
 - **Test polarity:** `useIsPhoneShell()` is implemented as "not `DESKTOP_SHELL_QUERY`". The
   vitest `matchMedia` stub returns `false` for every query, so the hook is `true` in jsdom,
   which keeps the ~116 `!useIsDesktop(768)` sites on the phone branch in tests, as today. The
-  few sites that today ask the positive question (`useIsLinhaPhone`, `AgendaTab`,
-  `ContextHelpLinks`, `MobileNav`, `AppLayout`'s `useIsMobile`) currently render desktop in
-  tests and flip to phone. Their tests get updated or mock the hook explicitly.
+  few sites that today ask the positive question (`useIsLinhaPhone`, `ContextHelpLinks`,
+  `MobileNav`, `PostMediaLightbox`, `AppLayout`'s `useIsMobile`) use the positive query
+  (`matchMedia(PHONE_SHELL_QUERY)`) instead, so they keep rendering desktop in jsdom as today.
+  In a real browser both forms give the same answer, because the two queries are exclusive
+  and exhaustive. (Amended 2026-11-18 after the plan review, to avoid needless test churn.)
 - **Outside `AppLayout`:** a component that can render outside the shell (for example
   `PagarmeCheckoutDialog` and `HelpTooltip` on `/comecar`, a `ProtectedRoute` outside
   `AppLayout`) keeps a width-only check or reads `PhoneLayoutContext`, which is `false` outside
