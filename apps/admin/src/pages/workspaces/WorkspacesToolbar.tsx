@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Columns3, Download, Search, SlidersHorizontal } from 'lucide-react';
+import { ChevronDown, Columns3, Download, Search, SlidersHorizontal } from 'lucide-react';
 import type { Plan } from '../../lib/api';
 import { STATUS_GROUPS, STATUS_GROUP_LABELS } from '../../lib/subscription';
 import { cn } from '../../lib/utils';
@@ -30,11 +30,15 @@ import {
   type Density,
 } from '../workspaces-columns';
 import {
+  ACTIVITY_BUCKETS,
   ACTIVITY_LABELS,
   CREATED_LABELS,
   OVERRIDES_LABELS,
   countSheetFilters,
+  toggleInList,
+  type MultiFilterKey,
   type WorkspacesListParams,
+  type WorkspacesParamsPatch,
 } from '../workspaces-params';
 
 const SEARCH_DEBOUNCE_MS = 300;
@@ -45,7 +49,7 @@ interface WorkspacesToolbarProps {
   params: WorkspacesListParams;
   plans: Plan[];
   prefs: ColumnPrefs;
-  onChange: (patch: Partial<WorkspacesListParams>) => void;
+  onChange: (patch: WorkspacesParamsPatch) => void;
   onPrefs: (prefs: ColumnPrefs) => void;
   onExport: () => void;
   exporting: boolean;
@@ -88,6 +92,75 @@ function FilterSelect<T extends string>({
         ))}
       </SelectContent>
     </Select>
+  );
+}
+
+interface FilterMultiSelectProps<T extends string> {
+  label: string;
+  value: T[];
+  allLabel: string;
+  options: { value: T; label: string }[];
+  onToggle: (value: T) => void;
+  onClear: () => void;
+}
+
+/**
+ * A FilterSelect look-alike that ticks any number of options (OR within the filter). Radix
+ * Select is single-only, so this is a dropdown of checkbox items that stays open while ticking.
+ */
+function FilterMultiSelect<T extends string>({
+  label,
+  value,
+  allLabel,
+  options,
+  onToggle,
+  onClear,
+}: FilterMultiSelectProps<T>) {
+  const active = value.length > 0;
+  const picked = options.filter((o) => value.includes(o.value));
+  const summary =
+    picked.length === 0
+      ? allLabel
+      : picked.length === 1
+        ? picked[0].label
+        : `${picked[0].label} +${picked.length - 1}`;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label={label}
+          className={cn(
+            'flex h-9 items-center gap-2 whitespace-nowrap rounded-full border border-input bg-transparent px-3 py-2 text-base shadow-sm ring-offset-background focus:outline-none focus:ring-1 focus:ring-ring md:text-sm',
+            active && 'border-primary/60 bg-primary/10',
+          )}
+        >
+          <span className="text-muted-foreground">{label}</span>
+          <span>{summary}</span>
+          <ChevronDown className="h-4 w-4 opacity-50" aria-hidden="true" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="min-w-48">
+        <DropdownMenuCheckboxItem
+          checked={!active}
+          onCheckedChange={onClear}
+          onSelect={(e) => e.preventDefault()}
+        >
+          {allLabel}
+        </DropdownMenuCheckboxItem>
+        <DropdownMenuSeparator />
+        {options.map((o) => (
+          <DropdownMenuCheckboxItem
+            key={o.value}
+            checked={value.includes(o.value)}
+            onCheckedChange={() => onToggle(o.value)}
+            onSelect={(e) => e.preventDefault()}
+          >
+            {o.label}
+          </DropdownMenuCheckboxItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -136,6 +209,12 @@ export function WorkspacesToolbar({
   const activeFilters = countSheetFilters(params);
   // Open from the start when a filter is already applied, so its value is never hidden.
   const [filtersOpen, setFiltersOpen] = useState(activeFilters > 0);
+  /** Toggle props for one multi-select filter, applied to the latest params (see the patch type). */
+  const multi = <K extends MultiFilterKey>(key: K) => ({
+    onToggle: (v: WorkspacesListParams[K][number]) =>
+      onChange((latest) => ({ [key]: toggleInList<string>(latest[key], v) })),
+    onClear: () => onChange({ [key]: [] }),
+  });
 
   return (
     <div className="mb-3 space-y-2.5">
@@ -218,19 +297,19 @@ export function WorkspacesToolbar({
         // while space-y-2.5 (which skips [hidden]) dropped its top margin.
         className={cn('flex-wrap items-center gap-2', filtersOpen ? 'flex' : 'hidden')}
       >
-        <FilterSelect
+        <FilterMultiSelect
           label="Plano"
           value={params.plano}
           allLabel="Todos"
           options={plans.map((p) => ({ value: p.id, label: p.name }))}
-          onChange={(plano) => onChange({ plano })}
+          {...multi('plano')}
         />
-        <FilterSelect
+        <FilterMultiSelect
           label="Status"
           value={params.status}
           allLabel="Todos"
           options={STATUS_GROUPS.map((g) => ({ value: g, label: STATUS_GROUP_LABELS[g] }))}
-          onChange={(status) => onChange({ status })}
+          {...multi('status')}
         />
         <FilterSelect
           label="Overrides"
@@ -241,15 +320,12 @@ export function WorkspacesToolbar({
           )}
           onChange={(overrides) => onChange({ overrides })}
         />
-        <FilterSelect
+        <FilterMultiSelect
           label="Atividade"
           value={params.atividade}
           allLabel="Qualquer"
-          options={(Object.keys(ACTIVITY_LABELS) as (keyof typeof ACTIVITY_LABELS)[]).map((k) => ({
-            value: k,
-            label: ACTIVITY_LABELS[k],
-          }))}
-          onChange={(atividade) => onChange({ atividade })}
+          options={ACTIVITY_BUCKETS.map((k) => ({ value: k, label: ACTIVITY_LABELS[k] }))}
+          {...multi('atividade')}
         />
         <FilterSelect
           label="Criado"

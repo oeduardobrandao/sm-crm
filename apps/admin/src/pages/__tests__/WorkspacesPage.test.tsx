@@ -100,9 +100,12 @@ describe('WorkspacesPage', () => {
   });
 
   it('removing a chip clears that filter and resets the page', async () => {
-    renderPage('/admin/workspaces?status=ativo&criado=7d&pag=3');
+    renderPage('/admin/workspaces?status=ativo,teste&criado=7d&pag=3');
     await screen.findAllByText('Alpha');
-    fireEvent.click(screen.getByRole('button', { name: 'Remover filtro Status' }));
+    // Removing one of two ticked statuses keeps the other.
+    fireEvent.click(screen.getByRole('button', { name: 'Remover filtro Status: Teste' }));
+    expect(screen.getByTestId('url').textContent).toBe('/admin/workspaces?status=ativo&criado=7d');
+    fireEvent.click(screen.getByRole('button', { name: 'Remover filtro Status: Ativo' }));
     expect(screen.getByTestId('url').textContent).toBe('/admin/workspaces?criado=7d');
   });
 

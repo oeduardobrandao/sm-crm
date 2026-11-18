@@ -9,15 +9,17 @@ import {
   parseWorkspacesParams,
   serializeWorkspacesParams,
   toListWorkspacesRequest,
+  rebaseListChange,
+  toggleInList,
   type WorkspacesListParams,
 } from '../workspaces-params';
 
 const FULL: WorkspacesListParams = {
   q: 'cl',
-  plano: 'pro',
-  status: 'pendente',
+  plano: ['pro'],
+  status: ['pendente'],
   overrides: 'sim',
-  atividade: 'dormente',
+  atividade: ['dormente'],
   criado: '30d',
   ord: 'client_count',
   dir: 'asc',
@@ -29,6 +31,55 @@ describe('workspaces-params', () => {
   it('round-trips a full param set', () => {
     const sp = serializeWorkspacesParams(FULL);
     expect(parseWorkspacesParams(sp)).toEqual(FULL);
+  });
+
+  it('reads and writes multi-select filters as canonical comma lists', () => {
+    const parsed = parseWorkspacesParams(
+      new URLSearchParams('status=teste,ativo,xyz,ativo&plano=pro,max&atividade=nunca,7d'),
+    );
+    // Deduped, unknown groups dropped, in the toolbar's order (plans sorted by id).
+    expect(parsed.status).toEqual(['ativo', 'teste']);
+    expect(parsed.plano).toEqual(['max', 'pro']);
+    expect(parsed.atividade).toEqual(['7d', 'nunca']);
+
+    // Click order does not leak into the URL or the request.
+    const ticked: WorkspacesListParams = {
+      ...DEFAULT_PARAMS,
+      status: ['sem_assinatura', 'ativo'],
+      plano: ['pro', 'free'],
+      atividade: ['nunca', 'dormente'],
+    };
+    expect(serializeWorkspacesParams(ticked).toString()).toBe(
+      'plano=free%2Cpro&status=ativo%2Csem_assinatura&atividade=dormente%2Cnunca',
+    );
+    const req = toListWorkspacesRequest(ticked, new Date('2026-09-04T12:00:00.000Z'));
+    expect(req).toMatchObject({
+      plan_id: 'free,pro',
+      status: 'ativo,sem_assinatura',
+      activity: 'dormente,nunca',
+    });
+  });
+
+  it('still parses single-value links from before multi-select', () => {
+    const parsed = parseWorkspacesParams(new URLSearchParams('status=ativo&plano=pro'));
+    expect(parsed.status).toEqual(['ativo']);
+    expect(parsed.plano).toEqual(['pro']);
+  });
+
+  it('toggleInList adds a missing value and removes a present one', () => {
+    expect(toggleInList(['ativo'], 'teste')).toEqual(['ativo', 'teste']);
+    expect(toggleInList(['ativo', 'teste'], 'ativo')).toEqual(['teste']);
+  });
+
+  it('rebaseListChange replays a widget change on the latest list', () => {
+    // The widget saw ['dormente'] and ticked 'nunca', but the latest list already had '7d'.
+    expect(rebaseListChange(['7d', 'dormente'], ['dormente'], ['dormente', 'nunca'])).toEqual([
+      '7d',
+      'dormente',
+      'nunca',
+    ]);
+    expect(rebaseListChange(['7d', 'dormente'], ['dormente'], [])).toEqual([]);
+    expect(rebaseListChange(['7d', 'dormente'], ['dormente', '7d'], ['7d'])).toEqual(['7d']);
   });
 
   it('omits defaults from the URL', () => {
@@ -79,13 +130,21 @@ describe('workspaces-params', () => {
     expect(hasActiveFilters({ ...DEFAULT_PARAMS, pag: 4, ord: 'name', por: 100 })).toBe(false);
     expect(hasActiveFilters({ ...DEFAULT_PARAMS, q: 'a' })).toBe(true);
     expect(hasActiveFilters({ ...DEFAULT_PARAMS, criado: '7d' })).toBe(true);
+    expect(hasActiveFilters({ ...DEFAULT_PARAMS, status: ['ativo'] })).toBe(true);
+    expect(hasActiveFilters({ ...DEFAULT_PARAMS, status: [], plano: [] })).toBe(false);
   });
 
   it('countSheetFilters counts the sheet filters and ignores search, sort and paging', () => {
     expect(countSheetFilters(DEFAULT_PARAMS)).toBe(0);
     expect(countSheetFilters({ ...DEFAULT_PARAMS, q: 'a', pag: 3, ord: 'name' })).toBe(0);
     expect(
-      countSheetFilters({ ...DEFAULT_PARAMS, q: 'a', status: 'teste', criado: '7d', plano: 'pro' }),
+      countSheetFilters({
+        ...DEFAULT_PARAMS,
+        q: 'a',
+        status: ['teste', 'ativo'],
+        criado: '7d',
+        plano: ['pro'],
+      }),
     ).toBe(3);
   });
 

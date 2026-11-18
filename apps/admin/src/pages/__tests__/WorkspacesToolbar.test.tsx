@@ -63,20 +63,20 @@ describe('WorkspacesToolbar', () => {
     renderToolbar();
     const pill = screen.getByRole('button', { name: /^Filtros/ });
     expect(pill).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByRole('combobox', { name: 'Status' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Status' })).toBeNull();
     fireEvent.click(pill);
     expect(pill).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByRole('combobox', { name: 'Status' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Status' })).toBeInTheDocument();
     expect(document.getElementById(pill.getAttribute('aria-controls')!)).not.toBeNull();
     fireEvent.click(pill);
     expect(pill).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByRole('combobox', { name: 'Status' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Status' })).toBeNull();
   });
 
   it('shows the current filter values and the export state', () => {
     render(
       <WorkspacesToolbar
-        params={{ ...DEFAULT_PARAMS, status: 'pendente', atividade: 'dormente' }}
+        params={{ ...DEFAULT_PARAMS, status: ['pendente'], atividade: ['dormente', 'nunca'] }}
         plans={PLANS}
         prefs={DEFAULT_COLUMN_PREFS}
         onChange={vi.fn()}
@@ -86,7 +86,8 @@ describe('WorkspacesToolbar', () => {
       />,
     );
     expect(screen.getByText('Pagamento pendente')).toBeInTheDocument();
-    expect(screen.getByText('Dormente (30d+)')).toBeInTheDocument();
+    // Two ticked values: the first one plus a count.
+    expect(screen.getByText('Dormente (30d+) +1')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Exportando…/ })).toBeDisabled();
   });
 
@@ -146,7 +147,7 @@ describe('WorkspacesFilterChips', () => {
     const onClear = vi.fn();
     render(
       <WorkspacesFilterChips
-        params={{ ...DEFAULT_PARAMS, q: 'norte', plano: 'pro', status: 'pendente' }}
+        params={{ ...DEFAULT_PARAMS, q: 'norte', plano: ['pro'], status: ['ativo', 'pendente'] }}
         plans={PLANS}
         total={7}
         onChange={onChange}
@@ -155,11 +156,20 @@ describe('WorkspacesFilterChips', () => {
     );
     expect(screen.getByText(/Busca:/).textContent).toContain('norte');
     expect(screen.getByText(/Plano:/).textContent).toContain('Pro');
-    expect(screen.getByText(/Status:/).textContent).toContain('Pagamento pendente');
+    // One chip per ticked status, each removable on its own.
+    const statusChips = screen.getAllByText(/Status:/).map((el) => el.textContent);
+    expect(statusChips).toHaveLength(2);
+    expect(statusChips[1]).toContain('Pagamento pendente');
     expect(screen.getByText('7 resultados')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Remover filtro Status' }));
-    expect(onChange).toHaveBeenCalledWith({ status: '' });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Remover filtro Status: Pagamento pendente' }),
+    );
+    // The patch is an updater over the latest params, so a second quick removal still sticks.
+    const remove = onChange.mock.calls[0][0] as (p: typeof DEFAULT_PARAMS) => unknown;
+    expect(remove({ ...DEFAULT_PARAMS, status: ['ativo', 'pendente', 'teste'] })).toEqual({
+      status: ['ativo', 'teste'],
+    });
 
     fireEvent.click(screen.getByRole('button', { name: 'Limpar filtros' }));
     expect(onClear).toHaveBeenCalledTimes(1);

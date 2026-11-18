@@ -8,41 +8,73 @@ import {
   OVERRIDES_LABELS,
   hasActiveFilters,
   type WorkspacesListParams,
+  type WorkspacesParamsPatch,
 } from '../workspaces-params';
 
 interface WorkspacesFilterChipsProps {
   params: WorkspacesListParams;
   plans: Plan[];
   total: number | undefined;
-  onChange: (patch: Partial<WorkspacesListParams>) => void;
+  onChange: (patch: WorkspacesParamsPatch) => void;
   onClear: () => void;
 }
 
 export interface FilterChip {
-  key: keyof WorkspacesListParams;
+  /** Unique per chip: the filter key, plus the value for the multi-select filters. */
+  id: string;
   label: string;
   value: string;
+  /** Removes just this chip, from the latest params (two quick removals both stick). */
+  remove: WorkspacesParamsPatch;
 }
 
-/** One chip per active filter, in the order the toolbar lists them. */
+/**
+ * One chip per active filter value, in the order the toolbar lists them. The multi-select
+ * filters get one chip per ticked value, so each can be removed on its own.
+ */
 export function filterChipsFor(params: WorkspacesListParams, plans: Plan[]): FilterChip[] {
   const chips: FilterChip[] = [];
-  if (params.q) chips.push({ key: 'q', label: 'Busca', value: params.q });
-  if (params.plano) {
+  if (params.q) chips.push({ id: 'q', label: 'Busca', value: params.q, remove: { q: '' } });
+  for (const id of params.plano) {
     chips.push({
-      key: 'plano',
+      id: `plano:${id}`,
       label: 'Plano',
-      value: plans.find((p) => p.id === params.plano)?.name ?? params.plano,
+      value: plans.find((p) => p.id === id)?.name ?? id,
+      remove: (latest) => ({ plano: latest.plano.filter((v) => v !== id) }),
     });
   }
-  if (params.status)
-    chips.push({ key: 'status', label: 'Status', value: STATUS_GROUP_LABELS[params.status] });
-  if (params.overrides)
-    chips.push({ key: 'overrides', label: 'Overrides', value: OVERRIDES_LABELS[params.overrides] });
-  if (params.atividade)
-    chips.push({ key: 'atividade', label: 'Atividade', value: ACTIVITY_LABELS[params.atividade] });
-  if (params.criado)
-    chips.push({ key: 'criado', label: 'Criado', value: CREATED_LABELS[params.criado] });
+  for (const g of params.status) {
+    chips.push({
+      id: `status:${g}`,
+      label: 'Status',
+      value: STATUS_GROUP_LABELS[g],
+      remove: (latest) => ({ status: latest.status.filter((v) => v !== g) }),
+    });
+  }
+  if (params.overrides) {
+    chips.push({
+      id: 'overrides',
+      label: 'Overrides',
+      value: OVERRIDES_LABELS[params.overrides],
+      remove: { overrides: '' },
+    });
+  }
+  for (const a of params.atividade) {
+    chips.push({
+      id: `atividade:${a}`,
+      label: 'Atividade',
+      value: ACTIVITY_LABELS[a],
+      remove: (latest) => ({ atividade: latest.atividade.filter((v) => v !== a) }),
+    });
+  }
+  if (params.criado) {
+    chips.push({
+      id: 'criado',
+      label: 'Criado',
+      value: CREATED_LABELS[params.criado],
+      remove: { criado: '' },
+    });
+  }
   return chips;
 }
 
@@ -60,7 +92,7 @@ export function WorkspacesFilterChips({
     <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
       {chips.map((chip) => (
         <span
-          key={chip.key}
+          key={chip.id}
           className="inline-flex h-7 items-center gap-1 rounded-full bg-primary/15 pl-3 pr-1.5 text-foreground"
         >
           <span className="text-muted-foreground">
@@ -68,8 +100,8 @@ export function WorkspacesFilterChips({
           </span>
           <button
             type="button"
-            aria-label={`Remover filtro ${chip.label}`}
-            onClick={() => onChange({ [chip.key]: '' } as Partial<WorkspacesListParams>)}
+            aria-label={`Remover filtro ${chip.label}: ${chip.value}`}
+            onClick={() => onChange(chip.remove)}
             className="rounded-full p-0.5 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <X size={12} />

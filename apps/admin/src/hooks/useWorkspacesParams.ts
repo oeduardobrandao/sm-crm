@@ -7,6 +7,7 @@ import {
   parseWorkspacesParams,
   serializeWorkspacesParams,
   type WorkspacesListParams,
+  type WorkspacesParamsPatch,
 } from '../pages/workspaces-params';
 
 /** Keys whose change does NOT send the user back to page 1. */
@@ -25,7 +26,9 @@ export function useWorkspacesParams() {
   paramsRef.current = params;
 
   const set = useCallback(
-    (patch: Partial<WorkspacesListParams>, opts?: { replace?: boolean }) => {
+    (patchOrUpdater: WorkspacesParamsPatch, opts?: { replace?: boolean }) => {
+      const patch =
+        typeof patchOrUpdater === 'function' ? patchOrUpdater(paramsRef.current) : patchOrUpdater;
       const touchesFilterOrSize = Object.keys(patch).some((k) => !KEEP_PAGE_KEYS.has(k));
       // Typing in the search box rewrites the URL on every debounce tick; those must not
       // pile up in history. Everything else is a deliberate navigation.

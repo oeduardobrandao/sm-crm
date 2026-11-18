@@ -51,6 +51,28 @@ begin
   v := admin_list_workspaces(p_search := 'ET status');
   assert (v ->> 'total')::int = 6, 'null p_status must not filter';
 
+  -- v9: comma-separated lists OR the groups together.
+  v := admin_list_workspaces(p_search := 'ET status', p_status := 'ativo,teste');
+  select array_agg((w ->> 'id')::uuid) into function_ids from jsonb_array_elements(v -> 'workspaces') w;
+  assert (v ->> 'total')::int = 2 and v_active = any(function_ids) and v_trial = any(function_ids),
+    format('ativo,teste: expected active+trial, got %s', function_ids);
+
+  -- sem_assinatura keeps its IS NULL arm inside a list.
+  v := admin_list_workspaces(p_search := 'ET status', p_status := 'cancelado, sem_assinatura');
+  select array_agg((w ->> 'id')::uuid) into function_ids from jsonb_array_elements(v -> 'workspaces') w;
+  assert (v ->> 'total')::int = 3 and v_canceled = any(function_ids)
+     and v_nullstatus = any(function_ids) and v_nosub = any(function_ids),
+    format('cancelado,sem_assinatura: expected 3, got %s', function_ids);
+
+  -- Unknown entries are dropped; a list with no known value does not filter.
+  v := admin_list_workspaces(p_search := 'ET status', p_status := 'pendente,garbage,');
+  assert (v ->> 'total')::int = 1 and (v -> 'workspaces' -> 0 ->> 'id')::uuid = v_pastdue,
+    'unknown entries in a list must be ignored';
+  v := admin_list_workspaces(p_search := 'ET status', p_status := 'garbage,,');
+  assert (v ->> 'total')::int = 6, 'a list with no known value must not filter';
+  v := admin_list_workspaces(p_search := 'ET status', p_status := '');
+  assert (v ->> 'total')::int = 6, 'empty p_status must not filter';
+
   execute 'reset role';
   raise notice 'PASS 70_admin_list_workspaces_status_filter';
 end $$;
