@@ -14,7 +14,8 @@ tablet should get the phone layout, adapted to the wider screen, in both orienta
 
 - Every touch-primary device gets the phone shell and the phone version of every page: the
   iPad app, iPad Safari and Android tablets, portrait and landscape.
-- Phones are unchanged.
+- Phones in portrait are unchanged. Phones in landscape (844-956pt wide), which get the
+  tablet/desktop layout today, get the phone shell too (owner decision, 2026-11-18).
 - Desktops and laptops with a mouse or trackpad are unchanged, including narrow windows
   (768-1100px keeps the Vidro rail or the classic drawer).
 - The phone screens read well at 744-1376pt: a centered column by default, full width on the
@@ -35,8 +36,8 @@ tablet should get the phone layout, adapted to the wider screen, in both orienta
   and the CSS gate must always agree.
 - Vidro glass styling on a touch tablet.
 - A desktop or laptop with a mouse ever seeing the phone shell above 767px.
-- Something reachable from the iPad desktop shell today that becomes unreachable on iPad. The
-  phone "Mais" sheet already lists every nav item, so this should hold. Check it anyway.
+- Something an iPad can do today that it can no longer do: a route, or a feature the phone
+  view cuts (see "Feature parity on tablets").
 
 ## Approaches considered
 
@@ -62,7 +63,8 @@ Owner picked approach 1 on 2026-11-18.
   `hover: hover OR pointer: fine OR pointer: none`, so:
   `DESKTOP_SHELL_QUERY = '(min-width: 768px) and (hover: hover), (min-width: 768px) and (pointer: fine), (min-width: 768px) and (pointer: none)'`.
   Leaving out the `pointer: none` branch would let a wide device with no pointer match neither
-  query. Where a rule is `screen and (min-width: 768px)` (all of Vidro), `screen` stays on each
+  query. Where a rule is `screen and (min-width: 768px)` (all of Vidro, plus four blocks in
+  `app.css`: sidebar collapse and the guide pill), `screen` stays on each
   branch. A unit test enumerates every combination of width (767/768), `hover` (none/hover) and
   `pointer` (none/coarse/fine), evaluates both query strings with a small matcher, and asserts
   exactly one matches each time.
@@ -87,15 +89,55 @@ Owner picked approach 1 on 2026-11-18.
     scrolling sideways when they don't all fit (mockup: 3 visible in portrait, 4 in landscape).
     The other Entregas views (lista, calendário, gráfico, concluídos) stay in the column unless
     the builder finds one that clearly gains from the width; note any such call in the PR.
-  - Agenda and Calendário: the month grid and week views fill the width.
-  - Analytics: KPI tiles and charts reflow into more columns.
+  - Agenda: on a tablet (see "Feature parity on tablets"), the week view is the desktop
+    FullCalendar week time grid with drag-to-reschedule, filling the width. The month and list
+    views are the phone ones, stretched to the width.
+  - Calendário (financeiro, comemorativas): the phone month grid fills the width.
+  - Analytics (my call, the mockups don't draw it): the phone sections lay out in two columns
+    from 1000px wide, one column below. The builder may keep a section full width where two
+    columns don't help (a long chart).
+
+### Feature parity on tablets (owner decision, 2026-11-18)
+
+- **Tablet** here means phone shell AND `(min-width: 768px) and (min-height: 600px)`. The height
+  condition keeps an iPhone in landscape (390-440pt tall) out: it gets the plain phone views.
+  Exposed as `useIsTabletShell()` from the same module.
+- On a tablet, the screens whose phone view blocks work the desktop allows render their
+  **desktop component, full width, inside the phone shell** (tab bar and phone header stay):
+  - Report editor (`relatorio-editor/phone/ReportPhoneView.tsx` is read-only, "Edite o layout no
+    computador").
+  - Linha editorial create and edit (`LinhaPhoneView.tsx`, "Crie a linha… no computador",
+    "Edite a linha no computador").
+  - Agenda week view: FullCalendar `timeGridWeek`, with `editable` on (today
+    `editable: !isPhone && ev.editable`).
+  The desktop components must still work by touch (no hover-only controls). The builder lists
+  any hover-only control found and fixes it.
+- Smaller cuts get **ported to the phone views**, so iPhone gains them too: bulk post selection
+  in `WorkflowDrawer`, the workflow history in the client's `EntregasTab`, the Google disconnect
+  button. The Entregas tour and explainer may stay desktop-only.
+- The builder audits every `isPhone`/`!useIsDesktop(768)` branch for other cuts and sorts each
+  into one of the two buckets above, listing them in the PR. Copy saying "no computador" must
+  never show on a tablet.
 
 ### Wiring
 
 - One module, for example `apps/crm/src/lib/phoneShell.ts`, exports `PHONE_SHELL_QUERY`,
   `DESKTOP_SHELL_QUERY` and `useIsPhoneShell()`. `AppLayout`'s `useIsMobile`/`useIsTablet`,
-  `MobileNav`, `sonner`, `ContextHelpLinks`, `useIsLinhaPhone`, `useIsPhoneEditor` and
-  `PostMediaLightbox` read from it. `PhoneLayoutContext.isPhone` then follows automatically.
+  `MobileNav`, `ContextHelpLinks`, `useIsLinhaPhone`, `AgendaTab`'s `useMediaQuery`,
+  `useIsPhoneEditor` and `PostMediaLightbox` (today `max-width: 768px`, one pixel off the rest)
+  read from it. `PhoneLayoutContext.isPhone` then follows automatically. Toasts (`sonner.tsx`)
+  have no query of their own: they read `--phone-toast-offset`, set in a `style.css` phone
+  block, so they move with the CSS sweep.
+- **Test polarity:** `useIsPhoneShell()` is implemented as "not `DESKTOP_SHELL_QUERY`". The
+  vitest `matchMedia` stub returns `false` for every query, so the hook is `true` in jsdom,
+  which keeps the ~116 `!useIsDesktop(768)` sites on the phone branch in tests, as today. The
+  few sites that today ask the positive question (`useIsLinhaPhone`, `AgendaTab`,
+  `ContextHelpLinks`, `MobileNav`, `AppLayout`'s `useIsMobile`) currently render desktop in
+  tests and flip to phone. Their tests get updated or mock the hook explicitly.
+- **Outside `AppLayout`:** a component that can render outside the shell (for example
+  `PagarmeCheckoutDialog` and `HelpTooltip` on `/comecar`, a `ProtectedRoute` outside
+  `AppLayout`) keeps a width-only check or reads `PhoneLayoutContext`, which is `false` outside
+  the shell. Only code inside `AppLayout` uses `useIsPhoneShell()` directly.
 - The ~116 `useIsDesktop(768)` calls are swept one by one. Each either means "phone shell" (moves
   to `useIsPhoneShell()`) or "there is room for two columns" (stays width-based, for example a
   form that lays out side by side at 768px). Default to "phone shell" when unsure; jsdom's
@@ -112,6 +154,13 @@ Owner picked approach 1 on 2026-11-18.
   `min-width: 768px`, which would hide the Mais sheet on an iPad and strand every route only
   Mais reaches; `.guide-pill` and the sidebar/drawer rules are shown at `min-width: 768px` and
   must not appear in the phone shell.
+- CSS, wider phone-side ranges: rules at `max-width: 900px` and `max-width: 1100px` (and
+  `768-1100px` ranges) have always applied to phone markup too, and stop applying on an
+  820-1376px tablet. Each one that phone markup relies on gains the touch branch, for example
+  `(max-width: 900px), (hover: none) and (pointer: coarse)`. Known cases:
+  `body:has(.mobile-nav-glass) .cookie-banner` at `max-width: 900px` (lifts the banner above the
+  tab bar) and the `.mobile-nav-glass` rules inside `(min-width: 768px) and (max-width: 1100px)`
+  in `style.css`. The guard test covers these ranges, not only 767/768.
 - Wider page branches (`useIsDesktop(901)` in EntregasPage, Leads, Financeiro, Automações,
   ContactsTab, AutomationContactsSection, Arquivos, and any CSS at 900/901/1100) stay
   width-based for desktops but must also check the shell: a landscape iPad is 1180px wide, so a
@@ -131,11 +180,12 @@ Owner picked approach 1 on 2026-11-18.
   touch tablet and targets a selector the Hub uses (`body`, `#root`, `.avatar`, tooltips,
   dialogs) changes the Hub on iPad. Check the Hub on an iPad-size touch viewport before merging.
 - **Hydration:** the landing is server-rendered. Nothing here may read `matchMedia` during render
-  on public pages. The hook is only used inside `AppLayout`.
+  on public pages. `useIsPhoneShell()` is only used inside `AppLayout` (see "Outside
+  `AppLayout`").
 - **`cssSplitBoundary.test.ts`:** moving rules between `style.css` and `app.css` follows the
   existing rules in `DESIGN_SYSTEM.md`.
 - **Docs to update:** `DESIGN_SYSTEM.md` (Layout table), `apps/mobile/DECISIONS.md` (a new
-  decision that supersedes D17's width-only gate for touch tablets), and CLAUDE.md where it
+  decision that supersedes D17's width-only gate and D24's landscape rule), and CLAUDE.md where it
   describes the breakpoints.
 - **App Store:** the iPad screenshots in `APP_STORE.md` (Kanban, week Agenda in the desktop
   shell) won't match after this ships. Retake them before the next iPad submission.
@@ -151,7 +201,10 @@ Owner picked approach 1 on 2026-11-18.
   in the PR.
 - Screens to walk on iPad: Início, Entregas (each view, plus the post editor and fluxo screen),
   Agenda, Calendário, Clientes and a client detail, Mensagens, Analytics, Configurações, the Mais
-  sheet, a few dialogs and sheets.
+  sheet, a few dialogs and sheets. On iPad also: the report editor, Linha editorial create/edit
+  and the Agenda week grid with drag, all by touch.
+- iPhone in landscape (Simulator, iPhone 16 Pro): header plus floating tab bar in about 400pt of
+  height, a bottom sheet, the post editor and its bottom bar, rotating with the editor open.
 - The full CI list from CLAUDE.md (five `tsc`, lint, format, vitest, functions).
 
 ## Left to the builder
