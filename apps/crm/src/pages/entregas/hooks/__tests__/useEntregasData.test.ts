@@ -7,6 +7,7 @@ import { getVigentePostProcesses } from '../../../../store';
 import {
   computeDeadlineDate,
   computeWorkflowDeadlineDate,
+  prazoDiasForDate,
   useEntregasData,
   buildBoardCards,
   fetchEtapasMap,
@@ -169,6 +170,52 @@ describe('computeDeadlineDate', () => {
       start.replace('Z', '.000Z'),
     );
     expect(computeDeadlineDate(start, 0, 'uteis').toISOString()).toBe(start.replace('Z', '.000Z'));
+  });
+});
+
+describe('prazoDiasForDate', () => {
+  const localDay = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const day = (y: number, m: number, d: number) => new Date(y, m - 1, d);
+
+  it('counts calendar days for corridos', () => {
+    // started Wed 2026-11-18 at 15:00 local
+    const start = new Date(2026, 10, 18, 15, 0).toISOString();
+    expect(prazoDiasForDate(start, day(2026, 11, 20), 'corridos')).toBe(2);
+    expect(prazoDiasForDate(start, day(2026, 12, 1), 'corridos')).toBe(13);
+  });
+
+  it('returns 0 on or before the start day', () => {
+    const start = new Date(2026, 10, 18, 23, 30).toISOString();
+    expect(prazoDiasForDate(start, day(2026, 11, 18), 'corridos')).toBe(0);
+    expect(prazoDiasForDate(start, day(2026, 11, 10), 'uteis')).toBe(0);
+  });
+
+  it('counts only weekdays for uteis and snaps a weekend pick to Monday', () => {
+    // Fri 2026-11-20
+    const start = new Date(2026, 10, 20, 9, 0).toISOString();
+    expect(prazoDiasForDate(start, day(2026, 11, 23), 'uteis')).toBe(1); // Mon
+    expect(prazoDiasForDate(start, day(2026, 11, 21), 'uteis')).toBe(1); // Sat -> Mon
+    expect(prazoDiasForDate(start, day(2026, 11, 27), 'uteis')).toBe(5); // next Fri
+  });
+
+  it('round-trips with computeDeadlineDate to the same local day', () => {
+    const starts = [
+      new Date(2026, 10, 18, 15, 0), // Wed afternoon
+      new Date(2026, 10, 21, 22, 45), // Sat late evening
+      new Date(2026, 10, 23, 0, 5), // Mon just after midnight
+    ];
+    for (const s of starts) {
+      const iso = s.toISOString();
+      for (let offset = 1; offset <= 20; offset++) {
+        const target = new Date(s.getFullYear(), s.getMonth(), s.getDate() + offset);
+        for (const tipo of ['corridos', 'uteis'] as const) {
+          if (tipo === 'uteis' && (target.getDay() === 0 || target.getDay() === 6)) continue;
+          const n = prazoDiasForDate(iso, target, tipo);
+          expect(localDay(computeDeadlineDate(iso, n, tipo))).toBe(localDay(target));
+        }
+      }
+    }
   });
 });
 

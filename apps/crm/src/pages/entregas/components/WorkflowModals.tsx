@@ -50,7 +50,9 @@ import {
   type Membro,
   type TemplatePropertyDefinition,
 } from '../../../store';
-import type { BoardCard } from '../hooks/useEntregasData';
+import { computeDeadlineDate, prazoDiasForDate, type BoardCard } from '../hooks/useEntregasData';
+import { DatePicker } from '@/components/ui/date-picker';
+import { parseLocalISODate, toLocalISODate } from '@/utils/postDate';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { PhoneConfirmSheet } from '../phone/PhoneConfirmSheet';
 import { PropertyDefinitionPanel } from './PropertyDefinitionPanel';
@@ -76,6 +78,34 @@ function saveErrorMessage(err: unknown): string {
   const entitlement = mapEntitlementError(err);
   if (entitlement) return entitlementMessage(entitlement);
   return scopeErrorOr(err, (err as Error).message || i18n.t('workflows:shared.genericError'));
+}
+
+/**
+ * The "Data limite" calendar next to "Prazo (dias)" in the padrão mode: shows the
+ * date the typed days land on and turns a picked date back into days, so nobody
+ * has to count. prazo_dias stays the stored value. Null when the etapa has no
+ * start yet (nothing to count from).
+ */
+function prazoCalendarFor(
+  iniciadoEm: string | null | undefined,
+  prazoDias: string,
+  tipoPrazo: 'corridos' | 'uteis',
+) {
+  if (!iniciadoEm || isNaN(new Date(iniciadoEm).getTime())) return null;
+  const dias = Math.trunc(Number(prazoDias));
+  const dueDate =
+    Number.isFinite(dias) && dias >= 1 && dias <= MAX_PRAZO_DIAS
+      ? computeDeadlineDate(iniciadoEm, dias, tipoPrazo)
+      : undefined;
+  const diasFor = (d: Date) => prazoDiasForDate(iniciadoEm, d, tipoPrazo);
+  const isDisabled = (d: Date) => {
+    if (tipoPrazo === 'uteis' && (d.getDay() === 0 || d.getDay() === 6)) return true;
+    const n = diasFor(d);
+    return n < 1 || n > MAX_PRAZO_DIAS;
+  };
+  const start = new Date(iniciadoEm);
+  const minDate = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1);
+  return { dueDate, diasFor, isDisabled, minDate };
 }
 
 export function EditWorkflowModal({
@@ -119,6 +149,11 @@ export function EditWorkflowModal({
     .filter((c) => c.status === 'ativo')
     .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   const isPhone = !useIsDesktop(768);
+  const prazoCalendar = prazoCalendarFor(
+    modoPrazo === 'padrao' ? e.iniciado_em : null,
+    fPrazoDias,
+    fTipoPrazo,
+  );
 
   const markDirty = () => setIsDirty(true);
 
@@ -188,6 +223,7 @@ export function EditWorkflowModal({
                 isDirty,
                 saving,
                 showPlataformas,
+                prazoCalendar,
                 fTitulo,
                 fClienteId,
                 fRecorrente,
@@ -383,6 +419,27 @@ export function EditWorkflowModal({
                           </SelectContent>
                         </Select>
                       </div>
+                      {prazoCalendar && (
+                        <div className="space-y-1" style={{ gridColumn: '1 / -1' }}>
+                          <Label>{t('shared.dueDate')}</Label>
+                          <DatePicker
+                            aria-label={
+                              prazoCalendar.dueDate
+                                ? `${t('shared.dueDate')}: ${prazoCalendar.dueDate.toLocaleDateString(intlLocale)}`
+                                : t('shared.dueDate')
+                            }
+                            className="w-full"
+                            clearable={false}
+                            value={prazoCalendar.dueDate}
+                            disabledDays={prazoCalendar.isDisabled}
+                            onChange={(d) => {
+                              if (!d) return;
+                              setFPrazoDias(String(prazoCalendar.diasFor(d)));
+                              markDirty();
+                            }}
+                          />
+                        </div>
+                      )}
                     </div>
                   )}
                   {modoPrazo === 'data_fixa' && (
@@ -494,6 +551,7 @@ function EditWorkflowPhoneBody({
   isDirty,
   saving,
   showPlataformas,
+  prazoCalendar,
   onChange,
   onMigrate,
   onOpenPosts,
@@ -508,6 +566,7 @@ function EditWorkflowPhoneBody({
   isDirty: boolean;
   saving: boolean;
   showPlataformas: boolean;
+  prazoCalendar: ReturnType<typeof prazoCalendarFor>;
   onChange: (patch: Partial<EditWorkflowFields>) => void;
   onMigrate: () => void;
   onOpenPosts?: () => void;
@@ -616,6 +675,22 @@ function EditWorkflowPhoneBody({
                 if (v) onChange({ fTipoPrazo: v });
               }}
             />
+            {prazoCalendar && (
+              <FormRow
+                label={t('shared.dueDate')}
+                input={{
+                  type: 'date',
+                  min: toLocalISODate(prazoCalendar.minDate),
+                  value: prazoCalendar.dueDate ? toLocalISODate(prazoCalendar.dueDate) : '',
+                  onChange: (ev) => {
+                    const d = parseLocalISODate(ev.target.value);
+                    if (!d) return;
+                    const dias = prazoCalendar.diasFor(d);
+                    if (dias >= 1 && dias <= MAX_PRAZO_DIAS) onChange({ fPrazoDias: String(dias) });
+                  },
+                }}
+              />
+            )}
           </>
         )}
         {modoPrazo === 'data_fixa' && (

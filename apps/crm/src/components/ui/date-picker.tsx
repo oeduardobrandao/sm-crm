@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import { useDateFnsLocale } from '@mesaas/i18n';
 import { Calendar as CalendarIcon, X } from 'lucide-react';
+import type { Matcher } from 'react-day-picker';
 
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -18,6 +19,10 @@ export interface DatePickerProps {
   clearable?: boolean;
   /** Display format string passed to date-fns `format` */
   displayFormat?: string;
+  /** Days that can't be picked, passed to the calendar's `disabled` */
+  disabledDays?: Matcher | Matcher[];
+  /** Accessible name for the trigger, when no visible label is tied to it */
+  'aria-label'?: string;
 }
 
 export function DatePicker({
@@ -28,16 +33,20 @@ export function DatePicker({
   disabled,
   clearable = true,
   displayFormat = 'dd/MM/yyyy',
+  disabledDays,
+  'aria-label': ariaLabel,
 }: DatePickerProps) {
   const { t } = useTranslation();
   const dateLocale = useDateFnsLocale();
+  const [open, setOpen] = React.useState(false);
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           type="button"
           variant="outline"
           disabled={disabled}
+          aria-label={ariaLabel}
           className={cn(
             'h-9 justify-start text-left font-normal',
             !value && 'text-muted-foreground',
@@ -79,7 +88,12 @@ export function DatePicker({
           mode="single"
           locale={dateLocale}
           selected={value}
-          onSelect={onChange}
+          onSelect={(date) => {
+            onChange?.(date);
+            if (date) setOpen(false);
+          }}
+          disabled={disabledDays}
+          defaultMonth={value}
           initialFocus
         />
       </PopoverContent>
