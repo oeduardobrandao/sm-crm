@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { differenceInCalendarDays } from 'date-fns';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getWorkflows,
@@ -87,6 +88,36 @@ export function computeDeadlineDate(
     if (dow !== 0 && dow !== 6) remaining--;
   }
   return cursor;
+}
+
+const isWeekend = (d: Date) => d.getDay() === 0 || d.getDay() === 6;
+
+/**
+ * Inverse of computeDeadlineDate: the prazo_dias that makes an etapa started at
+ * `iniciado_em` fall due on `target`'s local day. Lets the user pick a date on a
+ * calendar while prazo_dias stays the stored value (data_limite is reserved for
+ * the data_fixa/data_entrega modes). Days on or before the start day give 0.
+ * For uteis, a weekend target moves forward to Monday, the first day
+ * computeDeadlineDate can land on.
+ */
+export function prazoDiasForDate(
+  iniciado_em: string,
+  target: Date,
+  tipo_prazo: 'corridos' | 'uteis',
+): number {
+  const start = new Date(iniciado_em);
+  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const end = new Date(target.getFullYear(), target.getMonth(), target.getDate());
+  if (end <= startDay) return 0;
+  if (tipo_prazo === 'corridos') return differenceInCalendarDays(end, startDay);
+  while (isWeekend(end)) end.setDate(end.getDate() + 1);
+  let dias = 0;
+  const cursor = new Date(startDay);
+  while (cursor < end) {
+    cursor.setDate(cursor.getDate() + 1);
+    if (!isWeekend(cursor)) dias++;
+  }
+  return dias;
 }
 
 /**
