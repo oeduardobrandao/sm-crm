@@ -2,10 +2,13 @@
  * Desktop "Vidro" (level 3) shell and content look.
  * Spec: docs/superpowers/specs/2026-10-12-desktop-vidro-design.md
  * Applies only with html[data-look='vidro'] (workspace flag feature_crm_vidro + no opt-out,
- * src/hooks/useVidro.ts) and only on screens >=768px (print keeps the classic sheet). Ordinary stylesheet on purpose: no @layer, no
+ * src/hooks/useVidro.ts) and only on screens >=768px with a mouse (desktopShellQuery in lib/phoneShell.ts; touch tablets
+ * get the phone shell; print keeps the classic sheet). Ordinary stylesheet on purpose: no @layer, no
  * !important. src/__tests__/vidroContracts.test.ts enforces the guards.
  */
-@media screen and (min-width: 768px) {
+@media screen and (min-width: 768px) and (hover: hover),
+  screen and (min-width: 768px) and (pointer: fine),
+  screen and (min-width: 768px) and (pointer: none) {
   /* ---------- Tokens + backdrop ---------- */
   html[data-look='vidro'] body:has(.app-container) {
     --vd-panel: rgba(255, 255, 255, 0.94);
@@ -815,7 +818,9 @@
 }
 
 /* Reduced transparency / no backdrop-filter: opaque surfaces. */
-@media screen and (min-width: 768px) and (prefers-reduced-transparency: reduce) {
+@media screen and (min-width: 768px) and (hover: hover) and (prefers-reduced-transparency: reduce),
+  screen and (min-width: 768px) and (pointer: fine) and (prefers-reduced-transparency: reduce),
+  screen and (min-width: 768px) and (pointer: none) and (prefers-reduced-transparency: reduce) {
   html[data-look='vidro'] .app-container .sidebar,
   html[data-look='vidro'] .app-container .vidro-capsule {
     background: var(--vd-solid);
@@ -825,7 +830,9 @@
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  @media screen and (min-width: 768px) {
+  @media screen and (min-width: 768px) and (hover: hover),
+    screen and (min-width: 768px) and (pointer: fine),
+    screen and (min-width: 768px) and (pointer: none) {
     html[data-look='vidro'] .app-container .sidebar,
     html[data-look='vidro'] .app-container .vidro-capsule {
       background: var(--vd-solid);
@@ -836,7 +843,9 @@
 /* No dvh: the sidebar's dvh height is dropped at parse time and style.css's fallback sizes it from
    --topbar-height, which Vidro redefines to 70px. Restate the floating box in vh. */
 @supports not (height: 100dvh) {
-  @media screen and (min-width: 768px) {
+  @media screen and (min-width: 768px) and (hover: hover),
+    screen and (min-width: 768px) and (pointer: fine),
+    screen and (min-width: 768px) and (pointer: none) {
     html[data-look='vidro'] .app-container .sidebar {
       height: calc(100vh - var(--banner-height, 0px) - 20px);
     }

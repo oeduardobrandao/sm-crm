@@ -892,7 +892,7 @@
   white-space: pre-wrap;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   .linha-view {
     grid-template-columns: minmax(0, 1fr);
   }

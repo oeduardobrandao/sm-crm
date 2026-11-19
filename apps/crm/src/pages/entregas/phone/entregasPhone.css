@@ -485,7 +485,7 @@
 }
 
 /* ---- Page (phones only) ---- */
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   .app-container .main-content:has(.phone-ent-page) {
     background: var(--phone-bg);
   }

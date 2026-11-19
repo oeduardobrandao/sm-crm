@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import postcss, { type AtRule, type Rule } from 'postcss';
 import { describe, expect, it } from 'vitest';
+import { desktopShellQuery } from '../lib/phoneShell';
 
 const BODY_DIR = 'apps/crm/src/styles/vidro-body';
 const FILES = [
@@ -23,6 +24,14 @@ const BODY_ORDER = [
   'chat',
   'compositions',
 ];
+// Vidro is the desktop shell's look: a touch tablet gets the phone shell, so every rule sits inside
+// desktopShellQuery(768, { screen: true }), with `prefers-reduced-transparency` on each branch where
+// the rule is a reduced-transparency fallback.
+const DESKTOP_VIDRO = desktopShellQuery(768, { screen: true });
+const DESKTOP_VIDRO_REDUCED = DESKTOP_VIDRO.split(', ')
+  .map((branch) => `${branch} and (prefers-reduced-transparency: reduce)`)
+  .join(', ');
+const normMedia = (m: string) => m.replace(/\s+/g, ' ').trim();
 const shell = parsed.find((p) => p.file.endsWith('/vidro.css'))!.root;
 // The Vidro sheets ride the authenticated shell's lazy chunk (styles/app-shell.ts, imported by
 // ProtectedRoute), not the entry: they follow style.css (entry) and app.css in the cascade.
@@ -52,7 +61,7 @@ describe.each(parsed)('$file guards', ({ root }) => {
     root.walkDecls((d) => expect(d.important, `${d.prop} in ${d.parent}`).toBeFalsy());
   });
 
-  it('keeps every rule in the 768px block, except the scoped Analytics de Fluxos print block', () => {
+  it('keeps every rule in the desktop-shell block, except the scoped Analytics de Fluxos print block', () => {
     root.walkRules((rule) => {
       if (inKeyframes(rule)) return;
       const media = enclosingMedia(rule);
@@ -61,8 +70,8 @@ describe.each(parsed)('$file guards', ({ root }) => {
         return;
       }
       expect(
-        media.some((m) => /min-width:\s*768px/.test(m)),
-        `outside the 768px block: ${rule.selector}`,
+        media.some((m) => [DESKTOP_VIDRO, DESKTOP_VIDRO_REDUCED].includes(normMedia(m))),
+        `outside the desktop-shell block: ${rule.selector}`,
       ).toBe(true);
     });
   });

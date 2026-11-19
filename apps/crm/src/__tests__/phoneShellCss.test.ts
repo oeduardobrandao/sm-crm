@@ -34,7 +34,30 @@ import {
  * - a block mixes public and shell selectors: split it, the public copy keeping the old prelude.
  */
 
-const CSS_GUARD_FILES = ['apps/crm/style.css', 'apps/crm/app.css'];
+const cssUnder = (dir: string) =>
+  (readdirSync(path.join(ROOT, dir), { recursive: true }) as string[])
+    .filter((rel) => rel.endsWith('.css'))
+    .map((rel) => path.join(dir, rel))
+    .sort();
+/** The two core sheets, then the files later tasks added to the guard (Vidro, page and component CSS). */
+const CORE_FILES = ['apps/crm/style.css', 'apps/crm/app.css'];
+/**
+ * Sheets that are never part of the signed-in shell, so the phone-shell queries do not apply.
+ * Their selectors would read as "shell" because the classes are orphans or the page is standalone.
+ */
+const NOT_SHELL_FILES: Record<string, string> = {
+  'apps/crm/src/pages/landing/landing.css': 'public landing (some classes are orphans in JS)',
+  'apps/crm/src/pages/landing/landing-v2.css': 'public landing',
+  'apps/crm/src/pages/blog/blog.css': 'public blog',
+  'apps/crm/src/pages/workspace-setup/workspace-setup.css':
+    'standalone onboarding card on the auth backdrop: no AppLayout, no phone shell',
+};
+const CSS_GUARD_FILES = [
+  ...CORE_FILES,
+  ...['styles', 'pages', 'components'].flatMap((d) => cssUnder(`apps/crm/src/${d}`)),
+].filter((f) => !NOT_SHELL_FILES[f]);
+/** Files this task added to the guard: Hub classes in desktop blocks are only checked in these. */
+const ADDED_FILES = new Set(CSS_GUARD_FILES.filter((f) => !CORE_FILES.includes(f)));
 
 const env = (width: number, height: number, touch: boolean): MediaEnv => ({
   width,
@@ -59,7 +82,6 @@ const M = env(1200, 900, false);
 const SHELL_ONLY: Record<string, string> = {
   '.main-content': 'public pages only use `main-content` as an id (skip link target)',
   '.sidebar': 'public code only names it in a querySelector string (lib/supabase.ts)',
-  '#posts-table': 'the Instagram posts table (AnalyticsContaPage), styled with .data-table',
 };
 
 /**
@@ -116,6 +138,21 @@ const HUB_REVIEWED_SELECTORS: Record<string, string> = {
   '.app-container[data-phone-page-header]': CRM_SHELL,
   "[data-theme='dark'] .app-container": CRM_SHELL,
 };
+
+/**
+ * Blocks whose selectors are all public but whose prelude has the touch branch, on purpose: a
+ * public page is also seen on a touch tablet, and these ride the signed-in tab bar. Converting a
+ * public block wholesale changes a public page on iPad, so each one is listed. Key:
+ * `<prelude> | <first selector>`.
+ */
+const PUBLIC_TOUCH_BLOCKS: Record<string, string> = {};
+
+/**
+ * Selectors that can match Hub markup (every required class, `:has()` ones included, appears in
+ * Hub code) inside a desktop block a touch tablet no longer matches, in the sheets Task 4 added.
+ * The Hub imports them. Key: the selector. Value: why the Hub on a tablet does not need the rule.
+ */
+const HUB_DESKTOP_REVIEWED_SELECTORS: Record<string, string> = {};
 
 interface Block {
   file: string;
@@ -178,8 +215,39 @@ const namesShellOnly = (sel: string) =>
   Object.keys(SHELL_ONLY).some((name) =>
     new RegExp(`${name.replace('.', '\\.')}(?![\\w-])`).test(sel),
   );
-const isPublicSelector = (sel: string) =>
-  requiredClasses(sel).every(isPublicClass) && !namesShellOnly(sel);
+
+/** Classes named inside `:has(...)` arguments: the selector only matches under an element that has them. */
+function hasClasses(selector: string): string[] {
+  const out: string[] = [];
+  for (let at = selector.indexOf(':has('); at !== -1; at = selector.indexOf(':has(', at + 1)) {
+    let depth = 0;
+    let i = at + ':has'.length;
+    const start = i + 1;
+    for (; i < selector.length; i++) {
+      if (selector[i] === '(') depth++;
+      else if (selector[i] === ')' && --depth === 0) break;
+    }
+    out.push(...requiredClasses(selector.slice(start, i)));
+  }
+  return out;
+}
+/** Ids outside brackets and parentheses. */
+function requiredIds(selector: string): string[] {
+  const stripped = selector.replace(/\([^()]*(\([^()]*\)[^()]*)*\)|\[[^\]]*\]/g, '');
+  return [...stripped.matchAll(/#([\w-]+)/g)].map((m) => m[1]);
+}
+const isPublicId = (id: string) => tokens.exact.has(id);
+const isPublicSelector = (sel: string) => {
+  const classes = requiredClasses(sel);
+  const ids = requiredIds(sel);
+  return (
+    classes.every(isPublicClass) &&
+    hasClasses(sel).every(isPublicClass) &&
+    // an id-only selector is shell unless public code uses the id
+    (classes.length > 0 || ids.every(isPublicId)) &&
+    !namesShellOnly(sel)
+  );
+};
 const shellSelectors = (b: Block) => b.selectors.filter((s) => !isPublicSelector(s));
 
 const desktopReachesTablet = (b: Block) =>
@@ -238,6 +306,22 @@ describe('CRM stylesheets follow the phone-shell queries', () => {
     expect(mixed, 'split these: the public copy keeps the old prelude').toEqual([]);
   });
 
+  it('public blocks that gained the touch branch are listed', () => {
+    const touchBranch = /\(hover:\s*none\)|\(pointer:\s*coarse\)/;
+    const publicTouch = blocks.filter(
+      (b) =>
+        b.selectors.length &&
+        b.selectors.every(isPublicSelector) &&
+        b.queries.some((q) => touchBranch.test(q)),
+    );
+    const keys = publicTouch.map(keyOf);
+    expect(
+      publicTouch.filter((b) => !PUBLIC_TOUCH_BLOCKS[keyOf(b)]).map(where),
+      'a public page changes on touch tablets: keep the old prelude or list the block',
+    ).toEqual([]);
+    expect(Object.keys(PUBLIC_TOUCH_BLOCKS).filter((k) => !keys.includes(k))).toEqual([]);
+  });
+
   it('the Mais sheet is not hidden on a touch tablet', () => {
     const hiding = blocks.filter((b) =>
       b.rules.some(
@@ -278,6 +362,26 @@ describe('CRM stylesheets follow the phone-shell queries', () => {
     const unreviewed = [...found].filter((s) => !HUB_REVIEWED_SELECTORS[s]);
     expect(unreviewed, 'these can match Hub markup on a touch tablet: review them').toEqual([]);
     expect(Object.keys(HUB_REVIEWED_SELECTORS).filter((s) => !found.has(s))).toEqual([]);
+  });
+
+  it('Hub classes in desktop blocks a touch tablet no longer matches are reviewed', () => {
+    const hub = hubTokens();
+    const isHubClass = makeIsPublicClass(hub);
+    // Every Vidro selector needs html[data-look='vidro'], which only the CRM sets (lib/vidroLook.ts):
+    // the Hub never renders it, so none of those selectors can match Hub markup.
+    expect(hub.exact.has('data-look'), 'the Hub now names data-look: review Vidro').toBe(false);
+    const found = new Set<string>();
+    for (const b of blocks) {
+      if (!ADDED_FILES.has(b.file)) continue;
+      if (!(matches(b, D) && !matches(b, T))) continue;
+      for (const sel of b.selectors) {
+        if (sel.includes("[data-look='vidro']")) continue;
+        if ([...requiredClasses(sel), ...hasClasses(sel)].every(isHubClass)) found.add(sel);
+      }
+    }
+    const unreviewed = [...found].filter((s) => !HUB_DESKTOP_REVIEWED_SELECTORS[s]);
+    expect(unreviewed, 'the Hub imports these sheets: review them').toEqual([]);
+    expect(Object.keys(HUB_DESKTOP_REVIEWED_SELECTORS).filter((s) => !found.has(s))).toEqual([]);
   });
 
   it('no bare phone/desktop width in JS', () => {

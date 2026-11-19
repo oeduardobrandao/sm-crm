@@ -3,10 +3,13 @@
  * Spec: docs/superpowers/specs/2026-10-13-vidro-body-skin-design.md
  * Only selectors for this family (cross-family rules go in compositions.css).
  * Guards: every selector starts with html[data-look='vidro']; everything inside
- * @media screen and (min-width: 768px); no @layer; no !important. Page-body prefix:
+ * the desktop-shell @media (desktopShellQuery(768, { screen: true }), lib/phoneShell.ts);
+ * no @layer; no !important. Page-body prefix:
  * html[data-look='vidro'] body:has(.app-container) .vidro-panel; overlays drop `.vidro-panel`.
  */
-@media screen and (min-width: 768px) {
+@media screen and (min-width: 768px) and (hover: hover),
+  screen and (min-width: 768px) and (pointer: fine),
+  screen and (min-width: 768px) and (pointer: none) {
   html[data-look='vidro'] body:has(.app-container) .vidro-panel .vidro-bubble {
     border-radius: 18px;
     padding: 9px 13px;

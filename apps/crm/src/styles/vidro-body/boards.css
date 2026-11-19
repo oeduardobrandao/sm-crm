@@ -3,14 +3,17 @@
  * Spec: docs/superpowers/specs/2026-10-13-vidro-body-skin-design.md (section 7)
  * Only selectors for this family (cross-family rules go in compositions.css).
  * Guards: every selector starts with html[data-look='vidro']; everything inside
- * @media screen and (min-width: 768px); no @layer; no !important. Page-body prefix:
+ * the desktop-shell @media (desktopShellQuery(768, { screen: true }), lib/phoneShell.ts);
+ * no @layer; no !important. Page-body prefix:
  * html[data-look='vidro'] body:has(.app-container) .vidro-panel; overlays drop `.vidro-panel`.
  *
  * Cards never set `transform` (dnd-kit owns it while dragging; style.css keeps the hover lift).
  * Calendar cells set no `background`: --surface-main already maps to --vd-group (tokens.css), and
  * the has-events / today / selected / out-of-month / weekend tints in style.css must survive.
  */
-@media screen and (min-width: 768px) {
+@media screen and (min-width: 768px) and (hover: hover),
+  screen and (min-width: 768px) and (pointer: fine),
+  screen and (min-width: 768px) and (pointer: none) {
   /* ===== Kanban columns: tiles ===== */
   html[data-look='vidro'] body:has(.app-container) .vidro-panel .board-column {
     background: var(--vd-tile);
@@ -257,7 +260,9 @@
 }
 
 /* ===== Dark mirrors (the --vd-* tokens flip on their own; only literal colours need restating) ===== */
-@media screen and (min-width: 768px) {
+@media screen and (min-width: 768px) and (hover: hover),
+  screen and (min-width: 768px) and (pointer: fine),
+  screen and (min-width: 768px) and (pointer: none) {
   html[data-theme='dark'][data-look='vidro']
     body:has(.app-container)
     .vidro-panel
