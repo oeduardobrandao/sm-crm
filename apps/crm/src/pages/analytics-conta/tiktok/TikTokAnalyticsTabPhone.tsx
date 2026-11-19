@@ -399,7 +399,11 @@ function PhoneBody({
       {posts.isPending ? (
         <LoadingBlock />
       ) : postsFailed ? null : (
-        <div style={dimmed(posts.isPlaceholderData)} aria-busy={posts.isPlaceholderData}>
+        <div
+          className="phone-an-pair"
+          style={dimmed(posts.isPlaceholderData)}
+          aria-busy={posts.isPlaceholderData}
+        >
           <RankedPostStrip
             title={t('overview.topVideos')}
             help={t('clientTab.topVideosHint', { period })}

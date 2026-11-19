@@ -844,3 +844,35 @@ button.phone-an-spark__bar {
   flex-shrink: 0;
   font-size: 18px;
 }
+
+/* ---- Wide touch screens (iPad): sections in two columns ----
+   Analytics routes are full-width there, so the 680px column does not apply. Every direct child
+   spans both columns (header, filters, KPIs, lists); only `.phone-an-half` sections (the ranked
+   post strips) share a row, and a lone one goes back to full width. A wrapper that holds the
+   pair (`.phone-an-pair`) is a full-width grid of its own. */
+@media (hover: none) and (pointer: coarse) and (min-width: 1000px) {
+  .phone-an {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 24px;
+    align-items: start;
+  }
+  .phone-an > * {
+    grid-column: 1 / -1;
+  }
+  .phone-an > .phone-an-half {
+    grid-column: auto;
+  }
+  .phone-an > .phone-an-half:not(.phone-an-half ~ .phone-an-half):not(:has(~ .phone-an-half)) {
+    grid-column: 1 / -1;
+  }
+  .phone-an > .phone-an-pair {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 24px;
+    align-items: start;
+  }
+  .phone-an-pair > .phone-an-half:not(.phone-an-half ~ .phone-an-half):not(:has(~ .phone-an-half)) {
+    grid-column: 1 / -1;
+  }
+}
