@@ -395,6 +395,34 @@ describe('"Baixar todos" zip threshold', () => {
     expect(files.map((f) => f.name)).toEqual(['img0.jpg', 'img1.jpg']);
     expect(zipFileSpy).not.toHaveBeenCalled();
   });
+
+  it('downloads every file natively in one share sheet on an app binary that can', async () => {
+    const shareFiles = vi.fn(async () => ({ completed: true }));
+    (window as unknown as { Capacitor: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+      getPlatform: () => 'ios',
+      isPluginAvailable: (name: string) => name === 'MesaasNative',
+      PluginHeaders: [{ name: 'MesaasNative', methods: [{ name: 'shareFiles' }] }],
+      Plugins: { MesaasNative: { shareFiles } },
+    };
+    const media = makeMedia(2);
+    vi.mocked(listPostMedia).mockResolvedValueOnce(media);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <PostMediaGallery postId={1} />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByText('Baixar todos'));
+
+    await waitFor(() => expect(shareFiles).toHaveBeenCalledTimes(1));
+    expect(shareFiles).toHaveBeenCalledWith({
+      files: media.map((m) => ({ url: m.url, filename: m.original_filename })),
+    });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(zipFileSpy).not.toHaveBeenCalled();
+  });
 });
 
 describe('media request mode', () => {

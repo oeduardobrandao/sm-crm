@@ -465,8 +465,10 @@ export function PostMediaLightbox({
                 setDownloading(true);
                 try {
                   await downloadMedia(current);
-                } catch {
-                  toast.error(t('mediaLightbox.downloadFailed'));
+                } catch (e) {
+                  toast.error(t('mediaLightbox.downloadFailed'), {
+                    description: (e as Error).message,
+                  });
                 } finally {
                   setDownloading(false);
                 }

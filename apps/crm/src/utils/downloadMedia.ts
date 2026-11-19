@@ -1,6 +1,7 @@
 import { i18n } from '@mesaas/i18n';
 import { toast } from 'sonner';
 import { isNativeApp } from '../native/platform';
+import { getMesaasNative, hasMesaasNativeMethod } from '../native/mesaasNative';
 import { fetchWithRetry } from './fetchWithRetry';
 import type { PostMedia } from '../store';
 
@@ -26,11 +27,15 @@ export type DownloadOutcome = 'saved' | 'shared' | 'cancelled' | 'pending';
  *
  * In the iOS app a blob link does nothing: Capacitor's navigation handler cancels the
  * `blob:` navigation and WKWebView has no download UI. There the file goes to the share
- * sheet instead (see shareInApp).
+ * sheet instead: downloaded natively when the app binary can (shareNatively), else
+ * through the web view (shareInApp).
  */
 export async function downloadMedia(media: DownloadableMedia): Promise<DownloadOutcome> {
   if (!media.url) throw new Error('Mídia sem URL para download');
   const url = media.url;
+
+  const native = await shareNatively([{ url, filename: media.original_filename }]);
+  if (native) return native;
 
   const shared = await shareInApp(url, async () => [
     await toShareableFile(await fetchBlob(url), media.original_filename),
@@ -72,6 +77,20 @@ export async function toShareableFile(blob: Blob, filename: string): Promise<Fil
   return new File([await blob.arrayBuffer()], filename, {
     type: blob.type || 'application/octet-stream',
   });
+}
+
+/**
+ * In an app binary that has it, the native side downloads the files to disk and opens
+ * the share sheet, so the page never holds the bytes (a Reel is ~180 MB) and there is
+ * no tap window to miss. Returns null when this binary can't, for the web view path.
+ */
+export async function shareNatively(
+  files: { url: string; filename: string }[],
+): Promise<DownloadOutcome | null> {
+  const plugin = getMesaasNative();
+  if (!plugin || files.length === 0 || !hasMesaasNativeMethod('shareFiles')) return null;
+  const { completed } = await plugin.shareFiles({ files });
+  return completed ? 'shared' : 'cancelled';
 }
 
 function errorName(err: unknown): string | undefined {
