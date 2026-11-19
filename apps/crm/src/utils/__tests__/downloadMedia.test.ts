@@ -163,3 +163,72 @@ describe('a slow download in the iOS app', () => {
     ).rejects.toThrow();
   });
 });
+
+describe('downloadMedia in an app binary with the native download', () => {
+  function asNativeBinary(
+    shareFiles: (opts: unknown) => Promise<unknown>,
+    methods = ['shareFiles'],
+  ) {
+    (window as unknown as { Capacitor: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+      getPlatform: () => 'ios',
+      isPluginAvailable: (name: string) => name === 'MesaasNative',
+      PluginHeaders: [{ name: 'MesaasNative', methods: methods.map((name) => ({ name })) }],
+      Plugins: { MesaasNative: { shareFiles: vi.fn(shareFiles) } },
+    };
+    return (
+      window as unknown as {
+        Capacitor: { Plugins: { MesaasNative: { shareFiles: ReturnType<typeof vi.fn> } } };
+      }
+    ).Capacitor.Plugins.MesaasNative.shareFiles;
+  }
+
+  it('hands the url to the native side, so the page never downloads the bytes', async () => {
+    const shareFiles = asNativeBinary(async () => ({ completed: true }));
+
+    const outcome = await downloadMedia({
+      url: 'https://media.test/reel.mov',
+      original_filename: 'Reel.mov',
+    });
+
+    expect(outcome).toBe('shared');
+    expect(shareFiles).toHaveBeenCalledWith({
+      files: [{ url: 'https://media.test/reel.mov', filename: 'Reel.mov' }],
+    });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(clicked).toHaveLength(0);
+  });
+
+  it('reports a closed sheet as cancelled', async () => {
+    asNativeBinary(async () => ({ completed: false }));
+
+    await expect(
+      downloadMedia({ url: 'https://media.test/reel.mov', original_filename: 'Reel.mov' }),
+    ).resolves.toBe('cancelled');
+  });
+
+  it('surfaces the native error, e.g. an expired link', async () => {
+    asNativeBinary(async () => {
+      throw new Error('HTTP 410');
+    });
+
+    await expect(
+      downloadMedia({ url: 'https://media.test/reel.mov', original_filename: 'Reel.mov' }),
+    ).rejects.toThrow('HTTP 410');
+  });
+
+  it('falls back to the web view share sheet on a binary without the method', async () => {
+    const shareFiles = asNativeBinary(async () => ({ completed: true }), ['openUrl']);
+    Object.defineProperty(navigator, 'share', { value: vi.fn(async () => {}), configurable: true });
+    Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true });
+
+    const outcome = await downloadMedia({
+      url: 'https://media.test/abc.png',
+      original_filename: 'capa.png',
+    });
+
+    expect(outcome).toBe('shared');
+    expect(shareFiles).not.toHaveBeenCalled();
+    expect(navigator.share).toHaveBeenCalledTimes(1);
+  });
+});

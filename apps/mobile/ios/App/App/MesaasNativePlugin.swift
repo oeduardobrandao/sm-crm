@@ -3,7 +3,8 @@ import Security
 import Capacitor
 
 /// The app's own plugin: Keychain storage for the Supabase session, the APNs
-/// environment of this build, and opening Settings or Safari.
+/// environment of this build, opening Settings or Safari, and saving media through
+/// the share sheet.
 /// The JS side is apps/crm/src/native/mesaasNative.ts: method names and result
 /// shapes must match it.
 @objc(MesaasNativePlugin)
@@ -16,7 +17,8 @@ public class MesaasNativePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "keychainRemove", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "deviceInfo", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "openSettings", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "openUrl", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "openUrl", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "shareFiles", returnType: CAPPluginReturnPromise)
     ]
 
     private static let keychainService = "br.com.mesaas.app"
@@ -162,5 +164,115 @@ public class MesaasNativePlugin: CAPPlugin, CAPBridgedPlugin {
                 opened ? call.resolve() : call.reject("Could not open URL")
             }
         }
+    }
+
+    // MARK: - Saving media
+
+    /// Downloads `files` ([{ url, filename }]) to a temporary folder and presents the
+    /// share sheet with them ("Save Image" / "Save Video" need
+    /// NSPhotoLibraryAddUsageDescription). Resolves `{ completed }` once the sheet
+    /// closes. The web view can't do this for videos: a Reel is ~180 MB, which the page
+    /// would hold in memory, and WebKit only opens the sheet within seconds of a tap.
+    @objc func shareFiles(_ call: CAPPluginCall) {
+        guard let entries = call.getArray("files", JSObject.self), !entries.isEmpty else {
+            return call.reject("Must provide files")
+        }
+
+        var sources: [(url: URL, filename: String)] = []
+        for entry in entries {
+            guard let raw = entry["url"] as? String, let url = URL(string: raw),
+                  Self.isAllowedDownload(url) else {
+                return call.reject("Only https URLs can be downloaded")
+            }
+            let name = Self.safeFilename(entry["filename"] as? String, fallback: url.lastPathComponent)
+            sources.append((url, name))
+        }
+
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mesaas-share", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        } catch {
+            return call.reject("Could not prepare the download")
+        }
+
+        Task {
+            var saved: [URL] = []
+            do {
+                for (index, source) in sources.enumerated() {
+                    saved.append(try await Self.download(source.url, into: folder, as: source.filename, index: index))
+                }
+            } catch let error as DownloadError {
+                try? FileManager.default.removeItem(at: folder)
+                return call.reject(error.message, error.code)
+            } catch {
+                try? FileManager.default.removeItem(at: folder)
+                return call.reject("Download failed", "NETWORK")
+            }
+            await MainActor.run { self.presentShareSheet(saved, folder: folder, call: call) }
+        }
+    }
+
+    private struct DownloadError: Error {
+        let message: String
+        let code: String
+    }
+
+    /// https only; Debug builds also take http so a Simulator build can use a local server.
+    private static func isAllowedDownload(_ url: URL) -> Bool {
+        guard url.host?.isEmpty == false else { return false }
+        let scheme = url.scheme?.lowercased()
+        #if DEBUG
+        return scheme == "https" || scheme == "http"
+        #else
+        return scheme == "https"
+        #endif
+    }
+
+    /// The last path component only, so a name can never leave the temporary folder.
+    private static func safeFilename(_ raw: String?, fallback: String) -> String {
+        let candidate = (raw ?? "").components(separatedBy: CharacterSet(charactersIn: "/\\:")).last ?? ""
+        let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty, trimmed != ".", trimmed != ".." { return trimmed }
+        return fallback.isEmpty ? "arquivo" : fallback
+    }
+
+    private static func download(_ url: URL, into folder: URL, as filename: String, index: Int) async throws -> URL {
+        let (tempFile, response) = try await URLSession.shared.download(from: url)
+        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            try? FileManager.default.removeItem(at: tempFile)
+            throw DownloadError(message: "HTTP \(http.statusCode)", code: "HTTP_\(http.statusCode)")
+        }
+        // Each file in its own subfolder: two slides can share an original name.
+        let slot = folder.appendingPathComponent(String(index), isDirectory: true)
+        try FileManager.default.createDirectory(at: slot, withIntermediateDirectories: true)
+        let destination = slot.appendingPathComponent(filename)
+        try FileManager.default.moveItem(at: tempFile, to: destination)
+        return destination
+    }
+
+    private func presentShareSheet(_ files: [URL], folder: URL, call: CAPPluginCall) {
+        guard var presenter = bridge?.viewController else {
+            try? FileManager.default.removeItem(at: folder)
+            return call.reject("No screen to present on")
+        }
+        while let top = presenter.presentedViewController { presenter = top }
+
+        let sheet = UIActivityViewController(activityItems: files, applicationActivities: nil)
+        var settled = false
+        sheet.completionWithItemsHandler = { _, completed, _, _ in
+            guard !settled else { return }
+            settled = true
+            try? FileManager.default.removeItem(at: folder)
+            call.resolve(["completed": completed])
+        }
+        // iPad shows the sheet as a popover, which crashes without an anchor.
+        if let popover = sheet.popoverPresentationController {
+            popover.sourceView = presenter.view
+            popover.sourceRect = CGRect(x: presenter.view.bounds.midX, y: presenter.view.bounds.midY, width: 0, height: 0)
+            popover.permittedArrowDirections = []
+        }
+        presenter.present(sheet, animated: true)
     }
 }

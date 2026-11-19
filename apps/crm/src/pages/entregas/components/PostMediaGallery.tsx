@@ -25,6 +25,7 @@ import {
   downloadMedia,
   saveBlob,
   shareInApp,
+  shareNatively,
   toShareableFile,
   type DownloadOutcome,
 } from '@/utils/downloadMedia';
@@ -593,6 +594,13 @@ export function PostMediaGallery({
 
       // In the iOS app a zip can't be saved (no download UI) and couldn't reach Photos
       // anyway: one share sheet with every file offers "Save N Images" instead.
+      const native = await shareNatively(
+        downloadable.map((m) => ({ url: m.url!, filename: m.original_filename })),
+      );
+      if (native) {
+        toastDownloadOutcome(native);
+        return;
+      }
       const shared = await shareInApp(downloadable.map((m) => m.url).join('\n'), async () =>
         Promise.all((await fetchEntries()).map((e) => toShareableFile(e.blob, e.filename))),
       );

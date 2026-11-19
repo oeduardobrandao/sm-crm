@@ -13,11 +13,20 @@ export interface MesaasNativePlugin {
   openSettings(): Promise<void>;
   /** Opens an https URL outside the web view (Safari). */
   openUrl(options: { url: string }): Promise<void>;
+  /**
+   * Downloads the files natively and opens the share sheet with them. Rejects with
+   * "HTTP <status>" when the server refuses one. Older app binaries lack it: check
+   * `hasMesaasNativeMethod('shareFiles')` first.
+   */
+  shareFiles(options: {
+    files: { url: string; filename: string }[];
+  }): Promise<{ completed: boolean }>;
 }
 
 interface CapacitorPluginsBridge {
   isPluginAvailable?: (name: string) => boolean;
   Plugins?: Record<string, unknown>;
+  PluginHeaders?: { name: string; methods?: { name: string }[] }[];
 }
 
 /**
@@ -31,4 +40,16 @@ export function getMesaasNative(): MesaasNativePlugin | null {
   const cap = (window as unknown as { Capacitor?: CapacitorPluginsBridge }).Capacitor;
   if (!cap?.isPluginAvailable?.('MesaasNative')) return null;
   return (cap.Plugins?.MesaasNative as MesaasNativePlugin | undefined) ?? null;
+}
+
+/**
+ * Whether this app binary implements `method`. The plugin proxy answers every name, so
+ * a method an older binary lacks only fails when called; the bridge's plugin headers
+ * list what the Swift side actually registered.
+ */
+export function hasMesaasNativeMethod(method: keyof MesaasNativePlugin): boolean {
+  if (getMesaasNative() === null) return false;
+  const cap = (window as unknown as { Capacitor?: CapacitorPluginsBridge }).Capacitor;
+  const header = cap?.PluginHeaders?.find((h) => h.name === 'MesaasNative');
+  return header?.methods?.some((m) => m.name === method) === true;
 }
