@@ -23,6 +23,12 @@ interface PhoneLayoutContextValue {
    * the query `AppLayout` and `MobileNav` use).
    */
   isPhone: boolean;
+  /**
+   * True on a full-width route of a wide phone shell (`phoneWideRoutes.ts`): the page is
+   * not held in the centered 680px column. Optional so a hand-built value stays valid;
+   * read it through `usePhoneLayout()`, which defaults it to false.
+   */
+  wideRoute?: boolean;
   /** Adds a chrome request under `id` (replacing an earlier one with the same id). Returns its removal. */
   register: (id: string, options: PhoneChromeOptions) => () => void;
 }
@@ -36,6 +42,7 @@ const noopRegister = () => () => {};
  */
 export const PhoneLayoutContext = createContext<PhoneLayoutContextValue>({
   isPhone: false,
+  wideRoute: false,
   register: noopRegister,
 });
 
@@ -51,7 +58,7 @@ export interface PhoneChromeState {
  * routes swapping in one commit never leave a stale attribute, and the last consumer
  * to unmount clears it.
  */
-export function usePhoneChromeController(isPhone: boolean) {
+export function usePhoneChromeController(isPhone: boolean, wideRoute = false) {
   const [requests, setRequests] = useState<ReadonlyMap<string, PhoneChromeOptions>>(
     () => new Map(),
   );
@@ -72,7 +79,10 @@ export function usePhoneChromeController(isPhone: boolean) {
     };
   }, []);
 
-  const contextValue = useMemo(() => ({ isPhone, register }), [isPhone, register]);
+  const contextValue = useMemo(
+    () => ({ isPhone, wideRoute, register }),
+    [isPhone, wideRoute, register],
+  );
 
   const chrome = useMemo<PhoneChromeState>(() => {
     let pageHeader = false;
@@ -84,10 +94,14 @@ export function usePhoneChromeController(isPhone: boolean) {
     return { pageHeader, tabBarHidden };
   }, [requests]);
 
-  /** Spread onto `.app-container`. CSS keyed on these only acts below 768px. */
+  /**
+   * Spread onto `.app-container`. CSS keyed on these only acts in the phone shell;
+   * `data-phone-wide` lifts the centered column on a wide phone shell.
+   */
   const attributes = {
     'data-phone-page-header': chrome.pageHeader ? '' : undefined,
     'data-phone-tab-bar': chrome.tabBarHidden ? 'hidden' : undefined,
+    'data-phone-wide': wideRoute ? '' : undefined,
   } as const;
 
   return { contextValue, chrome, attributes };
@@ -109,10 +123,13 @@ export function PhoneLayoutProvider({
   return <PhoneLayoutContext.Provider value={contextValue}>{children}</PhoneLayoutContext.Provider>;
 }
 
-/** `{ isPhone }` of the surrounding shell; `{ isPhone: false }` outside `AppLayout`. */
-export function usePhoneLayout(): { isPhone: boolean } {
-  const { isPhone } = useContext(PhoneLayoutContext);
-  return { isPhone };
+/**
+ * `{ isPhone, wideRoute }` of the surrounding shell; both false outside `AppLayout`.
+ * `wideRoute` is true on a full-width route of a wide phone shell (see `phoneWideRoutes.ts`).
+ */
+export function usePhoneLayout(): { isPhone: boolean; wideRoute: boolean } {
+  const { isPhone, wideRoute = false } = useContext(PhoneLayoutContext);
+  return { isPhone, wideRoute };
 }
 
 /**

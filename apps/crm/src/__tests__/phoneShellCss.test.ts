@@ -147,7 +147,10 @@ const HUB_REVIEWED_SELECTORS: Record<string, string> = {
  * public block wholesale changes a public page on iPad, so each one is listed. Key:
  * `<prelude> | <first selector>`.
  */
-const PUBLIC_TOUCH_BLOCKS: Record<string, string> = {};
+const PUBLIC_TOUCH_BLOCKS: Record<string, string> = {
+  '(hover: none) and (pointer: coarse) and (min-width: 768px) | .phone-kit.phone-sheet':
+    'sheet cap on wide phone shells: ui/dialog makes the classes public, but the phone faces render only inside AppLayout (usePhoneLayout().isPhone), never on a public page',
+};
 
 /**
  * Selectors that can match Hub markup (every required class, `:has()` ones included, appears in
@@ -358,6 +361,38 @@ describe('CRM stylesheets follow the phone-shell queries', () => {
     expect(toast.length).toBeGreaterThan(0);
     for (const b of [...banner, ...crisp, ...toast]) {
       for (const e of [P, T, Tp]) expect(matches(b, e), where(b)).toBe(true);
+    }
+  });
+
+  it('wide phone shells get the column, the tab bar cap and the sheet caps', () => {
+    const landscapePhone = env(844, 390, true);
+    const capping = (selector: string, prop: string, value: string) =>
+      blocks.filter((b) =>
+        b.rules.some((r) => r.selectors.map(norm).includes(selector) && declares(r, prop, value)),
+      );
+    const caps = [
+      capping(
+        '.app-container:not([data-phone-wide]) .main-content',
+        'padding-inline',
+        // postcss keeps `!important` out of the value (decl.important)
+        'max(1rem, calc((100% - 680px) / 2))',
+      ),
+      capping('.mobile-nav-glass', 'max-width', '420px'),
+      capping('.phone-kit.phone-sheet', 'max-width', '680px'),
+      capping('.phone-kit.phone-alert', 'max-width', '680px'),
+      capping('.phone-kit.phone-action-sheet', 'max-width', '680px'),
+      capping('.phone-editor-screen', 'padding-inline', 'max(0px, calc((100% - 680px) / 2))'),
+      capping(
+        '.drawer-panel.phone-ent-fluxo',
+        'padding-inline',
+        'max(0px, calc((100% - 680px) / 2))',
+      ),
+    ];
+    for (const [i, found] of caps.entries()) {
+      expect(found.length, `cap #${i}`).toBe(1);
+      const [b] = found;
+      for (const e of [T, Tp, landscapePhone]) expect(matches(b, e), where(b)).toBe(true);
+      for (const e of [P, D, N]) expect(matches(b, e), where(b)).toBe(false);
     }
   });
 

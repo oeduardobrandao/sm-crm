@@ -3093,6 +3093,21 @@ button.phone-sheet__grabber::before {
   height: auto;
 }
 
+/* Wide phone shell (PHONE_WIDE_QUERY, touch tablets and phones held sideways): BottomSheet,
+   the phone face of ui/dialog (.phone-sheet.phone-dialog) and of ui/alert-dialog are capped
+   at 680px and centered, like the page column (app.css, same query). Here and not in app.css
+   because ui/dialog makes these classes public; the faces only render inside the phone
+   shell. After .phone-kit.phone-dialog / .phone-kit.phone-alert, whose `max-width: none;
+   margin: 0` they outrank by order. Margins, not a transform: the sheets drag and animate
+   through transform. */
+@media (hover: none) and (pointer: coarse) and (min-width: 768px) {
+  .phone-kit.phone-sheet,
+  .phone-kit.phone-alert {
+    max-width: 680px;
+    margin-inline: auto;
+  }
+}
+
 .phone-kit.phone-stat-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

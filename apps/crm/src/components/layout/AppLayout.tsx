@@ -23,7 +23,13 @@ import TopBarActions from './TopBarActions';
 import NavigationProgress from './NavigationProgress';
 import { isNativeApp } from '../../native/platform';
 import NativeBridge from '../../native/NativeBridge';
-import { desktopShellQuery, useIsPhoneShellMatch, useMediaQueryMatch } from '../../lib/phoneShell';
+import {
+  desktopShellQuery,
+  useIsPhoneShellMatch,
+  useIsTabletShell,
+  useMediaQueryMatch,
+} from '../../lib/phoneShell';
+import { isPhoneWideRoute, isTabletWideRoute } from './phoneWideRoutes';
 
 const GlobalBannerContainer = lazy(() => import('./GlobalBannerContainer'));
 const GuideDialog = lazy(() => import('../guide/GuideDialog'));
@@ -188,9 +194,19 @@ export default function AppLayout() {
     () => choosePinned(!sidebarPinned),
     [choosePinned, sidebarPinned],
   );
+  // Touch tablet (not the desktop 768-1100 range above): the report editor routes go full
+  // width only here, where the desktop editor renders inside the phone shell.
+  const isTabletShell = useIsTabletShell();
+  // Full-width route on a wide phone shell: lifts the centered 680px column. Only an
+  // attribute and a context value change with it, so rotating or navigating never
+  // remounts the page.
+  const wideRoute =
+    isMobile &&
+    (isPhoneWideRoute(location.pathname) ||
+      (isTabletShell && isTabletWideRoute(location.pathname)));
   // Pages opt into phone chrome changes (own page header, hidden tab bar) through
   // usePhoneChrome; the attributes on .app-container drive the CSS (phone only).
-  const phoneChrome = usePhoneChromeController(isMobile);
+  const phoneChrome = usePhoneChromeController(isMobile, wideRoute);
   const financialOutcome = financialGuardOutcome(location.pathname, canSeeFinancials);
   const contractOutcome = contractGuardOutcome(location.pathname, can('contratos', 'ver'));
   // The two guards cover disjoint path sets, so at most one is ever not

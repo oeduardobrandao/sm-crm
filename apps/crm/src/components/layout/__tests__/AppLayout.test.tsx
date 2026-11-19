@@ -167,6 +167,17 @@ function ChromePage() {
   );
 }
 
+/** Shows `usePhoneLayout().wideRoute` for the full-width route tests. */
+function WideProbe({ label }: { label: string }) {
+  const { wideRoute } = usePhoneLayout();
+  return (
+    <div>
+      <div>{label}</div>
+      <span data-testid="wide-route">{String(wideRoute)}</span>
+    </div>
+  );
+}
+
 const mockedUseAuth = vi.mocked(useAuth);
 
 /**
@@ -245,8 +256,9 @@ function layoutTree(pathname = '/dashboard') {
             path="/dashboard"
             element={
               <div>
-                <div>Dashboard screen</div>
+                <WideProbe label="Dashboard screen" />
                 <Link to="/clientes">Ir para clientes</Link>
+                <Link to="/entregas">Ir para entregas</Link>
               </div>
             }
           />
@@ -254,6 +266,8 @@ function layoutTree(pathname = '/dashboard') {
           <Route path="/financeiro" element={<div>Financeiro screen</div>} />
           <Route path="/contratos" element={<div>Contratos screen</div>} />
           <Route path="/chrome" element={<ChromePage />} />
+          <Route path="/entregas" element={<WideProbe label="Entregas screen" />} />
+          <Route path="/relatorios/:id" element={<WideProbe label="Relatorio screen" />} />
         </Route>
       </Routes>
     </MemoryRouter>
@@ -779,6 +793,96 @@ describe('AppLayout shell on touch tablets', () => {
 
     expect(screen.getByTestId('topbar')).toBeInTheDocument();
     expect(screen.queryByTestId('phone-shell-header')).not.toBeInTheDocument();
+  });
+});
+
+describe('AppLayout full-width routes on wide phone shells', () => {
+  const PHONE_LANDSCAPE: MediaEnv = { width: 844, height: 390, hover: 'none', pointer: 'coarse' };
+  const container = () => document.querySelector('.app-container')!;
+
+  it('marks /entregas as wide on a touch tablet', async () => {
+    setMediaEnv(TABLET_TOUCH);
+
+    renderLayout('/entregas');
+    await screen.findByText('Entregas screen');
+
+    expect(container()).toHaveAttribute('data-phone-wide');
+    expect(screen.getByTestId('wide-route')).toHaveTextContent('true');
+  });
+
+  it('keeps /dashboard in the column on a touch tablet', async () => {
+    setMediaEnv(TABLET_TOUCH);
+
+    renderLayout('/dashboard');
+    await screen.findByText('Dashboard screen');
+
+    expect(container()).not.toHaveAttribute('data-phone-wide');
+    expect(screen.getByTestId('wide-route')).toHaveTextContent('false');
+  });
+
+  it('widens the report editor on a tablet but not on a phone in landscape', async () => {
+    setMediaEnv(TABLET_TOUCH);
+    const tablet = renderLayout('/relatorios/9');
+    await screen.findByText('Relatorio screen');
+    expect(container()).toHaveAttribute('data-phone-wide');
+    expect(screen.getByTestId('wide-route')).toHaveTextContent('true');
+    tablet.unmount();
+
+    setMediaEnv(PHONE_LANDSCAPE);
+    renderLayout('/relatorios/9');
+    await screen.findByText('Relatorio screen');
+    expect(container()).not.toHaveAttribute('data-phone-wide');
+    expect(screen.getByTestId('wide-route')).toHaveTextContent('false');
+  });
+
+  it('marks /entregas as wide on a phone in landscape', async () => {
+    setMediaEnv(PHONE_LANDSCAPE);
+
+    renderLayout('/entregas');
+    await screen.findByText('Entregas screen');
+
+    expect(container()).toHaveAttribute('data-phone-wide');
+  });
+
+  it('never marks a desktop shell, even on a wide route', async () => {
+    setMediaEnv(DESKTOP);
+
+    renderLayout('/entregas');
+    await screen.findByText('Entregas screen');
+
+    expect(container()).not.toHaveAttribute('data-phone-wide');
+    expect(screen.getByTestId('wide-route')).toHaveTextContent('false');
+  });
+
+  it('keeps the same main element when navigating onto a wide route', async () => {
+    setMediaEnv(TABLET_TOUCH);
+
+    renderLayout('/dashboard');
+    await screen.findByText('Dashboard screen');
+    const main = document.getElementById('app');
+    expect(container()).not.toHaveAttribute('data-phone-wide');
+
+    fireEvent.click(screen.getByRole('link', { name: 'Ir para entregas' }));
+    await screen.findByText('Entregas screen');
+
+    expect(container()).toHaveAttribute('data-phone-wide');
+    expect(document.getElementById('app')).toBe(main);
+  });
+
+  it('keeps the page mounted when rotating flips the wide state', async () => {
+    setMediaEnv(TABLET_TOUCH);
+
+    renderLayout('/relatorios/9');
+    const page = await screen.findByText('Relatorio screen');
+    const main = document.getElementById('app');
+    expect(container()).toHaveAttribute('data-phone-wide');
+
+    changeMediaEnv(PHONE_LANDSCAPE);
+
+    expect(container()).not.toHaveAttribute('data-phone-wide');
+    expect(screen.getByTestId('wide-route')).toHaveTextContent('false');
+    expect(screen.getByText('Relatorio screen')).toBe(page);
+    expect(document.getElementById('app')).toBe(main);
   });
 });
 

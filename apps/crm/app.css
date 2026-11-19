@@ -2563,6 +2563,45 @@ select.form-input option {
   }
 }
 
+/* Wide phone shell (PHONE_WIDE_QUERY in lib/phoneShell.ts): touch tablets and phones held
+   sideways. The phone screens are drawn for ~390px, so from 768px they sit in a centered
+   680px column, the tab bar is capped at 420px and the sheets at 680px. Full-width routes
+   (phoneWideRoutes.ts) set data-phone-wide on .app-container and lift the column. Matches
+   neither a phone in portrait nor a mouse or trackpad desktop. */
+@media (hover: none) and (pointer: coarse) and (min-width: 768px) {
+  /* The column. The page root is a direct child of .main-content (the :has(> .page-full-bleed)
+     rules depend on that), so the shell's own inline padding makes the column: the background
+     stays full-bleed and fixed children (FABs, bottom bars) are left alone. !important to
+     outrank the full-bleed pages' `padding: 0 !important`, so Mensagens and Arquivos get
+     the column too. */
+  .app-container:not([data-phone-wide]) .main-content {
+    padding-inline: max(1rem, calc((100% - 680px) / 2)) !important;
+  }
+
+  /* Centered against its fixed left/right insets. */
+  .mobile-nav-glass {
+    max-width: 420px;
+    margin-inline: auto;
+  }
+
+  /* ActionSheet, centered against its fixed insets. BottomSheet and the phone faces of
+     ui/dialog and ui/alert-dialog get the same cap in style.css (their classes are public). */
+  .phone-kit.phone-action-sheet {
+    max-width: 680px;
+    margin-inline: auto;
+  }
+
+  /* Full-screen pushed screens, position: fixed over the page, so the .main-content column
+     does not hold them: the post editor (portaled to <body>), its full-screen text editing
+     and the fluxo screen. They keep the column on full-width routes too (a fluxo opened
+     from /entregas). Inline padding keeps their background full-bleed. */
+  .phone-editor-screen,
+  .phone-text-screen--open,
+  .drawer-panel.phone-ent-fluxo {
+    padding-inline: max(0px, calc((100% - 680px) / 2));
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .mobile-nav-item,
   .mobile-nav-item__icon,
