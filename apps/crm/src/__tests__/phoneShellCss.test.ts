@@ -51,6 +51,8 @@ const NOT_SHELL_FILES: Record<string, string> = {
   'apps/crm/src/pages/blog/blog.css': 'public blog',
   'apps/crm/src/pages/workspace-setup/workspace-setup.css':
     'standalone onboarding card on the auth backdrop: no AppLayout, no phone shell',
+  'apps/crm/src/pages/comecar/comecar.css':
+    '/comecar sits behind ProtectedRoute but outside AppLayout: a standalone page, no phone shell',
 };
 const CSS_GUARD_FILES = [
   ...CORE_FILES,
@@ -248,6 +250,14 @@ const isPublicSelector = (sel: string) => {
     !namesShellOnly(sel)
   );
 };
+const TOUCH_BRANCH = /\(hover:\s*none\)|\(pointer:\s*coarse\)/;
+const publicTouchBlocks = (list: Block[]) =>
+  list.filter(
+    (b) =>
+      b.selectors.length &&
+      b.selectors.every(isPublicSelector) &&
+      b.queries.some((q) => TOUCH_BRANCH.test(q)),
+  );
 const shellSelectors = (b: Block) => b.selectors.filter((s) => !isPublicSelector(s));
 
 const desktopReachesTablet = (b: Block) =>
@@ -306,14 +316,15 @@ describe('CRM stylesheets follow the phone-shell queries', () => {
     expect(mixed, 'split these: the public copy keeps the old prelude').toEqual([]);
   });
 
-  it('public blocks that gained the touch branch are listed', () => {
-    const touchBranch = /\(hover:\s*none\)|\(pointer:\s*coarse\)/;
-    const publicTouch = blocks.filter(
-      (b) =>
-        b.selectors.length &&
-        b.selectors.every(isPublicSelector) &&
-        b.queries.some((q) => touchBranch.test(q)),
+  it('skipped sheets carry no touch branch', () => {
+    const offenders = Object.keys(NOT_SHELL_FILES).filter((f) =>
+      TOUCH_BRANCH.test(readFileSync(path.join(ROOT, f), 'utf8')),
     );
+    expect(offenders, 'a skipped sheet must not target touch tablets').toEqual([]);
+  });
+
+  it('public blocks that gained the touch branch are listed', () => {
+    const publicTouch = publicTouchBlocks(blocks);
     const keys = publicTouch.map(keyOf);
     expect(
       publicTouch.filter((b) => !PUBLIC_TOUCH_BLOCKS[keyOf(b)]).map(where),
@@ -402,5 +413,34 @@ describe('CRM stylesheets follow the phone-shell queries', () => {
       visit(parse(path.join(SRC, rel)));
     }
     expect(offenders, 'use the queries in lib/phoneShell.ts').toEqual([]);
+  });
+});
+
+describe('the guard classifier', () => {
+  it('reads selectors as public or shell', () => {
+    expect(isPublicSelector('.card')).toBe(true);
+    expect(isPublicSelector('body')).toBe(true);
+    expect(isPublicSelector('body:has(.mobile-nav-glass) .x')).toBe(false);
+    expect(isPublicSelector('body:has(.mobile-nav-glass) .crisp-client')).toBe(false);
+    expect(isPublicSelector('#posts-table')).toBe(false);
+    expect(isPublicSelector('#posts-table tbody tr')).toBe(false);
+    expect(isPublicSelector('.sidebar')).toBe(false);
+  });
+
+  it('fails an all-public block that has the touch branch', () => {
+    const block = (prelude: string, selectors: string[]): Block => ({
+      file: 'x.css',
+      line: 1,
+      prelude,
+      queries: [prelude],
+      rules: [],
+      selectors,
+    });
+    const touch = block('(max-width: 767px), (hover: none) and (pointer: coarse)', ['.card']);
+    const plain = block('(max-width: 767px)', ['.card']);
+    const shellTouch = block('(max-width: 767px), (hover: none) and (pointer: coarse)', [
+      'body:has(.mobile-nav-glass) .x',
+    ]);
+    expect(publicTouchBlocks([touch, plain, shellTouch])).toEqual([touch]);
   });
 });

@@ -207,7 +207,7 @@
   grid-area: reco;
   min-width: 0;
 }
-@media (max-width: 860px), (hover: none) and (pointer: coarse) {
+@media (max-width: 860px) {
   .comecar-picker {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto;
