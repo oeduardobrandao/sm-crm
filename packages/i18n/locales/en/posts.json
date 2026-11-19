@@ -103,6 +103,8 @@
     "uploadDone": "Upload complete",
     "videoUploaded": "Video uploaded",
     "downloadDone": "Download complete",
+    "fileReady_one": "File ready. Tap download again to save it.",
+    "fileReady_other": "{{count}} files ready. Tap download again to save them.",
     "selectThumbnail": "Select a thumbnail for the video",
     "chooseThumbnail": "Choose thumbnail",
     "adjustThumbnail": "Adjust thumbnail",

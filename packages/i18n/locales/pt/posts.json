@@ -103,6 +103,8 @@
     "uploadDone": "Upload concluído",
     "videoUploaded": "Vídeo enviado",
     "downloadDone": "Download concluído",
+    "fileReady_one": "Arquivo pronto. Toque em baixar de novo para salvar.",
+    "fileReady_other": "{{count}} arquivos prontos. Toque em baixar de novo para salvar.",
     "selectThumbnail": "Selecione uma thumbnail para o vídeo",
     "chooseThumbnail": "Escolher thumbnail",
     "adjustThumbnail": "Ajustar miniatura",

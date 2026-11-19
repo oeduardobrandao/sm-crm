@@ -90,7 +90,10 @@ const { downloadMediaMock, zipFileSpy } = vi.hoisted(() => ({
   zipFileSpy: vi.fn(),
 }));
 
-vi.mock('@/utils/downloadMedia', () => ({ downloadMedia: downloadMediaMock }));
+vi.mock('@/utils/downloadMedia', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/utils/downloadMedia')>()),
+  downloadMedia: downloadMediaMock,
+}));
 
 vi.mock('jszip', () => ({
   default: class MockJSZip {
@@ -328,6 +331,9 @@ describe('"Baixar todos" zip threshold', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+    delete (navigator as unknown as { share?: unknown }).share;
+    delete (navigator as unknown as { canShare?: unknown }).canShare;
   });
 
   it('downloads the file directly when the post has exactly one', async () => {
@@ -363,6 +369,31 @@ describe('"Baixar todos" zip threshold', () => {
 
     await waitFor(() => expect(zipFileSpy).toHaveBeenCalledTimes(2));
     expect(downloadMediaMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledTimes(1));
+  });
+
+  it('shares every file in one sheet instead of zipping in the iOS app', async () => {
+    (window as unknown as { Capacitor: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+      getPlatform: () => 'ios',
+    };
+    const share = vi.fn(async () => {});
+    Object.defineProperty(navigator, 'share', { value: share, configurable: true });
+    Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true });
+    vi.mocked(listPostMedia).mockResolvedValueOnce(makeMedia(2));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <PostMediaGallery postId={1} />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByText('Baixar todos'));
+
+    await waitFor(() => expect(share).toHaveBeenCalledTimes(1));
+    const { files } = share.mock.calls[0][0] as { files: File[] };
+    expect(files.map((f) => f.name)).toEqual(['img0.jpg', 'img1.jpg']);
+    expect(zipFileSpy).not.toHaveBeenCalled();
   });
 });
 

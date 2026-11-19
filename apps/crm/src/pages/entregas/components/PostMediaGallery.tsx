@@ -21,7 +21,13 @@ import {
 } from 'lucide-react';
 import { sanitizeUrl } from '@/utils/security';
 import { fetchWithRetry } from '@/utils/fetchWithRetry';
-import { downloadMedia } from '@/utils/downloadMedia';
+import {
+  downloadMedia,
+  saveBlob,
+  shareInApp,
+  toShareableFile,
+  type DownloadOutcome,
+} from '@/utils/downloadMedia';
 import { UploadHint } from '@/components/help/UploadHint';
 import {
   DndContext,
@@ -562,15 +568,14 @@ export function PostMediaGallery({
     try {
       // A one-file zip is just friction — hand the file over directly.
       if (media.length === 1) {
-        await downloadMedia(media[0]);
-        toast.success(t('mediaGallery.downloadDone'));
+        toastDownloadOutcome(await downloadMedia(media[0]));
         return;
       }
 
-      const entries = await Promise.all(
-        media
-          .filter((m) => m.url)
-          .map(async (m) => {
+      const downloadable = media.filter((m) => m.url);
+      const fetchEntries = () =>
+        Promise.all(
+          downloadable.map(async (m) => {
             try {
               const res = await fetchWithRetry(m.url!, { cache: 'no-store' });
               const blob = await res.blob();
@@ -584,7 +589,19 @@ export function PostMediaGallery({
               );
             }
           }),
+        );
+
+      // In the iOS app a zip can't be saved (no download UI) and couldn't reach Photos
+      // anyway: one share sheet with every file offers "Save N Images" instead.
+      const shared = await shareInApp(downloadable.map((m) => m.url).join('\n'), async () =>
+        Promise.all((await fetchEntries()).map((e) => toShareableFile(e.blob, e.filename))),
       );
+      if (shared) {
+        toastDownloadOutcome(shared);
+        return;
+      }
+
+      const entries = await fetchEntries();
 
       const zip = new JSZip();
       const seen = new Map<string, number>();
@@ -603,14 +620,7 @@ export function PostMediaGallery({
       }
 
       const zipBlob = await zip.generateAsync({ type: 'blob' });
-      const objUrl = URL.createObjectURL(zipBlob);
-      const a = document.createElement('a');
-      a.href = objUrl;
-      a.download = `media-${postId}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(objUrl);
+      saveBlob(zipBlob, `media-${postId}.zip`);
       toast.success(t('mediaGallery.downloadDone'));
     } catch (e) {
       toast.error((e as Error).message);
@@ -650,10 +660,14 @@ export function PostMediaGallery({
     }
   }
 
+  /** Claims success only when a file was saved or the share sheet finished. */
+  function toastDownloadOutcome(outcome: DownloadOutcome) {
+    if (outcome === 'saved' || outcome === 'shared') toast.success(t('mediaGallery.downloadDone'));
+  }
+
   async function downloadSingle(m: PostMedia) {
     try {
-      await downloadMedia(m);
-      toast.success(t('mediaGallery.downloadDone'));
+      toastDownloadOutcome(await downloadMedia(m));
     } catch (e) {
       toast.error((e as Error).message);
     }

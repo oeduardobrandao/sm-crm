@@ -453,7 +453,8 @@ export function PostMediaLightbox({
           </DialogPrimitive.Close>
 
           {/* Downloads the slide on screen, not the whole gallery — the zip lives on the
-              gallery's own "Baixar todos". Guarded so a double-click can't fire twice. */}
+              gallery's own "Baixar todos". Guarded so a double-click can't fire twice.
+              In the iOS app downloadMedia opens the share sheet instead. */}
           {current.url && (
             <button
               type="button"
