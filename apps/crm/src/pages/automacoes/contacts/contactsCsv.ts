@@ -1,6 +1,7 @@
 import { format } from 'date-fns';
 import { trackUnsavedWork } from '@mesaas/app-lifecycle';
-import { CSV_BOM, CSV_EOL, csvRow, downloadCsv } from '@/lib/csvExport';
+import { CSV_BOM, CSV_EOL, csvBlob, csvRow } from '@/lib/csvExport';
+import { saveFile } from '@/utils/downloadMedia';
 import { slugifyTitle } from '@/lib/briefingExport';
 import { fetchAllInstagramContacts, type ContactFilters, type InstagramContact } from '@/store';
 import { instagramProfileUrl } from './profileUrl';
@@ -62,14 +63,26 @@ export function contactsCsvFilename(clienteNome: string | null, now: Date = new 
   return `contatos-${slug}-${format(now, 'yyyy-MM-dd')}.csv`;
 }
 
-/** Fetches every matching contact and downloads the file. Tracked as unsaved
- * work so a silent deploy swap can't kill it mid-run. */
+/** Rows in the last file built, for a file the share sheet reuses without fetching. */
+let lastCount = 0;
+
+/** Fetches every matching contact and saves the file. Tracked as unsaved work so a
+ * silent deploy swap can't kill it mid-run. Resolves to the number of contacts, or
+ * null when nothing was saved yet (the iOS share sheet was closed, or asks for another
+ * tap); rejects when the fetch or the save fails. */
 export async function exportContactsCsv(
   filters: ContactFilters,
   clientesById: Map<number, string>,
   clienteNome: string | null,
-): Promise<number> {
-  const rows = await trackUnsavedWork(fetchAllInstagramContacts(filters));
-  downloadCsv(buildContactsCsv(rows, clientesById), contactsCsvFilename(clienteNome));
-  return rows.length;
+): Promise<number | null> {
+  const outcome = await saveFile(
+    contactsCsvFilename(clienteNome),
+    async () => {
+      const rows = await trackUnsavedWork(fetchAllInstagramContacts(filters));
+      lastCount = rows.length;
+      return csvBlob(buildContactsCsv(rows, clientesById));
+    },
+    `contacts:${clienteNome ?? ''}:${JSON.stringify(filters)}`,
+  );
+  return outcome === 'saved' || outcome === 'shared' ? lastCount : null;
 }

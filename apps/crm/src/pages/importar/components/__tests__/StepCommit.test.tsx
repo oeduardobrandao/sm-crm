@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import StepCommit, { csvCell } from '../StepCommit';
 import type { CommitRowResult } from '@/services/dataImport';
 
@@ -45,7 +45,7 @@ describe('StepCommit — failure report download', () => {
     vi.restoreAllMocks();
   });
 
-  test('neutralizes a formula-injecting sourceKey in the downloaded CSV', () => {
+  test('neutralizes a formula-injecting sourceKey in the downloaded CSV', async () => {
     const failed: CommitRowResult[] = [
       {
         sourceKey: "=cmd|'/c calc'!A0.csv:1",
@@ -70,7 +70,7 @@ describe('StepCommit — failure report download', () => {
 
     fireEvent.click(screen.getByText('Baixar relatório de falhas (CSV)'));
 
-    expect(blobParts).toHaveLength(1);
+    await waitFor(() => expect(blobParts).toHaveLength(1));
     const csv = String(blobParts[0][0]);
     expect(csv).toContain("\"'=cmd|'/c calc'!A0.csv:1\"");
     // The raw, un-neutralized formula must never appear in the output.

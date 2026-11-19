@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Blob as NodeBlob, File as NodeFile } from 'node:buffer';
 import type { AgendaOcorrencia } from '../../../../store/agenda';
 
 const { getSessionMock, toastErrorMock } = vi.hoisted(() => ({
@@ -104,5 +105,38 @@ describe('baixarIcsDaOcorrencia', () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(toastErrorMock).toHaveBeenCalledWith('Não foi possível baixar o arquivo.');
+  });
+});
+
+describe('baixarIcsDaOcorrencia in the iOS app', () => {
+  afterEach(() => {
+    delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+    delete (navigator as unknown as { share?: unknown }).share;
+    delete (navigator as unknown as { canShare?: unknown }).canShare;
+  });
+
+  it('opens the share sheet with <slug>.ics instead of a dead blob link', async () => {
+    (window as unknown as { Capacitor: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+      getPlatform: () => 'ios',
+    };
+    // jsdom's Blob has no arrayBuffer(), which the share path reads.
+    vi.stubGlobal('Blob', NodeBlob);
+    vi.stubGlobal('File', NodeFile);
+    const share = vi.fn(async () => {});
+    Object.defineProperty(navigator, 'share', { value: share, configurable: true });
+    Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true });
+    fetchMock.mockResolvedValue({
+      ok: true,
+      blob: async () => new Blob(['BEGIN:VCALENDAR'], { type: 'text/calendar' }),
+    });
+
+    await baixarIcsDaOcorrencia(o);
+
+    expect(clicked).toEqual([]);
+    const { files } = share.mock.calls[0][0] as { files: File[] };
+    expect(files[0].name).toBe('gravacao-clinica-sorriso.ics');
+    expect(files[0].type).toBe('text/calendar');
+    expect(toastErrorMock).not.toHaveBeenCalled();
   });
 });
