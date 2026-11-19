@@ -253,14 +253,15 @@ describe('CRM stylesheets follow the phone-shell queries', () => {
     }
   });
 
-  it('banner and toasts clear the tab bar on tablets', () => {
-    const banner = blocks.filter((b) =>
-      b.selectors.includes('body:has(.mobile-nav-glass) .cookie-banner'),
-    );
+  it('banner, Crisp bubble and toasts clear the tab bar on tablets', () => {
+    const holding = (selector: string) => blocks.filter((b) => b.selectors.includes(selector));
+    const banner = holding('body:has(.mobile-nav-glass) .cookie-banner');
+    const crisp = holding('body:has(.mobile-nav-glass) .crisp-client');
     const toast = blocks.filter((b) => b.rules.some((r) => declares(r, '--phone-toast-offset')));
     expect(banner.length).toBeGreaterThan(0);
+    expect(crisp.length).toBeGreaterThan(0);
     expect(toast.length).toBeGreaterThan(0);
-    for (const b of [...banner, ...toast]) {
+    for (const b of [...banner, ...crisp, ...toast]) {
       for (const e of [P, T, Tp]) expect(matches(b, e), where(b)).toBe(true);
     }
   });

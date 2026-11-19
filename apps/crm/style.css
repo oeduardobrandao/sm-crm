@@ -2529,6 +2529,14 @@ html[data-consent-stored] #root[data-ssr] .cookie-banner {
   }
 }
 
+/* The Crisp bubble clears the tab bar too. The width-only .crisp-client lift above also serves
+   public pages; this copy reaches touch tablets, and only the CRM shell renders the tab bar. */
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
+  body:has(.mobile-nav-glass) .crisp-client {
+    transform: translateY(-5.5rem);
+  }
+}
+
 /* Toasts (components/ui/sonner.tsx) read this as their bottom offset. The Toaster is mounted in
    App.tsx, outside .app-container, so the value hangs off body; it is only set while the CRM shell
    shows the phone tab bar, and the Hub never mounts this Toaster. */
