@@ -347,8 +347,8 @@ export function LinhaEditorialView({
         ) : (
           <>
             <LinhaHeader
-              // Keyed by linha: switching client or month mid-edit drops the draft instead of
-              // saving it on another linha.
+              // Keyed by linha: switching client or month mid-edit unmounts the title, which
+              // saves a changed draft on the linha it was typed for, never on the next one.
               key={linha.id}
               linha={linha}
               cliente={cliente}

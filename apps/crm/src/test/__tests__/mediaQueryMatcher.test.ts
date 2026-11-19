@@ -69,4 +69,28 @@ describe('mockMatchMediaEnv', () => {
     expect(window.innerWidth).toBe(original.innerWidth);
     expect(window.innerHeight).toBe(original.innerHeight);
   });
+
+  it('setEnv fires resize only when a size changed', () => {
+    const onResize = vi.fn();
+    window.addEventListener('resize', onResize);
+    handle = mockMatchMediaEnv(TABLET_TOUCH);
+    handle.setEnv({ ...TABLET_TOUCH });
+    expect(onResize).not.toHaveBeenCalled();
+    handle.setEnv({ ...TABLET_TOUCH, height: 400, screen: { width: 1180, height: 820 } });
+    expect(onResize).toHaveBeenCalledTimes(1);
+    window.removeEventListener('resize', onResize);
+  });
+
+  it('sets window.screen from the env (or env.screen), and restore puts it back', () => {
+    const original = { width: window.screen.width, height: window.screen.height };
+    const local = mockMatchMediaEnv(TABLET_TOUCH);
+    expect([window.screen.width, window.screen.height]).toEqual([1180, 820]);
+    // The iOS app keyboard: the viewport shrinks, the screen does not.
+    local.setEnv({ ...TABLET_TOUCH, height: 400, screen: { width: 1180, height: 820 } });
+    expect(window.innerHeight).toBe(400);
+    expect([window.screen.width, window.screen.height]).toEqual([1180, 820]);
+    local.restore();
+    expect([window.screen.width, window.screen.height]).toEqual([original.width, original.height]);
+    expect(Object.getOwnPropertyDescriptor(window.screen, 'width')).toBeUndefined();
+  });
 });

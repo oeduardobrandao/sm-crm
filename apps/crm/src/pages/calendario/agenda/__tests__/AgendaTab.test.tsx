@@ -267,7 +267,7 @@ vi.mock('sonner', () => ({ toast: vi.fn() }));
 import { toast } from 'sonner';
 import * as agendaStore from '../../../../store/agenda';
 import * as workspaceStore from '../../../../store/workspace';
-import { TABLET_SHELL_QUERY } from '@/lib/phoneShell';
+import { PHONE_WIDE_QUERY } from '@/lib/phoneShell';
 import AgendaTab from '../AgendaTab';
 import AgendaView, { permitirArraste, tituloDoPeriodo } from '../AgendaView';
 
@@ -1206,8 +1206,18 @@ describe('AgendaTab phone (below 768px)', () => {
 
 describe('AgendaTab tablet (touch, 768px and up)', () => {
   const PHONE = (q: string) => q.includes('max-width: 767px') || q.includes('max-width: 1100px');
-  // The phone shell (useIsDesktop false) plus the tablet query.
-  const TABLET = (q: string) => PHONE(q) || q === TABLET_SHELL_QUERY;
+  // The phone shell (useIsDesktop false) plus the wide query; useIsTabletShell also reads a
+  // tablet-sized screen (set below).
+  const TABLET = (q: string) => PHONE(q) || q === PHONE_WIDE_QUERY;
+  const setScreen = (width?: number, height?: number) => {
+    for (const [side, value] of [
+      ['width', width],
+      ['height', height],
+    ] as const) {
+      if (value === undefined) delete (window.screen as unknown as Record<string, unknown>)[side];
+      else Object.defineProperty(window.screen, side, { configurable: true, value });
+    }
+  };
 
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] });
@@ -1217,6 +1227,7 @@ describe('AgendaTab tablet (touch, 768px and up)', () => {
     fc.props = null;
     Object.values(fc.api).forEach((f) => f.mockReset());
     stubMatchMedia(TABLET);
+    setScreen(1180, 820);
     vi.mocked(agendaStore.listAgenda).mockReset();
     vi.mocked(agendaStore.listAgenda).mockResolvedValue([
       MEU,
@@ -1228,6 +1239,7 @@ describe('AgendaTab tablet (touch, 768px and up)', () => {
   afterEach(() => {
     vi.useRealTimers();
     stubMatchMedia(() => false);
+    setScreen();
   });
 
   it('opens on Semana: the phone header over FullCalendar timeGridWeek', async () => {

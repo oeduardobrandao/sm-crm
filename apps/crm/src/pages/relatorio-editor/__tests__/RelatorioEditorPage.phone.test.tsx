@@ -1,7 +1,7 @@
 // Relatório no celular (D27, PLAN F4.4): só leitura e exportação. jsdom responde
 // false a todo matchMedia, então useIsDesktop(768) é false e a página renderiza o
 // ramo do celular sem mock.
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -278,6 +278,19 @@ describe('RelatorioEditorPage no tablet', () => {
     expect(screen.getAllByRole('button', { name: /Adicionar widget/ }).length).toBeGreaterThan(0);
     expect(screen.getAllByLabelText('Excluir bloco').length).toBeGreaterThan(0);
     expect(container.querySelector('.phone-nav-bar')).toBeNull();
+    expect(screen.queryByText(/no computador/)).toBeNull();
+  });
+
+  it('o teclado do app iOS (web view abaixo de 600px) não troca o editor pela view do celular', async () => {
+    media = mockMatchMediaEnv(touch(1180, 820));
+    getReportDocMock.mockResolvedValue(doc());
+    const { container } = renderPage();
+    const titulo = await screen.findByLabelText('Título do relatório');
+    act(() => {
+      media!.setEnv({ ...touch(1180, 400), screen: { width: 1180, height: 820 } });
+    });
+    expect(screen.getByLabelText('Título do relatório')).toBe(titulo);
+    expect(container.querySelector('.rb-editor-header')).not.toBeNull();
     expect(screen.queryByText(/no computador/)).toBeNull();
   });
 

@@ -904,8 +904,9 @@
   }
 }
 /* A touch tablet renders this editable view (LinhaEditorialView) inside the phone shell: from
-   901px wide it has the room the desktop has, so the rail sits beside the table again. */
-@media (hover: none) and (pointer: coarse) and (min-width: 768px) and (min-height: 600px) {
+   901px wide it has the room the desktop has, so the rail sits beside the table again. No
+   height condition (the iOS app keyboard shrinks the web view): only a tablet renders it. */
+@media (hover: none) and (pointer: coarse) and (min-width: 768px) {
   @media (min-width: 901px) {
     .linha-view {
       grid-template-columns: 280px minmax(0, 1fr);

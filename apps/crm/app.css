@@ -14582,8 +14582,10 @@ a.hub-fill__row-inner:hover {
   }
 }
 
-/* Tablet (TABLET_SHELL_QUERY em lib/phoneShell.ts): o editor de desktop roda dentro do
-   shell do celular, e os dois gates acima são só do shell de desktop. Quem rola continua
+/* Tablet: o editor de desktop roda dentro do shell do celular (useIsTabletShell em
+   lib/phoneShell.ts escolhe o componente), e os dois gates acima são só do shell de desktop.
+   O gate aqui é PHONE_WIDE_QUERY, sem altura mínima: o teclado do app iOS encolhe a altura
+   da web view, e essas classes só existem quando o JS já escolheu o editor de desktop. Quem rola continua
    sendo o .main-content, que já começa abaixo do cabeçalho do shell, com padding-top de
    0.5rem: com top 0 o cartão prende logo abaixo do cabeçalho (o -0.75rem do desktop
    cortaria a borda de cima). O painel de camadas só aparece com 1024px ou mais, o mesmo
@@ -14591,7 +14593,7 @@ a.hub-fill__row-inner:hover {
    disso ele some, como no desktop estreito: em fluxo ele empurraria o canvas para baixo.
    Fixo, ele desce abaixo do cabeçalho do shell e para acima da faixa que o .main-content
    reserva para a barra de abas flutuante. */
-@media (hover: none) and (pointer: coarse) and (min-width: 768px) and (min-height: 600px) {
+@media (hover: none) and (pointer: coarse) and (min-width: 768px) {
   .rb-editor-header {
     position: sticky;
     top: 0;
@@ -14636,11 +14638,11 @@ a.hub-fill__row-inner:hover {
   }
 }
 
-/* Sem hover (toque): a barra de cada bloco (arrastar, largura, ajustes, excluir) e o "+"
-   entre camadas ficam sempre à mostra; senão um toque não chega a eles. */
+/* Sem hover (toque): a barra de cada bloco (arrastar, largura, ajustes, excluir) fica
+   sempre à mostra; senão um toque não chega a ela. Vem depois da regra base de
+   .rb-edit-toolbar (mesma especificidade: a ordem decide). */
 @media (hover: none) {
-  .rb-edit-toolbar,
-  .rb-layers-add-between {
+  .rb-edit-toolbar {
     opacity: 1;
     pointer-events: auto;
   }
@@ -14761,6 +14763,26 @@ a.hub-fill__row-inner:hover {
 .rb-layers-add-between:hover {
   color: var(--text-main);
   border-color: var(--text-light);
+}
+
+/* Sem hover (toque): o "+" entre camadas fica sempre à mostra. Depois da regra base,
+   que tem a mesma especificidade e senão venceria. O vão ganha altura para o "+" não
+   cobrir as camadas, e um ::before de 32px dá a área de toque sem crescer o círculo. */
+@media (hover: none) {
+  .rb-layers-gap {
+    height: 1.25rem;
+    margin: 0;
+  }
+  .rb-layers-add-between {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .rb-layers-add-between::before {
+    content: '';
+    position: absolute;
+    inset: -7px;
+    border-radius: 50%;
+  }
 }
 
 .rb-layers-size {

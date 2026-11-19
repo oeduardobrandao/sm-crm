@@ -1,4 +1,4 @@
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { createElement, type ReactNode } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
@@ -104,5 +104,51 @@ describe('useIsPhoneUi', () => {
     media.restore();
     media = mockMatchMediaEnv({ width: 1440, height: 900, hover: 'hover', pointer: 'fine' });
     expect(renderHook(() => useIsPhoneUi()).result.current).toBe(false);
+  });
+});
+
+describe('useIsTabletShell', () => {
+  let media: ReturnType<typeof mockMatchMediaEnv> | null = null;
+  afterEach(() => {
+    media?.restore();
+    media = null;
+  });
+
+  it('is true on iPads in both orientations and on an iPad mini in landscape', () => {
+    for (const env of [touch(820, 1180), touch(1180, 820), touch(1133, 744)]) {
+      media = mockMatchMediaEnv(env);
+      expect(renderHook(() => useIsTabletShell()).result.current, `${env.width}`).toBe(true);
+      media.restore();
+    }
+  });
+
+  it('is false on a phone in either orientation and on a desktop', () => {
+    for (const env of [
+      touch(390, 844),
+      touch(844, 390),
+      touch(956, 440),
+      // iPad mini in portrait is under 768px wide: the plain phone shell.
+      touch(744, 1133),
+      { width: 1440, height: 900, hover: 'hover', pointer: 'fine' } as MediaEnv,
+    ]) {
+      media = mockMatchMediaEnv(env);
+      expect(renderHook(() => useIsTabletShell()).result.current, `${env.width}`).toBe(false);
+      media.restore();
+    }
+  });
+
+  it('stays true when the iOS app keyboard shrinks a landscape iPad under 600px', () => {
+    media = mockMatchMediaEnv(touch(1180, 820));
+    const { result } = renderHook(() => useIsTabletShell());
+    expect(result.current).toBe(true);
+    act(() => {
+      media!.setEnv({ ...touch(1180, 400), screen: { width: 1180, height: 820 } });
+    });
+    expect(result.current).toBe(true);
+  });
+
+  it('is false without a screen size (old test envs)', () => {
+    media = mockMatchMediaEnv({ ...touch(1180, 820), screen: { width: 0, height: 0 } });
+    expect(renderHook(() => useIsTabletShell()).result.current).toBe(false);
   });
 });

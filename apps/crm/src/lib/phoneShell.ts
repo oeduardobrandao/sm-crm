@@ -14,9 +14,16 @@ export const PHONE_SHELL_QUERY = '(max-width: 767px), (hover: none) and (pointer
 export const DESKTOP_SHELL_QUERY =
   '(min-width: 768px) and (hover: hover), (min-width: 768px) and (pointer: fine), (min-width: 768px) and (pointer: none)';
 
-/** Touch-primary and big enough to be a tablet (not a phone held sideways). */
+/**
+ * The tablet rule as one media query, as the plan first wrote it. No longer the source of
+ * truth: `useIsTabletShell()` reads the screen's shortest side instead of the viewport
+ * height (see there), and the CSS uses `PHONE_WIDE_QUERY`. Kept for the plan and its tests.
+ */
 export const TABLET_SHELL_QUERY =
   '(hover: none) and (pointer: coarse) and (min-width: 768px) and (min-height: 600px)';
+
+/** A tablet's screen is at least this tall in landscape (iPad mini: 744). iPhones top out at 440. */
+export const TABLET_MIN_SCREEN_SIDE = 600;
 
 /** Touch-primary at 768px or wider, in any orientation (tablets and landscape phones). */
 export const PHONE_WIDE_QUERY = '(hover: none) and (pointer: coarse) and (min-width: 768px)';
@@ -65,8 +72,34 @@ export function useIsPhoneShellMatch(): boolean {
   return useMediaQueryMatch(PHONE_SHELL_QUERY);
 }
 
+/** Shortest side of the device screen in CSS px; 0 without `window.screen` (SSR, old test envs). */
+function readScreenShortSide(): number {
+  if (typeof window === 'undefined' || !window.screen) return 0;
+  return Math.min(window.screen.width || 0, window.screen.height || 0);
+}
+
+/**
+ * Touch tablet: the wide phone shell (touch, 768px or wider) on a screen whose shortest side
+ * is at least 600px, so a phone held sideways (440px at most) stays out. It reads the screen,
+ * not the viewport height: the iOS app resizes the web view above the keyboard
+ * (`Keyboard.resize: 'native'`), which takes a landscape iPad under 600px tall while the user
+ * types, and a viewport rule would swap the editor for the phone view mid-edit.
+ */
 export function useIsTabletShell(): boolean {
-  return useMediaQueryMatch(TABLET_SHELL_QUERY);
+  const wide = useIsWidePhoneShell();
+  const [shortSide, setShortSide] = useState(readScreenShortSide);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const read = () => setShortSide(readScreenShortSide());
+    read();
+    window.addEventListener('resize', read);
+    window.addEventListener('orientationchange', read);
+    return () => {
+      window.removeEventListener('resize', read);
+      window.removeEventListener('orientationchange', read);
+    };
+  }, [wide]);
+  return wide && shortSide >= TABLET_MIN_SCREEN_SIDE;
 }
 
 export function useIsWidePhoneShell(): boolean {
