@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -267,8 +267,9 @@ vi.mock('sonner', () => ({ toast: vi.fn() }));
 import { toast } from 'sonner';
 import * as agendaStore from '../../../../store/agenda';
 import * as workspaceStore from '../../../../store/workspace';
+import { TABLET_SHELL_QUERY } from '@/lib/phoneShell';
 import AgendaTab from '../AgendaTab';
-import { permitirArraste, tituloDoPeriodo } from '../AgendaView';
+import AgendaView, { permitirArraste, tituloDoPeriodo } from '../AgendaView';
 
 function oc(over: Partial<AgendaOcorrencia>): AgendaOcorrencia {
   return {
@@ -1200,6 +1201,131 @@ describe('AgendaTab phone (below 768px)', () => {
 
     await waitFor(() => expect(screen.queryByTestId('fullcalendar')).not.toBeInTheDocument());
     expect(screen.getByRole('radio', { name: 'Lista' })).toHaveAttribute('aria-checked', 'true');
+  });
+});
+
+describe('AgendaTab tablet (touch, 768px and up)', () => {
+  const PHONE = (q: string) => q.includes('max-width: 767px') || q.includes('max-width: 1100px');
+  // The phone shell (useIsDesktop false) plus the tablet query.
+  const TABLET = (q: string) => PHONE(q) || q === TABLET_SHELL_QUERY;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 9, 7, 10));
+    podeEditar = true;
+    localStorage.clear();
+    fc.props = null;
+    Object.values(fc.api).forEach((f) => f.mockReset());
+    stubMatchMedia(TABLET);
+    vi.mocked(agendaStore.listAgenda).mockReset();
+    vi.mocked(agendaStore.listAgenda).mockResolvedValue([
+      MEU,
+      oc({ ocorrencia_id: 4, titulo: 'Somente leitura', pode_editar: false }),
+    ]);
+    vi.mocked(agendaStore.getAgendaOcorrencia).mockResolvedValue(null);
+    vi.mocked(workspaceStore.getWorkspaceUsers).mockResolvedValue(ROSTER);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    stubMatchMedia(() => false);
+  });
+
+  it('opens on Semana: the phone header over FullCalendar timeGridWeek', async () => {
+    renderTab();
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Agenda' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Semana' })).toHaveAttribute('aria-checked', 'true');
+    await screen.findByTestId('fullcalendar');
+    expect(fc.props!.initialView).toBe('timeGridWeek');
+    expect(fc.props!.initialDate).toEqual(new Date(2026, 9, 7, 10));
+    // Quick create stays desktop-only: "+" opens the full editor.
+    expect(fc.props!.selectable).toBe(false);
+    await waitFor(() =>
+      expect(agendaStore.listAgenda).toHaveBeenCalledWith(RANGE.start, RANGE.end),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Próxima semana' }));
+    expect(fc.api.next).toHaveBeenCalled();
+  });
+
+  it('events can be dragged on the grid: editable follows each event', async () => {
+    renderTab();
+    await screen.findByText('Somente leitura');
+    const eventos = fc.props!.events as Array<{ id: string; editable?: boolean }>;
+    expect(eventos.find((e) => e.id === '1')?.editable).toBe(true);
+    expect(eventos.find((e) => e.id === '4')?.editable).toBe(false);
+  });
+
+  it('Dia to Semana remounts FullCalendar on the week', async () => {
+    renderTab();
+    await screen.findByTestId('fullcalendar');
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Dia' }));
+    await waitFor(() => expect(fc.props!.initialView).toBe('timeGridDay'));
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Semana' }));
+    await waitFor(() => expect(fc.props!.initialView).toBe('timeGridWeek'));
+    expect(screen.getByRole('radio', { name: 'Semana' })).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('Mês and Lista keep the phone lists', async () => {
+    renderTab();
+    await screen.findByTestId('fullcalendar');
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Lista' }));
+    expect(await screen.findByRole('button', { name: /Reunião de pauta/ })).toBeInTheDocument();
+    expect(screen.queryByTestId('fullcalendar')).not.toBeInTheDocument();
+  });
+
+  it('rotating to a phone size falls back from Semana to Lista, on the same week', async () => {
+    renderTab();
+    await screen.findByTestId('fullcalendar');
+    // The grid moved to the next week.
+    const proxima = { start: new Date(2026, 9, 12), end: new Date(2026, 9, 19) };
+    act(() =>
+      fc.props!.datesSet({
+        ...proxima,
+        view: { type: 'timeGridWeek', currentStart: proxima.start, currentEnd: proxima.end },
+      }),
+    );
+
+    resizeTo(PHONE);
+
+    await waitFor(() => expect(screen.queryByTestId('fullcalendar')).not.toBeInTheDocument());
+    expect(screen.queryByRole('radio', { name: 'Semana' })).not.toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Lista' })).toHaveAttribute('aria-checked', 'true');
+    await waitFor(() =>
+      expect(agendaStore.listAgenda).toHaveBeenLastCalledWith(proxima.start, proxima.end),
+    );
+    expect(screen.getByRole('button', { name: /12 a 18 de outubro de 2026/ })).toBeInTheDocument();
+  });
+});
+
+describe('AgendaView view options', () => {
+  function renderView(isTablet: boolean) {
+    render(
+      <AgendaView
+        calRef={{ current: null }}
+        isMobile
+        isTablet={isTablet}
+        view="timeGridDay"
+        titulo=""
+        eventos={[]}
+        onDatesSet={() => {}}
+        onEventClick={() => {}}
+        onMover={() => {}}
+      />,
+    );
+  }
+
+  it('phones get no Semana; tablets keep it', () => {
+    renderView(false);
+    expect(screen.queryByRole('radio', { name: 'Semana' })).not.toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Dia' })).toBeInTheDocument();
+    cleanup();
+
+    renderView(true);
+    expect(screen.getByRole('radio', { name: 'Semana' })).toBeInTheDocument();
   });
 });
 

@@ -10,10 +10,12 @@ import { Calendar } from '@/components/ui/calendar';
 import { NAV_LABELS, type AgendaViewType } from '../AgendaView';
 import './agendaPhone.css';
 
-export type VistaPhone = Exclude<AgendaViewType, 'timeGridWeek'>;
+/** Semana (FullCalendar's week grid) only on touch tablets; phones get the other three. */
+export type VistaPhone = AgendaViewType;
 
-const VISTAS: { value: VistaPhone; key: 'month' | 'day' | 'list' }[] = [
+const VISTAS: { value: VistaPhone; key: 'month' | 'week' | 'day' | 'list' }[] = [
   { value: 'dayGridMonth', key: 'month' },
+  { value: 'timeGridWeek', key: 'week' },
   { value: 'timeGridDay', key: 'day' },
   { value: 'listWeek', key: 'list' },
 ];
@@ -22,6 +24,8 @@ export interface AgendaTopoPhoneProps {
   titulo: string;
   vista: VistaPhone;
   onVista: (v: VistaPhone) => void;
+  /** Touch tablets: Semana joins Mês / Dia / Lista. */
+  comSemana?: boolean;
   onHoje: () => void;
   onAnterior: () => void;
   onProximo: () => void;
@@ -36,13 +40,14 @@ export interface AgendaTopoPhoneProps {
 
 /**
  * Header of the Agenda below 768px (FAgenda): filters, the ink "+" and the bell; the
- * period as subtitle, which opens a month picker to jump to a date; Mês / Dia / Lista,
- * Hoje and the period arrows under it.
+ * period as subtitle, which opens a month picker to jump to a date; Mês / Dia / Lista
+ * (plus Semana on touch tablets), Hoje and the period arrows under it.
  */
 export function AgendaTopoPhone({
   titulo,
   vista,
   onVista,
+  comSemana = false,
   onHoje,
   onAnterior,
   onProximo,
@@ -99,7 +104,10 @@ export function AgendaTopoPhone({
           <SegmentedControl<VistaPhone>
             aria-label={t('view.viewLabel')}
             className="phone-agenda-toolbar__vistas"
-            options={VISTAS.map((v) => ({ value: v.value, label: t(`view.${v.key}`) }))}
+            options={VISTAS.filter((v) => comSemana || v.value !== 'timeGridWeek').map((v) => ({
+              value: v.value,
+              label: t(`view.${v.key}`),
+            }))}
             value={vista}
             onChange={onVista}
           />
