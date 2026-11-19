@@ -159,101 +159,116 @@ export function GoogleOverviewPhone(props: GoogleOverviewPhoneProps) {
         <div style={{ opacity: dimmed ? 0.6 : 1 }} aria-busy={dimmed}>
           {kpis}
 
-          {highlights.length > 0 && (
-            <section aria-label={t('overview.highlights')}>
-              <GroupedList header={t('overview.highlights')}>
-                {highlights.map((h) => (
-                  <Cell
-                    key={h.key}
-                    label={h.name}
-                    subtitle={`${h.label} · ${h.clientName}`}
-                    value={<span className="phone-an-row-value">{h.short}</span>}
-                  />
-                ))}
-              </GroupedList>
-            </section>
-          )}
+          {/* Wide touch screens: two columns (analyticsPhone.css). Block parent: no phone-an-stack. */}
+          <div className="phone-an-pair">
+            <div className="phone-an-half">
+              {highlights.length > 0 && (
+                <section aria-label={t('overview.highlights')}>
+                  <GroupedList header={t('overview.highlights')}>
+                    {highlights.map((h) => (
+                      <Cell
+                        key={h.key}
+                        label={h.name}
+                        subtitle={`${h.label} · ${h.clientName}`}
+                        value={<span className="phone-an-row-value">{h.short}</span>}
+                      />
+                    ))}
+                  </GroupedList>
+                </section>
+              )}
 
-          <AttentionReviews reviews={portfolio.reviewsAttention} days={days} phone />
+              <AttentionReviews reviews={portfolio.reviewsAttention} days={days} phone />
+            </div>
+            {attention.length > 0 && (
+              <div className="phone-an-half">
+                <AttentionUnits units={attention} phone />
+              </div>
+            )}
+          </div>
 
-          <AttentionUnits units={attention} phone />
-
-          <SectionHead
-            large
-            title={t('overview.unitsTitle')}
-            trailing={
-              sortedUnits.length > 0 ? (
-                <button
-                  ref={sortButtonRef}
-                  type="button"
-                  className="phone-an-sort"
-                  aria-haspopup="dialog"
-                  aria-label={`${t('overview.sortUnits')}: ${sortLabel}, ${sortDirection === 'asc' ? t('overview.sortAsc') : t('overview.sortDesc')}`}
-                  onClick={() => setSortOpen(true)}
-                >
-                  <ArrowUpDown aria-hidden="true" />
-                  {sortLabel}
-                </button>
-              ) : undefined
-            }
-          />
-          {sortedUnits.length === 0 ? (
-            <p className="phone-an-footnote">{t('overview.unitsEmpty')}</p>
-          ) : (
-            <GroupedList aria-label={t('overview.unitsTitle')} footer={t('overview.unitsSub')}>
-              {sortedUnits.map((u) => {
-                const change = viewsChange(u);
-                return (
-                  <Cell
-                    key={u.id}
-                    to={unitHref(u.clientId)}
-                    label={u.title || t('filters.untitledUnit')}
-                    subtitle={
-                      <>
-                        {u.clientName} · {t('overview.colViews')} {formatGbpCount(u.profileViews)}
-                        {change && (
-                          <span
-                            className={
-                              change.startsWith('+')
-                                ? 'phone-an-tone--up'
-                                : change.startsWith('-')
-                                  ? 'phone-an-tone--down'
-                                  : undefined
-                            }
-                          >
-                            {' '}
-                            {change}
-                          </span>
-                        )}
-                        {u.stale && (
+          {/* Wide touch screens: two columns (analyticsPhone.css). Block parent: no phone-an-stack. */}
+          <div className="phone-an-pair">
+            <div className="phone-an-half">
+              <SectionHead
+                large
+                title={t('overview.unitsTitle')}
+                trailing={
+                  sortedUnits.length > 0 ? (
+                    <button
+                      ref={sortButtonRef}
+                      type="button"
+                      className="phone-an-sort"
+                      aria-haspopup="dialog"
+                      aria-label={`${t('overview.sortUnits')}: ${sortLabel}, ${sortDirection === 'asc' ? t('overview.sortAsc') : t('overview.sortDesc')}`}
+                      onClick={() => setSortOpen(true)}
+                    >
+                      <ArrowUpDown aria-hidden="true" />
+                      {sortLabel}
+                    </button>
+                  ) : undefined
+                }
+              />
+              {sortedUnits.length === 0 ? (
+                <p className="phone-an-footnote">{t('overview.unitsEmpty')}</p>
+              ) : (
+                <GroupedList aria-label={t('overview.unitsTitle')} footer={t('overview.unitsSub')}>
+                  {sortedUnits.map((u) => {
+                    const change = viewsChange(u);
+                    return (
+                      <Cell
+                        key={u.id}
+                        to={unitHref(u.clientId)}
+                        label={u.title || t('filters.untitledUnit')}
+                        subtitle={
                           <>
-                            {' · '}
-                            <span className="phone-an-tone--down">
-                              {t('overview.attentionStale')}
-                            </span>
+                            {u.clientName} · {t('overview.colViews')}{' '}
+                            {formatGbpCount(u.profileViews)}
+                            {change && (
+                              <span
+                                className={
+                                  change.startsWith('+')
+                                    ? 'phone-an-tone--up'
+                                    : change.startsWith('-')
+                                      ? 'phone-an-tone--down'
+                                      : undefined
+                                }
+                              >
+                                {' '}
+                                {change}
+                              </span>
+                            )}
+                            {u.stale && (
+                              <>
+                                {' · '}
+                                <span className="phone-an-tone--down">
+                                  {t('overview.attentionStale')}
+                                </span>
+                              </>
+                            )}
                           </>
-                        )}
-                      </>
-                    }
-                    value={<span className="phone-an-row-value">{valueOf(u)}</span>}
-                  />
-                );
-              })}
-            </GroupedList>
-          )}
-
-          {specialtyStats.length > 0 && (
-            <BarList
-              header={t('overview.bySpecialty')}
-              items={specialtyStats.map((s) => ({
-                key: s.specialty,
-                label: s.specialty,
-                subtitle: `${t('overview.specialtyUnits', { count: s.count })} · ${t('overview.specialtyActions', { value: formatGbpCount(Math.round(s.actionsPerUnit)) })}`,
-                value: s.viewsPerUnit,
-                valueLabel: formatGbpCount(Math.round(s.viewsPerUnit)),
-              }))}
-            />
-          )}
+                        }
+                        value={<span className="phone-an-row-value">{valueOf(u)}</span>}
+                      />
+                    );
+                  })}
+                </GroupedList>
+              )}
+            </div>
+            {specialtyStats.length > 0 && (
+              <div className="phone-an-half">
+                <BarList
+                  header={t('overview.bySpecialty')}
+                  items={specialtyStats.map((s) => ({
+                    key: s.specialty,
+                    label: s.specialty,
+                    subtitle: `${t('overview.specialtyUnits', { count: s.count })} · ${t('overview.specialtyActions', { value: formatGbpCount(Math.round(s.actionsPerUnit)) })}`,
+                    value: s.viewsPerUnit,
+                    valueLabel: formatGbpCount(Math.round(s.viewsPerUnit)),
+                  }))}
+                />
+              </div>
+            )}
+          </div>
         </div>
       )}
 

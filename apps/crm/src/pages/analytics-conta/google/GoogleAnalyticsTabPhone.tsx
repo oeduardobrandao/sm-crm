@@ -164,23 +164,41 @@ export function GoogleAnalyticsTabPhone({
           <GbpCard phone title={t('actions.title')} sub={t('actions.sub')}>
             <QueryBody query={daily}>{(rows) => <GbpActionsChart daily={rows} phone />}</QueryBody>
           </GbpCard>
-          <GbpSurfacesCard phone query={surfaces} />
-          <GbpKeywordsCard phone query={keywords} onMonth={tab.setKeywordsMonth} />
-          <GbpRatingCard
-            phone
-            query={ratingDistribution}
-            avgRating={ov.kpis.avg_rating?.value ?? null}
-            newReviews={ov.kpis.new_reviews?.value ?? null}
-            scope={
-              selectedUnit ? selectedUnit.title || t('filters.untitledUnit') : t('rating.subAll')
-            }
-          />
-          <GbpReviewsList
-            phone
-            query={reviews}
-            filter={tab.reviewFilter}
-            onFilter={tab.setReviewFilter}
-          />
+          {/* Wide touch screens: two columns (analyticsPhone.css). */}
+          <div className="phone-an-pair phone-an-stack">
+            <div className="phone-an-half phone-an-stack">
+              <GbpSurfacesCard phone query={surfaces} />
+            </div>
+            <div className="phone-an-half phone-an-stack">
+              <GbpKeywordsCard phone query={keywords} onMonth={tab.setKeywordsMonth} />
+            </div>
+          </div>
+
+          {/* Wide touch screens: two columns (analyticsPhone.css). */}
+          <div className="phone-an-pair phone-an-stack">
+            <div className="phone-an-half phone-an-stack">
+              <GbpRatingCard
+                phone
+                query={ratingDistribution}
+                avgRating={ov.kpis.avg_rating?.value ?? null}
+                newReviews={ov.kpis.new_reviews?.value ?? null}
+                scope={
+                  selectedUnit
+                    ? selectedUnit.title || t('filters.untitledUnit')
+                    : t('rating.subAll')
+                }
+              />
+            </div>
+            <div className="phone-an-half phone-an-stack">
+              <GbpReviewsList
+                phone
+                query={reviews}
+                filter={tab.reviewFilter}
+                onFilter={tab.setReviewFilter}
+              />
+            </div>
+          </div>
+
           {units.length > 1 && <GbpUnitsTable phone units={units} windowDays={days} />}
         </>
       )}

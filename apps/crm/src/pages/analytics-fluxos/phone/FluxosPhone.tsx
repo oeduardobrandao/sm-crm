@@ -202,198 +202,217 @@ function FluxosSections({
     <>
       <KpiRow kpis={data.kpis} emptyFiltered={emptyFiltered} />
 
-      <BarList
-        header="Ritmo de entrega"
-        footer="Por semana, com os criados para ver se a fila cresce ou encolhe."
-        series={{ primary: 'Concluídos', secondary: 'Criados' }}
-        color="var(--phone-ink)"
-        secondaryColor="var(--phone-fill-pressed)"
-        emptyText="Nenhum fluxo concluído ou criado no período."
-        items={[...pontos].reverse().map((p) => ({
-          key: p.semana,
-          label: `Semana de ${formatSemanaLonga(p.semana)}`,
-          value: p.concluidos,
-          secondary: p.criados,
-        }))}
-      />
-
-      {!temAtividadeAprovacao(aprovacao) ? (
-        <GroupedList header="Tempo de resposta do cliente" footer={aprovHorizonte ?? undefined}>
-          <li className="phone-cell">
-            <p className="phone-an-empty">Sem aprovações de cliente no período.</p>
-          </li>
-        </GroupedList>
-      ) : (
-        <>
+      {/* Wide touch screens: two columns (analyticsPhone.css). */}
+      <div className="phone-an-pair phone-an-stack">
+        <div className="phone-an-half phone-an-stack">
           <BarList
-            header="Tempo de resposta do cliente"
-            footer={
-              <>
-                Mediana: <strong>{formatHorasOuSemDados(aprovacao.mediana_horas)}</strong> ·{' '}
-                {aprovacao.amostras} {aprovacao.amostras === 1 ? 'resposta' : 'respostas'}.{' '}
-                {aprovacao.pendentes} aguardando · {aprovacao.resolvidos_internamente} resolvidos
-                internamente
-                {aprovacao.etapas.amostras > 0 &&
-                  ` · +${aprovacao.etapas.amostras} aprovações por etapa (mediana ${formatHorasOuSemDados(aprovacao.etapas.mediana_horas)})`}
-                {aprovHorizonte && `. ${aprovHorizonte}`}
-              </>
-            }
-            items={aprovacao.buckets.map((b) => ({
-              key: b.faixa,
-              label: FAIXA_LABEL[b.faixa] ?? b.faixa,
-              value: b.quantidade,
-              valueLabel: `${b.quantidade} ${b.quantidade === 1 ? 'aprovação' : 'aprovações'}`,
-              color:
-                b.faixa === '7d+'
-                  ? 'var(--phone-an-down)'
-                  : b.faixa === '3-7d'
-                    ? 'var(--phone-an-warn)'
-                    : 'var(--phone-ink)',
+            header="Ritmo de entrega"
+            footer="Por semana, com os criados para ver se a fila cresce ou encolhe."
+            series={{ primary: 'Concluídos', secondary: 'Criados' }}
+            color="var(--phone-ink)"
+            secondaryColor="var(--phone-fill-pressed)"
+            emptyText="Nenhum fluxo concluído ou criado no período."
+            items={[...pontos].reverse().map((p) => ({
+              key: p.semana,
+              label: `Semana de ${formatSemanaLonga(p.semana)}`,
+              value: p.concluidos,
+              secondary: p.criados,
             }))}
           />
-          <GroupedList
-            header="Clientes mais lentos para aprovar"
-            footer="Mediana de resposta. Toque para abrir as entregas do cliente."
-          >
-            {aprovacao.por_cliente.length === 0 ? (
+        </div>
+        <div className="phone-an-half phone-an-stack">
+          {!temAtividadeAprovacao(aprovacao) ? (
+            <GroupedList header="Tempo de resposta do cliente" footer={aprovHorizonte ?? undefined}>
               <li className="phone-cell">
-                <p className="phone-an-empty">Nenhum cliente com ciclo de aprovação no período.</p>
+                <p className="phone-an-empty">Sem aprovações de cliente no período.</p>
+              </li>
+            </GroupedList>
+          ) : (
+            <>
+              <BarList
+                header="Tempo de resposta do cliente"
+                footer={
+                  <>
+                    Mediana: <strong>{formatHorasOuSemDados(aprovacao.mediana_horas)}</strong> ·{' '}
+                    {aprovacao.amostras} {aprovacao.amostras === 1 ? 'resposta' : 'respostas'}.{' '}
+                    {aprovacao.pendentes} aguardando · {aprovacao.resolvidos_internamente}{' '}
+                    resolvidos internamente
+                    {aprovacao.etapas.amostras > 0 &&
+                      ` · +${aprovacao.etapas.amostras} aprovações por etapa (mediana ${formatHorasOuSemDados(aprovacao.etapas.mediana_horas)})`}
+                    {aprovHorizonte && `. ${aprovHorizonte}`}
+                  </>
+                }
+                items={aprovacao.buckets.map((b) => ({
+                  key: b.faixa,
+                  label: FAIXA_LABEL[b.faixa] ?? b.faixa,
+                  value: b.quantidade,
+                  valueLabel: `${b.quantidade} ${b.quantidade === 1 ? 'aprovação' : 'aprovações'}`,
+                  color:
+                    b.faixa === '7d+'
+                      ? 'var(--phone-an-down)'
+                      : b.faixa === '3-7d'
+                        ? 'var(--phone-an-warn)'
+                        : 'var(--phone-ink)',
+                }))}
+              />
+              <GroupedList
+                header="Clientes mais lentos para aprovar"
+                footer="Mediana de resposta. Toque para abrir as entregas do cliente."
+              >
+                {aprovacao.por_cliente.length === 0 ? (
+                  <li className="phone-cell">
+                    <p className="phone-an-empty">
+                      Nenhum cliente com ciclo de aprovação no período.
+                    </p>
+                  </li>
+                ) : (
+                  aprovacao.por_cliente.slice(0, SLOW_CLIENTS_TOP_N).map((linha) => {
+                    const cliente = clientesById.get(linha.cliente_id);
+                    const lento =
+                      linha.mediana_horas !== null && linha.mediana_horas >= LENTO_HORAS;
+                    return (
+                      <Cell
+                        key={linha.cliente_id}
+                        to={`/clientes/${linha.cliente_id}/entregas`}
+                        icon={
+                          <Avatar
+                            src={fotosDe(linha.cliente_id)}
+                            initials={(
+                              cliente?.sigla ||
+                              cliente?.nome?.slice(0, 2) ||
+                              '?'
+                            ).toUpperCase()}
+                            color={cliente?.cor}
+                          />
+                        }
+                        label={cliente?.nome ?? 'Cliente removido'}
+                        subtitle={
+                          linha.amostras === 0 && linha.pendentes > 0
+                            ? `${linha.pendentes} aguardando`
+                            : `${linha.amostras} ${linha.amostras === 1 ? 'resposta' : 'respostas'}`
+                        }
+                        value={
+                          <span className={lento ? 'phone-an-tone--down' : 'phone-an-row-value'}>
+                            {formatHorasOuSemDados(linha.mediana_horas)}
+                          </span>
+                        }
+                      />
+                    );
+                  })
+                )}
+              </GroupedList>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Wide touch screens: two columns (analyticsPhone.css). */}
+      <div className="phone-an-pair phone-an-stack">
+        <div className="phone-an-half phone-an-stack">
+          <BarList
+            header="Gargalos por etapa"
+            emptyText="Nenhuma etapa concluída no período."
+            footer={
+              eventosDesde
+                ? `Tempo médio real de cada etapa concluída no período. Retrabalho registrado desde ${eventosDesde}.`
+                : 'Tempo médio real de cada etapa concluída no período.'
+            }
+            items={etapasVisiveis.map((etapa) => ({
+              key: etapa.nome,
+              label: etapa.nome,
+              value: etapa.media_dias ?? 0,
+              valueLabel: formatDiasDecimal(etapa.media_dias),
+              subtitle: [
+                etapa.atraso_pct === null
+                  ? `Atraso: ${SEM_DADOS}`
+                  : `${Math.round(etapa.atraso_pct)}% atraso`,
+                etapa.retrabalho_pct !== null
+                  ? `${Math.round(etapa.retrabalho_pct)}% retrabalho`
+                  : null,
+                `${etapa.amostras} amostras`,
+              ]
+                .filter(Boolean)
+                .join(' · '),
+              color:
+                etapa.atraso_pct === null || etapa.atraso_pct <= 20
+                  ? 'var(--teal)'
+                  : etapa.atraso_pct <= 50
+                    ? 'var(--phone-an-warn)'
+                    : 'var(--phone-an-down)',
+            }))}
+          />
+          {etapas.length > GARGALOS_TOP_N && (
+            <button
+              type="button"
+              className="phone-text-button phone-text-button--strong phone-an-more-button"
+              onClick={() => setShowAllEtapas((v) => !v)}
+            >
+              {showAllEtapas
+                ? 'Mostrar menos'
+                : `Mostrar todas as etapas (${etapasOcultas} ocultas)`}
+            </button>
+          )}
+        </div>
+        <div className="phone-an-half phone-an-stack">
+          <SectionHead title="Desempenho da equipe" />
+          <GroupedList
+            aria-label="Desempenho da equipe"
+            footer={
+              eventosDesde
+                ? `Sem 100% falso: pouca amostra vira Poucos dados. Retrabalho e atividade desde ${eventosDesde}.`
+                : 'Sem 100% falso: pouca amostra vira Poucos dados.'
+            }
+          >
+            {equipe.length === 0 ? (
+              <li className="phone-cell">
+                <p className="phone-an-empty">
+                  Nenhuma etapa concluída com responsável no período.
+                </p>
               </li>
             ) : (
-              aprovacao.por_cliente.slice(0, SLOW_CLIENTS_TOP_N).map((linha) => {
-                const cliente = clientesById.get(linha.cliente_id);
-                const lento = linha.mediana_horas !== null && linha.mediana_horas >= LENTO_HORAS;
+              equipe.map((linha) => {
+                const membro = membrosById.get(linha.membro_id);
+                const nome = membro?.nome ?? 'Membro removido';
+                const pouco = linha.avaliadas < MIN_AVALIADAS;
+                const pct = pouco ? 0 : Math.round((linha.no_prazo / linha.avaliadas) * 100);
+                const tone = pouco ? '' : pct >= 80 ? 'up' : pct >= 50 ? 'warn' : 'down';
                 return (
-                  <Cell
-                    key={linha.cliente_id}
-                    to={`/clientes/${linha.cliente_id}/entregas`}
-                    icon={
-                      <Avatar
-                        src={fotosDe(linha.cliente_id)}
-                        initials={(
-                          cliente?.sigla ||
-                          cliente?.nome?.slice(0, 2) ||
-                          '?'
-                        ).toUpperCase()}
-                        color={cliente?.cor}
-                      />
-                    }
-                    label={cliente?.nome ?? 'Cliente removido'}
-                    subtitle={
-                      linha.amostras === 0 && linha.pendentes > 0
-                        ? `${linha.pendentes} aguardando`
-                        : `${linha.amostras} ${linha.amostras === 1 ? 'resposta' : 'respostas'}`
-                    }
-                    value={
-                      <span className={lento ? 'phone-an-tone--down' : 'phone-an-row-value'}>
-                        {formatHorasOuSemDados(linha.mediana_horas)}
+                  <li key={linha.membro_id} className="phone-cell">
+                    <div className="phone-cell__main">
+                      <span className="phone-cell__icon">
+                        <PessoaAvatar
+                          nome={nome}
+                          fotoUrl={membro?.avatar_url}
+                          seed={linha.membro_id}
+                          size={28}
+                          className="!text-[11px] !font-bold"
+                        />
                       </span>
-                    }
-                  />
+                      <span className="phone-cell__body">
+                        <span className="phone-cell__text">
+                          <span className="phone-cell__label">{nome}</span>
+                          {pouco && (
+                            <span className="phone-an-cell-sub phone-an-cell-sub--wrap">
+                              {POUCOS_DADOS_TOOLTIP}
+                            </span>
+                          )}
+                          <span className="phone-an-cell-sub phone-an-cell-sub--wrap">
+                            {linha.concluidas} concluídas · {formatDiasDecimal(linha.media_dias)}{' '}
+                            média · {linha.retrabalho} devoluções · {linha.atividade} eventos
+                          </span>
+                        </span>
+                        <span className={`phone-an-badge${tone ? ` phone-an-badge--${tone}` : ''}`}>
+                          {formatPontualidadeMembro(linha.no_prazo, linha.avaliadas)}
+                        </span>
+                      </span>
+                    </div>
+                  </li>
                 );
               })
             )}
           </GroupedList>
-        </>
-      )}
-
-      <BarList
-        header="Gargalos por etapa"
-        emptyText="Nenhuma etapa concluída no período."
-        footer={
-          eventosDesde
-            ? `Tempo médio real de cada etapa concluída no período. Retrabalho registrado desde ${eventosDesde}.`
-            : 'Tempo médio real de cada etapa concluída no período.'
-        }
-        items={etapasVisiveis.map((etapa) => ({
-          key: etapa.nome,
-          label: etapa.nome,
-          value: etapa.media_dias ?? 0,
-          valueLabel: formatDiasDecimal(etapa.media_dias),
-          subtitle: [
-            etapa.atraso_pct === null
-              ? `Atraso: ${SEM_DADOS}`
-              : `${Math.round(etapa.atraso_pct)}% atraso`,
-            etapa.retrabalho_pct !== null
-              ? `${Math.round(etapa.retrabalho_pct)}% retrabalho`
-              : null,
-            `${etapa.amostras} amostras`,
-          ]
-            .filter(Boolean)
-            .join(' · '),
-          color:
-            etapa.atraso_pct === null || etapa.atraso_pct <= 20
-              ? 'var(--teal)'
-              : etapa.atraso_pct <= 50
-                ? 'var(--phone-an-warn)'
-                : 'var(--phone-an-down)',
-        }))}
-      />
-      {etapas.length > GARGALOS_TOP_N && (
-        <button
-          type="button"
-          className="phone-text-button phone-text-button--strong phone-an-more-button"
-          onClick={() => setShowAllEtapas((v) => !v)}
-        >
-          {showAllEtapas ? 'Mostrar menos' : `Mostrar todas as etapas (${etapasOcultas} ocultas)`}
-        </button>
-      )}
-
-      <SectionHead title="Desempenho da equipe" />
-      <GroupedList
-        aria-label="Desempenho da equipe"
-        footer={
-          eventosDesde
-            ? `Sem 100% falso: pouca amostra vira Poucos dados. Retrabalho e atividade desde ${eventosDesde}.`
-            : 'Sem 100% falso: pouca amostra vira Poucos dados.'
-        }
-      >
-        {equipe.length === 0 ? (
-          <li className="phone-cell">
-            <p className="phone-an-empty">Nenhuma etapa concluída com responsável no período.</p>
-          </li>
-        ) : (
-          equipe.map((linha) => {
-            const membro = membrosById.get(linha.membro_id);
-            const nome = membro?.nome ?? 'Membro removido';
-            const pouco = linha.avaliadas < MIN_AVALIADAS;
-            const pct = pouco ? 0 : Math.round((linha.no_prazo / linha.avaliadas) * 100);
-            const tone = pouco ? '' : pct >= 80 ? 'up' : pct >= 50 ? 'warn' : 'down';
-            return (
-              <li key={linha.membro_id} className="phone-cell">
-                <div className="phone-cell__main">
-                  <span className="phone-cell__icon">
-                    <PessoaAvatar
-                      nome={nome}
-                      fotoUrl={membro?.avatar_url}
-                      seed={linha.membro_id}
-                      size={28}
-                      className="!text-[11px] !font-bold"
-                    />
-                  </span>
-                  <span className="phone-cell__body">
-                    <span className="phone-cell__text">
-                      <span className="phone-cell__label">{nome}</span>
-                      {pouco && (
-                        <span className="phone-an-cell-sub phone-an-cell-sub--wrap">
-                          {POUCOS_DADOS_TOOLTIP}
-                        </span>
-                      )}
-                      <span className="phone-an-cell-sub phone-an-cell-sub--wrap">
-                        {linha.concluidas} concluídas · {formatDiasDecimal(linha.media_dias)} média
-                        · {linha.retrabalho} devoluções · {linha.atividade} eventos
-                      </span>
-                    </span>
-                    <span className={`phone-an-badge${tone ? ` phone-an-badge--${tone}` : ''}`}>
-                      {formatPontualidadeMembro(linha.no_prazo, linha.avaliadas)}
-                    </span>
-                  </span>
-                </div>
-              </li>
-            );
-          })
-        )}
-      </GroupedList>
+        </div>
+      </div>
 
       {temOrigemParaMostrar(data.origem) && (
         <GroupedList

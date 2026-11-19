@@ -365,105 +365,113 @@ export function AnalyticsPhone(props: AnalyticsPhoneProps) {
         onSeeMore={worstPosts.length > 5 ? () => drawer.open('worst') : undefined}
       />
 
-      <SectionHead
-        large
-        title="Todas as contas"
-        trailing={
-          accounts.length > 0 ? (
-            <button
-              ref={sortButtonRef}
-              type="button"
-              className="phone-an-sort"
-              aria-haspopup="dialog"
-              aria-label={`Ordenar contas: ${SORT_LABELS[sortColumn]}, ${sortDirection === 'asc' ? 'crescente' : 'decrescente'}`}
-              onClick={() => setSortOpen(true)}
-            >
-              <ArrowUpDown aria-hidden="true" />
-              {SORT_LABELS[sortColumn]}
-            </button>
-          ) : undefined
-        }
-      />
-      {accounts.length === 0 ? (
-        <p className="phone-an-empty">
-          Nenhuma conta Instagram conectada. Conecte contas na página de cada cliente.
-        </p>
-      ) : (
-        <GroupedList aria-label="Todas as contas">
-          {sortedAccounts.map((a) => {
-            const d = daysSince(a.last_post_at);
-            const silent = d === null || d > 7;
-            const deltaIcon = a.follower_delta > 0 ? '↑' : a.follower_delta < 0 ? '↓' : '';
-            return (
-              <Cell
-                key={a.client_id}
-                to={`/analytics/${a.client_id}`}
-                icon={
-                  <Avatar
-                    src={a.profile_picture_url}
-                    initials={a.client_sigla}
-                    color={a.client_cor}
-                  />
-                }
-                label={a.client_name}
-                subtitle={
-                  <>
-                    {a.follower_delta !== 0 && (
+      {/* Wide touch screens: the account list next to the benchmarks (analyticsPhone.css). */}
+      <div className="phone-an-pair phone-an-stack">
+        <div className="phone-an-half phone-an-stack">
+          <SectionHead
+            large
+            title="Todas as contas"
+            trailing={
+              accounts.length > 0 ? (
+                <button
+                  ref={sortButtonRef}
+                  type="button"
+                  className="phone-an-sort"
+                  aria-haspopup="dialog"
+                  aria-label={`Ordenar contas: ${SORT_LABELS[sortColumn]}, ${sortDirection === 'asc' ? 'crescente' : 'decrescente'}`}
+                  onClick={() => setSortOpen(true)}
+                >
+                  <ArrowUpDown aria-hidden="true" />
+                  {SORT_LABELS[sortColumn]}
+                </button>
+              ) : undefined
+            }
+          />
+          {accounts.length === 0 ? (
+            <p className="phone-an-empty">
+              Nenhuma conta Instagram conectada. Conecte contas na página de cada cliente.
+            </p>
+          ) : (
+            <GroupedList aria-label="Todas as contas">
+              {sortedAccounts.map((a) => {
+                const d = daysSince(a.last_post_at);
+                const silent = d === null || d > 7;
+                const deltaIcon = a.follower_delta > 0 ? '↑' : a.follower_delta < 0 ? '↓' : '';
+                return (
+                  <Cell
+                    key={a.client_id}
+                    to={`/analytics/${a.client_id}`}
+                    icon={
+                      <Avatar
+                        src={a.profile_picture_url}
+                        initials={a.client_sigla}
+                        color={a.client_cor}
+                      />
+                    }
+                    label={a.client_name}
+                    subtitle={
                       <>
-                        <span
-                          className={
-                            a.follower_delta > 0 ? 'phone-an-tone--up' : 'phone-an-tone--down'
-                          }
-                        >
-                          {deltaIcon} {fmtNumber(Math.abs(a.follower_delta))}
+                        {a.follower_delta !== 0 && (
+                          <>
+                            <span
+                              className={
+                                a.follower_delta > 0 ? 'phone-an-tone--up' : 'phone-an-tone--down'
+                              }
+                            >
+                              {deltaIcon} {fmtNumber(Math.abs(a.follower_delta))}
+                            </span>
+                            {' · '}
+                          </>
+                        )}
+                        {formatPct(a.engagement_rate_avg)} eng. ·{' '}
+                        <span className={silent ? 'phone-an-tone--down' : undefined}>
+                          {d === null ? 'Sem posts' : `${d}d atrás`}
                         </span>
-                        {' · '}
                       </>
-                    )}
-                    {formatPct(a.engagement_rate_avg)} eng. ·{' '}
-                    <span className={silent ? 'phone-an-tone--down' : undefined}>
-                      {d === null ? 'Sem posts' : `${d}d atrás`}
-                    </span>
-                  </>
-                }
-                value={<span className="phone-an-row-value">{sortValueLabel(a, sortColumn)}</span>}
+                    }
+                    value={
+                      <span className="phone-an-row-value">{sortValueLabel(a, sortColumn)}</span>
+                    }
+                  />
+                );
+              })}
+            </GroupedList>
+          )}
+        </div>
+        {accounts.length >= 2 && (
+          <div className="phone-an-half phone-an-stack">
+            <BarList
+              header="Benchmarking de engajamento"
+              footer={`Média do portfólio: ${formatPct(benchmarkAvg)}. Verde está acima da média.`}
+              items={[...accounts]
+                .sort((a, b) => b.engagement_rate_avg - a.engagement_rate_avg)
+                .map((a) => ({
+                  key: String(a.client_id),
+                  label: a.client_name,
+                  value: a.engagement_rate_avg,
+                  valueLabel: formatPct(a.engagement_rate_avg),
+                  color:
+                    a.engagement_rate_avg >= benchmarkAvg
+                      ? 'var(--phone-an-up)'
+                      : 'var(--phone-an-down)',
+                }))}
+            />
+
+            {specialtyStats.length >= 2 && (
+              <BarList
+                header="Por especialidade"
+                items={specialtyStats.map((s) => ({
+                  key: s.specialty,
+                  label: s.specialty,
+                  subtitle: `${s.count} conta${s.count > 1 ? 's' : ''} · ${fmtNumber(s.avgFollowers)} seg. médio`,
+                  value: s.avgEngagement,
+                  valueLabel: formatPct(s.avgEngagement),
+                }))}
               />
-            );
-          })}
-        </GroupedList>
-      )}
-
-      {accounts.length >= 2 && (
-        <BarList
-          header="Benchmarking de engajamento"
-          footer={`Média do portfólio: ${formatPct(benchmarkAvg)}. Verde está acima da média.`}
-          items={[...accounts]
-            .sort((a, b) => b.engagement_rate_avg - a.engagement_rate_avg)
-            .map((a) => ({
-              key: String(a.client_id),
-              label: a.client_name,
-              value: a.engagement_rate_avg,
-              valueLabel: formatPct(a.engagement_rate_avg),
-              color:
-                a.engagement_rate_avg >= benchmarkAvg
-                  ? 'var(--phone-an-up)'
-                  : 'var(--phone-an-down)',
-            }))}
-        />
-      )}
-
-      {accounts.length >= 2 && specialtyStats.length >= 2 && (
-        <BarList
-          header="Por especialidade"
-          items={specialtyStats.map((s) => ({
-            key: s.specialty,
-            label: s.specialty,
-            subtitle: `${s.count} conta${s.count > 1 ? 's' : ''} · ${fmtNumber(s.avgFollowers)} seg. médio`,
-            value: s.avgEngagement,
-            valueLabel: formatPct(s.avgEngagement),
-          }))}
-        />
-      )}
+            )}
+          </div>
+        )}
+      </div>
 
       {accounts.length >= 1 && (
         <AIAnalysisPhone
