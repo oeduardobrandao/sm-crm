@@ -163,8 +163,12 @@ describe('Modelos no tablet', () => {
     expect(await screen.findByLabelText('Nome do modelo')).toHaveValue('Mensal completo');
     expect(container.querySelector('.rb-editor-header')).not.toBeNull();
     expect(screen.getAllByRole('button', { name: /Adicionar widget/ }).length).toBeGreaterThan(0);
-    expect(container.querySelector('.phone-nav-bar')).toBeNull();
     expect(screen.queryByText(/no computador/)).toBeNull();
+    // Back is the phone view's nav bar (the header's "Modelos" button would repeat it).
+    expect(container.querySelector('.phone-nav-bar.rb-editor-nav-bar')).not.toBeNull();
+    expect(screen.queryByRole('link', { name: /Modelos/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar para Modelos' }));
+    expect(navigateMock).toHaveBeenCalledWith('/configuracao/relatorios', { replace: true });
   });
 
   it('ModeloPadraoPage renderiza a prévia de desktop com Duplicar para editar', () => {
@@ -172,8 +176,11 @@ describe('Modelos no tablet', () => {
     const { container } = renderAt('/relatorios/modelos/padrao');
     expect(screen.getByRole('button', { name: /Duplicar para editar/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Ações do modelo' })).toBeNull();
-    expect(container.querySelector('.phone-nav-bar')).toBeNull();
     expect(screen.queryByText(/no computador/)).toBeNull();
+    expect(container.querySelector('.phone-nav-bar.rb-editor-nav-bar')).not.toBeNull();
+    expect(screen.queryByRole('link', { name: /Modelos/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar para Modelos' }));
+    expect(navigateMock).toHaveBeenCalledWith('/configuracao/relatorios', { replace: true });
   });
 
   it('iPhone deitado segue com a view do celular', async () => {

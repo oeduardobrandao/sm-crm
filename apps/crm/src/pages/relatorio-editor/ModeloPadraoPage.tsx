@@ -19,6 +19,7 @@ import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { useIsTabletShell } from '@/lib/phoneShell';
 import { useSampleSnapshot } from './useSampleSnapshot';
 import { withAiSampleText } from './templateOps';
+import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
 import { ReportPhoneView } from './phone/ReportPhoneView';
 
 const SETTINGS_PATH = '/configuracao/relatorios';
@@ -70,6 +71,14 @@ export default function ModeloPadraoPage() {
 
   return (
     <div>
+      {/* Tablet: the phone view's nav bar replaces the "Modelos" button (sticky, app.css). */}
+      {isTablet && (
+        <PhoneNavBar
+          className="rb-editor-nav-bar"
+          backLabel="Voltar para Modelos"
+          fallbackTo={SETTINGS_PATH}
+        />
+      )}
       <header
         style={{
           maxWidth: 880,
@@ -80,11 +89,13 @@ export default function ModeloPadraoPage() {
           flexWrap: 'wrap',
         }}
       >
-        <Button variant="outline" size="sm" asChild>
-          <Link to={SETTINGS_PATH}>
-            <ArrowLeft className="h-3.5 w-3.5" /> Modelos
-          </Link>
-        </Button>
+        {!isTablet && (
+          <Button variant="outline" size="sm" asChild>
+            <Link to={SETTINGS_PATH}>
+              <ArrowLeft className="h-3.5 w-3.5" /> Modelos
+            </Link>
+          </Button>
+        )}
         <div style={{ flex: 1, minWidth: 220 }}>
           <h1
             style={{

@@ -269,6 +269,14 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
   // painel de camadas.
   return (
     <div className="rb-editor-with-rail">
+      {/* Tablet: the shell header has no back and the iOS app has no browser back, so the
+          editor gets the phone view's nav bar (sticky, app.css). */}
+      {isTablet && (
+        <PhoneNavBar
+          className="rb-editor-nav-bar"
+          fallbackTo={`/analytics/${doc.client_id}/relatorios`}
+        />
+      )}
       <div ref={sentinelRef} aria-hidden="true" className="rb-editor-sentinel" />
       <header
         ref={headerRef}

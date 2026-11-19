@@ -2,7 +2,7 @@
 // false a todo matchMedia, então useIsDesktop(768) é false e a página renderiza o
 // ramo do celular sem mock.
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockMatchMediaEnv, type MediaEnv } from '@/test/mediaQueryMatcher';
@@ -81,6 +81,10 @@ const doc = () => ({
   updated_at: '2026-08-21T00:00:00Z',
 });
 
+function LocationText() {
+  return <p>destino: {useLocation().pathname}</p>;
+}
+
 function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -88,6 +92,7 @@ function renderPage() {
       <MemoryRouter initialEntries={['/relatorios/doc-1']}>
         <Routes>
           <Route path="/relatorios/:id" element={<RelatorioEditorPage />} />
+          <Route path="/analytics/:id/relatorios" element={<LocationText />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -277,8 +282,18 @@ describe('RelatorioEditorPage no tablet', () => {
     expect(container.querySelector('.rb-editor-header')).not.toBeNull();
     expect(screen.getAllByRole('button', { name: /Adicionar widget/ }).length).toBeGreaterThan(0);
     expect(screen.getAllByLabelText('Excluir bloco').length).toBeGreaterThan(0);
-    expect(container.querySelector('.phone-nav-bar')).toBeNull();
+    // The phone view's nav bar comes along: the shell header and the iOS app have no back.
+    expect(container.querySelector('.phone-nav-bar.rb-editor-nav-bar')).not.toBeNull();
     expect(screen.queryByText(/no computador/)).toBeNull();
+  });
+
+  it('o Voltar da nav bar leva aos relatórios do cliente', async () => {
+    media = mockMatchMediaEnv(touch(1180, 820));
+    getReportDocMock.mockResolvedValue(doc());
+    renderPage();
+    await screen.findByLabelText('Título do relatório');
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar' }));
+    expect(await screen.findByText('destino: /analytics/42/relatorios')).toBeInTheDocument();
   });
 
   it('o teclado do app iOS (web view abaixo de 600px) não troca o editor pela view do celular', async () => {

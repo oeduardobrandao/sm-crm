@@ -141,6 +141,14 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
 
   return (
     <div className="rb-editor-with-rail">
+      {/* Tablet: the phone view's nav bar replaces the "Modelos" button (sticky, app.css). */}
+      {isTablet && (
+        <PhoneNavBar
+          className="rb-editor-nav-bar"
+          backLabel="Voltar para Modelos"
+          fallbackTo={SETTINGS_PATH}
+        />
+      )}
       <div ref={sentinelRef} aria-hidden="true" className="rb-editor-sentinel" />
       <header
         ref={headerRef}
@@ -155,11 +163,13 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
           flexWrap: 'wrap',
         }}
       >
-        <Button variant="outline" size="sm" asChild>
-          <Link to={SETTINGS_PATH}>
-            <ArrowLeft className="h-3.5 w-3.5" /> Modelos
-          </Link>
-        </Button>
+        {!isTablet && (
+          <Button variant="outline" size="sm" asChild>
+            <Link to={SETTINGS_PATH}>
+              <ArrowLeft className="h-3.5 w-3.5" /> Modelos
+            </Link>
+          </Button>
+        )}
         <div className="rb-editor-title">
           <input
             aria-label="Nome do modelo"

@@ -14585,18 +14585,28 @@ a.hub-fill__row-inner:hover {
 /* Tablet: o editor de desktop roda dentro do shell do celular (useIsTabletShell em
    lib/phoneShell.ts escolhe o componente), e os dois gates acima são só do shell de desktop.
    O gate aqui é PHONE_WIDE_QUERY, sem altura mínima: o teclado do app iOS encolhe a altura
-   da web view, e essas classes só existem quando o JS já escolheu o editor de desktop. Quem rola continua
-   sendo o .main-content, que já começa abaixo do cabeçalho do shell, com padding-top de
-   0.5rem: com top 0 o cartão prende logo abaixo do cabeçalho (o -0.75rem do desktop
-   cortaria a borda de cima). O painel de camadas só aparece com 1024px ou mais, o mesmo
+   da web view, e essas classes só existem quando o JS já escolheu o editor de desktop.
+   As três páginas (relatório e os dois modelos) põem no topo a PhoneNavBar da view do
+   celular (.rb-editor-nav-bar: o Voltar que o shell e o app iOS não têm). Ela tira a barra do
+   shell (data-phone-page-header zera --phone-header-bar e o padding-top do .main-content),
+   fica presa no topo do .main-content, que é quem rola, e o cabeçalho do editor prende logo
+   abaixo da linha de 44px dela. O painel de camadas só aparece com 1024px ou mais, o mesmo
    espaço de canvas que o desktop tem a 1280px com a barra lateral aberta (~650px); abaixo
    disso ele some, como no desktop estreito: em fluxo ele empurraria o canvas para baixo.
-   Fixo, ele desce abaixo do cabeçalho do shell e para acima da faixa que o .main-content
-   reserva para a barra de abas flutuante. */
+   Fixo, ele desce abaixo da nav bar (os mesmos 44px no top e na altura) e para acima da
+   faixa que o .main-content reserva para a barra de abas flutuante. */
 @media (hover: none) and (pointer: coarse) and (min-width: 768px) {
-  .rb-editor-header {
+  /* Two classes: the base .phone-nav-bar rule (position: relative) comes later in the file. */
+  .phone-nav-bar.rb-editor-nav-bar {
     position: sticky;
     top: 0;
+    z-index: 11;
+    margin-bottom: 0.5rem;
+    background: var(--phone-bg);
+  }
+  .rb-editor-header {
+    position: sticky;
+    top: 44px;
     z-index: 10;
     padding: 0.6rem 0.9rem;
     border: 1px solid transparent;
@@ -14618,11 +14628,11 @@ a.hub-fill__row-inner:hover {
     .rb-layers-rail {
       display: block;
       position: fixed;
-      top: calc(var(--banner-height, 0px) + var(--phone-header-height) + 16px);
+      top: calc(var(--banner-height, 0px) + var(--phone-header-height) + 44px + 16px);
       right: max(16px, env(safe-area-inset-right, 0px));
       width: 250px;
       max-height: calc(
-        100dvh - var(--banner-height, 0px) - var(--phone-header-height) - 32px - 104px -
+        100dvh - var(--banner-height, 0px) - var(--phone-header-height) - 44px - 32px - 104px -
           env(safe-area-inset-bottom, 0px)
       );
       overflow-y: auto;
