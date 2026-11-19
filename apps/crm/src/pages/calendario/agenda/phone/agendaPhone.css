@@ -182,9 +182,27 @@
   text-align: center;
 }
 
-/* Dia: FullCalendar's own card, flush with the page gutters. */
+/* Dia (and Semana on tablets): FullCalendar's own card, flush with the page gutters. */
 .phone-agenda-dia-fc {
   margin-bottom: 20px;
+}
+/* Tablets: AgendaTab sets the height (useAlturaAteOFim, down to the tab bar's reserved
+   space) and FullCalendar fills it at height 100%, the chain .agenda--tela gives desktop.
+   No bottom margin: it would push the page into scrolling. */
+.phone-agenda-dia-fc--tela {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0;
+}
+.phone-agenda-dia-fc--tela .agenda-view {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+.phone-agenda-dia-fc--tela .agenda-fc {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 /* ---- Filters sheet ---- */

@@ -86,6 +86,14 @@ vi.mock('@/hooks/useIsDesktop', async () => {
   };
 });
 vi.mock('@/components/layout/PhoneShellHeader', () => ({ PhoneShellActions: () => null }));
+// jsdom has no layout (no .main-content to measure), so the real hook always returns null.
+// Pass-through spy: null by default, as before; a test can give an active call a height.
+const { alturaMock } = vi.hoisted(() => ({
+  alturaMock: vi.fn((_ref: unknown, _ativo: boolean): number | null => null),
+}));
+vi.mock('../useAlturaAteOFim', () => ({
+  useAlturaAteOFim: (ref: unknown, ativo: boolean) => alturaMock(ref, ativo),
+}));
 vi.mock('@fullcalendar/daygrid', () => ({ default: {} }));
 vi.mock('@fullcalendar/timegrid', () => ({ default: {} }));
 vi.mock('@fullcalendar/list', () => ({ default: {} }));
@@ -1123,6 +1131,7 @@ describe('AgendaTab phone (below 768px)', () => {
   });
 
   it('Dia mounts FullCalendar on the selected day, read-only: no select, no drag', async () => {
+    alturaMock.mockClear();
     renderTab();
     await screen.findByRole('button', { name: /Reunião de pauta/ });
 
@@ -1131,6 +1140,9 @@ describe('AgendaTab phone (below 768px)', () => {
     expect(fc.props!.initialView).toBe('timeGridDay');
     expect(fc.props!.initialDate).toEqual(new Date(2026, 9, 7, 10));
     expect(fc.props!.selectable).toBe(false);
+    // Phones keep the fixed per-view height; only tablets fill the screen.
+    expect(fc.props!.height).toBe(600);
+    expect(alturaMock).not.toHaveBeenCalledWith(expect.anything(), true);
     const eventos = fc.props!.events as Array<{ editable?: boolean }>;
     expect(eventos.length).toBeGreaterThan(0);
     expect(eventos.every((e) => e.editable === false)).toBe(true);
@@ -1250,14 +1262,46 @@ describe('AgendaTab tablet (touch, 768px and up)', () => {
     await screen.findByTestId('fullcalendar');
     expect(fc.props!.initialView).toBe('timeGridWeek');
     expect(fc.props!.initialDate).toEqual(new Date(2026, 9, 7, 10));
-    // Quick create stays desktop-only: "+" opens the full editor.
-    expect(fc.props!.selectable).toBe(false);
+    // A long-press on the grid selects a slot (there is no quick card in the phone shell).
+    expect(fc.props!.selectable).toBe(true);
     await waitFor(() =>
       expect(agendaStore.listAgenda).toHaveBeenCalledWith(RANGE.start, RANGE.end),
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Próxima semana' }));
     expect(fc.api.next).toHaveBeenCalled();
+  });
+
+  it('selecting a slot on the week grid opens the editor on that slot', async () => {
+    renderTab();
+    await screen.findByTestId('fullcalendar');
+    const start = new Date(2026, 9, 8, 14, 0);
+    act(() => fc.props!.select({ start, end: new Date(2026, 9, 8, 14, 30), allDay: false }));
+    // A plain 30-min tap starts a 1 h event, like desktop.
+    expect(await screen.findByTestId('evento-form')).toHaveTextContent(
+      'criar dia-inteiro:false inicio:14h',
+    );
+  });
+
+  it('without calendario:editar the grid stays read-only', async () => {
+    podeEditar = false;
+    renderTab();
+    await screen.findByTestId('fullcalendar');
+    expect(fc.props!.selectable).toBe(false);
+  });
+
+  it('the week grid fills the screen down to the tab bar', async () => {
+    alturaMock.mockImplementation((_ref, ativo) => (ativo ? 700 : null));
+    try {
+      const { container } = renderTab();
+      await screen.findByTestId('fullcalendar');
+      expect(fc.props!.height).toBe('100%');
+      const grade = container.querySelector<HTMLElement>('.phone-agenda-dia-fc')!;
+      expect(grade).toHaveClass('phone-agenda-dia-fc--tela');
+      expect(grade.style.height).toBe('700px');
+    } finally {
+      alturaMock.mockImplementation(() => null);
+    }
   });
 
   it('events can be dragged on the grid: editable follows each event', async () => {
