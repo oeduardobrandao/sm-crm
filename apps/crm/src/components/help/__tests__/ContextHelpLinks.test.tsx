@@ -1,9 +1,10 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ContextHelpLinks } from '../ContextHelpLinks';
 import { getContextLinksForRoutes } from '@/store/kb';
+import { mockMatchMediaEnv, type MediaEnv } from '@/test/mediaQueryMatcher';
 
 vi.mock('@/store/kb', () => ({ getContextLinksForRoutes: vi.fn() }));
 
@@ -48,13 +49,22 @@ function renderHelp(initialEntry = '/clientes/42') {
   return { ...result, client };
 }
 
+const PHONE: MediaEnv = { width: 390, height: 844, hover: 'none', pointer: 'coarse' };
+const TABLET_TOUCH: MediaEnv = { width: 1180, height: 820, hover: 'none', pointer: 'coarse' };
+
 describe('ContextHelpLinks', () => {
+  let media: ReturnType<typeof mockMatchMediaEnv> | null = null;
+  afterEach(() => {
+    media?.restore();
+    media = null;
+  });
+
   beforeEach(() => {
     vi.resetAllMocks();
     vi.stubGlobal(
       'matchMedia',
       vi.fn().mockImplementation((query: string) => ({
-        matches: query === '(max-width: 767px)' ? false : false,
+        matches: false,
         media: query,
         addEventListener: vi.fn(),
         removeEventListener: vi.fn(),
@@ -106,16 +116,11 @@ describe('ContextHelpLinks', () => {
     expect(getContextLinksForRoutes).toHaveBeenCalledWith(['/financeiro']);
   });
 
-  it('uses the kit BottomSheet on phones and navigates from its rows', async () => {
-    vi.stubGlobal(
-      'matchMedia',
-      vi.fn().mockImplementation((query: string) => ({
-        matches: query === '(max-width: 767px)',
-        media: query,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      })),
-    );
+  it.each([
+    ['phones', PHONE],
+    ['touch tablets', TABLET_TOUCH],
+  ])('uses the kit BottomSheet on %s and navigates from its rows', async (_label, env) => {
+    media = mockMatchMediaEnv(env);
     vi.mocked(getContextLinksForRoutes).mockResolvedValue([article('1', 'artigo-no-celular')]);
     renderHelp();
 

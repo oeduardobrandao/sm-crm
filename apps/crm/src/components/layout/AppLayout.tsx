@@ -23,6 +23,7 @@ import TopBarActions from './TopBarActions';
 import NavigationProgress from './NavigationProgress';
 import { isNativeApp } from '../../native/platform';
 import NativeBridge from '../../native/NativeBridge';
+import { desktopShellQuery, useIsPhoneShellMatch, useMediaQueryMatch } from '../../lib/phoneShell';
 
 const GlobalBannerContainer = lazy(() => import('./GlobalBannerContainer'));
 const GuideDialog = lazy(() => import('../guide/GuideDialog'));
@@ -112,33 +113,14 @@ export function contractGuardOutcome(
   return 'denied';
 }
 
+/** 768–1100px on a desktop shell (mouse or trackpad): the rail-only / drawer range. */
 function useIsTablet() {
-  const [isTablet, setIsTablet] = useState(() => {
-    const w = window.innerWidth;
-    return w >= 768 && w <= 1100;
-  });
-
-  useEffect(() => {
-    const mq = window.matchMedia('(min-width: 768px) and (max-width: 1100px)');
-    const handler = (e: MediaQueryListEvent) => setIsTablet(e.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
-
-  return isTablet;
+  return useMediaQueryMatch(desktopShellQuery(768, { maxWidth: 1100 }));
 }
 
+/** The phone shell: below 768px, or any touch-primary device (iPad included). */
 function useIsMobile() {
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
-
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 767px)');
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
-
-  return isMobile;
+  return useIsPhoneShellMatch();
 }
 
 const SIDEBAR_PINNED_STORAGE_KEY = 'sidebar-pinned';

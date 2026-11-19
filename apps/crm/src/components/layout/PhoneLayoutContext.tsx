@@ -18,7 +18,10 @@ export interface PhoneChromeOptions {
 }
 
 interface PhoneLayoutContextValue {
-  /** True below 768px inside the CRM shell (the breakpoint `AppLayout` and `MobileNav` use). */
+  /**
+   * True on the CRM phone shell: below 768px, or a touch tablet (`PHONE_SHELL_QUERY`,
+   * the query `AppLayout` and `MobileNav` use).
+   */
   isPhone: boolean;
   /** Adds a chrome request under `id` (replacing an earlier one with the same id). Returns its removal. */
   register: (id: string, options: PhoneChromeOptions) => () => void;

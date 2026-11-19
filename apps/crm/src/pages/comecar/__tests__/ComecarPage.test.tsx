@@ -6,6 +6,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 vi.mock('@/context/AuthContext', () => ({ useAuth: vi.fn() }));
 // jsdom's matchMedia reports false (phone); this suite asserts the desktop markup.
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+// PagarmeCheckoutDialog reads useIsPhoneUi (it also renders outside AppLayout).
+vi.mock('@/lib/phoneShell', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/phoneShell')>()),
+  useIsPhoneUi: () => false,
+}));
 // importOriginal keeps BillingApiError and the Pagar.me checkout call real: PagarmeCheckoutDialog
 // (mounted by ComecarPage) imports them from this same module, and these tests never submit its
 // form, so nothing here needs a dedicated mock for them.

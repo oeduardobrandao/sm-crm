@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { usePhoneLayout } from '@/components/layout/PhoneLayoutContext';
 
 /**
  * Phone shell vs desktop shell. The phone layout is used on narrow viewports
@@ -75,4 +76,15 @@ export function useIsWidePhoneShell(): boolean {
 /** Raw `(min-width: Npx)`, for code that can render outside `AppLayout`. */
 export function useMinWidth(px: number): boolean {
   return useMediaQueryMatch(`(min-width: ${px}px)`);
+}
+
+/**
+ * Phone UI for components that render both inside `AppLayout` and outside it (e.g. the
+ * trial-offer page): the shell's answer when there is one (touch tablets included), else
+ * the plain width below 768px. True in jsdom, where matchMedia is stubbed false.
+ */
+export function useIsPhoneUi(): boolean {
+  const { isPhone } = usePhoneLayout();
+  const wide = useMinWidth(768);
+  return isPhone || !wide;
 }

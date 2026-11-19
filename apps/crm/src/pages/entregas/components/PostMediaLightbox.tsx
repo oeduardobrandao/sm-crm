@@ -20,6 +20,7 @@ import type { MediaNote } from '@/store/mediaNotes';
 import { downloadMedia } from '@/utils/downloadMedia';
 import { CrmPinLayer } from './mediaNotes/CrmPinLayer';
 import type { MediaNoteAuthors } from './mediaNotes/MediaNoteCard';
+import { PHONE_SHELL_QUERY } from '@/lib/phoneShell';
 
 export interface InternalNoteInput {
   linkId: number;
@@ -88,7 +89,7 @@ export function PostMediaLightbox({
     () =>
       typeof window === 'undefined' ||
       typeof window.matchMedia !== 'function' ||
-      !window.matchMedia('(max-width: 768px)').matches,
+      !window.matchMedia(PHONE_SHELL_QUERY).matches,
   );
   const internalListId = useId();
 

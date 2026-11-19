@@ -47,7 +47,7 @@ import {
   type PagarmeCheckoutResult,
 } from '@/services/billing';
 import { ceilPeriodEndToUtcDate } from '@/pages/configuracao/cobranca/plan-display';
-import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useIsPhoneUi } from '@/lib/phoneShell';
 import { PagarmeLogo } from './PagarmeLogo';
 import './pagarmeCheckoutPhone.css';
 
@@ -262,9 +262,10 @@ export function PagarmeCheckoutDialog({
   const [successResult, setSuccessResult] = useState<PagarmeCheckoutResult | null>(null);
   // Fires 'card_form_abandoned' at most once per open.
   const abandonedFiredRef = useRef(false);
-  // Phones (below 768px) get the full-screen layout. Not usePhoneLayout(): /comecar renders
-  // this outside AppLayout, where that context reports desktop.
-  const isPhone = !useIsDesktop(768);
+  // The phone UI (phone shell, or below 768px) gets the full-screen layout. Not
+  // usePhoneLayout() alone: /comecar renders this outside AppLayout, where that context
+  // reports desktop.
+  const isPhone = useIsPhoneUi();
 
   const schema = useMemo(() => buildSchema(mode), [mode]);
   const form = useForm<FormValues>({

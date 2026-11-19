@@ -1044,9 +1044,10 @@ function AnalyticsContent({
   const [expandedPostId, setExpandedPostId] = useState<number | null>(null);
   const commentsAiEnabled = useWorkspaceLimits().features?.feature_instagram_comments_ai === true;
   const [syncing, setSyncing] = useState(false);
-  // Collapsed by default on phones, where the callout ate most of a screen
+  // Collapsed by default on phones (and the phone shell on touch tablets), where the
+  // callout ate most of a screen
   const [savesOpen, setSavesOpen] = useState(
-    () => !window.matchMedia('(max-width: 900px)').matches,
+    () => !isPhone && !window.matchMedia('(max-width: 900px)').matches,
   );
   const [showAllPosts, setShowAllPosts] = useState(false);
   const [manualFollowerOpen, setManualFollowerOpen] = useState(false);

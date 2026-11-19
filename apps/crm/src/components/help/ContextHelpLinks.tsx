@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { BookOpen, ChevronRight } from 'lucide-react';
@@ -8,20 +8,10 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { BottomSheet } from '@/components/mobile/BottomSheet';
 import { Cell, GroupedList } from '@/components/mobile/GroupedList';
 import { useSheetActions } from '@/components/mobile/sheetActions';
+import { useIsPhoneShellMatch } from '@/lib/phoneShell';
 
 function usePhoneViewport() {
-  const query = '(max-width: 767px)';
-  const [isPhone, setIsPhone] = useState(() => window.matchMedia(query).matches);
-
-  useEffect(() => {
-    const media = window.matchMedia(query);
-    const update = (event: MediaQueryListEvent) => setIsPhone(event.matches);
-    setIsPhone(media.matches);
-    media.addEventListener('change', update);
-    return () => media.removeEventListener('change', update);
-  }, []);
-
-  return isPhone;
+  return useIsPhoneShellMatch();
 }
 
 function ArticleMenu({ links }: { links: KbContextLink[] }) {

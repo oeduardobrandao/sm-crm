@@ -167,7 +167,8 @@ export default function AgendaTab() {
   // Phone layout below 768px (iOS plan F1.3): page header, Mês / Dia / Lista, sheets.
   const isPhone = !useIsDesktop(768);
   const isMobile = isPhone;
-  const sidebarEmSheet = useMediaQuery('(max-width: 1100px)');
+  // The sidebar moves into a sheet below 1100px and on the phone shell (touch tablets).
+  const sidebarEmSheet = useMediaQuery('(max-width: 1100px)') || isPhone;
   const [searchParams, setSearchParams] = useSearchParams();
 
   const calRef = useRef<FullCalendar | null>(null);

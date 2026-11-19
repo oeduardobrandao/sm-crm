@@ -20,6 +20,7 @@ vi.mock('@mesaas/ui/VideoPlayer', () => ({
 
 import { PostMediaLightbox } from '../../PostMediaLightbox';
 import { makeNote } from './fixtures';
+import { mockMatchMediaEnv } from '@/test/mediaQueryMatcher';
 
 const image = {
   id: 5,
@@ -242,11 +243,7 @@ describe('PostMediaLightbox internal notes', () => {
   });
 
   it('on phones the internal notes start collapsed behind a chip that expands them', async () => {
-    const realMatchMedia = window.matchMedia;
-    window.matchMedia = ((query: string) => ({
-      ...realMatchMedia(query),
-      matches: query === '(max-width: 768px)',
-    })) as typeof window.matchMedia;
+    const media = mockMatchMediaEnv({ width: 390, height: 844, hover: 'none', pointer: 'coarse' });
     try {
       render(
         <PostMediaLightbox
@@ -274,7 +271,7 @@ describe('PostMediaLightbox internal notes', () => {
       await userEvent.click(chip);
       expect(screen.queryByRole('region', { name: 'Notas internas (1)' })).not.toBeInTheDocument();
     } finally {
-      window.matchMedia = realMatchMedia;
+      media.restore();
     }
   });
 

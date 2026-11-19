@@ -1,7 +1,9 @@
 import { renderHook } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { createElement, type ReactNode } from 'react';
+import { afterEach, describe, expect, it } from 'vitest';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
-import { matchesQuery, type MediaEnv } from '@/test/mediaQueryMatcher';
+import { PhoneLayoutContext } from '@/components/layout/PhoneLayoutContext';
+import { matchesQuery, mockMatchMediaEnv, type MediaEnv } from '@/test/mediaQueryMatcher';
 import {
   DESKTOP_SHELL_QUERY,
   PHONE_SHELL_QUERY,
@@ -9,6 +11,7 @@ import {
   TABLET_SHELL_QUERY,
   desktopShellQuery,
   useIsPhoneShell,
+  useIsPhoneUi,
   useIsTabletShell,
 } from '../phoneShell';
 
@@ -74,5 +77,32 @@ describe('phone shell queries', () => {
     expect(renderHook(() => useIsDesktop(768)).result.current).toBe(false);
     expect(renderHook(() => useIsPhoneShell()).result.current).toBe(true);
     expect(renderHook(() => useIsTabletShell()).result.current).toBe(false);
+  });
+});
+
+describe('useIsPhoneUi', () => {
+  let media: ReturnType<typeof mockMatchMediaEnv> | null = null;
+  afterEach(() => {
+    media?.restore();
+    media = null;
+  });
+  const insideShell = ({ children }: { children: ReactNode }) =>
+    createElement(
+      PhoneLayoutContext.Provider,
+      { value: { isPhone: true, register: () => () => {} } },
+      children,
+    );
+
+  it('follows the shell inside AppLayout, even on a wide touch tablet', () => {
+    media = mockMatchMediaEnv(touch(1180, 820));
+    expect(renderHook(() => useIsPhoneUi(), { wrapper: insideShell }).result.current).toBe(true);
+  });
+
+  it('falls back to the width outside the shell', () => {
+    media = mockMatchMediaEnv({ width: 390, height: 844, hover: 'none', pointer: 'coarse' });
+    expect(renderHook(() => useIsPhoneUi()).result.current).toBe(true);
+    media.restore();
+    media = mockMatchMediaEnv({ width: 1440, height: 900, hover: 'hover', pointer: 'fine' });
+    expect(renderHook(() => useIsPhoneUi()).result.current).toBe(false);
   });
 });
