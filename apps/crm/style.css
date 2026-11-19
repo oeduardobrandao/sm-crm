@@ -1675,6 +1675,16 @@ html[data-standalone] {
   }
 }
 
+/* The same for the signed-in shell on a touch tablet, which the width query above misses: a tap
+   left the CSS tooltip stuck on screen. Keyed on the shell being mounted (`body:has`, so the
+   editors portaled to <body> are covered too), which leaves public pages and the Hub alone. */
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
+  body:has(.app-container) [data-tooltip]::before,
+  body:has(.app-container) [data-tooltip]::after {
+    display: none !important;
+  }
+}
+
 @media (max-width: 900px), (hover: none) and (pointer: coarse) {
   .topbar {
     display: none;

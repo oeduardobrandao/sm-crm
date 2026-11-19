@@ -136,6 +136,8 @@ const HUB_REVIEWED_SELECTORS: Record<string, string> = {
   '#posts-table tbody tr.post-detail-row': CRM_SHELL,
   'body:has(.mobile-nav-glass)': CRM_SHELL,
   "body:has(.app-container[data-phone-tab-bar='hidden'])": CRM_SHELL,
+  'body:has(.app-container) [data-tooltip]::before': CRM_SHELL,
+  'body:has(.app-container) [data-tooltip]::after': CRM_SHELL,
   '.app-container': CRM_SHELL,
   '.app-container[data-phone-page-header]': CRM_SHELL,
   "[data-theme='dark'] .app-container": CRM_SHELL,
