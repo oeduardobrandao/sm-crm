@@ -127,13 +127,30 @@ and chart configs — leftovers from an older system, not live choices.
 `--sidebar-width: 260px`, `--topbar-height: 52px`, `--banner-height: 0px` (raised when a
 banner shows). `.main-content` offsets itself with `margin-left: var(--sidebar-width)`.
 
-Three shells, chosen in `AppLayout` (JS breakpoints `max-width: 767px` and `768–1100px`):
+Three shells, chosen in `AppLayout`. The rules live in `apps/crm/src/lib/phoneShell.ts`. The
+phone shell is `(max-width: 767px), (hover: none) and (pointer: coarse)`: any narrow window, and
+every touch-only device at any width (iPad, Android tablet, phone in landscape). The desktop shell
+is the exact inverse, at least 768px wide AND a mouse or trackpad (`hover: hover`, `pointer: fine`
+or `pointer: none`), so a touch laptop with a mouse stays desktop. In the table below, the two
+sidebar rows mean "mouse or trackpad" only (JS breakpoints `768–1100px` and above):
 
-| Viewport   | Vidro look (default)                                                                                                                                  | Classic look (opt-out)                                                  |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| ≥ 1101px   | Static. 64px icon rail by default, expands over the content on hover; pinned open, the panel is inset by 260px                                        | Same sidebar, classic surfaces                                          |
-| 768–1100px | Same Vidro shell, rail only (`Sidebar railOnly`): never pins, the rail's toggle opens it over the content until a navigation, Escape or a tap outside | Off-canvas drawer + top bar with hamburger; `margin-left: 0 !important` |
-| ≤ 767px    | Phone shell (`pages/*/phone`, bottom nav), no Vidro                                                                                                   | same                                                                    |
+| Viewport                          | Vidro look (default)                                                                                                                                  | Classic look (opt-out)                                                  |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| ≥ 1101px                          | Static. 64px icon rail by default, expands over the content on hover; pinned open, the panel is inset by 260px                                        | Same sidebar, classic surfaces                                          |
+| 768–1100px                        | Same Vidro shell, rail only (`Sidebar railOnly`): never pins, the rail's toggle opens it over the content until a navigation, Escape or a tap outside | Off-canvas drawer + top bar with hamburger; `margin-left: 0 !important` |
+| ≤ 767px, or any touch-only device | Phone shell (`pages/*/phone`, bottom nav), no Vidro                                                                                                   | same                                                                    |
+
+**Touch at 768px or wider (the wide phone shell).** Content is a centered 680px column, the floating
+tab bar is capped at 420px, and sheets and alerts at 680px. `AppLayout` sets `data-phone-wide` and
+the routes in `components/layout/phoneWideRoutes.ts` stay full width: `/entregas`, `/calendario`,
+the `/analytics*` pages and `/analytics-fluxos`; the report editor and model editors
+(`/relatorios/:id`, `/relatorios/modelos/...`) only on tablets. A **tablet** is the wide phone
+shell with a screen short side of at least 600 (`useIsTabletShell`, deliberately not viewport
+height, because the iOS keyboard resizes the web view). Tablets get the desktop report editor,
+Linha editorial create/edit and the Agenda week grid with drag inside the phone shell. A phone in
+landscape (short side under 600) keeps the plain phone shell. Public pages (landing, preços, blog,
+login, criar conta, configurar-senha, conectar, afiliados, `/comecar`) and the Hub and Admin are
+unchanged. Spec: `docs/superpowers/specs/2026-11-18-ipad-phone-layout-design.md`.
 
 Some classic page-layout rules still switch at `max-width: 900px` (and a few pages at 1100px):
 they are content layouts, not the shell, and apply under both looks.
@@ -145,9 +162,13 @@ the user pins (persisted in localStorage `sidebar-pinned`). Anything inset by th
 read `var(--sidebar-width)`, never a literal 260px.
 
 **Anything `position: fixed` and anchored to the static sidebar must be `display: none` by default
-and only shown inside `@media (min-width: 768px)` and away from the drawer**
-(`body:not(:has(.sidebar--drawer))`, see `.guide-pill`). Below 768px there is no sidebar, and in
-the classic tablet drawer the content is flush left. jsdom cannot evaluate media queries, so
+and only shown inside `desktopShellQuery(768)` (never a bare `@media (min-width: 768px)`, which a
+touch tablet also matches) and away from the drawer**
+(`body:not(:has(.sidebar--drawer))`, see `.guide-pill`). In the phone shell there is no sidebar, and in
+the classic tablet drawer the content is flush left. `phoneShellCss.test.ts` classifies every `@media` block in the CRM CSS and fails on a width-only
+phone block (for example `max-width: 900px`) inside the shell, so a layout rule that should follow
+the shell must use the phone or desktop query, or be listed in `NOT_SHELL_FILES` when it is a
+public page. jsdom cannot evaluate media queries, so
 responsive show/hide has to be verified in a real browser.
 
 Content padding is `clamp(1.25rem, 3vw, 2.5rem)` block / `clamp(1rem, 3vw, 3rem)` inline.
