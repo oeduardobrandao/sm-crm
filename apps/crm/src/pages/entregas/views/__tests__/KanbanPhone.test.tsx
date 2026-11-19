@@ -10,6 +10,7 @@ import {
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { PhoneLayoutContext } from '@/components/layout/PhoneLayoutContext';
 import { LONG_PRESS_MS } from '@/components/mobile/useLongPress';
 import { installPointerEvent, pointerDown, pointerUp } from '@/components/mobile/__tests__/pointer';
 
@@ -34,6 +35,11 @@ const store = vi.hoisted(() => ({
   getDiscussaoNaoLidas: vi.fn(async () => []),
 }));
 vi.mock('../../../../store', () => store);
+const shell = vi.hoisted(() => ({ wide: false }));
+vi.mock('@/lib/phoneShell', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/phoneShell')>()),
+  useIsWidePhoneShell: () => shell.wide,
+}));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 vi.mock('@/hooks/useStatusRegistry', () => ({ useStatusRegistry: () => null }));
 
@@ -41,7 +47,10 @@ import { KanbanView } from '../KanbanView';
 import type { BoardCard } from '../../hooks/useEntregasData';
 
 beforeAll(installPointerEvent);
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  shell.wide = false;
+});
 
 function render(ui: React.ReactElement) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -243,5 +252,37 @@ describe('KanbanView on phones (one etapa at a time)', () => {
         screen.getByRole('button', { name: /Ordenar coluna Copy: Manual/ }),
       ).toBeInTheDocument(),
     );
+  });
+});
+
+describe('KanbanView on a wide touch shell', () => {
+  function renderWide(wideRoute: boolean) {
+    return render(
+      <PhoneLayoutContext.Provider value={{ isPhone: true, wideRoute, register: () => () => {} }}>
+        <KanbanView {...(baseProps() as never)} />
+      </PhoneLayoutContext.Provider>,
+    );
+  }
+
+  it('renders every etapa as its own column side by side, with no chip tabs', () => {
+    shell.wide = true;
+    renderWide(true);
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(screen.getByTestId('phone-kanban-board')).toHaveClass('phone-ent-board--wide');
+    expect(screen.getByRole('region', { name: 'Copy, 1' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Design, 2' })).toBeInTheDocument();
+    // "+ Novo" only on the first etapa.
+    expect(screen.getAllByRole('button', { name: /Novo fluxo/ })).toHaveLength(1);
+  });
+
+  it('keeps the single panel and chips when the route is not wide or the shell is not wide', () => {
+    shell.wide = true;
+    const { unmount } = renderWide(false);
+    expect(screen.getByRole('tablist')).toBeInTheDocument();
+    expect(screen.getAllByRole('tabpanel')).toHaveLength(1);
+    unmount();
+    shell.wide = false;
+    renderWide(true);
+    expect(screen.getByRole('tablist')).toBeInTheDocument();
   });
 });
