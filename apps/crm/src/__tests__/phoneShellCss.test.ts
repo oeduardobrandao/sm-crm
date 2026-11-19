@@ -79,10 +79,10 @@ const REVIEWED_WIDTH_BLOCKS: Record<string, string> = {
 /**
  * Selectors that could match Hub markup (every required class appears in Hub code) inside a block
  * that now matches a touch tablet. The Hub imports both CRM stylesheets. Key: the selector.
- * NOT_IN_HUB: the Hub word is an id, key or i18n string (`post-${id}`, `${id}-panel`,
- * `hub-${id}`, 'sidebar.*'), checked by grep.
+ * NOT_IN_HUB: the Hub/packages word is an id, key, i18n string or template partial
+ * (`post-${id}`, `${id}-panel`, `hub-${id}`, 'sidebar.*'), checked by grep.
  */
-const NOT_IN_HUB = 'the Hub never renders this class; only an id, key or i18n string matches';
+const NOT_IN_HUB = 'the Hub never renders this class; only an id, key or template partial matches';
 const CRM_SHELL =
   'needs .app-container, .mobile-nav-glass or #posts-table, which the Hub never renders';
 const HUB_REVIEWED_SELECTORS: Record<string, string> = {
@@ -103,6 +103,9 @@ const HUB_REVIEWED_SELECTORS: Record<string, string> = {
   '.hub-access__primary-actions': NOT_IN_HUB,
   '.hub-access__secondary-actions > *': NOT_IN_HUB,
   '.hub-access__primary-actions > *': NOT_IN_HUB,
+  '.kpi-label': NOT_IN_HUB,
+  '.calendar-detail-foot': NOT_IN_HUB,
+  '.config-nav-label': NOT_IN_HUB,
   '#posts-table tbody': CRM_SHELL,
   '#posts-table tbody::-webkit-scrollbar': CRM_SHELL,
   '#posts-table tbody tr': CRM_SHELL,
@@ -185,9 +188,13 @@ const phoneMissesTablet = (b: Block) => matches(b, P) && !(matches(b, T) && matc
 
 function hubTokens(): PublicTokens {
   const out: PublicTokens = { exact: new Set(), prefix: new Set(), suffix: new Set() };
-  const hubSrc = path.join(ROOT, 'apps/hub/src');
-  for (const rel of readdirSync(hubSrc, { recursive: true }) as string[]) {
-    if (/\.(m?[jt]sx?)$/.test(rel)) collectTokens(parse(path.join(hubSrc, rel)), out);
+  // The Hub's own code plus packages/ (its @mesaas/* aliases: ui, report-blocks...).
+  for (const dir of ['apps/hub/src', 'packages'].map((d) => path.join(ROOT, d))) {
+    for (const rel of readdirSync(dir, { recursive: true }) as string[]) {
+      if (/\.(m?[jt]sx?)$/.test(rel) && !/node_modules/.test(rel)) {
+        collectTokens(parse(path.join(dir, rel)), out);
+      }
+    }
   }
   const html = readFileSync(path.join(ROOT, 'apps/hub/index.html'), 'utf8');
   for (const word of html.split(/[^A-Za-z0-9_-]+/)) if (word) out.exact.add(word);
