@@ -83,6 +83,18 @@ export function mockMatchMediaEnv(initial: MediaEnv) {
   };
   applySize();
 
+  const register = (query: string, listener: Listener) => {
+    for (const r of registrations) {
+      if (r.query === query && r.listener === listener) return;
+    }
+    registrations.add({ query, listener, last: evaluate(query) });
+  };
+  const unregister = (query: string, listener: Listener) => {
+    for (const r of registrations) {
+      if (r.query === query && r.listener === listener) registrations.delete(r);
+    }
+  };
+
   window.matchMedia = ((query: string) => {
     const mql = {
       media: query,
@@ -91,16 +103,13 @@ export function mockMatchMediaEnv(initial: MediaEnv) {
         return evaluate(query);
       },
       addEventListener: (type: string, listener: Listener) => {
-        if (type === 'change') registrations.add({ query, listener, last: evaluate(query) });
+        if (type === 'change') register(query, listener);
       },
       removeEventListener: (type: string, listener: Listener) => {
-        if (type !== 'change') return;
-        for (const r of registrations) {
-          if (r.query === query && r.listener === listener) registrations.delete(r);
-        }
+        if (type === 'change') unregister(query, listener);
       },
-      addListener: () => {},
-      removeListener: () => {},
+      addListener: (listener: Listener) => register(query, listener),
+      removeListener: (listener: Listener) => unregister(query, listener),
       dispatchEvent: () => false,
     };
     return mql as unknown as MediaQueryList;
