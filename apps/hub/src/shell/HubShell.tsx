@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
+import { useTouchSafeToaster } from '@mesaas/ui/toast/touchSafeToaster';
 import { useTranslation } from 'react-i18next';
 import { HubContext } from '../HubContext';
 import { HubSidebar } from './HubSidebar';
@@ -33,6 +34,8 @@ export function HubShell() {
   const { pathname, search, hash } = useLocation();
   const navigate = useNavigate();
   const { t } = useTranslation();
+  // A tap on a toast must not pause it for good on a phone (see the hook).
+  useTouchSafeToaster();
 
   // An old link (hyphenated token) is rewritten to the compact form in place, so
   // a URL copied from the address bar and pasted in WhatsApp isn't read as Pix.
