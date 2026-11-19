@@ -28,6 +28,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>O Mesaas usa a câmera para você fotografar e enviar imagens para posts, ideias e mensagens.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>O Mesaas salva na sua galeria as imagens e os vídeos que você baixa dos posts.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
