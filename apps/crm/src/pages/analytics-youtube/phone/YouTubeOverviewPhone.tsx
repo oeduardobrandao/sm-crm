@@ -119,7 +119,7 @@ export function YouTubeOverviewPhone(props: YouTubeOverviewPhoneProps) {
         onChange={(e) => onQuery(e.target.value)}
         aria-label={t('overview.search')}
         placeholder={t('overview.search')}
-        className="h-10 rounded-full"
+        className="phone-an-search h-10 rounded-full"
       />
 
       <div className="phone-an-chips">

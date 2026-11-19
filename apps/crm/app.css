@@ -546,7 +546,7 @@ html[data-standalone] .app-container {
 /* Phones: a 44px touch target around the small "×" without growing the bar (the stack's
    height drives --banner-height). */
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   .app-container .banner-dismiss {
     position: relative;
   }
@@ -643,7 +643,7 @@ html[data-standalone] .app-container {
   padding-left: calc(var(--conta-avatar) + var(--conta-avatar-gap));
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   .conta-identity {
     --conta-avatar: 48px;
     --conta-avatar-gap: 0.75rem;
@@ -992,7 +992,9 @@ html[data-standalone] .app-container {
   container-type: inline-size;
 }
 
-@media (min-width: 901px) {
+@media (min-width: 901px) and (hover: hover),
+  (min-width: 901px) and (pointer: fine),
+  (min-width: 901px) and (pointer: none) {
   .kpi-grid > .kpi-card .kpi-value {
     font-size: min(2rem, 19cqi);
   }
@@ -2077,7 +2079,7 @@ select.form-input option {
 
 /* ===== Responsive (Mobile & Tablet) ===== */
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   .app-container {
     background: var(--bg-color);
   }
@@ -2337,7 +2339,7 @@ select.form-input option {
   }
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   /* Floating glass tab bar (EntregasKanban mockup): Início, Entregas, Agenda, Mensagens, Mais. */
   .mobile-nav-glass {
     position: fixed;
@@ -2561,6 +2563,64 @@ select.form-input option {
   }
 }
 
+/* Wide phone shell (PHONE_WIDE_QUERY in lib/phoneShell.ts): touch tablets and phones held
+   sideways. The phone screens are drawn for ~390px, so from 768px they sit in a centered
+   680px column, the tab bar is capped at 420px and the sheets at 680px. Full-width routes
+   (phoneWideRoutes.ts) set data-phone-wide on .app-container and lift the column. Matches
+   neither a phone in portrait nor a mouse or trackpad desktop. */
+@media (hover: none) and (pointer: coarse) and (min-width: 768px) {
+  /* The column. The page root is a direct child of .main-content (the :has(> .page-full-bleed)
+     rules depend on that), so the shell's own inline padding makes the column: the background
+     stays full-bleed and fixed children (FABs, bottom bars) are left alone. !important to
+     outrank the full-bleed pages' `padding: 0 !important`, so Mensagens and Arquivos get
+     the column too. */
+  .app-container:not([data-phone-wide]) .main-content {
+    padding-inline: max(1rem, calc((100% - 680px) / 2)) !important;
+  }
+
+  /* Centered against its fixed left/right insets. */
+  .mobile-nav-glass {
+    max-width: 420px;
+    margin-inline: auto;
+  }
+
+  /* ActionSheet, centered against its fixed insets. BottomSheet and the phone faces of
+     ui/dialog and ui/alert-dialog get the same cap in style.css (their classes are public). */
+  .phone-kit.phone-action-sheet {
+    max-width: 680px;
+    margin-inline: auto;
+  }
+
+  /* Full-screen pushed screens, position: fixed over the page, so the .main-content column
+     does not hold them: the post editor (portaled to <body>), its full-screen text editing,
+     the fluxo screen, the tarefa detail and the notifications screen. They keep the column
+     on full-width routes too (a fluxo opened from /entregas). Inline padding keeps their
+     background full-bleed. */
+  .phone-editor-screen,
+  .phone-text-screen--open,
+  .drawer-panel.phone-ent-fluxo,
+  .phone-tar-screen,
+  .phone-notifications {
+    padding-inline: max(0px, calc((100% - 680px) / 2));
+  }
+
+  /* BottomActionBar: fixed left/right 0, so its glass stays full-bleed and its content (the
+     editor's flex: 1 primary button, the fluxo selection bar) moves into the column. `body`
+     outranks the base .phone-bottom-bar rule further down the file. */
+  body .phone-bottom-bar {
+    padding-right: max(
+      var(--phone-gutter),
+      env(safe-area-inset-right, 0px),
+      calc((100% - 680px) / 2)
+    );
+    padding-left: max(
+      var(--phone-gutter),
+      env(safe-area-inset-left, 0px),
+      calc((100% - 680px) / 2)
+    );
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .mobile-nav-item,
   .mobile-nav-item__icon,
@@ -2572,7 +2632,9 @@ select.form-input option {
 
 /* Medium desktop — 13" laptops, smaller screens */
 
-@media (min-width: 1101px) and (max-width: 1440px) {
+@media (min-width: 1101px) and (max-width: 1440px) and (hover: hover),
+  (min-width: 1101px) and (max-width: 1440px) and (pointer: fine),
+  (min-width: 1101px) and (max-width: 1440px) and (pointer: none) {
   .stats-grid {
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   }
@@ -2594,7 +2656,9 @@ select.form-input option {
 
 /* Medium desktop: stack widgets-grid on narrower 13" screens */
 
-@media (min-width: 1101px) and (max-width: 1280px) {
+@media (min-width: 1101px) and (max-width: 1280px) and (hover: hover),
+  (min-width: 1101px) and (max-width: 1280px) and (pointer: fine),
+  (min-width: 1101px) and (max-width: 1280px) and (pointer: none) {
   .widgets-grid {
     grid-template-columns: 1fr;
   }
@@ -2673,7 +2737,7 @@ select.form-input option {
    them across a phone leaves ~50px each — and size to their label instead,
    scrolling inside the track. */
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   .page-tabs {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
@@ -2730,7 +2794,7 @@ select.form-input option {
   align-items: start;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   .config-report-grid {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -3326,7 +3390,7 @@ select.form-input option {
 
 /* Calendar responsive */
 
-@media (max-width: 1100px) {
+@media (max-width: 1100px), (hover: none) and (pointer: coarse) {
   .calendar-layout {
     grid-template-columns: 1fr;
   }
@@ -4125,7 +4189,7 @@ select.form-input option {
   display: none;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   .agenda-toolbar {
     padding: 12px;
   }
@@ -4589,7 +4653,7 @@ body.role-agent input[name='valor_total'] {
   gap: 1rem;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   /* Swipeable variant of the fused block: 1px dividers rather than gutters, and
      no bottom padding — the grid background would show through it as a band. */
   .analytics-kpi-scroll {
@@ -4838,7 +4902,7 @@ body.role-agent input[name='valor_total'] {
   box-shadow: none;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   .instagram-post-carousel__header {
     flex-direction: column;
     align-items: stretch;
@@ -5969,7 +6033,7 @@ body.role-agent input[name='valor_total'] {
   grid-column: 1 / -1;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   /* Convert tables to cards on mobile */
   .card .overflow-auto > table {
     display: block;
@@ -6756,7 +6820,9 @@ body.role-agent input[name='valor_total'] {
   gap: 0.85rem;
 }
 
-@media (min-width: 900px) {
+@media (min-width: 900px) and (hover: hover),
+  (min-width: 900px) and (pointer: fine),
+  (min-width: 900px) and (pointer: none) {
   .ex-grid {
     grid-template-columns: 1fr 1fr;
   }
@@ -7461,7 +7527,7 @@ body.role-agent input[name='valor_total'] {
   cursor: not-allowed;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   .drawer-panel {
     width: 100vw;
     /* 100vh first as the fallback; dvh tracks the mobile URL bar so the footer
@@ -7485,7 +7551,7 @@ body.role-agent input[name='valor_total'] {
    two lines instead — line 1 is identity (handle, chevron, tipo, title), line 2
    is state + actions. */
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   /* Title and X on the first row, the other controls wrapping below. With the
      controls unshrinkable beside it, the title column was squeezed to a sliver. */
   .drawer-header {
@@ -9644,7 +9710,10 @@ a.mention-chip:hover {
   flex: 1;
 }
 
-@media (min-width: 640px) {
+@media (min-width: 640px) and (max-width: 767px),
+  (min-width: 640px) and (hover: hover),
+  (min-width: 640px) and (pointer: fine),
+  (min-width: 640px) and (pointer: none) {
   .edit-modal-footer {
     flex-direction: row;
     /* 5 botões + dica não cabem nos ~464px úteis do max-w-lg: sem wrap o
@@ -10026,7 +10095,9 @@ a.mention-chip:hover {
    to 64px: hovering is pure width growth, nothing reflows. Text fades with
    opacity, so labels stay the links' accessible names. */
 
-@media screen and (min-width: 768px) {
+@media screen and (min-width: 768px) and (hover: hover),
+  screen and (min-width: 768px) and (pointer: fine),
+  screen and (min-width: 768px) and (pointer: none) {
   .app-container[data-sidebar-collapsed] {
     --sidebar-width: 64px;
   }
@@ -10162,7 +10233,9 @@ a.mention-chip:hover {
   }
 }
 
-@media (min-width: 768px) and (max-width: 1100px) {
+@media (min-width: 768px) and (max-width: 1100px) and (hover: hover),
+  (min-width: 768px) and (max-width: 1100px) and (pointer: fine),
+  (min-width: 768px) and (max-width: 1100px) and (pointer: none) {
   .mobile-nav-glass {
     display: none !important;
   }
@@ -11367,7 +11440,7 @@ a.mention-chip:hover {
 
 /* Responsive: below 1024px the detail panel overlays the grid (grid keeps width) */
 
-@media (max-width: 1024px) {
+@media (max-width: 1024px), (hover: none) and (pointer: coarse) {
   .calendar-detail-panel {
     position: absolute;
     top: 0;
@@ -11387,7 +11460,7 @@ a.mention-chip:hover {
    width below it, post cards compress to a tipo dash + time (the detail sheet
    carries the rest), and the detail panel docks to the bottom. */
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   .calendar-content {
     flex-direction: column;
   }
@@ -11924,7 +11997,7 @@ a.mention-chip:hover {
   min-width: 0;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1100px), (hover: none) and (pointer: coarse) {
   .cliente-tabs-shell {
     display: block;
   }
@@ -12166,7 +12239,7 @@ a.mention-chip:hover {
   padding: 1rem 1.25rem;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   .hub-acesso__grid {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -12254,7 +12327,7 @@ a.hub-fill__row-inner:hover {
   gap: 1.5rem;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   .hub-briefing__shell {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -12562,7 +12635,7 @@ a.hub-fill__row-inner:hover {
   gap: 1.5rem;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   .hub-paginas__split {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -12858,7 +12931,7 @@ a.hub-fill__row-inner:hover {
   margin: 0.25rem 0 0;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   .cliente-detalhe-page {
     padding: 0;
   }
@@ -13054,7 +13127,9 @@ a.hub-fill__row-inner:hover {
 /* With the static sidebar (>=768px, no drawer) the Guia pill owns bottom: 20px of the same
    corner: sit above it. */
 
-@media screen and (min-width: 768px) {
+@media screen and (min-width: 768px) and (hover: hover),
+  screen and (min-width: 768px) and (pointer: fine),
+  screen and (min-width: 768px) and (pointer: none) {
   body:has(.guide-pill):not(:has(.sidebar--drawer)) .context-help {
     bottom: max(72px, calc(var(--corner-clearance, 0px) + 64px));
   }
@@ -13062,12 +13137,16 @@ a.hub-fill__row-inner:hover {
 
 /* A Mensagens thread keeps its newest message clear of the corner stacked above
    its composer. */
-@media (min-width: 768px) {
+@media (min-width: 768px) and (hover: hover),
+  (min-width: 768px) and (pointer: fine),
+  (min-width: 768px) and (pointer: none) {
   body:has(.context-help) .mensagens-thread-scroll {
     padding-bottom: 64px;
   }
 }
-@media screen and (min-width: 768px) {
+@media screen and (min-width: 768px) and (hover: hover),
+  screen and (min-width: 768px) and (pointer: fine),
+  screen and (min-width: 768px) and (pointer: none) {
   body:has(.guide-pill):not(:has(.sidebar--drawer)) .mensagens-thread-scroll {
     padding-bottom: 116px;
   }
@@ -13076,7 +13155,7 @@ a.hub-fill__row-inner:hover {
 /* Phones: the bottom nav owns the bottom edge, so float under the topbar
    instead, icon-only (no hover on touch to reveal the label). */
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   .context-help {
     top: calc(var(--topbar-height) + var(--banner-height, 0px) + 10px);
     right: 14px;
@@ -13206,7 +13285,7 @@ a.hub-fill__row-inner:hover {
   font-size: 0.78rem !important;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   /* Stays three across on phones, so the 2-up odd-count promotion must not
      stretch the first card over the row and strand an empty track below. */
   .instagram-overview__account-kpis > .kpi-card:first-child:nth-last-child(odd) {
@@ -13830,7 +13909,7 @@ a.hub-fill__row-inner:hover {
   min-width: 0;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1100px), (hover: none) and (pointer: coarse) {
   .config-shell-body {
     display: block;
   }
@@ -14455,7 +14534,9 @@ a.hub-fill__row-inner:hover {
   margin-left: auto;
 }
 
-@media (min-width: 769px) {
+@media (min-width: 769px) and (hover: hover),
+  (min-width: 769px) and (pointer: fine),
+  (min-width: 769px) and (pointer: none) {
   .rb-editor-header {
     position: sticky;
     /* Sobe um pouco sobre o padding-top do .main-content: o cartão flutua
@@ -14479,7 +14560,9 @@ a.hub-fill__row-inner:hover {
   }
 }
 
-@media (min-width: 1280px) {
+@media (min-width: 1280px) and (hover: hover),
+  (min-width: 1280px) and (pointer: fine),
+  (min-width: 1280px) and (pointer: none) {
   .rb-layers-rail {
     display: block;
     position: fixed;
@@ -14496,6 +14579,82 @@ a.hub-fill__row-inner:hover {
   }
   .rb-editor-with-rail {
     padding-right: 298px;
+  }
+}
+
+/* Tablet: o editor de desktop roda dentro do shell do celular (useIsTabletShell em
+   lib/phoneShell.ts escolhe o componente), e os dois gates acima são só do shell de desktop.
+   O gate aqui é PHONE_WIDE_QUERY, sem altura mínima: o teclado do app iOS encolhe a altura
+   da web view, e essas classes só existem quando o JS já escolheu o editor de desktop.
+   As três páginas (relatório e os dois modelos) põem no topo a PhoneNavBar da view do
+   celular (.rb-editor-nav-bar: o Voltar que o shell e o app iOS não têm). Ela tira a barra do
+   shell (data-phone-page-header zera --phone-header-bar e o padding-top do .main-content),
+   fica presa no topo do .main-content, que é quem rola, e o cabeçalho do editor prende logo
+   abaixo da linha de 44px dela. O painel de camadas só aparece com 1024px ou mais, o mesmo
+   espaço de canvas que o desktop tem a 1280px com a barra lateral aberta (~650px); abaixo
+   disso ele some, como no desktop estreito: em fluxo ele empurraria o canvas para baixo.
+   Fixo, ele desce abaixo da nav bar (os mesmos 44px no top e na altura) e para acima da
+   faixa que o .main-content reserva para a barra de abas flutuante. */
+@media (hover: none) and (pointer: coarse) and (min-width: 768px) {
+  /* Two classes: the base .phone-nav-bar rule (position: relative) comes later in the file. */
+  .phone-nav-bar.rb-editor-nav-bar {
+    position: sticky;
+    top: 0;
+    z-index: 11;
+    margin-bottom: 0.5rem;
+    background: var(--phone-bg);
+  }
+  .rb-editor-header {
+    position: sticky;
+    top: 44px;
+    z-index: 10;
+    padding: 0.6rem 0.9rem;
+    border: 1px solid transparent;
+    border-radius: 16px;
+    transition:
+      background-color 0.2s ease,
+      border-color 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+  .rb-editor-header[data-stuck] {
+    background: color-mix(in srgb, var(--card-bg) 80%, transparent);
+    -webkit-backdrop-filter: saturate(180%) blur(14px);
+    backdrop-filter: saturate(180%) blur(14px);
+    border-color: var(--border-color);
+    box-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.35);
+  }
+
+  @media (min-width: 1024px) {
+    .rb-layers-rail {
+      display: block;
+      position: fixed;
+      top: calc(var(--banner-height, 0px) + var(--phone-header-height) + 44px + 16px);
+      right: max(16px, env(safe-area-inset-right, 0px));
+      width: 250px;
+      max-height: calc(
+        100dvh - var(--banner-height, 0px) - var(--phone-header-height) - 44px - 32px - 104px -
+          env(safe-area-inset-bottom, 0px)
+      );
+      overflow-y: auto;
+      overflow-x: hidden;
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 0.75rem;
+    }
+    .rb-editor-with-rail {
+      padding-right: 298px;
+    }
+  }
+}
+
+/* Sem hover (toque): a barra de cada bloco (arrastar, largura, ajustes, excluir) fica
+   sempre à mostra; senão um toque não chega a ela. Vem depois da regra base de
+   .rb-edit-toolbar (mesma especificidade: a ordem decide). */
+@media (hover: none) {
+  .rb-edit-toolbar {
+    opacity: 1;
+    pointer-events: auto;
   }
 }
 
@@ -14614,6 +14773,26 @@ a.hub-fill__row-inner:hover {
 .rb-layers-add-between:hover {
   color: var(--text-main);
   border-color: var(--text-light);
+}
+
+/* Sem hover (toque): o "+" entre camadas fica sempre à mostra. Depois da regra base,
+   que tem a mesma especificidade e senão venceria. O vão ganha altura para o "+" não
+   cobrir as camadas, e um ::before de 32px dá a área de toque sem crescer o círculo. */
+@media (hover: none) {
+  .rb-layers-gap {
+    height: 1.25rem;
+    margin: 0;
+  }
+  .rb-layers-add-between {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .rb-layers-add-between::before {
+    content: '';
+    position: absolute;
+    inset: -7px;
+    border-radius: 50%;
+  }
 }
 
 .rb-layers-size {
@@ -15054,7 +15233,9 @@ a.hub-fill__row-inner:hover {
   display: none;
 }
 
-@media screen and (min-width: 768px) {
+@media screen and (min-width: 768px) and (hover: hover),
+  screen and (min-width: 768px) and (pointer: fine),
+  screen and (min-width: 768px) and (pointer: none) {
   body:not(:has(.sidebar--drawer)) .guide-pill {
     position: fixed;
     right: 20px;
@@ -15750,7 +15931,7 @@ a.hub-fill__row-inner:hover {
    "Publica" e margem descem para uma segunda linha sob o título, e o botão
    do card de topo vai para baixo do texto. */
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   .fila-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -15902,7 +16083,7 @@ a.hub-fill__row-inner:hover {
      portal to <body>, outside `.app-container`, and would otherwise render unstyled.
    Component classes are all `phone-*` and only appear where the kit is used. */
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   .app-container {
     --phone-bg: #f2f2f7;
     --phone-cell: #ffffff;
@@ -17379,7 +17560,9 @@ button.phone-stat-tile:active {
 /* Phone-only: MobileNav closes it when the viewport leaves the phone range; this hides
    it for the frame in between. */
 
-@media (min-width: 768px) {
+@media (min-width: 768px) and (hover: hover),
+  (min-width: 768px) and (pointer: fine),
+  (min-width: 768px) and (pointer: none) {
   .mobile-more-sheet,
   .mobile-more-overlay {
     display: none;
@@ -19165,7 +19348,7 @@ button.phone-stat-tile:active {
 .igc-panel__list {
   grid-column: span 5;
 }
-@media (max-width: 1100px) {
+@media (max-width: 1100px), (hover: none) and (pointer: coarse) {
   .igc-panel__reading,
   .igc-panel__list {
     grid-column: 1 / -1;
@@ -19529,7 +19712,7 @@ button.phone-stat-tile:active {
 .igc-account__action {
   margin-left: auto;
 }
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   .igc-account__titles {
     flex-basis: calc(100% - 32px);
   }

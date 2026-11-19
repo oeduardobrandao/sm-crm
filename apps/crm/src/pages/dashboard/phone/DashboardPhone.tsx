@@ -25,7 +25,9 @@ interface Props {
  * the finance tiles.
  */
 export function DashboardPhone({ isAgent, cards, footer }: Props) {
-  const today = useTodayCard();
+  // "Só meus" (the Vidro Início toggle): agents only ever see their own, so no chip.
+  const [onlyMine, setOnlyMine] = useState(false);
+  const today = useTodayCard({ onlyMine: !isAgent && onlyMine });
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchMounted, setSearchMounted] = useState(false);
 
@@ -47,7 +49,10 @@ export function DashboardPhone({ isAgent, cards, footer }: Props) {
           </PhoneIconButton>
         }
       >
-        <TodayChips today={today} />
+        <TodayChips
+          today={today}
+          onlyMine={isAgent ? undefined : { value: onlyMine, onChange: setOnlyMine }}
+        />
       </PhonePageHeader>
 
       <TodayPhone today={today} />

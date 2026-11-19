@@ -1,9 +1,10 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useEffect, useState } from 'react';
 import type { FinancialAccess } from '../../../lib/financialAccess';
 import { makeCan, fakeMembership } from '@/test/makeCan';
+import { mockMatchMediaEnv, type MediaEnv } from '@/test/mediaQueryMatcher';
 
 vi.mock('../../../context/AuthContext', () => ({
   useAuth: vi.fn(),
@@ -166,6 +167,17 @@ function ChromePage() {
   );
 }
 
+/** Shows `usePhoneLayout().wideRoute` for the full-width route tests. */
+function WideProbe({ label }: { label: string }) {
+  const { wideRoute } = usePhoneLayout();
+  return (
+    <div>
+      <div>{label}</div>
+      <span data-testid="wide-route">{String(wideRoute)}</span>
+    </div>
+  );
+}
+
 const mockedUseAuth = vi.mocked(useAuth);
 
 /**
@@ -205,50 +217,31 @@ beforeEach(() => {
   setCanSeeFinancials(true);
 });
 
-function setViewport(width: number) {
-  Object.defineProperty(window, 'innerWidth', {
-    configurable: true,
-    writable: true,
-    value: width,
+const PHONE: MediaEnv = { width: 390, height: 844, hover: 'none', pointer: 'coarse' };
+const TABLET_TOUCH: MediaEnv = { width: 1180, height: 820, hover: 'none', pointer: 'coarse' };
+const NARROW_DESKTOP: MediaEnv = { width: 800, height: 900, hover: 'hover', pointer: 'fine' };
+const DESKTOP: MediaEnv = { width: 1440, height: 900, hover: 'hover', pointer: 'fine' };
+
+let media: ReturnType<typeof mockMatchMediaEnv> | null = null;
+
+/** Installs `env` as the viewport (matchMedia + innerWidth/innerHeight), replacing any earlier one. */
+function setMediaEnv(env: MediaEnv) {
+  media?.restore();
+  media = mockMatchMediaEnv(env);
+  return media;
+}
+
+/** Moves the installed viewport to `env`, firing `change` on the queries whose result flips. */
+function changeMediaEnv(env: MediaEnv) {
+  act(() => {
+    media!.setEnv(env);
   });
 }
 
-function createMediaQuery(initialMatches: boolean) {
-  let matches = initialMatches;
-  const listeners = new Set<(event: MediaQueryListEvent) => void>();
-
-  return {
-    get matches() {
-      return matches;
-    },
-    media: '',
-    addEventListener: vi.fn((_event: string, listener: (event: MediaQueryListEvent) => void) => {
-      listeners.add(listener);
-    }),
-    removeEventListener: vi.fn((_event: string, listener: (event: MediaQueryListEvent) => void) => {
-      listeners.delete(listener);
-    }),
-    dispatch(nextMatches: boolean) {
-      matches = nextMatches;
-      listeners.forEach((listener) => listener({ matches: nextMatches } as MediaQueryListEvent));
-    },
-  };
-}
-
-function mockMatchMedia(tabletMatches: boolean, mobileMatches = false) {
-  const tabletQuery = createMediaQuery(tabletMatches);
-  const mobileQuery = createMediaQuery(mobileMatches);
-
-  vi.stubGlobal(
-    'matchMedia',
-    vi.fn((query: string) => {
-      if (query.includes('max-width: 767px')) return mobileQuery;
-      return tabletQuery;
-    }),
-  );
-
-  return tabletQuery;
-}
+afterEach(() => {
+  media?.restore();
+  media = null;
+});
 
 function renderLayout(pathname = '/dashboard') {
   return render(layoutTree(pathname));
@@ -263,8 +256,9 @@ function layoutTree(pathname = '/dashboard') {
             path="/dashboard"
             element={
               <div>
-                <div>Dashboard screen</div>
+                <WideProbe label="Dashboard screen" />
                 <Link to="/clientes">Ir para clientes</Link>
+                <Link to="/entregas">Ir para entregas</Link>
               </div>
             }
           />
@@ -272,6 +266,8 @@ function layoutTree(pathname = '/dashboard') {
           <Route path="/financeiro" element={<div>Financeiro screen</div>} />
           <Route path="/contratos" element={<div>Contratos screen</div>} />
           <Route path="/chrome" element={<ChromePage />} />
+          <Route path="/entregas" element={<WideProbe label="Entregas screen" />} />
+          <Route path="/relatorios/:id" element={<WideProbe label="Relatorio screen" />} />
         </Route>
       </Routes>
     </MemoryRouter>
@@ -280,8 +276,7 @@ function layoutTree(pathname = '/dashboard') {
 
 describe('AppLayout', () => {
   it('renders the desktop shell without tablet drawer controls', async () => {
-    setViewport(1280);
-    mockMatchMedia(false);
+    setMediaEnv(DESKTOP);
 
     renderLayout();
     await screen.findByTestId('global-banner');
@@ -293,8 +288,7 @@ describe('AppLayout', () => {
   });
 
   it('renders the phone shell header instead of the TopBar below 768px (AUDIT #1)', async () => {
-    setViewport(390);
-    mockMatchMedia(false);
+    setMediaEnv(PHONE);
 
     renderLayout();
     await screen.findByTestId('global-banner');
@@ -308,8 +302,7 @@ describe('AppLayout', () => {
   });
 
   it('applies the page phone chrome to .app-container and clears it on the next route', async () => {
-    setViewport(390);
-    mockMatchMedia(false);
+    setMediaEnv(PHONE);
 
     renderLayout('/chrome');
     await screen.findByText('Chrome screen');
@@ -330,8 +323,7 @@ describe('AppLayout', () => {
   });
 
   it('reports desktop through usePhoneLayout from 768px up', async () => {
-    setViewport(1280);
-    mockMatchMedia(false);
+    setMediaEnv(DESKTOP);
 
     renderLayout('/chrome');
     await screen.findByText('Chrome screen');
@@ -341,8 +333,7 @@ describe('AppLayout', () => {
   });
 
   it('keeps the TopBar and the in-page related-articles button from 768px up', async () => {
-    setViewport(1280);
-    mockMatchMedia(false);
+    setMediaEnv(DESKTOP);
 
     renderLayout();
     await screen.findByTestId('global-banner');
@@ -355,8 +346,7 @@ describe('AppLayout', () => {
   });
 
   it('opens and closes the tablet drawer, then resets when leaving tablet mode', async () => {
-    setViewport(900);
-    const mediaQueryList = mockMatchMedia(true);
+    setMediaEnv(NARROW_DESKTOP);
 
     renderLayout();
     await screen.findByTestId('global-banner');
@@ -375,9 +365,7 @@ describe('AppLayout', () => {
     expect(screen.getByTestId('sidebar')).toHaveAttribute('data-open', 'false');
 
     fireEvent.click(screen.getByRole('button', { name: 'Abrir menu' }));
-    act(() => {
-      mediaQueryList.dispatch(false);
-    });
+    changeMediaEnv(DESKTOP);
 
     expect(screen.queryByRole('button', { name: 'Fechar menu' })).not.toBeInTheDocument();
     expect(screen.getByTestId('sidebar')).toHaveAttribute('data-drawer', 'false');
@@ -386,8 +374,7 @@ describe('AppLayout', () => {
   });
 
   it('defaults the desktop sidebar to the rail, and pinning insets the content', async () => {
-    setViewport(1280);
-    mockMatchMedia(false);
+    setMediaEnv(DESKTOP);
 
     const { container, unmount } = renderLayout();
     await screen.findByTestId('global-banner');
@@ -415,8 +402,7 @@ describe('AppLayout', () => {
   });
 
   it('never applies the rail to the tablet drawer, and restores it on widening', async () => {
-    setViewport(900);
-    const mediaQueryList = mockMatchMedia(true);
+    setMediaEnv(NARROW_DESKTOP);
 
     const { container } = renderLayout();
     await screen.findByTestId('global-banner');
@@ -424,9 +410,7 @@ describe('AppLayout', () => {
     expect(screen.getByTestId('sidebar')).toHaveAttribute('data-collapsible', 'false');
     expect(container.querySelector('.app-container')).not.toHaveAttribute('data-sidebar-collapsed');
 
-    act(() => {
-      mediaQueryList.dispatch(false);
-    });
+    changeMediaEnv(DESKTOP);
     expect(screen.getByTestId('sidebar')).toHaveAttribute('data-collapsible', 'true');
     expect(container.querySelector('.app-container')).toHaveAttribute(
       'data-sidebar-collapsed',
@@ -435,8 +419,7 @@ describe('AppLayout', () => {
   });
 
   it('scrolls the main content back to the top when the route changes', async () => {
-    setViewport(1280);
-    mockMatchMedia(false);
+    setMediaEnv(DESKTOP);
 
     const { container } = renderLayout();
     await screen.findByTestId('global-banner');
@@ -455,8 +438,7 @@ describe('AppLayout', () => {
 // (covered in financialRouteGuard.test.ts) returns the right label.
 describe('AppLayout financial guard wiring', () => {
   it('renders the restriction screen instead of the route when access is explicitly denied', async () => {
-    setViewport(1280);
-    mockMatchMedia(false);
+    setMediaEnv(DESKTOP);
     setCanSeeFinancials(false);
 
     renderLayout('/financeiro');
@@ -470,8 +452,7 @@ describe('AppLayout financial guard wiring', () => {
   });
 
   it('renders the route when access is granted', async () => {
-    setViewport(1280);
-    mockMatchMedia(false);
+    setMediaEnv(DESKTOP);
     setCanSeeFinancials(true);
 
     renderLayout('/financeiro');
@@ -482,8 +463,7 @@ describe('AppLayout financial guard wiring', () => {
   });
 
   it('shows a loading skeleton, not the restriction screen, while capability is unknown', async () => {
-    setViewport(1280);
-    mockMatchMedia(false);
+    setMediaEnv(DESKTOP);
     setCanSeeFinancials('unknown');
 
     renderLayout('/financeiro');
@@ -495,8 +475,7 @@ describe('AppLayout financial guard wiring', () => {
   });
 
   it('leaves non-financial routes unaffected when access is denied', async () => {
-    setViewport(1280);
-    mockMatchMedia(false);
+    setMediaEnv(DESKTOP);
     setCanSeeFinancials(false);
 
     renderLayout('/dashboard');
@@ -514,8 +493,7 @@ describe('AppLayout financial guard wiring', () => {
  */
 describe('AppLayout contract guard wiring', () => {
   it('renders /contratos for {contratos: editar, financeiro: none} — the shape that used to hit the restriction screen', async () => {
-    setViewport(1280);
-    mockMatchMedia(false);
+    setMediaEnv(DESKTOP);
     setCanSeeFinancials(false, {
       role: 'agent',
       role_id: 'role-1',
@@ -530,8 +508,7 @@ describe('AppLayout contract guard wiring', () => {
   });
 
   it('shows the contracts restriction screen for {contratos: none, financeiro: editar}', async () => {
-    setViewport(1280);
-    mockMatchMedia(false);
+    setMediaEnv(DESKTOP);
     setCanSeeFinancials(true, {
       role: 'agent',
       role_id: 'role-1',
@@ -550,8 +527,7 @@ describe('AppLayout contract guard wiring', () => {
   });
 
   it('still restricts /contratos for a legacy restricted admin (regression)', async () => {
-    setViewport(1280);
-    mockMatchMedia(false);
+    setMediaEnv(DESKTOP);
     setCanSeeFinancials(false, { role: 'admin', can_see_financials: false });
 
     renderLayout('/contratos');
@@ -562,8 +538,7 @@ describe('AppLayout contract guard wiring', () => {
   });
 
   it('shows a skeleton, not a denial, while the contracts capability is unknown', async () => {
-    setViewport(1280);
-    mockMatchMedia(false);
+    setMediaEnv(DESKTOP);
     mockedUseAuth.mockReturnValue({
       user: { id: 'u1' } as never,
       profile: { id: 'u1', nome: 'Ana', role: 'owner', conta_id: 'c1' } as never,
@@ -590,8 +565,7 @@ describe('AppLayout Vidro shell', () => {
   it('replaces the TopBar with the glass panel and page toolbar at desktop width', async () => {
     vidroState.active = true;
     vidroState.enabled = true;
-    setViewport(1280);
-    mockMatchMedia(false);
+    setMediaEnv(DESKTOP);
 
     renderLayout();
     await screen.findByTestId('global-banner');
@@ -609,8 +583,7 @@ describe('AppLayout Vidro shell', () => {
     vidroState.active = true;
     vidroState.enabled = true;
     localStorage.setItem('sidebar-pinned', '1');
-    setViewport(1280);
-    const tabletQuery = mockMatchMedia(false);
+    setMediaEnv(DESKTOP);
 
     const { container } = renderLayout();
     await screen.findByTestId('global-banner');
@@ -618,9 +591,7 @@ describe('AppLayout Vidro shell', () => {
     expect(document.querySelector('.vidro-panel')).toContainElement(main);
     expect(screen.getByTestId('sidebar')).toHaveAttribute('data-pinned', 'true');
 
-    act(() => {
-      tabletQuery.dispatch(true);
-    });
+    changeMediaEnv(NARROW_DESKTOP);
     expect(document.querySelector('.vidro-panel')).toContainElement(main);
     expect(screen.queryByTestId('topbar')).not.toBeInTheDocument();
     expect(document.getElementById('app')).toBe(main);
@@ -635,9 +606,7 @@ describe('AppLayout Vidro shell', () => {
     );
     expect(localStorage.getItem('sidebar-pinned')).toBe('1');
 
-    act(() => {
-      tabletQuery.dispatch(false);
-    });
+    changeMediaEnv(DESKTOP);
     expect(document.querySelector('.vidro-panel')).toContainElement(main);
     expect(document.getElementById('app')).toBe(main);
     expect(screen.getByTestId('sidebar')).toHaveAttribute('data-rail-only', 'false');
@@ -647,8 +616,7 @@ describe('AppLayout Vidro shell', () => {
   it('keeps the same <main> mounted when the user opts out of the look', async () => {
     vidroState.active = true;
     vidroState.enabled = true;
-    setViewport(1280);
-    mockMatchMedia(false);
+    setMediaEnv(DESKTOP);
 
     const { rerender } = renderLayout();
     await screen.findByTestId('global-banner');
@@ -665,8 +633,7 @@ describe('AppLayout Vidro shell', () => {
   });
 
   it('wraps <main> in a layout-neutral div when the flag is off', async () => {
-    setViewport(1280);
-    mockMatchMedia(false);
+    setMediaEnv(DESKTOP);
 
     const { container } = renderLayout();
     await screen.findByTestId('global-banner');
@@ -680,8 +647,7 @@ describe('AppLayout Vidro shell', () => {
   });
 
   it('keeps the same <main> and page state when the flag flips on a refetch', async () => {
-    setViewport(1280);
-    mockMatchMedia(false);
+    setMediaEnv(DESKTOP);
     let mounts = 0;
     function CounterPage() {
       const [n, setN] = useState(0);
@@ -734,8 +700,7 @@ describe('AppLayout Vidro shell', () => {
   it('uses the glass panel and the rail at tablet width when vidro is active', async () => {
     vidroState.active = true;
     vidroState.enabled = true;
-    setViewport(900);
-    mockMatchMedia(true);
+    setMediaEnv(NARROW_DESKTOP);
 
     renderLayout();
     await screen.findByTestId('global-banner');
@@ -753,8 +718,7 @@ describe('AppLayout Vidro shell', () => {
     vidroState.active = false;
     vidroState.enabled = true;
     vidroState.optedOut = true;
-    setViewport(900);
-    mockMatchMedia(true);
+    setMediaEnv(NARROW_DESKTOP);
 
     renderLayout();
     await screen.findByTestId('global-banner');
@@ -766,8 +730,7 @@ describe('AppLayout Vidro shell', () => {
   });
 
   it('keeps the classic TopBar at desktop width when vidro is inactive', async () => {
-    setViewport(1280);
-    mockMatchMedia(false);
+    setMediaEnv(DESKTOP);
 
     renderLayout();
     await screen.findByTestId('global-banner');
@@ -778,12 +741,156 @@ describe('AppLayout Vidro shell', () => {
   });
 });
 
+describe('AppLayout shell on touch tablets', () => {
+  it('touch tablet gets the phone shell', async () => {
+    vidroState.active = true;
+    vidroState.enabled = true;
+    setMediaEnv(TABLET_TOUCH);
+
+    const first = renderLayout();
+    await screen.findByTestId('global-banner');
+
+    expect(screen.getByTestId('phone-shell-header')).toBeInTheDocument();
+    expect(screen.queryByTestId('topbar')).not.toBeInTheDocument();
+    expect(document.querySelector('.vidro-panel')).toBeNull();
+    const sidebar = screen.getByTestId('sidebar');
+    expect(sidebar).toHaveAttribute('data-collapsible', 'false');
+    expect(sidebar).toHaveAttribute('data-drawer', 'false');
+    expect(sidebar).toHaveAttribute('data-rail-only', 'false');
+    expect(sidebar).toHaveAttribute('data-vidro-shell', 'false');
+    // No Vidro shell, so no Vidro intro: the popup host keeps the slot.
+    expect(await screen.findByTestId('popup-host')).toBeInTheDocument();
+    expect(screen.queryByTestId('vidro-intro')).not.toBeInTheDocument();
+    first.unmount();
+
+    renderLayout('/chrome');
+    await screen.findByText('Chrome screen');
+    expect(screen.getByTestId('is-phone')).toHaveTextContent('true');
+  });
+
+  it('narrow desktop keeps the Vidro rail', async () => {
+    vidroState.active = true;
+    vidroState.enabled = true;
+    setMediaEnv(NARROW_DESKTOP);
+
+    renderLayout('/chrome');
+    await screen.findByText('Chrome screen');
+
+    expect(screen.getByTestId('is-phone')).toHaveTextContent('false');
+    expect(screen.queryByTestId('phone-shell-header')).not.toBeInTheDocument();
+    expect(document.querySelector('.vidro-panel')).toContainElement(document.getElementById('app'));
+    expect(screen.getByTestId('sidebar')).toHaveAttribute('data-rail-only', 'true');
+    expect(screen.getByTestId('sidebar')).toHaveAttribute('data-collapsible', 'true');
+  });
+
+  it('narrow desktop in the classic look keeps the TopBar', async () => {
+    vidroState.enabled = true;
+    vidroState.optedOut = true;
+    setMediaEnv(NARROW_DESKTOP);
+
+    renderLayout();
+    await screen.findByTestId('global-banner');
+
+    expect(screen.getByTestId('topbar')).toBeInTheDocument();
+    expect(screen.queryByTestId('phone-shell-header')).not.toBeInTheDocument();
+  });
+});
+
+describe('AppLayout full-width routes on wide phone shells', () => {
+  const PHONE_LANDSCAPE: MediaEnv = { width: 844, height: 390, hover: 'none', pointer: 'coarse' };
+  const container = () => document.querySelector('.app-container')!;
+
+  it('marks /entregas as wide on a touch tablet', async () => {
+    setMediaEnv(TABLET_TOUCH);
+
+    renderLayout('/entregas');
+    await screen.findByText('Entregas screen');
+
+    expect(container()).toHaveAttribute('data-phone-wide');
+    expect(screen.getByTestId('wide-route')).toHaveTextContent('true');
+  });
+
+  it('keeps /dashboard in the column on a touch tablet', async () => {
+    setMediaEnv(TABLET_TOUCH);
+
+    renderLayout('/dashboard');
+    await screen.findByText('Dashboard screen');
+
+    expect(container()).not.toHaveAttribute('data-phone-wide');
+    expect(screen.getByTestId('wide-route')).toHaveTextContent('false');
+  });
+
+  it('widens the report editor on a tablet but not on a phone in landscape', async () => {
+    setMediaEnv(TABLET_TOUCH);
+    const tablet = renderLayout('/relatorios/9');
+    await screen.findByText('Relatorio screen');
+    expect(container()).toHaveAttribute('data-phone-wide');
+    expect(screen.getByTestId('wide-route')).toHaveTextContent('true');
+    tablet.unmount();
+
+    setMediaEnv(PHONE_LANDSCAPE);
+    renderLayout('/relatorios/9');
+    await screen.findByText('Relatorio screen');
+    expect(container()).not.toHaveAttribute('data-phone-wide');
+    expect(screen.getByTestId('wide-route')).toHaveTextContent('false');
+  });
+
+  it('marks /entregas as wide on a phone in landscape', async () => {
+    setMediaEnv(PHONE_LANDSCAPE);
+
+    renderLayout('/entregas');
+    await screen.findByText('Entregas screen');
+
+    expect(container()).toHaveAttribute('data-phone-wide');
+  });
+
+  it('never marks a desktop shell, even on a wide route', async () => {
+    setMediaEnv(DESKTOP);
+
+    renderLayout('/entregas');
+    await screen.findByText('Entregas screen');
+
+    expect(container()).not.toHaveAttribute('data-phone-wide');
+    expect(screen.getByTestId('wide-route')).toHaveTextContent('false');
+  });
+
+  it('keeps the same main element when navigating onto a wide route', async () => {
+    setMediaEnv(TABLET_TOUCH);
+
+    renderLayout('/dashboard');
+    await screen.findByText('Dashboard screen');
+    const main = document.getElementById('app');
+    expect(container()).not.toHaveAttribute('data-phone-wide');
+
+    fireEvent.click(screen.getByRole('link', { name: 'Ir para entregas' }));
+    await screen.findByText('Entregas screen');
+
+    expect(container()).toHaveAttribute('data-phone-wide');
+    expect(document.getElementById('app')).toBe(main);
+  });
+
+  it('keeps the page mounted when rotating flips the wide state', async () => {
+    setMediaEnv(TABLET_TOUCH);
+
+    renderLayout('/relatorios/9');
+    const page = await screen.findByText('Relatorio screen');
+    const main = document.getElementById('app');
+    expect(container()).toHaveAttribute('data-phone-wide');
+
+    changeMediaEnv(PHONE_LANDSCAPE);
+
+    expect(container()).not.toHaveAttribute('data-phone-wide');
+    expect(screen.getByTestId('wide-route')).toHaveTextContent('false');
+    expect(screen.getByText('Relatorio screen')).toBe(page);
+    expect(document.getElementById('app')).toBe(main);
+  });
+});
+
 describe('Vidro launch intro', () => {
   function vidroOn() {
     vidroState.active = true;
     vidroState.enabled = true;
-    setViewport(1280);
-    mockMatchMedia(false);
+    setMediaEnv(DESKTOP);
   }
 
   it('takes the popup slot the first time the look is on at desktop width', async () => {
@@ -810,8 +917,7 @@ describe('Vidro launch intro', () => {
 
     vidroState.active = true;
     vidroState.optedOut = false;
-    setViewport(390);
-    mockMatchMedia(false, true);
+    setMediaEnv(PHONE);
     renderLayout();
     expect(await screen.findByTestId('popup-host')).toBeInTheDocument();
     expect(screen.queryByTestId('vidro-intro')).not.toBeInTheDocument();
@@ -853,8 +959,7 @@ describe('Vidro launch intro', () => {
 describe('sidebar default under Vidro', () => {
   beforeEach(() => {
     localStorage.removeItem('sidebar-pinned');
-    setViewport(1280);
-    mockMatchMedia(false);
+    setMediaEnv(DESKTOP);
   });
 
   it('starts pinned when nothing is stored and the look is active', async () => {

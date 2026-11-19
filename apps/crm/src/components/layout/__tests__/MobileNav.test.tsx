@@ -48,6 +48,7 @@ import { useWorkspaceLimits } from '../../../hooks/useWorkspaceLimits';
 import { useMensagensUnread } from '../../../hooks/useMensagensUnread';
 import { useEquipeChatUnread } from '../../../hooks/useEquipeChatUnread';
 import { makeCan, fakeMembership } from '@/test/makeCan';
+import { mockMatchMediaEnv, type MediaEnv } from '@/test/mediaQueryMatcher';
 
 const mockedUseAuth = vi.mocked(useAuth);
 const mockedSupabase = supabaseModule as typeof supabaseModule & {
@@ -150,27 +151,9 @@ function moreRows(): string[] {
   return Array.from(sheet.querySelectorAll('.phone-cell__label')).map((el) => el.textContent ?? '');
 }
 
-function createPhoneMediaQuery(initialMatches = true) {
-  let matches = initialMatches;
-  const listeners = new Set<(event: MediaQueryListEvent) => void>();
-
-  return {
-    get matches() {
-      return matches;
-    },
-    media: '(max-width: 767px)',
-    addEventListener: vi.fn((_type: string, listener: (event: MediaQueryListEvent) => void) => {
-      listeners.add(listener);
-    }),
-    removeEventListener: vi.fn((_type: string, listener: (event: MediaQueryListEvent) => void) => {
-      listeners.delete(listener);
-    }),
-    dispatch(nextMatches: boolean) {
-      matches = nextMatches;
-      listeners.forEach((listener) => listener({ matches } as MediaQueryListEvent));
-    },
-  };
-}
+const PHONE: MediaEnv = { width: 390, height: 844, hover: 'none', pointer: 'coarse' };
+const TABLET_TOUCH: MediaEnv = { width: 1180, height: 820, hover: 'none', pointer: 'coarse' };
+const DESKTOP: MediaEnv = { width: 1440, height: 900, hover: 'hover', pointer: 'fine' };
 
 describe('MobileNav', () => {
   beforeEach(() => {
@@ -284,31 +267,45 @@ describe('MobileNav', () => {
     await waitFor(() => expect(more).toHaveFocus());
   });
 
-  it('closes the phone sheet when the phone media query stops matching', async () => {
-    const phoneMedia = createPhoneMediaQuery();
-    vi.stubGlobal(
-      'matchMedia',
-      vi.fn((query: string) =>
-        query === '(max-width: 767px)'
-          ? phoneMedia
-          : {
-              matches: false,
-              media: query,
-              addEventListener: vi.fn(),
-              removeEventListener: vi.fn(),
-            },
-      ),
-    );
-    setAuth();
-    renderMobileNav('/dashboard');
-    const more = screen.getByRole('button', { name: 'Mais' });
-    fireEvent.click(more);
-    expect(await screen.findByRole('dialog', { name: 'Mais' })).toBeInTheDocument();
+  describe('leaving the phone shell', () => {
+    let media: ReturnType<typeof mockMatchMediaEnv> | null = null;
+    afterEach(() => {
+      media?.restore();
+      media = null;
+    });
 
-    act(() => phoneMedia.dispatch(false));
+    it('closes the phone sheet when the phone media query stops matching', async () => {
+      media = mockMatchMediaEnv(PHONE);
+      setAuth();
+      renderMobileNav('/dashboard');
+      const more = screen.getByRole('button', { name: 'Mais' });
+      fireEvent.click(more);
+      expect(await screen.findByRole('dialog', { name: 'Mais' })).toBeInTheDocument();
 
-    await waitFor(() => expect(more).toHaveAttribute('aria-expanded', 'false'));
-    expect(screen.queryByRole('dialog', { name: 'Mais' })).toBeNull();
+      act(() => media!.setEnv(DESKTOP));
+
+      await waitFor(() => expect(more).toHaveAttribute('aria-expanded', 'false'));
+      expect(screen.queryByRole('dialog', { name: 'Mais' })).toBeNull();
+    });
+
+    it('MobileNav closes the Mais sheet when the phone shell query stops matching', async () => {
+      media = mockMatchMediaEnv(TABLET_TOUCH);
+      setAuth();
+      renderMobileNav('/dashboard');
+      const more = screen.getByRole('button', { name: 'Mais' });
+      fireEvent.click(more);
+      expect(await screen.findByRole('dialog', { name: 'Mais' })).toBeInTheDocument();
+      // The open modal sheet locks the page: Radix's scroll lock and pointer-events guard.
+      await waitFor(() => expect(document.body).toHaveAttribute('data-scroll-locked'));
+      expect(document.body.style.pointerEvents).toBe('none');
+
+      act(() => media!.setEnv(DESKTOP));
+
+      await waitFor(() => expect(more).toHaveAttribute('aria-expanded', 'false'));
+      expect(screen.queryByRole('dialog', { name: 'Mais' })).toBeNull();
+      await waitFor(() => expect(document.body).not.toHaveAttribute('data-scroll-locked'));
+      expect(document.body.style.pointerEvents).toBe('');
+    });
   });
 
   it('opens the shared global search dialog from the Buscar row and closes the sheet', async () => {

@@ -14,6 +14,8 @@ export interface TarefasPhoneListProps {
   membros: Membro[];
   onTarefaClick: (tarefa: TarefaWithRelations) => void;
   onRefresh: () => void;
+  /** The "Concluídas hoje" filter is on: open the Concluídas group. */
+  expandConcluidas?: boolean;
 }
 
 /** One list row (FTarefas): completion circle, title + meta line, avatar. Swipe right
@@ -104,9 +106,16 @@ export function TarefasPhoneList({
   membros,
   onTarefaClick,
   onRefresh,
+  expandConcluidas = false,
 }: TarefasPhoneListProps) {
   const { t } = useTranslation('tasksPhone');
-  const [showConcluidas, setShowConcluidas] = useState(false);
+  const [showConcluidas, setShowConcluidas] = useState(expandConcluidas);
+  // Re-open when the "Concluídas hoje" filter turns on while mounted (as the desktop list).
+  const [prevExpand, setPrevExpand] = useState(expandConcluidas);
+  if (expandConcluidas !== prevExpand) {
+    setPrevExpand(expandConcluidas);
+    if (expandConcluidas) setShowConcluidas(true);
+  }
   const now = new Date();
   const buckets = groupByDueBucket(tarefas, now);
   const concluidas = tarefas
@@ -128,7 +137,9 @@ export function TarefasPhoneList({
 
   return (
     <div className="phone-tar-lista">
-      {totalOpen === 0 && <p className="phone-tar-empty">{t('list.empty')}</p>}
+      {totalOpen === 0 && !(expandConcluidas && concluidas.length > 0) && (
+        <p className="phone-tar-empty">{t('list.empty')}</p>
+      )}
       {DUE_BUCKETS.map((bucket) => {
         const items = buckets[bucket.id];
         if (items.length === 0) return null;

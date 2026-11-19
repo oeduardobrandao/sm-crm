@@ -417,9 +417,13 @@ export function ContaPhone(props: ContaPhoneProps) {
       />
       {periodStart && <p className="phone-an-period__custom">Último mês: {periodTag}</p>}
 
-      {kpis}
-
-      <FollowerGrowthCard history={history} onManual={onManualFollower} />
+      {/* Wide touch screens: two columns (analyticsPhone.css). */}
+      <div className="phone-an-pair phone-an-stack">
+        <div className="phone-an-half phone-an-stack">{kpis}</div>
+        <div className="phone-an-half phone-an-stack">
+          <FollowerGrowthCard history={history} onManual={onManualFollower} />
+        </div>
+      </div>
 
       <RankedPostStrip
         title="Melhores posts"
@@ -438,66 +442,72 @@ export function ContaPhone(props: ContaPhoneProps) {
         onSeeMore={matureRankedPosts.length > 5 ? () => drawer.open('worst') : undefined}
       />
 
-      <SectionHead
-        large
-        title="Performance de conteúdo"
-        trailing={
-          posts.length > 0 ? (
-            <button
-              ref={sortButtonRef}
-              type="button"
-              className="phone-an-sort"
-              aria-haspopup="dialog"
-              aria-label={`Ordenar posts: ${POST_SORT_LABELS[sort.col] ?? sort.col}, ${sort.dir === 'asc' ? 'crescente' : 'decrescente'}`}
-              onClick={() => setSortOpen(true)}
-            >
-              <ArrowUpDown aria-hidden="true" />
-              {POST_SORT_LABELS[sort.col] ?? sort.col}
-            </button>
-          ) : undefined
-        }
-      />
-      {posts.length === 0 ? (
-        <p className="phone-an-empty">Nenhuma publicação neste período.</p>
-      ) : (
-        <GroupedList aria-label="Performance de conteúdo">
-          {visiblePosts.map((p) => (
-            <Cell
-              key={p.id}
-              icon={<PostThumb url={p.thumbnail_url} mediaType={p.media_type} />}
-              label={p.caption || 'Sem legenda'}
-              subtitle={`${new Date(p.posted_at).toLocaleDateString('pt-BR')} · ${mediaTypeLabel(p.media_type)} · ${fmtEng(p.engagement_rate)} eng.${p.tags.length > 0 ? ` · ${p.tags.map((t) => t.tag_name).join(', ')}` : ''}`}
-              value={<span className="phone-an-row-value">{postSortValue(p, sort.col)}</span>}
-              chevron
-              aria-haspopup="dialog"
-              onClick={() => setSelectedPostId(p.id)}
-            />
-          ))}
-          {posts.length > 5 && (
-            <Cell
-              label={showAllPosts ? 'Ver menos' : 'Ver mais publicações'}
-              onClick={onToggleShowAll}
-              aria-expanded={showAllPosts}
-            />
+      {/* Wide touch screens: two columns (analyticsPhone.css). */}
+      <div className="phone-an-pair phone-an-stack">
+        <div className="phone-an-half phone-an-stack">
+          <SectionHead
+            large
+            title="Performance de conteúdo"
+            trailing={
+              posts.length > 0 ? (
+                <button
+                  ref={sortButtonRef}
+                  type="button"
+                  className="phone-an-sort"
+                  aria-haspopup="dialog"
+                  aria-label={`Ordenar posts: ${POST_SORT_LABELS[sort.col] ?? sort.col}, ${sort.dir === 'asc' ? 'crescente' : 'decrescente'}`}
+                  onClick={() => setSortOpen(true)}
+                >
+                  <ArrowUpDown aria-hidden="true" />
+                  {POST_SORT_LABELS[sort.col] ?? sort.col}
+                </button>
+              ) : undefined
+            }
+          />
+          {posts.length === 0 ? (
+            <p className="phone-an-empty">Nenhuma publicação neste período.</p>
+          ) : (
+            <GroupedList aria-label="Performance de conteúdo">
+              {visiblePosts.map((p) => (
+                <Cell
+                  key={p.id}
+                  icon={<PostThumb url={p.thumbnail_url} mediaType={p.media_type} />}
+                  label={p.caption || 'Sem legenda'}
+                  subtitle={`${new Date(p.posted_at).toLocaleDateString('pt-BR')} · ${mediaTypeLabel(p.media_type)} · ${fmtEng(p.engagement_rate)} eng.${p.tags.length > 0 ? ` · ${p.tags.map((t) => t.tag_name).join(', ')}` : ''}`}
+                  value={<span className="phone-an-row-value">{postSortValue(p, sort.col)}</span>}
+                  chevron
+                  aria-haspopup="dialog"
+                  onClick={() => setSelectedPostId(p.id)}
+                />
+              ))}
+              {posts.length > 5 && (
+                <Cell
+                  label={showAllPosts ? 'Ver menos' : 'Ver mais publicações'}
+                  onClick={onToggleShowAll}
+                  aria-expanded={showAllPosts}
+                />
+              )}
+            </GroupedList>
           )}
-        </GroupedList>
-      )}
-
-      <GroupedList header="Mais análises">
-        {sectionRows
-          .filter((r) => r.show)
-          .map((r) => (
-            <Cell
-              key={r.key}
-              icon={r.icon}
-              label={SECTION_TITLES[r.key]}
-              subtitle={r.subtitle ?? undefined}
-              chevron
-              aria-haspopup="dialog"
-              onClick={() => setSection(r.key)}
-            />
-          ))}
-      </GroupedList>
+        </div>
+        <div className="phone-an-half phone-an-stack">
+          <GroupedList header="Mais análises">
+            {sectionRows
+              .filter((r) => r.show)
+              .map((r) => (
+                <Cell
+                  key={r.key}
+                  icon={r.icon}
+                  label={SECTION_TITLES[r.key]}
+                  subtitle={r.subtitle ?? undefined}
+                  chevron
+                  aria-haspopup="dialog"
+                  onClick={() => setSection(r.key)}
+                />
+              ))}
+          </GroupedList>
+        </div>
+      </div>
 
       <AccountCommentsCard clientId={clientId} posts={posts} compact />
 

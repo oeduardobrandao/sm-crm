@@ -89,6 +89,21 @@ export interface AgendaInput {
 export type AgendaBuckets = Record<AgendaBucket, AgendaItem[]>;
 
 /**
+ * "Só meus": only the items whose responsável is `membroId`, in every bucket. Without a
+ * linked membro nothing is the user's, so every bucket is empty. Shared by the Vidro
+ * Início (InicioPrazos) and the phone Início.
+ */
+export function onlyMembroBuckets(buckets: AgendaBuckets, membroId: number | null): AgendaBuckets {
+  const keep = (items: AgendaItem[]) =>
+    membroId == null ? [] : items.filter((i) => i.responsavel?.id === membroId);
+  return {
+    atrasado: keep(buckets.atrasado),
+    hoje: keep(buckets.hoje),
+    proximos: keep(buckets.proximos),
+  };
+}
+
+/**
  * Every user-visible string the builder emits. The hook fills this from t()
  * so the pure module stays React/i18n-free; the defaults are the pt-BR copy
  * and double as the test fixture.

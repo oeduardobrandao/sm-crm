@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Loader2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { trackUnsavedWork } from '@mesaas/app-lifecycle';
+import { useIsTabletShell } from '@/lib/phoneShell';
 import { QueryErrorCard } from '@/components/QueryErrorCard';
 import { useClienteAvatars } from '@/hooks/useClienteAvatars';
 import { captureEvent } from '@/lib/analytics';
@@ -269,8 +270,11 @@ export function LinhaEditorialView({
   }, [itensData, rodada, t]);
 
   // Phone: read-only cards (spec §6.6). After every hook so the hook order never changes.
-  const phone = useIsLinhaPhone();
-  if (phone) {
+  // A touch tablet (phone shell from 768x600) gets this editable view inside the shell; a
+  // phone held sideways keeps the cards. Both hooks run every render (no short circuit).
+  const phoneShell = useIsLinhaPhone();
+  const tablet = useIsTabletShell();
+  if (phoneShell && !tablet) {
     return (
       <LinhaPhoneView
         clientes={clientes}
@@ -343,8 +347,8 @@ export function LinhaEditorialView({
         ) : (
           <>
             <LinhaHeader
-              // Keyed by linha: switching client or month mid-edit drops the draft instead of
-              // saving it on another linha.
+              // Keyed by linha: switching client or month mid-edit unmounts the title, which
+              // saves a changed draft on the linha it was typed for, never on the next one.
               key={linha.id}
               linha={linha}
               cliente={cliente}

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Download } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Sheet,
   SheetContent,
@@ -22,12 +24,14 @@ interface RentabilidadePhoneProps {
   anual: boolean;
   onAnualChange: (anual: boolean) => void;
   access: FinancialAccess;
+  /** The desktop "Exportar CSV" handler; omitted (no button) without financial access. */
+  onExport?: () => void;
 }
 
 /**
- * Phone rendering of Rentabilidade: a three-cell summary (four with "Sem cliente"), the Mensal/Anual toggle and
+ * Phone rendering of Rentabilidade: a four-cell summary (five with "Sem cliente"), the Mensal/Anual toggle and
  * one row per client (lowest margin first) with a cost/profit bar. A row opens the
- * client's detail in a bottom sheet.
+ * client's detail in a bottom sheet. "Exportar CSV" runs the page's own export.
  */
 export function RentabilidadePhone({
   data,
@@ -35,6 +39,7 @@ export function RentabilidadePhone({
   anual,
   onAnualChange,
   access,
+  onExport,
 }: RentabilidadePhoneProps) {
   const { t } = useTranslation('financeV2');
   const [abertoId, setAbertoId] = useState<number | null>(null);
@@ -45,6 +50,11 @@ export function RentabilidadePhone({
   // below do not show) gets its own cell when there is any.
   const resumo: Array<readonly [string, string]> = [
     [anual ? t('shared.arr') : t('shared.mrr'), brl(anualizar(data.totais.receita, anual))],
+    // The desktop "Custo da equipe" KPI: the whole team cost, clients or not.
+    [
+      anual ? t('csv.custoAnual') : t('shared.custoEquipe'),
+      brl(anualizar(data.totais.custo_total, anual)),
+    ],
     [anual ? t('shared.lucroAnual') : t('shared.lucro'), brl(anualizar(data.totais.lucro, anual))],
     [t('shared.margem'), formatMargem(data.totais.margem)],
   ];
@@ -54,14 +64,16 @@ export function RentabilidadePhone({
 
   return (
     <div className="flex flex-col gap-3.5">
-      <dl
-        className={cn(
-          'm-0 grid gap-px overflow-hidden rounded-xl border border-border bg-border',
-          resumo.length > 3 ? 'grid-cols-2' : 'grid-cols-3',
-        )}
-      >
-        {resumo.map(([label, valor]) => (
-          <div key={label} className="flex min-w-0 flex-col gap-0.5 bg-card p-3">
+      <dl className="m-0 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border">
+        {resumo.map(([label, valor], i) => (
+          <div
+            key={label}
+            className={cn(
+              'flex min-w-0 flex-col gap-0.5 bg-card p-3',
+              // An odd last cell ("Sem cliente") takes the whole row.
+              resumo.length % 2 === 1 && i === resumo.length - 1 && 'col-span-2',
+            )}
+          >
             <dt className="text-[11px] text-muted-foreground">{label}</dt>
             <dd className="m-0 break-words text-sm font-extrabold tabular-nums">{valor}</dd>
           </div>
@@ -124,6 +136,13 @@ export function RentabilidadePhone({
           {t('shared.lucro')}
         </span>
       </div>
+
+      {onExport && (
+        <Button variant="outline" size="sm" className="mb-0 w-full" onClick={onExport}>
+          <Download aria-hidden="true" />
+          {t('rentabilidade.exportar')}
+        </Button>
+      )}
 
       <Sheet open={aberto !== null} onOpenChange={(open) => !open && setAbertoId(null)}>
         <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto rounded-t-2xl">

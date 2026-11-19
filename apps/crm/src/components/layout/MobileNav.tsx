@@ -34,6 +34,7 @@ import { openSupportChat } from '@/lib/supportChat';
 import { BottomSheet } from '@/components/mobile/BottomSheet';
 import { Cell, GroupedList } from '@/components/mobile/GroupedList';
 import { useSheetActions } from '@/components/mobile/sheetActions';
+import { PHONE_SHELL_QUERY } from '@/lib/phoneShell';
 
 declare global {
   interface Window {
@@ -55,9 +56,9 @@ function formatCount(count: number): string {
 }
 
 /**
- * Phone tab bar (below 768px): Início, Entregas, Agenda, Mensagens, Mais (D18), with
- * Clientes then Analytics filling the slot of a tab the user's plan or role doesn't
- * have. The bar is permanently mounted and is NOT a dialog; the Mais sheet is, but only
+ * Phone tab bar (the phone shell: below 768px, or a touch tablet): Início, Entregas,
+ * Agenda, Mensagens, Mais (D18), with Clientes then Analytics filling the slot of a tab
+ * the user's plan or role doesn't have. The bar is permanently mounted and is NOT a dialog; the Mais sheet is, but only
  * while open (its content unmounts on close).
  */
 export default function MobileNav() {
@@ -101,7 +102,7 @@ export default function MobileNav() {
     moreOpen || isMoreRouteActive ? tabs.length : tabs.findIndex((tab) => tab.navId === activeTab);
 
   useEffect(() => {
-    const phoneMedia = window.matchMedia('(max-width: 767px)');
+    const phoneMedia = window.matchMedia(PHONE_SHELL_QUERY);
     const closeOutsidePhone = (event: MediaQueryListEvent) => {
       if (!event.matches) setMoreOpen(false);
     };

@@ -1,4 +1,4 @@
-import { useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { format, parseISO, type Locale } from 'date-fns';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
@@ -57,8 +57,8 @@ function subtitulo(
 }
 
 /**
- * The header title (spec §14.3): a button that swaps in an input. Enter or blur saves, Escape
- * cancels; the value is trimmed and empty saves null. An unchanged value saves nothing.
+ * The header title (spec §14.3): a button that swaps in an input. Enter, blur or unmount saves,
+ * Escape cancels; the value is trimmed and empty saves null. An unchanged value saves nothing.
  */
 function LinhaTitulo({
   linha,
@@ -75,6 +75,24 @@ function LinhaTitulo({
   const fechado = useRef(false);
 
   useUnsavedWork(editando && (rascunho.trim() || null) !== atual);
+
+  // Unmounting mid-edit fires no blur (an iPad rotated to portrait swaps this view for the
+  // phone cards), so the cleanup saves a changed draft the way blur would. It reads the last
+  // committed values; `fechado` keeps Enter, Escape or a late blur from saving twice.
+  const ultimo = useRef({ editando, rascunho, atual, onRenomear });
+  useEffect(() => {
+    ultimo.current = { editando, rascunho, atual, onRenomear };
+  });
+  useEffect(
+    () => () => {
+      const u = ultimo.current;
+      if (!u.editando || fechado.current) return;
+      fechado.current = true;
+      const novo = u.rascunho.trim() || null;
+      if (novo !== u.atual) u.onRenomear(novo);
+    },
+    [],
+  );
 
   const abrir = () => {
     fechado.current = false;

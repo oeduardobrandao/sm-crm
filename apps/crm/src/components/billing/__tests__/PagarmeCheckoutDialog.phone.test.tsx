@@ -10,7 +10,10 @@ const { tokenizeCardMock, startPagarmeCheckoutMock, updatePagarmeCardMock, captu
   }));
 
 // Phone branch (no Router on purpose: /comecar and the desktop suite render it bare).
-vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => false }));
+vi.mock('@/lib/phoneShell', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/phoneShell')>()),
+  useIsPhoneUi: () => true,
+}));
 
 vi.mock('@/services/pagarme-token', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/services/pagarme-token')>();

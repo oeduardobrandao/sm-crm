@@ -443,6 +443,12 @@
 .linha-drag:focus-visible {
   opacity: 1;
 }
+/* No hover on touch: the handle would stay invisible while still grabbing. */
+@media (hover: none) {
+  .linha-drag {
+    opacity: 1;
+  }
+}
 .linha-check {
   width: 15px;
   height: 15px;
@@ -892,9 +898,19 @@
   white-space: pre-wrap;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   .linha-view {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* A touch tablet renders this editable view (LinhaEditorialView) inside the phone shell: from
+   901px wide it has the room the desktop has, so the rail sits beside the table again. No
+   height condition (the iOS app keyboard shrinks the web view): only a tablet renders it. */
+@media (hover: none) and (pointer: coarse) and (min-width: 768px) {
+  @media (min-width: 901px) {
+    .linha-view {
+      grid-template-columns: 280px minmax(0, 1fr);
+    }
   }
 }
 

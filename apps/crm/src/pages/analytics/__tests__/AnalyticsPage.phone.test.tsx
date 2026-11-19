@@ -159,6 +159,23 @@ describe('AnalyticsPage (phone)', () => {
     expect(container.querySelector('.phone-stat-grid--scroll')).not.toBeNull();
   });
 
+  // Wide touch screens lay these out in two columns (analyticsPhone.css): the bare ranked-strip
+  // halves only line up as two adjacent siblings, and the other pairs need their wrapper.
+  it('groups the sections that share a row on wide touch screens', () => {
+    const { container } = renderPage();
+    const strips = container.querySelectorAll('.phone-an > .phone-an-half');
+    expect(strips).toHaveLength(2);
+    expect(strips[0].nextElementSibling).toBe(strips[1]);
+
+    const list = screen.getByRole('list', { name: 'Todas as contas' });
+    const pair = list.closest('.phone-an-pair')!;
+    expect(pair.parentElement).toHaveClass('phone-an');
+    const halves = pair.querySelectorAll(':scope > .phone-an-half');
+    expect(halves).toHaveLength(2);
+    expect(halves[0]).toContainElement(list);
+    expect(halves[1]).toHaveTextContent('Benchmarking de engajamento');
+  });
+
   it('shows the explanations that are tooltips on desktop as visible footers', () => {
     renderPage();
     expect(

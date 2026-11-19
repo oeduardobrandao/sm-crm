@@ -13,6 +13,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { useAuth } from '@/context/AuthContext';
 import { isClientScoped } from '@/lib/permissions';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useIsTabletShell } from '@/lib/phoneShell';
 import {
   AGENDA_QUERY_KEY,
   getAgendaOcorrencia,
@@ -167,7 +168,10 @@ export default function AgendaTab() {
   // Phone layout below 768px (iOS plan F1.3): page header, Mês / Dia / Lista, sheets.
   const isPhone = !useIsDesktop(768);
   const isMobile = isPhone;
-  const sidebarEmSheet = useMediaQuery('(max-width: 1100px)');
+  // Touch tablets get the phone shell plus FullCalendar's week grid (with drag).
+  const isTablet = useIsTabletShell();
+  // The sidebar moves into a sheet below 1100px and on the phone shell (touch tablets).
+  const sidebarEmSheet = useMediaQuery('(max-width: 1100px)') || isPhone;
   const [searchParams, setSearchParams] = useSearchParams();
 
   const calRef = useRef<FullCalendar | null>(null);
@@ -177,19 +181,30 @@ export default function AgendaTab() {
   const [periodo, setPeriodo] = useState<Periodo | null>(null);
   const [dataSelecionada, setDataSelecionada] = useState(() => new Date());
   // Phones: Mês and Lista are the phone's own lists over a period computed here from
-  // `ancora`; FullCalendar is mounted for Dia only.
-  const [vistaPhone, setVistaPhone] = useState<VistaPhone>('listWeek');
+  // `ancora`; FullCalendar is mounted for Dia (and Semana on touch tablets) only.
+  // Tablets open on Semana. Semana is tablet-only: rotated down to a phone size it falls
+  // back to Lista at render, so no frame ever shows a view that has no body.
+  const [vistaEscolhida, setVistaEscolhida] = useState<VistaPhone>(() =>
+    isTablet ? 'timeGridWeek' : 'listWeek',
+  );
+  const vistaPhone: VistaPhone =
+    vistaEscolhida === 'timeGridWeek' && !isTablet ? 'listWeek' : vistaEscolhida;
+  const vistaComGrade = vistaPhone === 'timeGridDay' || vistaPhone === 'timeGridWeek';
+  // Tablets: the Dia / Semana grid fills the screen down to the floating tab bar (the time
+  // grid scrolls its hours inside). Phones keep the fixed per-view height.
+  const gradeRef = useRef<HTMLDivElement | null>(null);
+  const alturaGrade = useAlturaAteOFim(gradeRef, isTablet && vistaComGrade);
   const [ancora, setAncora] = useState(() => new Date());
-  const usaFullCalendar = !isPhone || vistaPhone === 'timeGridDay';
+  const usaFullCalendar = !isPhone || vistaComGrade;
   const periodoPhone = useMemo<Periodo | null>(() => {
-    if (!isPhone || vistaPhone === 'timeGridDay') return null;
+    if (!isPhone || vistaComGrade) return null;
     const r = vistaPhone === 'dayGridMonth' ? periodoDoMes(ancora) : periodoDaSemana(ancora);
     return {
       ...r,
       view: vistaPhone,
       titulo: tituloDoPeriodo(vistaPhone, r.currentStart, r.currentEnd),
     };
-  }, [isPhone, vistaPhone, ancora]);
+  }, [isPhone, vistaComGrade, vistaPhone, ancora]);
   const periodoAtual = usaFullCalendar ? periodo : periodoPhone;
   // Recomputed at render (not read from `titulo`) so a language switch retitles the period.
   const tituloVisivel = (p: Periodo | null) =>
@@ -275,15 +290,15 @@ export default function AgendaTab() {
       filtrarPorPessoas(ocorrencias, idsDoFiltro(filtro, meuId, pessoas)).map((o) => {
         const ev = toEventInput(o, meuId ?? '');
         // `ordem` leads eventOrder: Agenda events before every layer item. Phones are
-        // read-only on the grid (no drag or resize): the per-event flag would override
-        // the calendar's.
+        // read-only on the grid (no drag or resize), touch tablets are not: the
+        // per-event flag would override the calendar's.
         return {
           ...ev,
-          editable: !isPhone && ev.editable,
+          editable: (!isPhone || isTablet) && ev.editable,
           extendedProps: { ...ev.extendedProps, ordem: ORDEM_AGENDA },
         };
       }),
-    [ocorrencias, filtro, meuId, pessoas, isPhone],
+    [ocorrencias, filtro, meuId, pessoas, isPhone, isTablet],
   );
   // The people filter applies to Agenda events only (spec §1.5).
   const eventosDasCamadas = useMemo<EventInput[]>(
@@ -335,7 +350,7 @@ export default function AgendaTab() {
   function mudarVistaPhone(v: VistaPhone) {
     // Mês and Lista land on the selected day's month / week; Dia mounts on that day.
     setAncora(dataSelecionada);
-    setVistaPhone(v);
+    setVistaEscolhida(v);
   }
 
   function andarPhone(passo: 1 | -1) {
@@ -653,6 +668,14 @@ export default function AgendaTab() {
     return () => clearTimeout(t);
   }, [pendente, periodoAtual, isFetching, resolverAnchor, abrirPopover, removerEventoParam]);
 
+  // A tablet rotated down to a phone size while on Semana: the render already shows Lista;
+  // land it on the week the grid was showing and drop Semana from the state.
+  useEffect(() => {
+    if (vistaEscolhida !== 'timeGridWeek' || isTablet) return;
+    setAncora(dataSelecionada);
+    setVistaEscolhida('listWeek');
+  }, [vistaEscolhida, isTablet, dataSelecionada]);
+
   // Phones have no quick card: a desktop -> phone resize drops the draft.
   useEffect(() => {
     if (!isMobile) return;
@@ -725,6 +748,7 @@ export default function AgendaTab() {
           titulo={tituloVisivel(periodoAtual)}
           vista={vistaPhone}
           onVista={mudarVistaPhone}
+          comSemana={isTablet}
           onHoje={hojePhone}
           onAnterior={() => andarPhone(-1)}
           onProximo={() => andarPhone(1)}
@@ -757,21 +781,41 @@ export default function AgendaTab() {
             abrir={abrirItem}
           />
         )}
-        {vistaPhone === 'timeGridDay' && (
-          <div className="phone-agenda-dia-fc">
+        {vistaComGrade && (
+          <div
+            ref={gradeRef}
+            className={
+              alturaGrade !== null
+                ? 'phone-agenda-dia-fc phone-agenda-dia-fc--tela'
+                : 'phone-agenda-dia-fc'
+            }
+            style={alturaGrade !== null ? { height: alturaGrade } : undefined}
+          >
             <AgendaView
+              // FullCalendar reads initialView at mount: Dia <-> Semana remounts it.
+              key={vistaPhone}
               calRef={calRef}
               isMobile
+              isTablet={isTablet}
               semToolbar
-              initialView="timeGridDay"
+              initialView={vistaPhone}
               initialDate={dataSelecionada}
-              view="timeGridDay"
+              view={vistaPhone}
               titulo={tituloVisivel(periodoAtual)}
               eventos={eventos}
               onDatesSet={onDatesSet}
+              // Tablets: a long-press on the grid selects a slot and opens the editor on it
+              // (phones have no quick card). Phones keep the grid read-only.
+              onSelect={
+                isTablet && podeCriar
+                  ? (inicio, fim, diaInteiro) =>
+                      abrirCriar(inicio, fimDoClique(inicio, fim, diaInteiro), diaInteiro)
+                  : undefined
+              }
               onEventClick={abrirPopover}
               onCamadaClick={abrirCamada}
               onMover={mover}
+              preencher={alturaGrade !== null}
             />
           </div>
         )}

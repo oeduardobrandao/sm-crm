@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
+import { usePhoneLayout } from '../../components/layout/PhoneLayoutContext';
 import { visibleClienteTabs, CLIENTE_TAB_GROUP_LABELS } from './clienteTabs.model';
 import type { Cliente } from '../../store';
 
@@ -41,6 +42,7 @@ export function ClienteDetalheNav({ clienteId }: ClienteDetalheNavProps) {
   const { pathname } = useLocation();
   const navRef = useRef<HTMLElement>(null);
   const tabLinkRefs = useRef<Record<string, HTMLAnchorElement | null>>({});
+  const { isPhone } = usePhoneLayout();
 
   // Everything after /clientes/:id/ — a single segment for a top-level tab
   // ("entregas"), a nested path for a Hub sub-tab ("hub/paginas"), matching
@@ -50,7 +52,8 @@ export function ClienteDetalheNav({ clienteId }: ClienteDetalheNavProps) {
 
   useEffect(() => {
     if (!activeKey || typeof window === 'undefined') return;
-    if (!window.matchMedia('(max-width: 1100px)').matches) return;
+    // The phone shell (touch tablets included) scrolls the tabs at any width.
+    if (!isPhone && !window.matchMedia('(max-width: 1100px)').matches) return;
     const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const nav = navRef.current;
     const link = tabLinkRefs.current[activeKey];
@@ -61,7 +64,7 @@ export function ClienteDetalheNav({ clienteId }: ClienteDetalheNavProps) {
       left: Math.min(maxLeft, Math.max(0, centeredLeft)),
       behavior: prefersReduced ? 'auto' : 'smooth',
     });
-  }, [activeKey]);
+  }, [activeKey, isPhone]);
 
   return (
     <nav className="cliente-tabs-nav" aria-label={t('detail.pageNav')} ref={navRef}>

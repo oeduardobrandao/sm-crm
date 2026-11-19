@@ -201,6 +201,8 @@ function CabecalhoDoDia({ arg }: { arg: DayHeaderContentArg }) {
 export interface AgendaViewProps {
   calRef: RefObject<FullCalendar | null>;
   isMobile: boolean;
+  /** Touch tablets: phone-sized chrome, but the week grid stays available. */
+  isTablet?: boolean;
   view: AgendaViewType;
   titulo: string;
   eventos: EventInput[];
@@ -215,7 +217,7 @@ export interface AgendaViewProps {
    *  inside (the time grid scrolls its hours, the list its rows). */
   preencher?: boolean;
   /** Phones: no toolbar (AgendaTab's header has the period controls) and FullCalendar
-   *  only for the Dia view. */
+   *  only for the Dia view (and Semana on touch tablets). */
   semToolbar?: boolean;
   /** Honoured at mount only (FullCalendar): where a remount lands. */
   initialView?: AgendaViewType;
@@ -225,6 +227,7 @@ export interface AgendaViewProps {
 export default function AgendaView({
   calRef,
   isMobile,
+  isTablet = false,
   view,
   titulo,
   eventos,
@@ -244,9 +247,10 @@ export default function AgendaView({
   // Read once: FullCalendar re-applies scrollTime whenever the option changes.
   const [scrollTime] = useState(() => format(new Date(), 'HH:00:00'));
   // Mount-time only, like FullCalendar reads them: later changes must not re-render it.
-  const [vistaInicial] = useState(() => initialView ?? (isMobile ? 'listWeek' : 'timeGridWeek'));
+  const semSemana = isMobile && !isTablet;
+  const [vistaInicial] = useState(() => initialView ?? (semSemana ? 'listWeek' : 'timeGridWeek'));
   const [dataInicial] = useState(initialDate);
-  const opcoes = (isMobile ? VIEW_OPTIONS.filter((v) => v !== 'timeGridWeek') : VIEW_OPTIONS).map(
+  const opcoes = (semSemana ? VIEW_OPTIONS.filter((v) => v !== 'timeGridWeek') : VIEW_OPTIONS).map(
     (value) => ({ value, label: t(`view.${VIEW_KEY[value]}`) }),
   );
   const nav = NAV_LABELS[view];

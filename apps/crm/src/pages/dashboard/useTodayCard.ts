@@ -6,7 +6,7 @@ import { format } from 'date-fns';
 import { useDateFnsLocale } from '@mesaas/i18n';
 import { updateTarefa, type TarefaStatus, type TarefaWithRelations } from '../../store';
 import { useTodayAgenda } from './useTodayAgenda';
-import type { AgendaBucket } from './todayAgenda';
+import { onlyMembroBuckets, type AgendaBucket } from './todayAgenda';
 
 export const TODAY_MAX_ROWS = 8;
 export const TODAY_PAGE_ROWS = 20;
@@ -20,12 +20,17 @@ interface CompleteVars {
  * State behind the dashboard "Hoje" card, shared by the desktop card and the phone
  * screen: the agenda buckets, which buckets are shown, the per-bucket row limits, the
  * summary line and the inline "concluir tarefa" mutation with its undo toast.
+ *
+ * `onlyMine` ("Só meus" on the phone Início, the Vidro toggle's twin) narrows the buckets,
+ * counts and summary to the user's own items. A no-op when the scope is already 'mine'.
  */
-export function useTodayCard() {
+export function useTodayCard({ onlyMine = false }: { onlyMine?: boolean } = {}) {
   const { t } = useTranslation('dashboard');
   const dateLocale = useDateFnsLocale();
   const queryClient = useQueryClient();
-  const { status, scope, buckets, now, membroId } = useTodayAgenda();
+  const { status, scope, buckets: allBuckets, now, membroId } = useTodayAgenda();
+  const filterMine = onlyMine && scope !== 'mine';
+  const buckets = filterMine ? onlyMembroBuckets(allBuckets, membroId) : allBuckets;
   const [visible, setVisible] = useState<Set<AgendaBucket>>(
     () => new Set<AgendaBucket>(['atrasado', 'hoje']),
   );
@@ -93,7 +98,7 @@ export function useTodayCard() {
   const summary = [
     dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1),
     t('today.summary', { overdue: counts.atrasado, today: counts.hoje }),
-    scope === 'mine' ? t('today.mine', 'atribuídos a você') : null,
+    scope === 'mine' || filterMine ? t('today.mine', 'atribuídos a você') : null,
   ]
     .filter(Boolean)
     .join(' · ');

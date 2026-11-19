@@ -23,7 +23,9 @@ import {
   EMPTY_TAREFA_FILTERS,
   STATUS_LABELS,
   STATUS_ORDER,
+  TAREFA_KPIS,
   type TarefaFilterState,
+  type TarefaKpi,
   type TarefasHeaderStats,
 } from '../tarefasLogic';
 import type { TarefasEscopo } from '../tarefasPrefs';
@@ -58,6 +60,9 @@ export interface TarefasPhoneHeaderProps {
   onEscopoChange: (escopo: TarefasEscopo) => void;
   filters: TarefaFilterState;
   onFiltersChange: (filters: TarefaFilterState) => void;
+  /** The desktop KPI-card filter (one at a time), picked here from "Atalhos". */
+  kpi: TarefaKpi | null;
+  onKpiChange: (kpi: TarefaKpi | null) => void;
   clientes: Cliente[];
   membros: Membro[];
   tags: TarefaTag[];
@@ -76,7 +81,8 @@ function countActive(f: TarefaFilterState): number {
  * Tarefas header on phones (FTarefas / FTarefasKanban): one row with search, Filtros
  * (badge) and the ink "+", the large title with the counts, the view picker and
  * Minhas/Todas, and the active filter chips. Filters live in the kit sheet with the
- * same four multi-selects as the desktop bar.
+ * same four multi-selects as the desktop bar, plus "Atalhos": the desktop's KPI cards
+ * (Abertas, Vencem hoje, Atrasadas, Concluídas hoje), one at a time.
  */
 export function TarefasPhoneHeader({
   stats,
@@ -86,6 +92,8 @@ export function TarefasPhoneHeader({
   onEscopoChange,
   filters,
   onFiltersChange,
+  kpi,
+  onKpiChange,
   clientes,
   membros,
   tags,
@@ -93,13 +101,14 @@ export function TarefasPhoneHeader({
   onNew,
 }: TarefasPhoneHeaderProps) {
   const { t } = useTranslation('tasksPhone');
+  const { t: tTasks } = useTranslation('tasks');
   const [searchOpen, setSearchOpen] = useState(filters.filterSearch !== '');
   const [viewsOpen, setViewsOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const viewRef = useRef<HTMLButtonElement>(null);
   const filtersRef = useRef<HTMLButtonElement>(null);
-  const activeCount = countActive(filters);
+  const activeCount = countActive(filters) + (kpi != null ? 1 : 0);
   const current = PHONE_TAREFA_VIEWS.find((v) => v.id === view) ?? PHONE_TAREFA_VIEWS[0];
 
   const activeClientes = clientes
@@ -111,8 +120,10 @@ export function TarefasPhoneHeader({
   const sortedTags = tags.filter((t) => t.id != null).sort((a, b) => a.nome.localeCompare(b.nome));
 
   const set = (patch: Partial<TarefaFilterState>) => onFiltersChange({ ...filters, ...patch });
-  const clear = () =>
+  const clear = () => {
     onFiltersChange({ ...EMPTY_TAREFA_FILTERS, filterSearch: filters.filterSearch });
+    onKpiChange(null);
+  };
 
   const toggleStatus = (s: TarefaStatus) =>
     set({
@@ -122,6 +133,17 @@ export function TarefasPhoneHeader({
     });
 
   const sections: FilterSection[] = [
+    {
+      type: 'chips',
+      key: 'kpi',
+      label: t('header.kpi'),
+      chips: TAREFA_KPIS.map((k) => ({
+        key: k,
+        label: tTasks(`statsHeader.${k}`),
+        selected: kpi === k,
+        onToggle: () => onKpiChange(kpi === k ? null : k),
+      })),
+    },
     {
       type: 'chips',
       key: 'status',
@@ -167,6 +189,16 @@ export function TarefasPhoneHeader({
 
   // Active filter chips: one removable chip per picked value.
   const chips: { key: string; label: string; group: string; remove: () => void }[] = [
+    ...(kpi != null
+      ? [
+          {
+            key: `k-${kpi}`,
+            label: tTasks(`statsHeader.${kpi}`),
+            group: t('header.kpi'),
+            remove: () => onKpiChange(null),
+          },
+        ]
+      : []),
     ...filters.filterStatus.map((s) => ({
       key: `s-${s}`,
       label: STATUS_LABELS[s],

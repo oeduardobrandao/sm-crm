@@ -1,8 +1,9 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
+import { PhoneLayoutContext } from '@/components/layout/PhoneLayoutContext';
 
 // jsdom's matchMedia reports no match: useIsDesktop(768) is false, so the Status
 // board renders its phone face (PLAN C3.4).
@@ -27,6 +28,12 @@ vi.mock('@/hooks/useStatusRegistry', async () => {
       ]),
   };
 });
+
+const shell = vi.hoisted(() => ({ wide: false }));
+vi.mock('@/lib/phoneShell', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/phoneShell')>()),
+  useIsWidePhoneShell: () => shell.wide,
+}));
 
 vi.mock('sonner', () => ({
   toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), info: vi.fn() }),
@@ -127,7 +134,7 @@ function makePost(overrides: Partial<ActivePost> = {}): ActivePost {
   } as ActivePost;
 }
 
-function renderBoard(props: Record<string, unknown> = {}) {
+function renderBoard(props: Record<string, unknown> = {}, wideRoute = false) {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -149,15 +156,18 @@ function renderBoard(props: Record<string, unknown> = {}) {
   };
   render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter>
-        <PostsKanbanView {...(all as never)} />
-      </MemoryRouter>
+      <PhoneLayoutContext.Provider value={{ isPhone: true, wideRoute, register: () => () => {} }}>
+        <MemoryRouter>
+          <PostsKanbanView {...(all as never)} />
+        </MemoryRouter>
+      </PhoneLayoutContext.Provider>
     </QueryClientProvider>,
   );
   return { ...all, posts };
 }
 
 beforeEach(() => {
+  shell.wide = false;
   dnd.sortable.clear();
   vi.mocked(updateWorkflowPost).mockClear();
   vi.mocked(toast).mockClear();
@@ -306,5 +316,29 @@ describe('PostsKanbanView on phones', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reordenar' }));
     expect(screen.queryByRole('button', { name: 'Arrastar para mover' })).toBeNull();
     expect(screen.getByRole('img', { name: 'Status travado' })).toBeInTheDocument();
+  });
+});
+
+describe('PostsKanbanView on a wide touch shell', () => {
+  it('shows every status column side by side, with no chip tabs', () => {
+    shell.wide = true;
+    renderBoard({}, true);
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(screen.getByTestId('phone-status-board')).toHaveClass('phone-ent-board--wide');
+    expect(screen.getByRole('region', { name: 'Rascunho, 2' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Em gravação, 0' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Agendado, 1' })).toBeInTheDocument();
+    expect(screen.getAllByTestId('phone-status-card')).toHaveLength(3);
+  });
+
+  it('keeps the chip tabs when the route is not wide (client detail) or the shell is not wide', () => {
+    shell.wide = true;
+    renderBoard({}, false);
+    expect(screen.getByRole('tablist', { name: 'Status' })).toBeInTheDocument();
+    expect(screen.getAllByTestId('phone-status-card')).toHaveLength(2);
+    cleanup();
+    shell.wide = false;
+    renderBoard({}, true);
+    expect(screen.getByRole('tablist', { name: 'Status' })).toBeInTheDocument();
   });
 });

@@ -46,7 +46,7 @@ describe('InstagramPostCarousel', () => {
 
   it('sizes phone carousel items relative to their track without viewport units', () => {
     const phoneCarouselMedia = css.match(
-      /@media \(max-width:\s*767px\)\s*\{\s*\.instagram-post-carousel__header[\s\S]*?\n\}\n\n\.tag-pill/,
+      /@media \(max-width:\s*767px\),\s*\(hover:\s*none\) and \(pointer:\s*coarse\)\s*\{\s*\.instagram-post-carousel__header[\s\S]*?\n\}\n\n\.tag-pill/,
     )?.[0];
     const phoneItemRule = phoneCarouselMedia?.match(
       /\.instagram-post-carousel__item\s*\{([^}]*)\}/,

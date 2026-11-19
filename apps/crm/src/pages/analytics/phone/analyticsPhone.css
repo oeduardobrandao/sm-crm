@@ -844,3 +844,78 @@ button.phone-an-spark__bar {
   flex-shrink: 0;
   font-size: 18px;
 }
+
+/* ---- Two-column groups (used by the wide block below) ----
+   `.phone-an-pair` holds two `.phone-an-half` columns that share a row on wide touch screens.
+   On a phone they stack. `.phone-an-stack` keeps a wrapper that is a direct child of the
+   flex `.phone-an` a flex column too, so its sections keep the spacing they had as flex items
+   (block children would collapse their margins). Wrappers inside a block parent (a dimmed
+   `<div>`) leave it off for the same reason. */
+.phone-an-stack {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* ---- Wide touch screens (iPad): sections in two columns ----
+   Analytics routes are full-width there, so the 680px column does not apply. Every direct child
+   of `.phone-an` spans both columns (header, filters, KPIs, long charts, tables). Sections share
+   a row only as the two `.phone-an-half` columns of a `.phone-an-pair`, a full-width grid of its
+   own that may also sit inside a wrapper (a dimmed block). A half whose content rendered nothing
+   must not be rendered at all; then the lone half goes back to full width.
+   Bare halves directly in `.phone-an` (the two ranked post strips) also pair, but only when they
+   are adjacent siblings and exactly two: a full-width sibling between them, or a third half,
+   leaves an empty cell. New pairs use the wrapper. */
+@media (hover: none) and (pointer: coarse) and (min-width: 1000px) {
+  .phone-an {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 24px;
+    align-items: start;
+  }
+  .phone-an > * {
+    grid-column: 1 / -1;
+  }
+  .phone-an > .phone-an-half {
+    grid-column: auto;
+  }
+  .phone-an > .phone-an-half:not(.phone-an-half ~ .phone-an-half):not(:has(~ .phone-an-half)) {
+    grid-column: 1 / -1;
+  }
+  .phone-an .phone-an-pair {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 24px;
+    align-items: start;
+  }
+  .phone-an-pair > .phone-an-half:not(.phone-an-half ~ .phone-an-half):not(:has(~ .phone-an-half)) {
+    grid-column: 1 / -1;
+  }
+  /* A strip in a column stays inside it: the phone bleed into the page gutter would run into
+     the other column. */
+  .phone-an .phone-an-half .phone-an-strip {
+    margin-inline: 0;
+    padding-inline: 0;
+  }
+  /* KPI tiles (StatCardGrid's phone face): a grid of at most 4 per row instead of the swipeable
+     strip, which showed every tile in one row; fewer tiles stretch across. Two per row in a
+     column, where the phone's odd last tile spanning the row comes back. */
+  .phone-an .phone-kit.phone-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(max(160px, calc((100% - 30px) / 4)), 1fr));
+    gap: 10px;
+    overflow-x: visible;
+  }
+  .phone-an .phone-stat-grid > .phone-stat-tile:last-child:nth-child(odd) {
+    grid-column: auto;
+  }
+  .phone-an .phone-an-half .phone-kit.phone-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .phone-an .phone-an-half .phone-stat-grid > .phone-stat-tile:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+  .phone-an-search {
+    max-width: 480px;
+  }
+}

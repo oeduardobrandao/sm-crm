@@ -4,6 +4,7 @@ import {
   agendaRangeISO,
   bucketFor,
   buildTodayAgenda,
+  onlyMembroBuckets,
   type AgendaInput,
   type AgendaItem,
 } from '../todayAgenda';
@@ -511,5 +512,30 @@ describe('buildTodayAgenda · ordering', () => {
       }),
     );
     expect(b.hoje.map((i) => i.title)).toEqual(['Zeta', 'Alpha', 'Beta']);
+  });
+});
+
+describe('onlyMembroBuckets ("Só meus", desktop Vidro and phone)', () => {
+  const it_ = (key: string, responsavelId: number | null): AgendaItem =>
+    ({
+      key,
+      responsavel: responsavelId == null ? null : { id: responsavelId, nome: 'X' },
+    }) as AgendaItem;
+  const buckets = {
+    atrasado: [it_('a', 10), it_('b', 20)],
+    hoje: [it_('c', null), it_('d', 10)],
+    proximos: [it_('e', 20)],
+  };
+
+  it("keeps only the membro's items in every bucket", () => {
+    const out = onlyMembroBuckets(buckets, 10);
+    expect(out.atrasado.map((i) => i.key)).toEqual(['a']);
+    expect(out.hoje.map((i) => i.key)).toEqual(['d']);
+    expect(out.proximos).toEqual([]);
+  });
+
+  it('shows nothing without a linked membro', () => {
+    const out = onlyMembroBuckets(buckets, null);
+    expect(out).toEqual({ atrasado: [], hoje: [], proximos: [] });
   });
 });

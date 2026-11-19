@@ -12,6 +12,8 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities';
 import { ArrowUpDown, ChevronDown, Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useIsWidePhoneShell } from '@/lib/phoneShell';
+import { usePhoneLayout } from '@/components/layout/PhoneLayoutContext';
 import { ActionSheet } from '@/components/mobile/ActionSheet';
 import { Chip, ChipRow } from '@/components/mobile/ChipRow';
 import type { Membro } from '../../../store';
@@ -123,76 +125,60 @@ function PhoneSortableItem({
   );
 }
 
-/**
- * The Fluxos board on phones (EntregasKanban mockup, D20): one etapa at a time with
- * chips, only the active column rendered, the template switch, the column sort, the
- * row's "+ Novo" and "Criar template". Moves stay adjacent-only through the board's
- * own stage commands (the ✓ button and the card menu); a hold opens the card menu,
- * and drag exists only in Reordenar mode, from the handle, inside the column.
- */
-export function PhoneKanbanBoard({
-  rows,
-  activeRowKey,
-  onActiveRowKeyChange,
-  displayMixed,
-  sortModeFor,
-  setColumnSort,
-  sensors,
-  onDragStart,
-  onDragOver,
-  onDragEnd,
-  onDragCancel,
-  activeEntity,
-  membros,
-  onRefresh,
-  countsFor,
-  discussaoNaoLidasForPost,
-  workflow,
-  post,
-  onAddWorkflow,
-  onAddPostIndividual,
-  onCreateTemplate,
-  createTemplateDisabled,
-  postProcessesEnabled,
-}: PhoneKanbanBoardProps) {
-  const { t } = useTranslation('entregasPhone');
-  const row = rows.find((r) => r.key === activeRowKey) ?? rows[0];
-  const [ordemByRow, setOrdemByRow] = useState<Record<string, number>>({});
-  const [reorder, setReorder] = useState(false);
-  const [templateSheet, setTemplateSheet] = useState(false);
-  const [sortSheet, setSortSheet] = useState(false);
-  const [newSheet, setNewSheet] = useState(false);
-  const templateButtonRef = useRef<HTMLButtonElement>(null);
+interface KanbanColumnProps {
+  board: PhoneKanbanBoardProps;
+  row: BoardRow;
+  column: BoardColumn;
+  /** Tabpanel id for the chip tabs; absent in the side-by-side layout, where there are no tabs. */
+  panelId?: string;
+  /** The "+ Novo" action of the row, shown on the first column only. */
+  onAdd?: () => void;
+  offersPostIndividual: boolean;
+}
 
-  const chosenOrdem = row ? ordemByRow[row.key] : undefined;
-  const column =
-    row &&
-    (row.columns.find((c) => c.ordem === chosenOrdem) ??
-      row.columns.find((c) => c.ordem === defaultOrdem(row)));
-  const colKey = row && column ? columnKey(row.key, column.ordem) : '';
+/** One etapa: header, sort, reorder, "+ Novo" and its cards. Owns its own Reordenar/sort state. */
+function KanbanColumn({
+  board,
+  row,
+  column,
+  panelId,
+  onAdd,
+  offersPostIndividual,
+}: KanbanColumnProps) {
+  const {
+    displayMixed,
+    sortModeFor,
+    setColumnSort,
+    sensors,
+    onDragStart,
+    onDragOver,
+    onDragEnd,
+    onDragCancel,
+    activeEntity,
+    membros,
+    onRefresh,
+    countsFor,
+    discussaoNaoLidasForPost,
+    workflow,
+    post,
+  } = board;
+  const { t } = useTranslation('entregasPhone');
+  const [reorder, setReorder] = useState(false);
+  const [sortSheet, setSortSheet] = useState(false);
+  const colKey = columnKey(row.key, column.ordem);
   const mixed = useMemo(
-    () => (row && column ? displayMixed(row.key, column.ordem, column) : []),
+    () => displayMixed(row.key, column.ordem, column),
     [row, column, displayMixed],
   );
-  if (!row || !column) return null;
-
   const sortMode = sortModeFor(colKey);
   const showPublishDate = sortMode === 'publicacao';
   const isFirstColumn = row.columns[0]?.ordem === column.ordem;
-  const offersPostIndividual =
-    row.templateId != null && postProcessesEnabled === true && !!onAddPostIndividual;
   const fluxos = column.cards.length;
   const posts = column.posts.length;
   const countLabel =
     fluxos > 0 && posts > 0
       ? `${t('board.fluxos', { count: fluxos })} · ${t('cards.posts', { count: posts })}`
       : String(fluxos + posts);
-  const panelId = `phone-ent-col-${row.key.replace(/[^a-z0-9]/gi, '-')}`;
-
-  const selectColumn = (ordem: number) => {
-    setReorder(false);
-    setOrdemByRow((prev) => ({ ...prev, [row.key]: ordem }));
-  };
 
   const renderEntity = (entity: BoardEntity, handle: ReactNode | undefined) => {
     if (entity.kind === 'post') {
@@ -265,40 +251,9 @@ export function PhoneKanbanBoard({
   };
 
   return (
-    <div className="phone-ent-board" data-testid="phone-kanban-board">
-      <div className="phone-ent-board__bar">
-        <button
-          ref={templateButtonRef}
-          type="button"
-          className="phone-ent-board__template"
-          aria-label={t('board.templateAria', { template: row.label })}
-          aria-haspopup="dialog"
-          onClick={() => setTemplateSheet(true)}
-        >
-          <span>{row.label}</span>
-          <ChevronDown aria-hidden="true" />
-        </button>
-        <ChipRow
-          aria-label={t('header.modeEtapas')}
-          semantics="tablist"
-          className="phone-ent-board__chips"
-        >
-          {row.columns.map((c) => (
-            <Chip
-              key={c.ordem}
-              label={c.nome}
-              count={c.cards.length + c.posts.length}
-              selected={c.ordem === column.ordem}
-              controls={panelId}
-              onClick={() => selectColumn(c.ordem)}
-            />
-          ))}
-        </ChipRow>
-      </div>
-
+    <>
       <section
-        id={panelId}
-        role="tabpanel"
+        {...(panelId ? { id: panelId, role: 'tabpanel' } : {})}
         aria-label={`${column.nome}, ${countLabel}`}
         className="phone-ent-board__column"
         {...(column.tipo === 'aprovacao_cliente' ? { 'data-tour': 'wf-col-aprovacao' } : {})}
@@ -329,7 +284,7 @@ export function PhoneKanbanBoard({
                 )}
                 <button
                   type="button"
-                  className="phone-ent-text-btn"
+                  className="phone-ent-text-btn phone-ent-board__sort"
                   aria-label={t('board.sortColumnAria', {
                     column: column.nome,
                     sort: FLUXOS_COLUMN_SORT_LABELS[sortMode],
@@ -337,7 +292,10 @@ export function PhoneKanbanBoard({
                   onClick={() => setSortSheet(true)}
                 >
                   <ArrowUpDown aria-hidden="true" />
-                  {FLUXOS_COLUMN_SORT_LABELS[sortMode]}
+                  {/* Icon-only side by side (entregasPhone.css): the aria-label names it. */}
+                  <span className="phone-ent-board__sort-label">
+                    {FLUXOS_COLUMN_SORT_LABELS[sortMode]}
+                  </span>
                 </button>
               </>
             )}
@@ -349,14 +307,8 @@ export function PhoneKanbanBoard({
           </p>
         )}
 
-        {isFirstColumn && onAddWorkflow && !reorder && (
-          <button
-            type="button"
-            className="phone-ent-board__add"
-            onClick={() =>
-              offersPostIndividual ? setNewSheet(true) : onAddWorkflow(row.templateId)
-            }
-          >
+        {isFirstColumn && onAdd && !reorder && (
+          <button type="button" className="phone-ent-board__add" onClick={onAdd}>
             <Plus aria-hidden="true" />
             {offersPostIndividual ? t('header.new') : t('shared.newFluxo')}
           </button>
@@ -405,6 +357,118 @@ export function PhoneKanbanBoard({
           </DragOverlay>
         </DndContext>
       </section>
+      <ActionSheet
+        open={sortSheet}
+        onOpenChange={setSortSheet}
+        title={t('board.sortColumn', { column: column.nome })}
+        actions={FLUXOS_COLUMN_SORTS.map((mode) => ({
+          label: `${sortMode === mode ? '✓ ' : ''}${FLUXOS_COLUMN_SORT_LABELS[mode]}`,
+          onSelect: () => setColumnSort(colKey, mode),
+        }))}
+      />
+    </>
+  );
+}
+
+/**
+ * The Fluxos board on phones (EntregasKanban mockup, D20): one etapa at a time with
+ * chips, only the active column rendered, the template switch, the column sort, the
+ * row's "+ Novo" and "Criar template". Moves stay adjacent-only through the board's
+ * own stage commands (the ✓ button and the card menu); a hold opens the card menu,
+ * and drag exists only in Reordenar mode, from the handle, inside the column.
+ *
+ * On a full-width route of a wide touch shell (iPad `/entregas`) every etapa renders
+ * side by side in a horizontally scrolling grid and the chips are gone. The same board
+ * inside the client detail (a centered column) keeps the chips.
+ */
+export function PhoneKanbanBoard(props: PhoneKanbanBoardProps) {
+  const {
+    rows,
+    activeRowKey,
+    onActiveRowKeyChange,
+    onAddWorkflow,
+    onAddPostIndividual,
+    onCreateTemplate,
+    createTemplateDisabled,
+    postProcessesEnabled,
+  } = props;
+  const { t } = useTranslation('entregasPhone');
+  const { wideRoute } = usePhoneLayout();
+  const wide = useIsWidePhoneShell() && wideRoute;
+  const row = rows.find((r) => r.key === activeRowKey) ?? rows[0];
+  const [ordemByRow, setOrdemByRow] = useState<Record<string, number>>({});
+  const [templateSheet, setTemplateSheet] = useState(false);
+  const [newSheet, setNewSheet] = useState(false);
+  const templateButtonRef = useRef<HTMLButtonElement>(null);
+
+  const chosenOrdem = row ? ordemByRow[row.key] : undefined;
+  const column =
+    row &&
+    (row.columns.find((c) => c.ordem === chosenOrdem) ??
+      row.columns.find((c) => c.ordem === defaultOrdem(row)));
+  if (!row || !column) return null;
+
+  const offersPostIndividual =
+    row.templateId != null && postProcessesEnabled === true && !!onAddPostIndividual;
+  const panelId = `phone-ent-col-${row.key.replace(/[^a-z0-9]/gi, '-')}`;
+  const onAdd = onAddWorkflow
+    ? () => (offersPostIndividual ? setNewSheet(true) : onAddWorkflow(row.templateId))
+    : undefined;
+
+  const renderColumn = (c: BoardColumn, tabPanelId?: string) => (
+    <KanbanColumn
+      key={`${row.key}:${c.ordem}`}
+      board={props}
+      row={row}
+      column={c}
+      panelId={tabPanelId}
+      onAdd={onAdd}
+      offersPostIndividual={offersPostIndividual}
+    />
+  );
+
+  return (
+    <div
+      className={wide ? 'phone-ent-board phone-ent-board--wide' : 'phone-ent-board'}
+      data-testid="phone-kanban-board"
+    >
+      <div className="phone-ent-board__bar">
+        <button
+          ref={templateButtonRef}
+          type="button"
+          className="phone-ent-board__template"
+          aria-label={t('board.templateAria', { template: row.label })}
+          aria-haspopup="dialog"
+          onClick={() => setTemplateSheet(true)}
+        >
+          <span>{row.label}</span>
+          <ChevronDown aria-hidden="true" />
+        </button>
+        {!wide && (
+          <ChipRow
+            aria-label={t('header.modeEtapas')}
+            semantics="tablist"
+            className="phone-ent-board__chips"
+          >
+            {row.columns.map((c) => (
+              <Chip
+                key={c.ordem}
+                label={c.nome}
+                count={c.cards.length + c.posts.length}
+                selected={c.ordem === column.ordem}
+                controls={panelId}
+                onClick={() => setOrdemByRow((prev) => ({ ...prev, [row.key]: c.ordem }))}
+              />
+            ))}
+          </ChipRow>
+        )}
+      </div>
+
+      {wide ? (
+        <div className="phone-ent-board__columns">{row.columns.map((c) => renderColumn(c))}</div>
+      ) : (
+        renderColumn(column, panelId)
+      )}
 
       <ActionSheet
         open={templateSheet}
@@ -415,10 +479,7 @@ export function PhoneKanbanBoard({
         actions={[
           ...rows.map((r) => ({
             label: `${r.key === row.key ? '✓ ' : ''}${r.label} (${rowCount(r)})`,
-            onSelect: () => {
-              setReorder(false);
-              onActiveRowKeyChange(r.key);
-            },
+            onSelect: () => onActiveRowKeyChange(r.key),
           })),
           ...(onCreateTemplate
             ? [
@@ -433,15 +494,6 @@ export function PhoneKanbanBoard({
               ]
             : []),
         ]}
-      />
-      <ActionSheet
-        open={sortSheet}
-        onOpenChange={setSortSheet}
-        title={t('board.sortColumn', { column: column.nome })}
-        actions={FLUXOS_COLUMN_SORTS.map((mode) => ({
-          label: `${sortMode === mode ? '✓ ' : ''}${FLUXOS_COLUMN_SORT_LABELS[mode]}`,
-          onSelect: () => setColumnSort(colKey, mode),
-        }))}
       />
       {onAddWorkflow && offersPostIndividual && (
         <ActionSheet

@@ -360,29 +360,45 @@ function PhoneBody({
             splitUnavailable={splitUnavailable}
             state={cardState(daily)}
           />
-          <YouTubeSplitCard
-            phone
-            split={overviewData.split}
-            lagThrough={contentLag}
-            unavailable={splitUnavailable}
-          />
-          <YouTubeTrafficCard
-            phone
-            rows={traffic.data ?? []}
-            lagThrough={trafficLag}
-            state={cardState(traffic)}
-          />
-          <YouTubeAudienceCard
-            phone
-            rows={demographics.data ?? []}
-            state={cardState(demographics)}
-          />
-          <YouTubeTopShorts
-            phone
-            shorts={topShorts.data ?? []}
-            lagThrough={videosLag}
-            state={cardState(topShorts)}
-          />
+          {/* Wide touch screens: two columns (analyticsPhone.css). */}
+          <div className="phone-an-pair phone-an-stack">
+            <div className="phone-an-half phone-an-stack">
+              <YouTubeSplitCard
+                phone
+                split={overviewData.split}
+                lagThrough={contentLag}
+                unavailable={splitUnavailable}
+              />
+            </div>
+            <div className="phone-an-half phone-an-stack">
+              <YouTubeTrafficCard
+                phone
+                rows={traffic.data ?? []}
+                lagThrough={trafficLag}
+                state={cardState(traffic)}
+              />
+            </div>
+          </div>
+
+          {/* Wide touch screens: two columns (analyticsPhone.css). */}
+          <div className="phone-an-pair phone-an-stack">
+            <div className="phone-an-half phone-an-stack">
+              <YouTubeAudienceCard
+                phone
+                rows={demographics.data ?? []}
+                state={cardState(demographics)}
+              />
+            </div>
+            <div className="phone-an-half phone-an-stack">
+              <YouTubeTopShorts
+                phone
+                shorts={topShorts.data ?? []}
+                lagThrough={videosLag}
+                state={cardState(topShorts)}
+              />
+            </div>
+          </div>
+
           <YouTubeVideosTable
             phone
             videos={videos.data ?? []}

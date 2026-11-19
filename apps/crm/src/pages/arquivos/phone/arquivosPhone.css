@@ -434,7 +434,7 @@
 
 /* Upload progress (FileUploader): above the tab bar, full width, instead of a 320px
    card pinned bottom-right under the floating tab bar. */
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   .app-container .phone-arq-upload-queue {
     right: 16px;
     bottom: calc(max(10px, env(safe-area-inset-bottom, 0px)) + 84px);

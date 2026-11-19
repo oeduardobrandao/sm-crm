@@ -45,10 +45,11 @@ export default function TarefasPage() {
   const isDesktop = useIsDesktop(768);
   const [activeView, setActiveView] = useState<ActiveView>('lista');
   const [filters, setFilters] = useState<TarefaFilterState>(EMPTY_TAREFA_FILTERS);
-  // KPI card filter, kept apart from `filters` so the cards keep counting the unfiltered
-  // scoped set. Desktop only: the phone header shows the stats as text, not cards.
+  // KPI filter, kept apart from `filters` so the cards keep counting the unfiltered scoped
+  // set. Desktop picks it from the stat cards; the phone header (stats as text) from the
+  // filters sheet's "Atalhos" chips.
   const [kpi, setKpi] = useState<TarefaKpi | null>(null);
-  const activeKpi = isDesktop ? kpi : null;
+  const activeKpi = kpi;
   const toggleKpi = (next: TarefaKpi) => setKpi((cur) => (cur === next ? null : next));
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<TarefaWithRelations | null>(null);
@@ -317,6 +318,8 @@ export default function TarefasPage() {
             onEscopoChange={handleEscopoChange}
             filters={filters}
             onFiltersChange={setFilters}
+            kpi={kpi}
+            onKpiChange={setKpi}
             clientes={clientes}
             membros={membros}
             tags={tags}

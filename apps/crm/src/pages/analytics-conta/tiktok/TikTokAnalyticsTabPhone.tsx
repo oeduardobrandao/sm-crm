@@ -392,14 +392,40 @@ function PhoneBody({
 
       <PhonePeriod range={range} onRange={onRange} />
 
-      <div style={dimmed(overview.isPlaceholderData)} aria-busy={overview.isPlaceholderData}>
-        <TikTokKpiGrid kpis={overviewData.kpis} period={period} />
+      {/* Wide touch screens: two columns (analyticsPhone.css). */}
+      <div className="phone-an-pair phone-an-stack">
+        <div className="phone-an-half phone-an-stack">
+          <div style={dimmed(overview.isPlaceholderData)} aria-busy={overview.isPlaceholderData}>
+            <TikTokKpiGrid kpis={overviewData.kpis} period={period} />
+          </div>
+        </div>
+        <div className="phone-an-half phone-an-stack">
+          {history.isPending ? (
+            <CardShell title={t('followers.title')}>
+              <LoadingBlock />
+            </CardShell>
+          ) : history.isError && !history.data ? (
+            <CardShell title={t('followers.title')}>
+              <RetryLine onRetry={() => history.refetch()} />
+            </CardShell>
+          ) : (
+            <FollowerGrowthCard
+              history={history.data ?? []}
+              title={t('followers.title')}
+              emptyText={t('followers.empty')}
+            />
+          )}
+        </div>
       </div>
 
       {posts.isPending ? (
         <LoadingBlock />
       ) : postsFailed ? null : (
-        <div style={dimmed(posts.isPlaceholderData)} aria-busy={posts.isPlaceholderData}>
+        <div
+          className="phone-an-pair"
+          style={dimmed(posts.isPlaceholderData)}
+          aria-busy={posts.isPlaceholderData}
+        >
           <RankedPostStrip
             title={t('overview.topVideos')}
             help={t('clientTab.topVideosHint', { period })}
@@ -423,22 +449,6 @@ function PhoneBody({
             onSeeMore={worst.length > STRIP_SIZE ? () => drawer.open('worst') : undefined}
           />
         </div>
-      )}
-
-      {history.isPending ? (
-        <CardShell title={t('followers.title')}>
-          <LoadingBlock />
-        </CardShell>
-      ) : history.isError && !history.data ? (
-        <CardShell title={t('followers.title')}>
-          <RetryLine onRetry={() => history.refetch()} />
-        </CardShell>
-      ) : (
-        <FollowerGrowthCard
-          history={history.data ?? []}
-          title={t('followers.title')}
-          emptyText={t('followers.empty')}
-        />
       )}
 
       <SectionHead
@@ -487,38 +497,44 @@ function PhoneBody({
         </div>
       )}
 
-      <BestTimesPhone
-        locked={bestTimesLocked}
-        loading={bestTimes.isPending && !bestTimesLocked}
-        data={bestTimes.data ?? null}
-        onRetry={bestTimes.isError && !bestTimes.data ? () => bestTimes.refetch() : null}
-      />
-
-      {aiLocked ? (
-        isNativeApp() ? (
-          // Inside the iOS app: the fact as a plain row, no link (apps/mobile DECISIONS.md D33).
-          <GroupedList header={t('ai.title')}>
-            <Cell
-              icon={<Lock />}
-              label={t('native.lockedTitle', { feature: t('ai.title') })}
-              chevron={false}
+      {/* Wide touch screens: two columns (analyticsPhone.css). */}
+      <div className="phone-an-pair phone-an-stack">
+        <div className="phone-an-half phone-an-stack">
+          <BestTimesPhone
+            locked={bestTimesLocked}
+            loading={bestTimes.isPending && !bestTimesLocked}
+            data={bestTimes.data ?? null}
+            onRetry={bestTimes.isError && !bestTimes.data ? () => bestTimes.refetch() : null}
+          />
+        </div>
+        <div className="phone-an-half phone-an-stack">
+          {aiLocked ? (
+            isNativeApp() ? (
+              // Inside the iOS app: the fact as a plain row, no link (apps/mobile DECISIONS.md D33).
+              <GroupedList header={t('ai.title')}>
+                <Cell
+                  icon={<Lock />}
+                  label={t('native.lockedTitle', { feature: t('ai.title') })}
+                  chevron={false}
+                />
+              </GroupedList>
+            ) : (
+              <GroupedList header={t('ai.title')} footer={t('ai.locked')}>
+                <Cell icon={<Lock />} label={t('states.lockedAction')} to={BILLING_PATH} />
+              </GroupedList>
+            )
+          ) : (
+            <AIAnalysisPhone
+              title={t('ai.title')}
+              view={aiView}
+              loading={ai.loading}
+              error={ai.error}
+              emptyText={t('ai.accountEmpty')}
+              onGenerate={ai.generate}
             />
-          </GroupedList>
-        ) : (
-          <GroupedList header={t('ai.title')} footer={t('ai.locked')}>
-            <Cell icon={<Lock />} label={t('states.lockedAction')} to={BILLING_PATH} />
-          </GroupedList>
-        )
-      ) : (
-        <AIAnalysisPhone
-          title={t('ai.title')}
-          view={aiView}
-          loading={ai.loading}
-          error={ai.error}
-          emptyText={t('ai.accountEmpty')}
-          onGenerate={ai.generate}
-        />
-      )}
+          )}
+        </div>
+      </div>
 
       <ActionSheet
         open={sortOpen}

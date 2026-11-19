@@ -139,6 +139,8 @@ What we chose, what we considered and rejected, and why. Newest at the bottom.
 
 ## D17. Gate the phone layout by width (below 768px), not by `isNativeApp()`
 
+_Superseded by D34: the gate is now width OR touch-only._
+
 - **Chosen:** the iOS-style layout renders below 768px, the breakpoint `MobileNav`
   (`style.css` `max-width: 767px`) and `AppLayout`'s `useIsMobile` already use. Same look in the
   app, mobile Safari and Android browsers. Tablet (768-1100px, sidebar drawer) and desktop are
@@ -177,11 +179,11 @@ What we chose, what we considered and rejected, and why. Newest at the bottom.
 - **Lista and posts list** render as grouped rows with swipe actions on phones; the tables stay on
   desktop.
 - **Long-press is the menu; drag is explicit.** On phone cards a hold opens the context menu.
-  Drag starts from a handle or in a "Reordenar" mode, using `TouchSensor` (`delay: 250,
-  tolerance: 8`, the values `WorkflowCalendarView` and `PostsKanbanView` use) on `KanbanView`,
-  `WorkflowDrawer`, `SortableEtapaList` and `PostMediaGallery`. Rejected: long-press-to-drag
-  everywhere, because dnd-kit's 250 ms sensor fires before any long-press menu and the card menu
-  would be unreachable.
+  Drag starts from a handle or in a "Reordenar" mode, using `TouchSensor`
+  (`delay: 250, tolerance: 8`, the values `WorkflowCalendarView` and `PostsKanbanView` use) on
+  `KanbanView`, `WorkflowDrawer`, `SortableEtapaList` and `PostMediaGallery`. Rejected:
+  long-press-to-drag everywhere, because dnd-kit's 250 ms sensor fires before any long-press menu
+  and the card menu would be unreachable.
 - **Fluxos board** shows one etapa at a time with chips, rendering only that column; moves stay
   adjacent-only with the same confirmations, shown as action sheets. **Status board** drops onto
   status targets that expand from the chip row into a grid while dragging.
@@ -208,6 +210,8 @@ What we chose, what we considered and rejected, and why. Newest at the bottom.
   rules, and Radix already handles focus and dismissal.
 
 ## D24. Editor bottom bar material; landscape stays on the tablet layout
+
+_Landscape rule superseded by D34 (the bar material still stands)._
 
 - **Chosen (2026-10-11, owner):** the post editor's bottom bar uses the kit's iOS glass (78% fill
   plus blur, like system toolbars) instead of a near-opaque fill. Warnings on it are weight 600,
@@ -285,3 +289,16 @@ What we chose, what we considered and rejected, and why. Newest at the bottom.
   `PhoneUsageLine`, `LockedCard`) decide it themselves with `isNativeApp()`, and
   `nativeBillingCtas.test.ts` fails any new file that links to billing, `/comecar` or `/precos`
   without importing `isNativeApp`. `reportPaywallHit` keeps firing in the app (signal only).
+
+## D34. Touch devices get the phone shell at any width
+
+- **Chosen:** the phone shell is `(max-width: 767px), (hover: none) and (pointer: coarse)`. An iPad,
+  an Android tablet and a phone in landscape get it too, as a centered 680px column. Desktop is
+  the exact inverse, so a touch laptop with a mouse stays desktop (`lib/phoneShell.ts`).
+- **Tablets** (touch, at least 768px, screen short side at least 600) keep the desktop report
+  editor, Linha editorial create/edit and the Agenda week grid with drag, inside the phone shell.
+  Entregas, Calendário and the analytics pages stay full width on every wide touch device.
+- **Rejected:** viewport height for "tablet" (the iOS keyboard resizes the web view, and a
+  landscape iPad would drop below 600 while typing); the short side of the screen does not move.
+- **Supersedes:** D17's width-only gate and D24's rule that landscape gets the tablet layout.
+- **Spec:** `docs/superpowers/specs/2026-11-18-ipad-phone-layout-design.md`.

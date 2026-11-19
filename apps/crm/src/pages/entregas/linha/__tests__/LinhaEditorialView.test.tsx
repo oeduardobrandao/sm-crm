@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mockMatchMediaEnv } from '@/test/mediaQueryMatcher';
 import type { Cliente, Membro, WorkflowTemplate } from '@/store';
 import type { LinhaEditorial, LinhaItem } from '@/store/linhaEditorial';
 import { MemoryRouter } from 'react-router-dom';
@@ -586,5 +587,89 @@ describe('LinhaEditorialView Criar fluxo', () => {
     await waitFor(() =>
       expect(screen.queryByTestId('linha-selection-bar')).not.toBeInTheDocument(),
     );
+  });
+});
+
+// Tablet (phone shell, touch, >=768x600): a linha de desktop, editável, dentro do
+// shell do celular. Um iPhone deitado (844x390) segue com os cartões só de leitura.
+describe('LinhaEditorialView on a tablet', () => {
+  let media: ReturnType<typeof mockMatchMediaEnv> | null = null;
+  afterEach(() => {
+    media?.restore();
+    media = null;
+  });
+  const touch = (width: number, height: number) =>
+    mockMatchMediaEnv({ width, height, hover: 'none', pointer: 'coarse' });
+
+  it('renders the desktop editor and no "no computador" copy', async () => {
+    media = touch(820, 1180);
+    m.listLinhasDoMes.mockResolvedValue([linha({ cliente_id: 1, itens_total: 2 })]);
+    m.listItens.mockResolvedValue([item(1), item(2)]);
+    renderView({ filterClientes: [1] });
+    expect(await screen.findByRole('table')).toBeInTheDocument();
+    expect(screen.getByTestId('linha-rail')).toBeInTheDocument();
+    expect(screen.queryByTestId('linha-phone-card')).toBeNull();
+    expect(screen.queryByText(/no computador/)).toBeNull();
+  });
+
+  it('a client without a linha gets the Criar linha button, not the computer note', async () => {
+    media = touch(1180, 820);
+    renderView({ filterClientes: [2] });
+    expect(await screen.findByRole('button', { name: /Criar linha/ })).toBeInTheDocument();
+    expect(screen.queryByText(/no computador/)).toBeNull();
+  });
+
+  it('keeps the desktop editor when the iOS app keyboard shrinks the web view', async () => {
+    media = touch(1180, 820);
+    m.listLinhasDoMes.mockResolvedValue([linha({ cliente_id: 1, itens_total: 2 })]);
+    m.listItens.mockResolvedValue([item(1), item(2)]);
+    renderView({ filterClientes: [1] });
+    await screen.findByRole('table');
+    act(() => {
+      media!.setEnv({
+        width: 1180,
+        height: 400,
+        hover: 'none',
+        pointer: 'coarse',
+        screen: { width: 1180, height: 820 },
+      });
+    });
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(screen.queryByTestId('linha-phone-card')).toBeNull();
+  });
+
+  it('rotating an iPad mini to portrait mid-rename saves the draft', async () => {
+    const user = userEvent.setup();
+    media = touch(1133, 744);
+    m.listLinhasDoMes.mockResolvedValue([linha({ cliente_id: 1 })]);
+    renderView({ filterClientes: [1] });
+    await user.click(await screen.findByRole('button', { name: 'Linha editorial de novembro' }));
+    await user.type(screen.getByRole('textbox', { name: 'Título da linha' }), 'Campanha');
+    // 744px wide is under the wide phone shell: the phone cards replace the editor.
+    act(() => media!.setEnv({ width: 744, height: 1133, hover: 'none', pointer: 'coarse' }));
+    await screen.findByText('Edite a linha no computador.');
+    expect(m.renameLinha).toHaveBeenCalledTimes(1);
+    expect(m.renameLinha).toHaveBeenCalledWith('l-1', 'Campanha');
+  });
+
+  it('rotating mid-rename with an unchanged draft saves nothing', async () => {
+    const user = userEvent.setup();
+    media = touch(1133, 744);
+    m.listLinhasDoMes.mockResolvedValue([linha({ cliente_id: 1 })]);
+    renderView({ filterClientes: [1] });
+    await user.click(await screen.findByRole('button', { name: 'Linha editorial de novembro' }));
+    act(() => media!.setEnv({ width: 744, height: 1133, hover: 'none', pointer: 'coarse' }));
+    await screen.findByText('Edite a linha no computador.');
+    expect(m.renameLinha).not.toHaveBeenCalled();
+  });
+
+  it('a phone held sideways keeps the read-only cards', async () => {
+    media = touch(844, 390);
+    m.listLinhasDoMes.mockResolvedValue([linha({ cliente_id: 1, itens_total: 2 })]);
+    m.listItens.mockResolvedValue([item(1), item(2)]);
+    renderView({ filterClientes: [1] });
+    expect(await screen.findAllByTestId('linha-phone-card')).toHaveLength(2);
+    expect(screen.getByText('Edite a linha no computador.')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).toBeNull();
   });
 });

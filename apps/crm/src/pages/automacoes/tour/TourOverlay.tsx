@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import type { TourStep } from './tourSteps';
+import { usePhoneLayout } from '@/components/layout/PhoneLayoutContext';
 
 /** Quanto tempo re-tentar achar a âncora antes do fail-safe encerrar o tour
  * (o dialog pode ainda estar montando quando o passo 2 chega). */
@@ -43,6 +44,8 @@ export default function TourOverlay({
   const rootRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const [layout, setLayout] = useState<Layout | null>(null);
+  // The phone shell (touch tablets included) always docks the card as a bottom sheet.
+  const { isPhone } = usePhoneLayout();
   // Ref para o fail-safe não reiniciar o loop de rAF quando o pai recria o
   // callback a cada render.
   const onSkipRef = useRef(onSkip);
@@ -92,7 +95,7 @@ export default function TourOverlay({
       height: rect.height,
     };
     let card: Layout['card'] = null;
-    if (window.innerWidth >= SHEET_BREAKPOINT) {
+    if (!isPhone && window.innerWidth >= SHEET_BREAKPOINT) {
       const cardH = cardRef.current?.offsetHeight ?? 180;
       const below = spot.top + spot.height + GAP;
       const top = below + cardH > boundH ? Math.max(GAP, spot.top - cardH - GAP) : below;
@@ -101,7 +104,7 @@ export default function TourOverlay({
     }
     setLayout({ spot, card });
     return true;
-  }, [step]);
+  }, [step, isPhone]);
 
   // Localiza a âncora (com retry: o dialog pode estar montando), rola até ela
   // e mede. Se a âncora nunca aparece, encerra o tour em vez de deixar um

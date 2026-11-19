@@ -599,12 +599,55 @@ describe('RentabilidadePage', () => {
     expect(norm(celula.textContent)).toBe('Sem clienteR$ 900,00');
   });
 
-  it('phone summary has three cells when every cost is on a client', async () => {
+  it('phone summary has four cells when every cost is on a client', async () => {
     desktop.value = false;
     renderPage();
 
     await screen.findByRole('list', { name: 'Clientes' });
     expect(screen.queryByText('Sem cliente')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('definition')).toHaveLength(4);
+  });
+
+  it('phone summary shows the team cost, like the desktop KPI, annualized with Anual', async () => {
+    const user = userEvent.setup();
+    desktop.value = false;
+    renderPage();
+
+    await screen.findByRole('list', { name: 'Clientes' });
+    const brl = (v: number) =>
+      norm(new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v));
+    const custo = planilha.totais.custo_total;
+    expect(
+      norm(screen.getByText('Custo da equipe', { selector: 'dt' }).parentElement!.textContent),
+    ).toBe(`Custo da equipe${brl(custo)}`);
+
+    await user.click(screen.getByRole('button', { name: 'Anual' }));
+    expect(
+      norm(screen.getByText('Custo anual', { selector: 'dt' }).parentElement!.textContent),
+    ).toBe(`Custo anual${brl(custo * 12)}`);
+  });
+
+  it('phone exports the same CSV as desktop', async () => {
+    const user = userEvent.setup();
+    desktop.value = false;
+    renderPage();
+
+    await screen.findByRole('list', { name: 'Clientes' });
+    await user.click(screen.getByRole('button', { name: 'Exportar CSV' }));
+
+    expect(downloadCsvMock).toHaveBeenCalledTimes(1);
+    const [csv, filename] = downloadCsvMock.mock.calls[0] as [string, string];
+    expect(filename).toBe('rentabilidade-out-2026.csv');
+    expect(csv).toContain('Talitha;2500,00;1180,00;1320,00;52,8;550,00;260,00;210,00;160,00;0,00');
+  });
+
+  it('phone has no export without financial access', async () => {
+    desktop.value = false;
+    useAuthMock.mockReturnValue(auth({ canSeeFinancials: false }));
+    renderPage();
+
+    await screen.findByRole('list', { name: 'Clientes' });
+    expect(screen.queryByRole('button', { name: 'Exportar CSV' })).not.toBeInTheDocument();
   });
 
   it('phone_renders_list', async () => {

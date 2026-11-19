@@ -306,103 +306,113 @@ export function TikTokOverviewPhone(props: TikTokOverviewPhoneProps) {
         onSeeMore={worstTotal > 5 ? () => drawer.open('worst') : undefined}
       />
 
-      <SectionHead
-        large
-        title={t('overview.allAccounts')}
-        trailing={
-          accounts.length > 0 ? (
-            <button
-              ref={sortButtonRef}
-              type="button"
-              className="phone-an-sort"
-              aria-haspopup="dialog"
-              aria-label={`${t('table.sortAccounts')}: ${sortLabel}, ${sortDirection === 'asc' ? t('table.sortAsc') : t('table.sortDesc')}`}
-              onClick={() => setSortOpen(true)}
-            >
-              <ArrowUpDown aria-hidden="true" />
-              {sortLabel}
-            </button>
-          ) : undefined
-        }
-      />
-      {accounts.length === 0 ? (
-        <section className="phone-an-empty">
-          <h2>{t('overview.emptyTitle')}</h2>
-          <p>{t('overview.emptyBody')}</p>
-          <Link to="/clientes" className="phone-an-link-button">
-            {t('overview.emptyAction')}
-          </Link>
-        </section>
-      ) : (
-        <GroupedList aria-label={t('overview.allAccounts')}>
-          {sortedAccounts.map((a) => {
-            const d = daysSince(a.last_posted_at);
-            const silent = isSilent(a);
-            const gained = a.followers_gained ?? 0;
-            return (
-              <Cell
-                key={a.client_id}
-                to={`/analytics/${a.client_id}/tiktok`}
-                icon={<Avatar src={a.avatar_url} initials={initialsOf(a.client_name)} />}
-                label={a.client_name}
-                subtitle={
-                  <>
-                    {gained !== 0 && (
+      {/* Wide touch screens: two columns (analyticsPhone.css). */}
+      <div className="phone-an-pair phone-an-stack">
+        <div className="phone-an-half phone-an-stack">
+          <SectionHead
+            large
+            title={t('overview.allAccounts')}
+            trailing={
+              accounts.length > 0 ? (
+                <button
+                  ref={sortButtonRef}
+                  type="button"
+                  className="phone-an-sort"
+                  aria-haspopup="dialog"
+                  aria-label={`${t('table.sortAccounts')}: ${sortLabel}, ${sortDirection === 'asc' ? t('table.sortAsc') : t('table.sortDesc')}`}
+                  onClick={() => setSortOpen(true)}
+                >
+                  <ArrowUpDown aria-hidden="true" />
+                  {sortLabel}
+                </button>
+              ) : undefined
+            }
+          />
+          {accounts.length === 0 ? (
+            <section className="phone-an-empty">
+              <h2>{t('overview.emptyTitle')}</h2>
+              <p>{t('overview.emptyBody')}</p>
+              <Link to="/clientes" className="phone-an-link-button">
+                {t('overview.emptyAction')}
+              </Link>
+            </section>
+          ) : (
+            <GroupedList aria-label={t('overview.allAccounts')}>
+              {sortedAccounts.map((a) => {
+                const d = daysSince(a.last_posted_at);
+                const silent = isSilent(a);
+                const gained = a.followers_gained ?? 0;
+                return (
+                  <Cell
+                    key={a.client_id}
+                    to={`/analytics/${a.client_id}/tiktok`}
+                    icon={<Avatar src={a.avatar_url} initials={initialsOf(a.client_name)} />}
+                    label={a.client_name}
+                    subtitle={
                       <>
-                        <span className={gained > 0 ? 'phone-an-tone--up' : 'phone-an-tone--down'}>
-                          {gained > 0 ? '↑' : '↓'} {fmtNumber(Math.abs(gained))}
+                        {gained !== 0 && (
+                          <>
+                            <span
+                              className={gained > 0 ? 'phone-an-tone--up' : 'phone-an-tone--down'}
+                            >
+                              {gained > 0 ? '↑' : '↓'} {fmtNumber(Math.abs(gained))}
+                            </span>
+                            {' · '}
+                          </>
+                        )}
+                        {t('table.engAbbrev', { value: formatPct(a.engagement_rate) })} ·{' '}
+                        <span className={silent ? 'phone-an-tone--down' : undefined}>
+                          {d === null ? t('table.never') : t('table.daysAgo', { count: d })}
                         </span>
-                        {' · '}
                       </>
-                    )}
-                    {t('table.engAbbrev', { value: formatPct(a.engagement_rate) })} ·{' '}
-                    <span className={silent ? 'phone-an-tone--down' : undefined}>
-                      {d === null ? t('table.never') : t('table.daysAgo', { count: d })}
-                    </span>
-                  </>
-                }
-                value={
-                  <span className="phone-an-row-value">
-                    {sortValueLabel(a, sortColumn, t('table.never'))}
-                  </span>
-                }
+                    }
+                    value={
+                      <span className="phone-an-row-value">
+                        {sortValueLabel(a, sortColumn, t('table.never'))}
+                      </span>
+                    }
+                  />
+                );
+              })}
+            </GroupedList>
+          )}
+        </div>
+        {(rated.length >= 2 || (accounts.length >= 2 && specialtyStats.length >= 2)) && (
+          <div className="phone-an-half phone-an-stack">
+            {rated.length >= 2 && (
+              <BarList
+                header={t('overview.benchmark')}
+                footer={t('overview.benchmarkAvg', { value: formatPct(benchmarkAvg) })}
+                items={[...rated]
+                  .sort((a, b) => (b.engagement_rate as number) - (a.engagement_rate as number))
+                  .map((a) => ({
+                    key: String(a.client_id),
+                    label: a.client_name,
+                    value: a.engagement_rate as number,
+                    valueLabel: formatPct(a.engagement_rate),
+                    color:
+                      (a.engagement_rate as number) >= benchmarkAvg
+                        ? 'var(--phone-an-up)'
+                        : 'var(--phone-an-down)',
+                  }))}
               />
-            );
-          })}
-        </GroupedList>
-      )}
+            )}
 
-      {rated.length >= 2 && (
-        <BarList
-          header={t('overview.benchmark')}
-          footer={t('overview.benchmarkAvg', { value: formatPct(benchmarkAvg) })}
-          items={[...rated]
-            .sort((a, b) => (b.engagement_rate as number) - (a.engagement_rate as number))
-            .map((a) => ({
-              key: String(a.client_id),
-              label: a.client_name,
-              value: a.engagement_rate as number,
-              valueLabel: formatPct(a.engagement_rate),
-              color:
-                (a.engagement_rate as number) >= benchmarkAvg
-                  ? 'var(--phone-an-up)'
-                  : 'var(--phone-an-down)',
-            }))}
-        />
-      )}
-
-      {accounts.length >= 2 && specialtyStats.length >= 2 && (
-        <BarList
-          header={t('overview.bySpecialty')}
-          items={specialtyStats.map((s) => ({
-            key: s.specialty ?? '__none',
-            label: s.specialty ?? t('overview.noSpecialty'),
-            subtitle: `${t('overview.accountCount', { count: s.count })} · ${t('overview.avgFollowers', { value: formatNumber(s.avgFollowers) })}`,
-            value: s.avgEngagement ?? 0,
-            valueLabel: formatPct(s.avgEngagement),
-          }))}
-        />
-      )}
+            {accounts.length >= 2 && specialtyStats.length >= 2 && (
+              <BarList
+                header={t('overview.bySpecialty')}
+                items={specialtyStats.map((s) => ({
+                  key: s.specialty ?? '__none',
+                  label: s.specialty ?? t('overview.noSpecialty'),
+                  subtitle: `${t('overview.accountCount', { count: s.count })} · ${t('overview.avgFollowers', { value: formatNumber(s.avgFollowers) })}`,
+                  value: s.avgEngagement ?? 0,
+                  valueLabel: formatPct(s.avgEngagement),
+                }))}
+              />
+            )}
+          </div>
+        )}
+      </div>
 
       {accounts.length >= 1 && (
         <AIAnalysisPhone

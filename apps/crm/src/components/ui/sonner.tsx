@@ -4,8 +4,9 @@ type ToasterProps = React.ComponentProps<typeof Sonner>;
 
 /**
  * Bottom offsets that clear the phone's floating tab bar. `--phone-toast-offset` is set
- * in style.css only below 768px while the CRM shell shows the tab bar, so everywhere else
- * (desktop, tablet, login, landing) the fallback is sonner's own default (24px, and 16px
+ * in style.css only under the phone-shell query (below 768px, or a touch tablet) while the CRM
+ * shell shows the tab bar, so everywhere else (desktop, login, landing) the fallback is sonner's
+ * own default (24px, and 16px
  * under its 600px mobile breakpoint). Both props are needed: sonner switches to
  * `mobileOffset` at 600px, and phones reach 767px.
  */

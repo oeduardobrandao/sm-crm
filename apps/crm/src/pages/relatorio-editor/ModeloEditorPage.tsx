@@ -37,6 +37,7 @@ import {
 } from './layoutOps';
 import { withAiSampleText } from './templateOps';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useIsTabletShell } from '@/lib/phoneShell';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
 import { ReportPhoneView } from './phone/ReportPhoneView';
@@ -118,8 +119,10 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
     ? (toSections(layout).find((s) => s.marker.id === insertTarget.sectionId) ?? null)
     : null;
   // Celular (D27): o modelo só é visto, não editado. Todos os hooks acima seguem
-  // montados para a ordem não mudar quando a largura cruza 768px.
-  const isPhone = !useIsDesktop(768);
+  // montados para a ordem não mudar quando a largura cruza 768px. No tablet (shell do
+  // celular a partir de 768x600) o editor de desktop roda dentro do shell.
+  const isTablet = useIsTabletShell();
+  const isPhone = !useIsDesktop(768) && !isTablet;
   const previewLayout = useMemo(() => withAiSampleText(layout), [layout]);
 
   if (isPhone) {
@@ -138,6 +141,14 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
 
   return (
     <div className="rb-editor-with-rail">
+      {/* Tablet: the phone view's nav bar replaces the "Modelos" button (sticky, app.css). */}
+      {isTablet && (
+        <PhoneNavBar
+          className="rb-editor-nav-bar"
+          backLabel="Voltar para Modelos"
+          fallbackTo={SETTINGS_PATH}
+        />
+      )}
       <div ref={sentinelRef} aria-hidden="true" className="rb-editor-sentinel" />
       <header
         ref={headerRef}
@@ -152,11 +163,13 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
           flexWrap: 'wrap',
         }}
       >
-        <Button variant="outline" size="sm" asChild>
-          <Link to={SETTINGS_PATH}>
-            <ArrowLeft className="h-3.5 w-3.5" /> Modelos
-          </Link>
-        </Button>
+        {!isTablet && (
+          <Button variant="outline" size="sm" asChild>
+            <Link to={SETTINGS_PATH}>
+              <ArrowLeft className="h-3.5 w-3.5" /> Modelos
+            </Link>
+          </Button>
+        )}
         <div className="rb-editor-title">
           <input
             aria-label="Nome do modelo"

@@ -114,7 +114,7 @@ export function RankedPostStrip<P extends RankedPostLike>({
   const headingId = useId();
   if (posts.length === 0) return null;
   return (
-    <section aria-labelledby={headingId}>
+    <section aria-labelledby={headingId} className="phone-an-half">
       <SectionHead
         large
         id={headingId}
