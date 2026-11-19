@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Download, MoreHorizontal, Plus } from 'lucide-react';
+import { Download, ExternalLink, MoreHorizontal, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -50,6 +50,7 @@ import {
 } from './layoutOps';
 import { applyTemplateLayout, layoutHasFilledImage } from './templateOps';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useIsTabletShell } from '@/lib/phoneShell';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
 import { ReportExportBar, ReportPhoneView } from './phone/ReportPhoneView';
@@ -119,9 +120,11 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
   const [refreshing, setRefreshing] = useState(false);
   // Celular (D27): só leitura e exportação. Os hooks acima continuam montados (a
   // ordem não muda quando a largura cruza 768px) e "Aplicar template" grava pelo
-  // mesmo autosave do desktop.
-  const isPhone = !useIsDesktop(768);
-  // URL do PDF gerado no celular: vira o link "Abrir PDF" que a pessoa toca.
+  // mesmo autosave do desktop. No tablet (shell do celular a partir de 768x600) o
+  // editor de desktop roda dentro do shell; um iPhone deitado segue no celular.
+  const isTablet = useIsTabletShell();
+  const isPhone = !useIsDesktop(768) && !isTablet;
+  // URL do PDF gerado no celular e no tablet: vira o link "Abrir PDF" que a pessoa toca.
   const [phonePdfUrl, setPhonePdfUrl] = useState<string | null>(null);
   // O PDF reflete o layout e os dados do momento em que foi gerado.
   useEffect(() => {
@@ -176,9 +179,10 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
     }
   }
 
-  // Celular: a mesma exportação, sem abrir aba por código. Depois do await o
-  // toque original já expirou e o iOS Safari bloqueia a aba nova; a barra passa
-  // a mostrar um link "Abrir PDF" (ReportExportBar) para um toque novo.
+  // Celular e tablet: a mesma exportação, sem abrir aba por código. Depois do await
+  // o toque original já expirou e o iOS Safari bloqueia a aba nova; a barra do
+  // celular (ReportExportBar) ou o cabeçalho do tablet passa a mostrar um link
+  // "Abrir PDF" para um toque novo.
   async function handleExportPdfPhone() {
     setExporting(true);
     setPhonePdfUrl(null);
@@ -306,9 +310,20 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
           <Button size="sm" onClick={() => openWidgetDrawer(null)}>
             <Plus className="h-3.5 w-3.5" /> Adicionar widget
           </Button>
-          <Button size="sm" disabled={exporting} onClick={handleExportPdf}>
+          <Button
+            size="sm"
+            disabled={exporting}
+            onClick={isTablet ? handleExportPdfPhone : handleExportPdf}
+          >
             {exporting ? <Spinner size="sm" /> : <Download className="h-3.5 w-3.5" />} Exportar PDF
           </Button>
+          {isTablet && phonePdfUrl && (
+            <Button variant="outline" size="sm" asChild>
+              <a href={phonePdfUrl} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="h-3.5 w-3.5" /> Abrir PDF
+              </a>
+            </Button>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" aria-label="Ações do relatório">

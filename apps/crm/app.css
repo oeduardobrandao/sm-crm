@@ -14582,6 +14582,70 @@ a.hub-fill__row-inner:hover {
   }
 }
 
+/* Tablet (TABLET_SHELL_QUERY em lib/phoneShell.ts): o editor de desktop roda dentro do
+   shell do celular, e os dois gates acima são só do shell de desktop. Quem rola continua
+   sendo o .main-content, que já começa abaixo do cabeçalho do shell, com padding-top de
+   0.5rem: com top 0 o cartão prende logo abaixo do cabeçalho (o -0.75rem do desktop
+   cortaria a borda de cima). O painel de camadas só aparece com 1024px ou mais, o mesmo
+   espaço de canvas que o desktop tem a 1280px com a barra lateral aberta (~650px); abaixo
+   disso ele some, como no desktop estreito: em fluxo ele empurraria o canvas para baixo.
+   Fixo, ele desce abaixo do cabeçalho do shell e para acima da faixa que o .main-content
+   reserva para a barra de abas flutuante. */
+@media (hover: none) and (pointer: coarse) and (min-width: 768px) and (min-height: 600px) {
+  .rb-editor-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    padding: 0.6rem 0.9rem;
+    border: 1px solid transparent;
+    border-radius: 16px;
+    transition:
+      background-color 0.2s ease,
+      border-color 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+  .rb-editor-header[data-stuck] {
+    background: color-mix(in srgb, var(--card-bg) 80%, transparent);
+    -webkit-backdrop-filter: saturate(180%) blur(14px);
+    backdrop-filter: saturate(180%) blur(14px);
+    border-color: var(--border-color);
+    box-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.35);
+  }
+
+  @media (min-width: 1024px) {
+    .rb-layers-rail {
+      display: block;
+      position: fixed;
+      top: calc(var(--banner-height, 0px) + var(--phone-header-height) + 16px);
+      right: max(16px, env(safe-area-inset-right, 0px));
+      width: 250px;
+      max-height: calc(
+        100dvh - var(--banner-height, 0px) - var(--phone-header-height) - 32px - 104px -
+          env(safe-area-inset-bottom, 0px)
+      );
+      overflow-y: auto;
+      overflow-x: hidden;
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 0.75rem;
+    }
+    .rb-editor-with-rail {
+      padding-right: 298px;
+    }
+  }
+}
+
+/* Sem hover (toque): a barra de cada bloco (arrastar, largura, ajustes, excluir) e o "+"
+   entre camadas ficam sempre à mostra; senão um toque não chega a eles. */
+@media (hover: none) {
+  .rb-edit-toolbar,
+  .rb-layers-add-between {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
 .rb-layers-title {
   margin: 0;
   font-size: 0.85rem;

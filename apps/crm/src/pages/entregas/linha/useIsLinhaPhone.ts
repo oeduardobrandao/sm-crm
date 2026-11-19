@@ -5,7 +5,8 @@ import { useIsPhoneShellMatch } from '@/lib/phoneShell';
  * `useIsPhoneEditor` and EntregasPage's `isPhone` (`!useIsDesktop(768)`), asked the
  * other way round: jsdom's matchMedia never matches, so a positive phone query keeps
  * every desktop suite that renders `LinhaEditorialView` on the table without having
- * to mock the hook.
+ * to mock the hook. LinhaEditorialView still renders its desktop editor on a touch tablet
+ * (`useIsTabletShell`), so the read-only cards are for phones only.
  */
 export function useIsLinhaPhone(): boolean {
   return useIsPhoneShellMatch();

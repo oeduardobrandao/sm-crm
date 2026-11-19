@@ -16,6 +16,7 @@ import {
   SYSTEM_TEMPLATE_NAME,
 } from '../../services/reportTemplates';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useIsTabletShell } from '@/lib/phoneShell';
 import { useSampleSnapshot } from './useSampleSnapshot';
 import { withAiSampleText } from './templateOps';
 import { ReportPhoneView } from './phone/ReportPhoneView';
@@ -24,7 +25,9 @@ const SETTINGS_PATH = '/configuracao/relatorios';
 const SAMPLE_NOTE = 'Dados de exemplo. Os números reais entram quando o relatório é gerado.';
 
 export default function ModeloPadraoPage() {
-  const isPhone = !useIsDesktop(768);
+  // Tablet (shell do celular a partir de 768x600): a prévia de desktop dentro do shell.
+  const isTablet = useIsTabletShell();
+  const isPhone = !useIsDesktop(768) && !isTablet;
   const navigate = useNavigate();
   const qc = useQueryClient();
   const snapshot = useSampleSnapshot();

@@ -37,6 +37,7 @@ import {
 } from './layoutOps';
 import { withAiSampleText } from './templateOps';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useIsTabletShell } from '@/lib/phoneShell';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
 import { ReportPhoneView } from './phone/ReportPhoneView';
@@ -118,8 +119,10 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
     ? (toSections(layout).find((s) => s.marker.id === insertTarget.sectionId) ?? null)
     : null;
   // Celular (D27): o modelo só é visto, não editado. Todos os hooks acima seguem
-  // montados para a ordem não mudar quando a largura cruza 768px.
-  const isPhone = !useIsDesktop(768);
+  // montados para a ordem não mudar quando a largura cruza 768px. No tablet (shell do
+  // celular a partir de 768x600) o editor de desktop roda dentro do shell.
+  const isTablet = useIsTabletShell();
+  const isPhone = !useIsDesktop(768) && !isTablet;
   const previewLayout = useMemo(() => withAiSampleText(layout), [layout]);
 
   if (isPhone) {

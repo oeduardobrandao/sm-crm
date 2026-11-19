@@ -4,7 +4,8 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mockMatchMediaEnv, type MediaEnv } from '@/test/mediaQueryMatcher';
 import { makeSnapshotFixture } from '@mesaas/report-blocks/fixtures';
 import type { ReportTemplateRow } from '../../../services/reportTemplates';
 
@@ -244,5 +245,67 @@ describe('RelatorioEditorPage no celular', () => {
     renderPage();
     expect(await screen.findByText('Relatório não encontrado.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Voltar' })).toBeInTheDocument();
+  });
+});
+
+// Tablet (phone shell, touch, >=768x600): o editor de desktop dentro do shell do
+// celular. Um iPhone deitado (844x390) não é tablet e segue com a view do celular.
+const touch = (width: number, height: number): MediaEnv => ({
+  width,
+  height,
+  hover: 'none',
+  pointer: 'coarse',
+});
+
+describe('RelatorioEditorPage no tablet', () => {
+  let media: ReturnType<typeof mockMatchMediaEnv> | null = null;
+  afterEach(() => {
+    media?.restore();
+    media = null;
+  });
+
+  it.each([
+    ['retrato', touch(820, 1180)],
+    ['paisagem', touch(1180, 820)],
+  ])('em %s renderiza o editor de desktop, sem o aviso do computador', async (_o, env) => {
+    media = mockMatchMediaEnv(env);
+    getReportDocMock.mockResolvedValue(doc());
+    const { container } = renderPage();
+    expect(await screen.findByLabelText('Título do relatório')).toHaveValue(
+      'Relatório de Abril de 2026',
+    );
+    expect(container.querySelector('.rb-editor-header')).not.toBeNull();
+    expect(screen.getAllByRole('button', { name: /Adicionar widget/ }).length).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText('Excluir bloco').length).toBeGreaterThan(0);
+    expect(container.querySelector('.phone-nav-bar')).toBeNull();
+    expect(screen.queryByText(/no computador/)).toBeNull();
+  });
+
+  it('iPhone deitado segue com a view do celular', async () => {
+    media = mockMatchMediaEnv(touch(844, 390));
+    getReportDocMock.mockResolvedValue(doc());
+    const { container } = renderPage();
+    expect(await screen.findByRole('note')).toHaveTextContent('Edite o layout no computador.');
+    expect(container.querySelector('.rb-editor-header')).toBeNull();
+  });
+
+  it('Exportar PDF não abre aba por código: aparece um link "Abrir PDF" no cabeçalho', async () => {
+    media = mockMatchMediaEnv(touch(1180, 820));
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    getReportDocMock.mockResolvedValue(doc());
+    exportReportPdfMock.mockResolvedValue({ url: 'https://cdn.example.com/doc-1.pdf' });
+    const { container } = renderPage();
+    await screen.findByLabelText('Título do relatório');
+    const header = within(container.querySelector<HTMLElement>('.rb-editor-header')!);
+    fireEvent.click(header.getByRole('button', { name: /Exportar PDF/ }));
+    const link = await header.findByRole('link', { name: /Abrir PDF/ });
+    expect(link).toHaveAttribute('href', 'https://cdn.example.com/doc-1.pdf');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(clickSpy).not.toHaveBeenCalled();
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(toastMock.success).toHaveBeenCalledWith('PDF gerado. Toque em Abrir PDF.', {
+      id: 'export-toast-id',
+    });
   });
 });

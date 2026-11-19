@@ -4,7 +4,8 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mockMatchMediaEnv } from '@/test/mediaQueryMatcher';
 import type { ReportLayout } from '@mesaas/report-blocks/types';
 
 const layout: ReportLayout = {
@@ -142,5 +143,45 @@ describe('ModeloEditorPage no celular', () => {
     renderAt('/relatorios/modelos/nope');
     expect(await screen.findByText('Modelo não encontrado.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Voltar para Modelos' })).toBeInTheDocument();
+  });
+});
+
+// Tablet (phone shell, touch, >=768x600): as páginas de desktop dentro do shell do
+// celular. Um iPhone deitado segue com a view do celular.
+describe('Modelos no tablet', () => {
+  let media: ReturnType<typeof mockMatchMediaEnv> | null = null;
+  afterEach(() => {
+    media?.restore();
+    media = null;
+  });
+  const tablet = () =>
+    mockMatchMediaEnv({ width: 820, height: 1180, hover: 'none', pointer: 'coarse' });
+
+  it('ModeloEditorPage renderiza o editor de desktop, sem o aviso do computador', async () => {
+    media = tablet();
+    const { container } = renderAt('/relatorios/modelos/tpl-1');
+    expect(await screen.findByLabelText('Nome do modelo')).toHaveValue('Mensal completo');
+    expect(container.querySelector('.rb-editor-header')).not.toBeNull();
+    expect(screen.getAllByRole('button', { name: /Adicionar widget/ }).length).toBeGreaterThan(0);
+    expect(container.querySelector('.phone-nav-bar')).toBeNull();
+    expect(screen.queryByText(/no computador/)).toBeNull();
+  });
+
+  it('ModeloPadraoPage renderiza a prévia de desktop com Duplicar para editar', () => {
+    media = tablet();
+    const { container } = renderAt('/relatorios/modelos/padrao');
+    expect(screen.getByRole('button', { name: /Duplicar para editar/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Ações do modelo' })).toBeNull();
+    expect(container.querySelector('.phone-nav-bar')).toBeNull();
+    expect(screen.queryByText(/no computador/)).toBeNull();
+  });
+
+  it('iPhone deitado segue com a view do celular', async () => {
+    media = mockMatchMediaEnv({ width: 844, height: 390, hover: 'none', pointer: 'coarse' });
+    renderAt('/relatorios/modelos/tpl-1');
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Mensal completo' }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole('note')[0]).toHaveTextContent('Edite o layout no computador.');
   });
 });
