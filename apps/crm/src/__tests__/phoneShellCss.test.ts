@@ -381,12 +381,13 @@ describe('CRM stylesheets follow the phone-shell queries', () => {
       capping('.phone-kit.phone-sheet', 'max-width', '680px'),
       capping('.phone-kit.phone-alert', 'max-width', '680px'),
       capping('.phone-kit.phone-action-sheet', 'max-width', '680px'),
-      capping('.phone-editor-screen', 'padding-inline', 'max(0px, calc((100% - 680px) / 2))'),
-      capping(
+      ...[
+        '.phone-editor-screen',
+        '.phone-text-screen--open',
         '.drawer-panel.phone-ent-fluxo',
-        'padding-inline',
-        'max(0px, calc((100% - 680px) / 2))',
-      ),
+        '.phone-tar-screen',
+        '.phone-notifications',
+      ].map((screen) => capping(screen, 'padding-inline', 'max(0px, calc((100% - 680px) / 2))')),
     ];
     for (const [i, found] of caps.entries()) {
       expect(found.length, `cap #${i}`).toBe(1);

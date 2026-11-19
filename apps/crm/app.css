@@ -2592,12 +2592,15 @@ select.form-input option {
   }
 
   /* Full-screen pushed screens, position: fixed over the page, so the .main-content column
-     does not hold them: the post editor (portaled to <body>), its full-screen text editing
-     and the fluxo screen. They keep the column on full-width routes too (a fluxo opened
-     from /entregas). Inline padding keeps their background full-bleed. */
+     does not hold them: the post editor (portaled to <body>), its full-screen text editing,
+     the fluxo screen, the tarefa detail and the notifications screen. They keep the column
+     on full-width routes too (a fluxo opened from /entregas). Inline padding keeps their
+     background full-bleed. */
   .phone-editor-screen,
   .phone-text-screen--open,
-  .drawer-panel.phone-ent-fluxo {
+  .drawer-panel.phone-ent-fluxo,
+  .phone-tar-screen,
+  .phone-notifications {
     padding-inline: max(0px, calc((100% - 680px) / 2));
   }
 }
