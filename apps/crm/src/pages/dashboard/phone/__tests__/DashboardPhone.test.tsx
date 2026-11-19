@@ -4,18 +4,26 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgendaItem } from '../../todayAgenda';
 
-const { todayState, filaState, agentState, healthMock, syncMock, authUrlMock } = vi.hoisted(() => ({
-  todayState: { current: null as unknown },
-  filaState: { current: null as unknown },
-  agentState: { current: null as unknown },
-  healthMock: vi.fn(),
-  syncMock: vi.fn(),
-  authUrlMock: vi.fn(),
-}));
+const { todayState, todayArgs, filaState, agentState, healthMock, syncMock, authUrlMock } =
+  vi.hoisted(() => ({
+    todayState: { current: null as unknown },
+    todayArgs: [] as unknown[],
+    filaState: { current: null as unknown },
+    agentState: { current: null as unknown },
+    healthMock: vi.fn(),
+    syncMock: vi.fn(),
+    authUrlMock: vi.fn(),
+  }));
 
 vi.mock('../../useTodayCard', async () => {
   const actual = await vi.importActual<typeof import('../../useTodayCard')>('../../useTodayCard');
-  return { ...actual, useTodayCard: () => todayState.current };
+  return {
+    ...actual,
+    useTodayCard: (opts?: unknown) => {
+      todayArgs.push(opts);
+      return todayState.current;
+    },
+  };
 });
 vi.mock('../../useMinhaFilaTeaser', async () => {
   const actual = await vi.importActual<typeof import('../../useMinhaFilaTeaser')>(
@@ -176,6 +184,7 @@ function renderPhone(isAgent = false) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  todayArgs.length = 0;
   todayState.current = makeToday();
   filaState.current = {
     canManageTeam: true,
@@ -243,6 +252,25 @@ describe('DashboardPhone', () => {
     expect(checks).toHaveLength(2);
     fireEvent.click(checks[0]);
     expect(today.complete.mutate).toHaveBeenCalledWith({ id: 1, previousStatus: 'pendente' });
+  });
+
+  it('Hoje: "Só meus" narrows the agenda to the user, as the desktop toggle does', () => {
+    renderPhone();
+    expect(todayArgs.at(-1)).toEqual({ onlyMine: false });
+    const chip = screen.getByRole('button', { name: 'Só meus' });
+    expect(chip).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(chip);
+    expect(todayArgs.at(-1)).toEqual({ onlyMine: true });
+    expect(screen.getByRole('button', { name: 'Só meus' })).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Só meus' }));
+    expect(todayArgs.at(-1)).toEqual({ onlyMine: false });
+  });
+
+  it('Hoje: agents get no "Só meus" (their agenda is already theirs)', () => {
+    renderPhone(true);
+    expect(screen.queryByRole('button', { name: 'Só meus' })).not.toBeInTheDocument();
   });
 
   it('Hoje: show more appears past the row limit', () => {

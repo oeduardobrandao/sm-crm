@@ -10,8 +10,17 @@ import { PhoneSection } from './PhoneSection';
 
 type TodayState = ReturnType<typeof useTodayCard>;
 
-/** Bucket toggles under the page title (FInicio): which groups of "Hoje" are shown. */
-export function TodayChips({ today }: { today: TodayState }) {
+/**
+ * Bucket toggles under the page title (FInicio): which groups of "Hoje" are shown. With
+ * `onlyMine`, a last "Só meus" chip narrows them to the user's items (the Vidro toggle).
+ */
+export function TodayChips({
+  today,
+  onlyMine,
+}: {
+  today: TodayState;
+  onlyMine?: { value: boolean; onChange: (value: boolean) => void };
+}) {
   const { t, status, counts, visible, toggle } = today;
   if (status !== 'ready') return null;
   return (
@@ -25,6 +34,13 @@ export function TodayChips({ today }: { today: TodayState }) {
           onClick={() => toggle(b)}
         />
       ))}
+      {onlyMine && (
+        <Chip
+          label={t('inicio.scope.meus')}
+          selected={onlyMine.value}
+          onClick={() => onlyMine.onChange(!onlyMine.value)}
+        />
+      )}
     </ChipRow>
   );
 }

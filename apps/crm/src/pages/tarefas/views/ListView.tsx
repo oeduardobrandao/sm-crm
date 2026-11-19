@@ -166,6 +166,7 @@ export function ListView({
         membros={membros}
         onTarefaClick={onTarefaClick}
         onRefresh={onRefresh}
+        expandConcluidas={expandConcluidas}
       />
     );
   }

@@ -316,6 +316,7 @@ export default function RentabilidadePage() {
           anual={anual}
           onAnualChange={setAnual}
           access={access}
+          onExport={canSeeFinancials === true ? exportar : undefined}
         />
         {dialogo}
       </div>

@@ -229,6 +229,71 @@ describe('TarefasPage on phones', () => {
     expect(await screen.findByText('Aberta')).toBeInTheDocument();
   });
 
+  it('applies a desktop KPI (Atrasadas) from the sheet, one at a time, as a removable chip', async () => {
+    const user = userEvent.setup();
+    getTarefasMock.mockResolvedValue([
+      makeTarefa({ titulo: 'Atrasada', data_limite: yesterday }),
+      makeTarefa({ titulo: 'Para hoje', data_limite: today }),
+      makeTarefa({ titulo: 'Sem prazo' }),
+    ]);
+    renderPage();
+    await screen.findByText('Atrasada');
+
+    await user.click(screen.getByRole('button', { name: 'Filtros' }));
+    let sheet = await screen.findByRole('dialog', { name: 'Filtros' });
+    await user.click(within(sheet).getByRole('button', { name: 'Vencem hoje' }));
+    // One at a time, like the desktop cards: Atrasadas replaces Vencem hoje.
+    await user.click(within(sheet).getByRole('button', { name: 'Atrasadas' }));
+    await user.click(within(sheet).getByRole('button', { name: 'Ver 1' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Filtros' })).toBeNull());
+
+    expect(screen.getByText('Atrasada')).toBeInTheDocument();
+    expect(screen.queryByText('Para hoje')).not.toBeInTheDocument();
+    expect(screen.queryByText('Sem prazo')).not.toBeInTheDocument();
+    // The header counts keep the unfiltered set, as the desktop cards do.
+    expect(screen.getByText(/3 abertas/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Filtros, 1 ativo' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Remover filtro Atalhos: Atrasadas' }));
+    expect(await screen.findByText('Para hoje')).toBeInTheDocument();
+    expect(screen.getByText('Sem prazo')).toBeInTheDocument();
+
+    // "Limpar" in the sheet clears it too.
+    await user.click(screen.getByRole('button', { name: 'Filtros' }));
+    sheet = await screen.findByRole('dialog', { name: 'Filtros' });
+    await user.click(within(sheet).getByRole('button', { name: 'Atrasadas' }));
+    await user.click(within(sheet).getByRole('button', { name: 'Limpar' }));
+    expect(within(sheet).getByRole('button', { name: 'Atrasadas' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+  });
+
+  it('"Concluídas hoje" opens the Concluídas group', async () => {
+    const user = userEvent.setup();
+    getTarefasMock.mockResolvedValue([
+      makeTarefa({ titulo: 'Aberta' }),
+      makeTarefa({
+        titulo: 'Feita hoje',
+        status: 'concluida',
+        concluida_em: new Date().toISOString(),
+      }),
+    ]);
+    renderPage();
+    await screen.findByText('Aberta');
+    expect(screen.queryByText('Feita hoje')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Filtros' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Filtros' });
+    await user.click(within(sheet).getByRole('button', { name: 'Concluídas hoje' }));
+    await user.click(within(sheet).getByRole('button', { name: 'Ver 1' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Filtros' })).toBeNull());
+
+    expect(screen.getByText('Feita hoje')).toBeInTheDocument();
+    expect(screen.queryByText('Aberta')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Nenhuma tarefa aberta/)).not.toBeInTheDocument();
+  });
+
   it('opens the detail as a pushed screen and closes it with Voltar', async () => {
     const user = userEvent.setup();
     getTarefasMock.mockResolvedValue([makeTarefa({ titulo: 'Reunião de pauta' })]);

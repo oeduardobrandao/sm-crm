@@ -7,7 +7,12 @@ import { ptBR } from 'date-fns/locale';
 import { ListSkeleton } from '@/components/ui/skeletons';
 import { getClientes } from '../../../store';
 import { useTodayCard } from '../useTodayCard';
-import { HORIZON_DAYS, type AgendaBucket, type AgendaItem } from '../todayAgenda';
+import {
+  HORIZON_DAYS,
+  onlyMembroBuckets,
+  type AgendaBucket,
+  type AgendaItem,
+} from '../todayAgenda';
 import {
   countPerDay,
   groupAgendaItems,
@@ -47,16 +52,10 @@ export function InicioPrazos({ onlyMine }: { onlyMine: boolean }) {
   const mine = scope === 'mine';
   const filterMine = onlyMine && !mine;
 
-  const visible = useMemo(() => {
-    if (!filterMine) return buckets;
-    const keep = (items: AgendaItem[]) =>
-      membroId == null ? [] : items.filter((i) => i.responsavel?.id === membroId);
-    return {
-      atrasado: keep(buckets.atrasado),
-      hoje: keep(buckets.hoje),
-      proximos: keep(buckets.proximos),
-    };
-  }, [buckets, filterMine, membroId]);
+  const visible = useMemo(
+    () => (filterMine ? onlyMembroBuckets(buckets, membroId) : buckets),
+    [buckets, filterMine, membroId],
+  );
 
   const [picked, setPicked] = useState<AgendaBucket | null>(null);
   const bucket: AgendaBucket = picked ?? BUCKETS.find((b) => visible[b].length > 0) ?? 'atrasado';
