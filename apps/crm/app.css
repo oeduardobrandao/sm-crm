@@ -2603,6 +2603,22 @@ select.form-input option {
   .phone-notifications {
     padding-inline: max(0px, calc((100% - 680px) / 2));
   }
+
+  /* BottomActionBar: fixed left/right 0, so its glass stays full-bleed and its content (the
+     editor's flex: 1 primary button, the fluxo selection bar) moves into the column. `body`
+     outranks the base .phone-bottom-bar rule further down the file. */
+  body .phone-bottom-bar {
+    padding-right: max(
+      var(--phone-gutter),
+      env(safe-area-inset-right, 0px),
+      calc((100% - 680px) / 2)
+    );
+    padding-left: max(
+      var(--phone-gutter),
+      env(safe-area-inset-left, 0px),
+      calc((100% - 680px) / 2)
+    );
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

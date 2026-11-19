@@ -368,7 +368,11 @@ describe('CRM stylesheets follow the phone-shell queries', () => {
     const landscapePhone = env(844, 390, true);
     const capping = (selector: string, prop: string, value: string) =>
       blocks.filter((b) =>
-        b.rules.some((r) => r.selectors.map(norm).includes(selector) && declares(r, prop, value)),
+        b.rules.some(
+          (r) =>
+            r.selectors.map(norm).includes(selector) &&
+            r.nodes.some((n) => n.type === 'decl' && n.prop === prop && norm(n.value) === value),
+        ),
       );
     const caps = [
       capping(
@@ -388,6 +392,13 @@ describe('CRM stylesheets follow the phone-shell queries', () => {
         '.phone-tar-screen',
         '.phone-notifications',
       ].map((screen) => capping(screen, 'padding-inline', 'max(0px, calc((100% - 680px) / 2))')),
+      ...(['left', 'right'] as const).map((side) =>
+        capping(
+          'body .phone-bottom-bar',
+          `padding-${side}`,
+          `max( var(--phone-gutter), env(safe-area-inset-${side}, 0px), calc((100% - 680px) / 2) )`,
+        ),
+      ),
     ];
     for (const [i, found] of caps.entries()) {
       expect(found.length, `cap #${i}`).toBe(1);

@@ -125,7 +125,9 @@ export function PhoneLayoutProvider({
 
 /**
  * `{ isPhone, wideRoute }` of the surrounding shell; both false outside `AppLayout`.
- * `wideRoute` is true on a full-width route of a wide phone shell (see `phoneWideRoutes.ts`).
+ * `wideRoute` is true on a full-width route inside the phone shell (see `phoneWideRoutes.ts`).
+ * It is route-only: a phone in portrait on `/entregas` gets `true` too. For wide mode, AND it
+ * with `useIsWidePhoneShell()`.
  */
 export function usePhoneLayout(): { isPhone: boolean; wideRoute: boolean } {
   const { isPhone, wideRoute = false } = useContext(PhoneLayoutContext);
