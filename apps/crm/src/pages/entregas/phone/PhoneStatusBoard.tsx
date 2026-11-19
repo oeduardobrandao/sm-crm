@@ -194,7 +194,7 @@ function StatusColumn({ board, option, dragging, panelId, onMove }: StatusColumn
                 )}
                 <button
                   type="button"
-                  className="phone-ent-text-btn"
+                  className="phone-ent-text-btn phone-ent-board__sort"
                   aria-label={t('board.sortColumnAria', {
                     column: option.label,
                     sort: BOARD_COLUMN_SORT_LABELS[sort],
@@ -202,7 +202,10 @@ function StatusColumn({ board, option, dragging, panelId, onMove }: StatusColumn
                   onClick={() => setSortSheet(true)}
                 >
                   <ArrowUpDown aria-hidden="true" />
-                  {BOARD_COLUMN_SORT_LABELS[sort]}
+                  {/* Icon-only side by side (entregasPhone.css): the aria-label names it. */}
+                  <span className="phone-ent-board__sort-label">
+                    {BOARD_COLUMN_SORT_LABELS[sort]}
+                  </span>
                 </button>
               </>
             )}
