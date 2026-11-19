@@ -179,11 +179,11 @@ _Superseded by D34: the gate is now width OR touch-only._
 - **Lista and posts list** render as grouped rows with swipe actions on phones; the tables stay on
   desktop.
 - **Long-press is the menu; drag is explicit.** On phone cards a hold opens the context menu.
-  Drag starts from a handle or in a "Reordenar" mode, using `TouchSensor` (`delay: 250,
-tolerance: 8`, the values `WorkflowCalendarView` and `PostsKanbanView` use) on `KanbanView`,
-  `WorkflowDrawer`, `SortableEtapaList` and `PostMediaGallery`. Rejected: long-press-to-drag
-  everywhere, because dnd-kit's 250 ms sensor fires before any long-press menu and the card menu
-  would be unreachable.
+  Drag starts from a handle or in a "Reordenar" mode, using `TouchSensor`
+  (`delay: 250, tolerance: 8`, the values `WorkflowCalendarView` and `PostsKanbanView` use) on
+  `KanbanView`, `WorkflowDrawer`, `SortableEtapaList` and `PostMediaGallery`. Rejected:
+  long-press-to-drag everywhere, because dnd-kit's 250 ms sensor fires before any long-press menu
+  and the card menu would be unreachable.
 - **Fluxos board** shows one etapa at a time with chips, rendering only that column; moves stay
   adjacent-only with the same confirmations, shown as action sheets. **Status board** drops onto
   status targets that expand from the chip row into a grid while dragging.
