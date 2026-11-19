@@ -59,11 +59,19 @@ describe('downloadMedia', () => {
     expect(clicked[0].href).toBe(OBJECT_URL);
   });
 
-  it('releases the object url and detaches the anchor', async () => {
-    await downloadMedia({ url: 'https://media.test/abc.png', original_filename: 'capa.png' });
+  it('releases the object url later and detaches the anchor', async () => {
+    vi.useFakeTimers();
+    try {
+      await downloadMedia({ url: 'https://media.test/abc.png', original_filename: 'capa.png' });
 
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith(OBJECT_URL);
-    expect(document.querySelector('a[download]')).toBeNull();
+      expect(document.querySelector('a[download]')).toBeNull();
+      // Not right away: Safari would cancel the download it just started.
+      expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(10_000);
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith(OBJECT_URL);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('rejects media with no url without fetching', async () => {

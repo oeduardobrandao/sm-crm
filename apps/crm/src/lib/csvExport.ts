@@ -1,3 +1,7 @@
+import { i18n } from '@mesaas/i18n';
+import { toast } from 'sonner';
+import { saveFile, type DownloadOutcome } from '@/utils/downloadMedia';
+
 /**
  * Shared CSV writer. Excel only reads a UTF-8 CSV as UTF-8 when it opens with
  * the byte order mark. Moved from pages/analytics-fluxos/csv.ts so the
@@ -50,15 +54,22 @@ export function csvRow(cells: (string | number)[], separator = ','): string {
   return cells.map((c) => csvField(c, separator)).join(separator);
 }
 
-/** Hands the built CSV to the browser as a download. */
-export function downloadCsv(csv: string, filename: string): void {
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
+export const CSV_MIME = 'text/csv;charset=utf-8';
+
+/** The built CSV as a file to save: a download, or the share sheet in the iOS app. */
+export function csvBlob(csv: string): Blob {
+  return new Blob([csv], { type: CSV_MIME });
+}
+
+/**
+ * Saves the built CSV: a download in the browser, the share sheet in the iOS app.
+ * Never rejects; a failure is a toast.
+ */
+export async function downloadCsv(csv: string, filename: string): Promise<DownloadOutcome | null> {
+  try {
+    return await saveFile(filename, () => csvBlob(csv));
+  } catch {
+    toast.error(i18n.t('posts:mediaLightbox.downloadFailed'));
+    return null;
+  }
 }

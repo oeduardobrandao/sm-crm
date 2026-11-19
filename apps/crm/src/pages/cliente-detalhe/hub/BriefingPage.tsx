@@ -1,3 +1,4 @@
+import { downloadCsv } from '@/lib/csvExport';
 import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { openCSVSelector } from '@/lib/csv';
@@ -129,20 +130,6 @@ function groupIntoSections(
     else groups.push({ name, questions: [q] });
   }
   return groups;
-}
-
-function downloadTextFile(filename: string, mime: string, text: string) {
-  const url = URL.createObjectURL(new Blob([text], { type: mime }));
-  try {
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  } finally {
-    URL.revokeObjectURL(url);
-  }
 }
 
 export default function BriefingPage() {
@@ -720,15 +707,14 @@ function BriefingEditor({
     }
   }
 
-  function handleDownloadCSV() {
+  async function handleDownloadCSV() {
     const sections = buildBriefingExportSections(questions, selectedId, firstId);
     const csv = '﻿' + briefingToCSV(sections); // BOM so Excel reads accents
-    downloadTextFile(
-      `briefing-${slugifyTitle(selectedBriefing?.title ?? '')}.csv`,
-      'text/csv;charset=utf-8',
+    const outcome = await downloadCsv(
       csv,
+      `briefing-${slugifyTitle(selectedBriefing?.title ?? '')}.csv`,
     );
-    toast.success(t('editor.csvExported'));
+    if (outcome === 'saved' || outcome === 'shared') toast.success(t('editor.csvExported'));
   }
 
   function scrollToSection(name: string, index: number) {

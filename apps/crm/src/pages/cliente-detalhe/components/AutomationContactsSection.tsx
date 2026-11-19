@@ -75,7 +75,7 @@ export function AutomationContactsSection({
     setExporting(true);
     try {
       const n = await exportContactsCsv(filters, clientesById, clienteNome);
-      toast.success(t('contacts.exportDone', { count: n }));
+      if (n !== null) toast.success(t('contacts.exportDone', { count: n }));
     } catch {
       toast.error(t('contacts.exportError'));
     } finally {

@@ -88,7 +88,7 @@ export function ContactsTab() {
     try {
       const nome = filters.clientId != null ? (clientesById.get(filters.clientId) ?? null) : null;
       const n = await exportContactsCsv(filters, clientesById, nome);
-      toast.success(t('contacts.exportDone', { count: n }));
+      if (n !== null) toast.success(t('contacts.exportDone', { count: n }));
     } catch {
       toast.error(t('contacts.exportError'));
     } finally {

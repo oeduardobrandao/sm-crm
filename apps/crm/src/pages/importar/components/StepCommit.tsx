@@ -1,3 +1,4 @@
+import { downloadCsv } from '@/lib/csvExport';
 import { useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Download, RefreshCw, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -42,14 +43,7 @@ export function downloadFailures(failed: CommitRowResult[]) {
     ...failed.map((r) => `${csvCell(r.sourceKey)};${csvCell(reasonLabel(r.reason))}`),
   ].join('\n');
   // UTF-8 BOM so Excel opens the accented pt-BR text correctly.
-  const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' });
-  if (typeof URL.createObjectURL !== 'function') return;
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = 'importacao-falhas.csv';
-  link.click();
-  URL.revokeObjectURL(url);
+  void downloadCsv(`\uFEFF${csv}`, 'importacao-falhas.csv');
 }
 
 export default function StepCommit({

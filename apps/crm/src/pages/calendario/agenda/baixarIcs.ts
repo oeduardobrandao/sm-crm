@@ -2,6 +2,7 @@ import { toast } from 'sonner';
 import { i18n } from '@mesaas/i18n';
 import { supabase } from '@/lib/supabase';
 import type { AgendaOcorrencia } from '@/store/agenda';
+import { saveFile } from '@/utils/downloadMedia';
 
 /** File name stem: lowercase, no accents, non-alphanumerics -> '-', max 60. */
 export function slugDoTitulo(titulo: string): string {
@@ -17,33 +18,28 @@ export function slugDoTitulo(titulo: string): string {
 }
 
 /** "Baixar .ics": fetches the single-occurrence calendar with the session JWT
- *  and saves it through a temporary link. The name comes from `a.download`:
- *  Content-Disposition does not apply to a Blob download. */
+ *  and saves it as `<slug>.ics` (Content-Disposition does not apply to a Blob):
+ *  a download in the browser, the share sheet in the iOS app. */
 export async function baixarIcsDaOcorrencia(o: AgendaOcorrencia): Promise<void> {
+  const base = import.meta.env.VITE_SUPABASE_URL as string;
+  const url = `${base}/functions/v1/agenda-feed/ocorrencia/${o.ocorrencia_id}.ics`;
   try {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session) throw new Error('Not authenticated');
+    await saveFile(
+      `${slugDoTitulo(o.titulo)}.ics`,
+      async () => {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!session) throw new Error('Not authenticated');
 
-    const base = import.meta.env.VITE_SUPABASE_URL as string;
-    const res = await fetch(`${base}/functions/v1/agenda-feed/ocorrencia/${o.ocorrencia_id}.ics`, {
-      headers: { Authorization: `Bearer ${session.access_token}` },
-    });
-    if (!res.ok) throw new Error(`agenda-feed ${res.status}`);
-
-    const href = URL.createObjectURL(await res.blob());
-    try {
-      const a = document.createElement('a');
-      a.href = href;
-      a.download = `${slugDoTitulo(o.titulo)}.ics`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    } finally {
-      // Safari starts the download asynchronously: revoking right away cancels it.
-      setTimeout(() => URL.revokeObjectURL(href), 10_000);
-    }
+        const res = await fetch(url, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (!res.ok) throw new Error(`agenda-feed ${res.status}`);
+        return res.blob();
+      },
+      url,
+    );
   } catch {
     toast.error(i18n.t('agenda:ics.erro'));
   }

@@ -53,6 +53,27 @@ async function fetchBlob(url: string): Promise<Blob> {
   return res.blob();
 }
 
+/**
+ * Saves a file the page builds or downloads itself (a CSV, an .ics) under `filename`.
+ * In the iOS app it goes to the share sheet ("Save to Files"), since a blob link does
+ * nothing there; elsewhere it is a regular download. `load` runs only when needed: a
+ * file kept from a refused share sheet (see shareInApp) is shared without calling it
+ * again, so a slow `load` can't miss the next tap's window too. `key` names what `load`
+ * produces; two calls with the same key must load the same file.
+ */
+export async function saveFile(
+  filename: string,
+  load: () => Blob | Promise<Blob>,
+  key = `file:${filename}`,
+): Promise<DownloadOutcome> {
+  const shared = await shareInApp(key, async () => [await toShareableFile(await load(), filename)]);
+  if (shared) return shared;
+  if (isNativeApp()) throw new Error('Compartilhamento indisponível neste aparelho');
+
+  saveBlob(await load(), filename);
+  return 'saved';
+}
+
 /** Hands a blob to the browser as a file download through a temporary link. */
 export function saveBlob(blob: Blob, filename: string): void {
   const objUrl = URL.createObjectURL(blob);
@@ -64,7 +85,8 @@ export function saveBlob(blob: Blob, filename: string): void {
     a.click();
     a.remove();
   } finally {
-    URL.revokeObjectURL(objUrl);
+    // Safari starts the download asynchronously: revoking right away cancels it.
+    setTimeout(() => URL.revokeObjectURL(objUrl), 10_000);
   }
 }
 
