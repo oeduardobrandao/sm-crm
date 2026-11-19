@@ -1630,7 +1630,52 @@ html[data-standalone] {
   background: var(--surface-hover);
 }
 
+/* Rules public pages share (the Crisp bubble, legal-page cards, the auth card, avatars, tooltips)
+   keep the width-only query. The shell copy below also reaches touch tablets, which render the
+   phone shell at any width. */
 @media (max-width: 900px) {
+  .crisp-client {
+    transform: translateY(-5.5rem);
+  }
+
+  .card {
+    padding: 1rem;
+    border-radius: 12px;
+  }
+
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .card.animate-up {
+    overflow-x: hidden;
+    padding: 0.75rem;
+  }
+
+  /* Auth page mobile */
+  .auth-card {
+    padding: 1.75rem 1.25rem;
+    border-radius: 20px;
+  }
+
+  /* Avatar size in tables */
+  .avatar {
+    width: 32px;
+    height: 32px;
+    font-size: 0.75rem;
+  }
+
+  /* Tooltip: hide on mobile (use tap instead) */
+  [data-tooltip]::before,
+  [data-tooltip]::after {
+    display: none !important;
+  }
+}
+
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   .topbar {
     display: none;
   }
@@ -1659,10 +1704,6 @@ html[data-standalone] {
     padding-top: max(0px, env(safe-area-inset-top, 0px) - var(--banner-height, 0px)) !important;
   }
 
-  .crisp-client {
-    transform: translateY(-5.5rem);
-  }
-
   @supports not (height: 100dvh) {
     .main-content {
       height: 100vh;
@@ -1674,18 +1715,6 @@ html[data-standalone] {
     border-radius: 12px;
     border-left: 1px solid var(--border-color);
     border-top: 3px solid var(--kpi-accent, var(--border-color));
-  }
-
-  .card {
-    padding: 1rem;
-    border-radius: 12px;
-  }
-
-  .header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5rem;
-    margin-bottom: 1.25rem;
   }
 
   /* For pages whose root already supplies a flex gap, the header's own bottom
@@ -1715,11 +1744,6 @@ html[data-standalone] {
   }
 
   /* Tables to Cards on Mobile */
-  .card.animate-up {
-    overflow-x: hidden;
-    padding: 0.75rem;
-  }
-
   .data-table,
   .data-table tbody,
   .data-table tr,
@@ -1797,28 +1821,9 @@ html[data-standalone] {
     margin-bottom: 0;
     scroll-snap-align: start;
   }
-
-  /* Auth page mobile */
-  .auth-card {
-    padding: 1.75rem 1.25rem;
-    border-radius: 20px;
-  }
-
-  /* Avatar size in tables */
-  .avatar {
-    width: 32px;
-    height: 32px;
-    font-size: 0.75rem;
-  }
-
-  /* Tooltip: hide on mobile (use tap instead) */
-  [data-tooltip]::before,
-  [data-tooltip]::after {
-    display: none !important;
-  }
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   /* Specular rim: a hairline that catches light at the top-left and bottom-right. */
   .mobile-nav-glass::before {
     position: absolute;
@@ -1917,7 +1922,9 @@ html[data-standalone] {
   }
 }
 
-@media (min-width: 1101px) and (max-width: 1440px) {
+@media (min-width: 1101px) and (max-width: 1440px) and (hover: hover),
+  (min-width: 1101px) and (max-width: 1440px) and (pointer: fine),
+  (min-width: 1101px) and (max-width: 1440px) and (pointer: none) {
   .main-content {
     padding: clamp(1.5rem, 2.5vw, 2.5rem) clamp(1.25rem, 2.5vw, 2.5rem);
   }
@@ -2189,16 +2196,11 @@ html[data-standalone] {
   }
 }
 
+/* .card and .header also style public pages (legal pages, Novidades), which keep the width-only
+   query; the shell copy below follows the phone-shell query. */
 @media (max-width: 767px) {
   .card {
     padding: 1rem !important; /* reduce padding on mobile */
-  }
-
-  .main-content {
-    margin-left: 0;
-    width: 100vw;
-    max-width: 100vw;
-    overflow-x: hidden;
   }
 
   .header {
@@ -2206,6 +2208,15 @@ html[data-standalone] {
     align-items: flex-start;
     gap: 1rem;
     margin-bottom: 2rem;
+  }
+}
+
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
+  .main-content {
+    margin-left: 0;
+    width: 100vw;
+    max-width: 100vw;
+    overflow-x: hidden;
   }
 }
 
@@ -2259,7 +2270,9 @@ html[data-standalone] {
 }
 
 /* The static sidebar (desktop, and the Vidro tablet rail); the tablet drawer keeps its slide. */
-@media (min-width: 768px) {
+@media (min-width: 768px) and (hover: hover),
+  (min-width: 768px) and (pointer: fine),
+  (min-width: 768px) and (pointer: none) {
   .sidebar:not(.sidebar--drawer) {
     transition:
       width 0.25s ease,
@@ -2267,13 +2280,17 @@ html[data-standalone] {
   }
 }
 
-@media (min-width: 768px) and (prefers-reduced-motion: reduce) {
+@media (min-width: 768px) and (hover: hover) and (prefers-reduced-motion: reduce),
+  (min-width: 768px) and (pointer: fine) and (prefers-reduced-motion: reduce),
+  (min-width: 768px) and (pointer: none) and (prefers-reduced-motion: reduce) {
   .sidebar:not(.sidebar--drawer) {
     transition: none;
   }
 }
 
-@media (min-width: 768px) and (max-width: 1100px) {
+@media (min-width: 768px) and (max-width: 1100px) and (hover: hover),
+  (min-width: 768px) and (max-width: 1100px) and (pointer: fine),
+  (min-width: 768px) and (max-width: 1100px) and (pointer: none) {
   /* Hide desktop sidebar and mobile bottom nav */
   .sidebar {
     display: flex !important; /* override the <900px display:none */
@@ -2506,7 +2523,7 @@ html[data-consent-stored] #root[data-ssr] .cookie-banner {
   display: none;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   body:has(.mobile-nav-glass) .cookie-banner {
     bottom: calc(96px + env(safe-area-inset-bottom, 0px) + var(--mobile-nav-chrome-offset, 0px));
   }
@@ -2516,7 +2533,7 @@ html[data-consent-stored] #root[data-ssr] .cookie-banner {
    App.tsx, outside .app-container, so the value hangs off body; it is only set while the CRM shell
    shows the phone tab bar, and the Hub never mounts this Toaster. */
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   body:has(.mobile-nav-glass) {
     --phone-toast-offset: calc(
       96px + env(safe-area-inset-bottom, 0px) + var(--mobile-nav-chrome-offset, 0px)

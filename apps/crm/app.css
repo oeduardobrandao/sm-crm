@@ -546,7 +546,7 @@ html[data-standalone] .app-container {
 /* Phones: a 44px touch target around the small "×" without growing the bar (the stack's
    height drives --banner-height). */
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   .app-container .banner-dismiss {
     position: relative;
   }
@@ -643,7 +643,7 @@ html[data-standalone] .app-container {
   padding-left: calc(var(--conta-avatar) + var(--conta-avatar-gap));
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   .conta-identity {
     --conta-avatar: 48px;
     --conta-avatar-gap: 0.75rem;
@@ -992,7 +992,9 @@ html[data-standalone] .app-container {
   container-type: inline-size;
 }
 
-@media (min-width: 901px) {
+@media (min-width: 901px) and (hover: hover),
+  (min-width: 901px) and (pointer: fine),
+  (min-width: 901px) and (pointer: none) {
   .kpi-grid > .kpi-card .kpi-value {
     font-size: min(2rem, 19cqi);
   }
@@ -2077,7 +2079,7 @@ select.form-input option {
 
 /* ===== Responsive (Mobile & Tablet) ===== */
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   .app-container {
     background: var(--bg-color);
   }
@@ -2337,7 +2339,7 @@ select.form-input option {
   }
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   /* Floating glass tab bar (EntregasKanban mockup): Início, Entregas, Agenda, Mensagens, Mais. */
   .mobile-nav-glass {
     position: fixed;
@@ -2572,7 +2574,9 @@ select.form-input option {
 
 /* Medium desktop — 13" laptops, smaller screens */
 
-@media (min-width: 1101px) and (max-width: 1440px) {
+@media (min-width: 1101px) and (max-width: 1440px) and (hover: hover),
+  (min-width: 1101px) and (max-width: 1440px) and (pointer: fine),
+  (min-width: 1101px) and (max-width: 1440px) and (pointer: none) {
   .stats-grid {
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   }
@@ -2594,7 +2598,9 @@ select.form-input option {
 
 /* Medium desktop: stack widgets-grid on narrower 13" screens */
 
-@media (min-width: 1101px) and (max-width: 1280px) {
+@media (min-width: 1101px) and (max-width: 1280px) and (hover: hover),
+  (min-width: 1101px) and (max-width: 1280px) and (pointer: fine),
+  (min-width: 1101px) and (max-width: 1280px) and (pointer: none) {
   .widgets-grid {
     grid-template-columns: 1fr;
   }
@@ -2673,7 +2679,7 @@ select.form-input option {
    them across a phone leaves ~50px each — and size to their label instead,
    scrolling inside the track. */
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   .page-tabs {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
@@ -2730,7 +2736,7 @@ select.form-input option {
   align-items: start;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   .config-report-grid {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -3326,7 +3332,7 @@ select.form-input option {
 
 /* Calendar responsive */
 
-@media (max-width: 1100px) {
+@media (max-width: 1100px), (hover: none) and (pointer: coarse) {
   .calendar-layout {
     grid-template-columns: 1fr;
   }
@@ -4125,7 +4131,7 @@ select.form-input option {
   display: none;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   .agenda-toolbar {
     padding: 12px;
   }
@@ -4589,7 +4595,7 @@ body.role-agent input[name='valor_total'] {
   gap: 1rem;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   /* Swipeable variant of the fused block: 1px dividers rather than gutters, and
      no bottom padding — the grid background would show through it as a band. */
   .analytics-kpi-scroll {
@@ -4838,7 +4844,7 @@ body.role-agent input[name='valor_total'] {
   box-shadow: none;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   .instagram-post-carousel__header {
     flex-direction: column;
     align-items: stretch;
@@ -5969,7 +5975,7 @@ body.role-agent input[name='valor_total'] {
   grid-column: 1 / -1;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   /* Convert tables to cards on mobile */
   .card .overflow-auto > table {
     display: block;
@@ -6756,7 +6762,9 @@ body.role-agent input[name='valor_total'] {
   gap: 0.85rem;
 }
 
-@media (min-width: 900px) {
+@media (min-width: 900px) and (hover: hover),
+  (min-width: 900px) and (pointer: fine),
+  (min-width: 900px) and (pointer: none) {
   .ex-grid {
     grid-template-columns: 1fr 1fr;
   }
@@ -7461,7 +7469,7 @@ body.role-agent input[name='valor_total'] {
   cursor: not-allowed;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   .drawer-panel {
     width: 100vw;
     /* 100vh first as the fallback; dvh tracks the mobile URL bar so the footer
@@ -7485,7 +7493,7 @@ body.role-agent input[name='valor_total'] {
    two lines instead — line 1 is identity (handle, chevron, tipo, title), line 2
    is state + actions. */
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   /* Title and X on the first row, the other controls wrapping below. With the
      controls unshrinkable beside it, the title column was squeezed to a sliver. */
   .drawer-header {
@@ -9644,7 +9652,10 @@ a.mention-chip:hover {
   flex: 1;
 }
 
-@media (min-width: 640px) {
+@media (min-width: 640px) and (max-width: 767px),
+  (min-width: 640px) and (hover: hover),
+  (min-width: 640px) and (pointer: fine),
+  (min-width: 640px) and (pointer: none) {
   .edit-modal-footer {
     flex-direction: row;
     /* 5 botões + dica não cabem nos ~464px úteis do max-w-lg: sem wrap o
@@ -10026,7 +10037,9 @@ a.mention-chip:hover {
    to 64px: hovering is pure width growth, nothing reflows. Text fades with
    opacity, so labels stay the links' accessible names. */
 
-@media screen and (min-width: 768px) {
+@media screen and (min-width: 768px) and (hover: hover),
+  screen and (min-width: 768px) and (pointer: fine),
+  screen and (min-width: 768px) and (pointer: none) {
   .app-container[data-sidebar-collapsed] {
     --sidebar-width: 64px;
   }
@@ -10162,7 +10175,9 @@ a.mention-chip:hover {
   }
 }
 
-@media (min-width: 768px) and (max-width: 1100px) {
+@media (min-width: 768px) and (max-width: 1100px) and (hover: hover),
+  (min-width: 768px) and (max-width: 1100px) and (pointer: fine),
+  (min-width: 768px) and (max-width: 1100px) and (pointer: none) {
   .mobile-nav-glass {
     display: none !important;
   }
@@ -11367,7 +11382,7 @@ a.mention-chip:hover {
 
 /* Responsive: below 1024px the detail panel overlays the grid (grid keeps width) */
 
-@media (max-width: 1024px) {
+@media (max-width: 1024px), (hover: none) and (pointer: coarse) {
   .calendar-detail-panel {
     position: absolute;
     top: 0;
@@ -11387,7 +11402,7 @@ a.mention-chip:hover {
    width below it, post cards compress to a tipo dash + time (the detail sheet
    carries the rest), and the detail panel docks to the bottom. */
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   .calendar-content {
     flex-direction: column;
   }
@@ -11924,7 +11939,7 @@ a.mention-chip:hover {
   min-width: 0;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1100px), (hover: none) and (pointer: coarse) {
   .cliente-tabs-shell {
     display: block;
   }
@@ -12166,7 +12181,7 @@ a.mention-chip:hover {
   padding: 1rem 1.25rem;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   .hub-acesso__grid {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -12254,7 +12269,7 @@ a.hub-fill__row-inner:hover {
   gap: 1.5rem;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   .hub-briefing__shell {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -12562,7 +12577,7 @@ a.hub-fill__row-inner:hover {
   gap: 1.5rem;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   .hub-paginas__split {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -12858,7 +12873,7 @@ a.hub-fill__row-inner:hover {
   margin: 0.25rem 0 0;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   .cliente-detalhe-page {
     padding: 0;
   }
@@ -13054,7 +13069,9 @@ a.hub-fill__row-inner:hover {
 /* With the static sidebar (>=768px, no drawer) the Guia pill owns bottom: 20px of the same
    corner: sit above it. */
 
-@media screen and (min-width: 768px) {
+@media screen and (min-width: 768px) and (hover: hover),
+  screen and (min-width: 768px) and (pointer: fine),
+  screen and (min-width: 768px) and (pointer: none) {
   body:has(.guide-pill):not(:has(.sidebar--drawer)) .context-help {
     bottom: max(72px, calc(var(--corner-clearance, 0px) + 64px));
   }
@@ -13062,12 +13079,16 @@ a.hub-fill__row-inner:hover {
 
 /* A Mensagens thread keeps its newest message clear of the corner stacked above
    its composer. */
-@media (min-width: 768px) {
+@media (min-width: 768px) and (hover: hover),
+  (min-width: 768px) and (pointer: fine),
+  (min-width: 768px) and (pointer: none) {
   body:has(.context-help) .mensagens-thread-scroll {
     padding-bottom: 64px;
   }
 }
-@media screen and (min-width: 768px) {
+@media screen and (min-width: 768px) and (hover: hover),
+  screen and (min-width: 768px) and (pointer: fine),
+  screen and (min-width: 768px) and (pointer: none) {
   body:has(.guide-pill):not(:has(.sidebar--drawer)) .mensagens-thread-scroll {
     padding-bottom: 116px;
   }
@@ -13076,7 +13097,7 @@ a.hub-fill__row-inner:hover {
 /* Phones: the bottom nav owns the bottom edge, so float under the topbar
    instead, icon-only (no hover on touch to reveal the label). */
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   .context-help {
     top: calc(var(--topbar-height) + var(--banner-height, 0px) + 10px);
     right: 14px;
@@ -13206,7 +13227,7 @@ a.hub-fill__row-inner:hover {
   font-size: 0.78rem !important;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   /* Stays three across on phones, so the 2-up odd-count promotion must not
      stretch the first card over the row and strand an empty track below. */
   .instagram-overview__account-kpis > .kpi-card:first-child:nth-last-child(odd) {
@@ -13830,7 +13851,7 @@ a.hub-fill__row-inner:hover {
   min-width: 0;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1100px), (hover: none) and (pointer: coarse) {
   .config-shell-body {
     display: block;
   }
@@ -14455,7 +14476,9 @@ a.hub-fill__row-inner:hover {
   margin-left: auto;
 }
 
-@media (min-width: 769px) {
+@media (min-width: 769px) and (hover: hover),
+  (min-width: 769px) and (pointer: fine),
+  (min-width: 769px) and (pointer: none) {
   .rb-editor-header {
     position: sticky;
     /* Sobe um pouco sobre o padding-top do .main-content: o cartão flutua
@@ -14479,7 +14502,9 @@ a.hub-fill__row-inner:hover {
   }
 }
 
-@media (min-width: 1280px) {
+@media (min-width: 1280px) and (hover: hover),
+  (min-width: 1280px) and (pointer: fine),
+  (min-width: 1280px) and (pointer: none) {
   .rb-layers-rail {
     display: block;
     position: fixed;
@@ -15054,7 +15079,9 @@ a.hub-fill__row-inner:hover {
   display: none;
 }
 
-@media screen and (min-width: 768px) {
+@media screen and (min-width: 768px) and (hover: hover),
+  screen and (min-width: 768px) and (pointer: fine),
+  screen and (min-width: 768px) and (pointer: none) {
   body:not(:has(.sidebar--drawer)) .guide-pill {
     position: fixed;
     right: 20px;
@@ -15750,7 +15777,7 @@ a.hub-fill__row-inner:hover {
    "Publica" e margem descem para uma segunda linha sob o título, e o botão
    do card de topo vai para baixo do texto. */
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
   .fila-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -15902,7 +15929,7 @@ a.hub-fill__row-inner:hover {
      portal to <body>, outside `.app-container`, and would otherwise render unstyled.
    Component classes are all `phone-*` and only appear where the kit is used. */
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   .app-container {
     --phone-bg: #f2f2f7;
     --phone-cell: #ffffff;
@@ -17379,7 +17406,9 @@ button.phone-stat-tile:active {
 /* Phone-only: MobileNav closes it when the viewport leaves the phone range; this hides
    it for the frame in between. */
 
-@media (min-width: 768px) {
+@media (min-width: 768px) and (hover: hover),
+  (min-width: 768px) and (pointer: fine),
+  (min-width: 768px) and (pointer: none) {
   .mobile-more-sheet,
   .mobile-more-overlay {
     display: none;
@@ -19165,7 +19194,7 @@ button.phone-stat-tile:active {
 .igc-panel__list {
   grid-column: span 5;
 }
-@media (max-width: 1100px) {
+@media (max-width: 1100px), (hover: none) and (pointer: coarse) {
   .igc-panel__reading,
   .igc-panel__list {
     grid-column: 1 / -1;
@@ -19529,7 +19558,7 @@ button.phone-stat-tile:active {
 .igc-account__action {
   margin-left: auto;
 }
-@media (max-width: 767px) {
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
   .igc-account__titles {
     flex-basis: calc(100% - 32px);
   }
