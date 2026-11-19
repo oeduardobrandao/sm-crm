@@ -10,11 +10,15 @@
  * but in app.css it leaves a public page unstyled. cssSplitBoundary.test.ts fails when an app.css
  * selector is reachable from public code. */
 
+/* Widths here are `100%`, never `100vw` (shellViewportUnits.test.ts). On the iPad app, back from
+   Instagram or Safari, the in-flow shell came back at about half the screen width while media
+   queries and fixed boxes used the full width, until a route change. `%` follows layout, which
+   was right; viewport units are the suspect (not reproduced in the Simulator). */
 html,
 body,
 #root,
 .app-container {
-  max-width: 100vw !important;
+  max-width: 100% !important;
   overflow-x: hidden !important;
 }
 
@@ -201,7 +205,7 @@ body,
 html,
 body {
   height: 100dvh;
-  width: 100vw;
+  width: 100%;
 }
 
 @supports not (height: 100dvh) {
@@ -2224,8 +2228,8 @@ html[data-standalone] {
 @media (max-width: 767px), (hover: none) and (pointer: coarse) {
   .main-content {
     margin-left: 0;
-    width: 100vw;
-    max-width: 100vw;
+    width: 100%;
+    max-width: 100%;
     overflow-x: hidden;
   }
 }
