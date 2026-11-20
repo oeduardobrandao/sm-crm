@@ -1,10 +1,12 @@
 import UIKit
 import Security
 import Capacitor
+import EventKit
+import EventKitUI
 
 /// The app's own plugin: Keychain storage for the Supabase session, the APNs
-/// environment of this build, opening Settings or Safari, and saving media through
-/// the share sheet.
+/// environment of this build, opening Settings or Safari, saving media through
+/// the share sheet, and adding an agenda event to the device's calendar.
 /// The JS side is apps/crm/src/native/mesaasNative.ts: method names and result
 /// shapes must match it.
 @objc(MesaasNativePlugin)
@@ -18,10 +20,14 @@ public class MesaasNativePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "deviceInfo", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "openSettings", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "openUrl", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "shareFiles", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "shareFiles", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "addCalendarEvent", returnType: CAPPluginReturnPromise)
     ]
 
     private static let keychainService = "br.com.mesaas.app"
+    /// The open "add to calendar" screen's store and call, kept until it closes.
+    private var calendarStore: EKEventStore?
+    private var calendarCall: CAPPluginCall?
     private static let installedFlag = "mesaas.installed"
 
     override public func load() {
@@ -274,5 +280,109 @@ public class MesaasNativePlugin: CAPPlugin, CAPBridgedPlugin {
             popover.permittedArrowDirections = []
         }
         presenter.present(sheet, animated: true)
+    }
+
+    // MARK: - Calendar
+
+    /// Opens the system "New Event" screen filled with an agenda event, so the user
+    /// saves it to a calendar of their choice ("Adicionar"). Resolves `{ saved }` once
+    /// the screen closes. Options: title, notes?, location?, url?, and either
+    /// allDay + startDay/endDay ("yyyy-MM-dd", endDay exclusive) or start/end
+    /// (ISO 8601 instants).
+    /// iOS 17+ shows the screen out of process and needs no calendar permission;
+    /// iOS 16 does (NSCalendarsUsageDescription), so it asks first.
+    @objc func addCalendarEvent(_ call: CAPPluginCall) {
+        guard let title = call.getString("title"), !title.isEmpty else {
+            return call.reject("Must provide title")
+        }
+        let allDay = call.getBool("allDay") ?? false
+        guard let range = allDay
+            ? Self.dayRange(call.getString("startDay"), call.getString("endDay"))
+            : Self.instantRange(call.getString("start"), call.getString("end")) else {
+            return call.reject("Invalid event dates")
+        }
+
+        let store = EKEventStore()
+        let present = { [weak self] in
+            DispatchQueue.main.async {
+                self?.presentEventEditor(store: store, title: title, range: range, allDay: allDay, call: call)
+            }
+        }
+        if #available(iOS 17.0, *) {
+            present()
+        } else {
+            store.requestAccess(to: .event) { granted, _ in
+                granted ? present() : call.reject("Calendar access denied", "DENIED")
+            }
+        }
+    }
+
+    private func presentEventEditor(
+        store: EKEventStore, title: String, range: (Date, Date), allDay: Bool, call: CAPPluginCall
+    ) {
+        guard var presenter = bridge?.viewController else {
+            return call.reject("No screen to present on")
+        }
+        while let top = presenter.presentedViewController { presenter = top }
+        guard calendarCall == nil else { return call.reject("Calendar screen already open") }
+
+        let event = EKEvent(eventStore: store)
+        event.title = title
+        event.isAllDay = allDay
+        event.startDate = range.0
+        event.endDate = range.1
+        if let notes = call.getString("notes"), !notes.isEmpty { event.notes = notes }
+        if let location = call.getString("location"), !location.isEmpty { event.location = location }
+        if let raw = call.getString("url"), let url = URL(string: raw), url.scheme?.hasPrefix("http") == true {
+            event.url = url
+        }
+
+        let editor = EKEventEditViewController()
+        editor.eventStore = store
+        editor.event = event
+        editor.editViewDelegate = self
+        calendarStore = store
+        calendarCall = call
+        presenter.present(editor, animated: true)
+    }
+
+    /// All-day: the event's days in the device's calendar. EventKit's end is the last
+    /// day itself (inclusive), so the exclusive end steps back one second.
+    private static func dayRange(_ start: String?, _ end: String?) -> (Date, Date)? {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = .current
+        f.dateFormat = "yyyy-MM-dd"
+        guard let s = start.flatMap(f.date(from:)), let e = end.flatMap(f.date(from:)), e > s else {
+            return nil
+        }
+        return (s, e.addingTimeInterval(-1))
+    }
+
+    private static func instantRange(_ start: String?, _ end: String?) -> (Date, Date)? {
+        guard let s = start.flatMap(parseInstant), let e = end.flatMap(parseInstant), e >= s else {
+            return nil
+        }
+        return (s, e)
+    }
+
+    private static func parseInstant(_ raw: String) -> Date? {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = f.date(from: raw) { return d }
+        f.formatOptions = [.withInternetDateTime]
+        return f.date(from: raw)
+    }
+}
+
+extension MesaasNativePlugin: EKEventEditViewDelegate {
+    public func eventEditViewController(
+        _ controller: EKEventEditViewController, didCompleteWith action: EKEventEditViewAction
+    ) {
+        controller.dismiss(animated: true)
+        calendarCall?.resolve(["saved": action == .saved])
+        calendarCall = nil
+        calendarStore = nil
     }
 }

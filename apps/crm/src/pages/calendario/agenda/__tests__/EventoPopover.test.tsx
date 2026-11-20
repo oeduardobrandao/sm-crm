@@ -17,6 +17,7 @@ const {
   toastSuccessMock,
   toastErrorMock,
   baixarIcsMock,
+  podeAdicionarMock,
   linkGoogleMock,
 } = vi.hoisted(() => ({
   responderEventoMock: vi.fn(),
@@ -27,6 +28,7 @@ const {
   toastSuccessMock: vi.fn(),
   toastErrorMock: vi.fn(),
   baixarIcsMock: vi.fn(),
+  podeAdicionarMock: vi.fn(() => false),
   linkGoogleMock: vi.fn(),
 }));
 
@@ -36,7 +38,10 @@ vi.mock('@/store/agenda', async (importOriginal) => ({
   excluirEvento: excluirEventoMock,
   resolverRemarcacao: resolverRemarcacaoMock,
 }));
-vi.mock('../baixarIcs', () => ({ baixarIcsDaOcorrencia: baixarIcsMock }));
+vi.mock('../baixarIcs', () => ({
+  baixarIcsDaOcorrencia: baixarIcsMock,
+  podeAdicionarAoCalendario: podeAdicionarMock,
+}));
 vi.mock('../googleAgenda', () => ({ linkGoogleAgenda: linkGoogleMock }));
 vi.mock('@/store/workspace', () => ({ getWorkspaceUsers: getWorkspaceUsersMock }));
 vi.mock('@/context/AuthContext', () => ({ useAuth: () => ({ user: { id: 'me' } }) }));
@@ -138,6 +143,7 @@ beforeEach(() => {
   toastSuccessMock.mockReset();
   toastErrorMock.mockReset();
   baixarIcsMock.mockReset().mockResolvedValue(undefined);
+  podeAdicionarMock.mockReset().mockReturnValue(false);
   linkGoogleMock.mockReset().mockReturnValue('https://calendar.google.com/calendar/render?x=1');
 });
 
@@ -582,6 +588,16 @@ describe('EventoPopover', () => {
       abrir(o);
       await abrirMenu();
       fireEvent.click(await screen.findByRole('menuitem', { name: 'Baixar .ics' }));
+      expect(baixarIcsMock).toHaveBeenCalledWith(o);
+    });
+
+    it('offers Adicionar ao Calendário in an app that adds natively', async () => {
+      podeAdicionarMock.mockReturnValue(true);
+      const o = ocorrencia();
+      abrir(o);
+      await abrirMenu();
+      fireEvent.click(await screen.findByRole('menuitem', { name: 'Adicionar ao Calendário' }));
+      expect(screen.queryByRole('menuitem', { name: 'Baixar .ics' })).not.toBeInTheDocument();
       expect(baixarIcsMock).toHaveBeenCalledWith(o);
     });
   });
