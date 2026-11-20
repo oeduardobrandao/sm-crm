@@ -161,6 +161,6 @@ Version 1.0 set (kept outside the repo, in `~/Documents/Mesaas/AppStore/`):
 
 - iPhone (`iphone-6.3/`, uploaded; `iphone-6.9/` holds the originals): Início, Entregas
   (Kanban), Agenda (lista), Clientes, post aberto.
-- iPad: Início, Entregas (Kanban), Agenda (semana), Clientes. **Retake these:** iPads now get the
-  phone shell (D34), so the 1.0 iPad screenshots no longer match the app. Capture the same four
-  screens again in the phone shell before the next submission.
+- iPad (`ipad-13-v2/`): Início, Entregas (Kanban), Agenda (semana), Clientes, retaken on
+  2026-11-20 in the phone shell (D34), which iPads now get. `ipad-13/` holds the 1.0 set in the
+  old desktop layout, which no longer matches the app: upload `ipad-13-v2/` with the next version.
