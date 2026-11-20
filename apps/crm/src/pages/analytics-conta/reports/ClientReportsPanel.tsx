@@ -39,6 +39,7 @@ import {
 } from '../../../services/reportDocs';
 import { PLATFORM_NAMES } from '@mesaas/report-blocks/platform';
 import { openExternalUrl } from '../../../utils/security';
+import { openPdf, opensPdfInApp, pdfFilename } from '../../../utils/openPdf';
 import { formatReportMonth } from '../contaFormat';
 import { NewReportDialog } from './NewReportDialog';
 
@@ -184,18 +185,23 @@ export function ClientReportsPanel({ clientId }: { clientId: number }) {
 
   // `viaTap`: iOS Safari blocks a window.open that runs after an await (the user gesture
   // is gone), so phones get a toast whose "Abrir PDF" tap opens the signed URL instead.
-  // Not location.assign: inside the native shell that would leave no way back.
-  const handleDownloadReport = async (reportId: number, viaTap = false) => {
+  // Not location.assign: inside the native shell that would leave no way back. The iOS
+  // app skips the toast: its share sheet needs no fresh tap (see openPdf).
+  const handleDownloadReport = async (report: AnalyticsReport, viaTap = false) => {
     // Signing the URL takes a moment; without feedback the row looks inert and
     // gets clicked again. Every download button locks so the spinner on the
     // active row is the only thing that looks clickable.
     if (downloadingReportId !== null) return;
-    setDownloadingReportId(reportId);
+    setDownloadingReportId(report.id);
     // The phone's action sheet closes on tap, so the toast is the in-flight feedback.
     const toastId = viaTap ? toast.loading('Preparando PDF…') : undefined;
     try {
-      const url = await getReportDownloadUrl(reportId);
-      if (viaTap) {
+      const url = await getReportDownloadUrl(report.id);
+      if (opensPdfInApp()) {
+        if (toastId !== undefined) toast.dismiss(toastId);
+        const title = ['Relatório', cliente?.nome, formatReportMonth(report.report_month)];
+        await openPdf(url, pdfFilename(title.filter(Boolean).join(' ')));
+      } else if (viaTap) {
         toast.success('PDF pronto.', {
           id: toastId,
           action: { label: 'Abrir PDF', onClick: () => openExternalUrl(url) },
@@ -291,7 +297,7 @@ export function ClientReportsPanel({ clientId }: { clientId: number }) {
                 {
                   label: downloadingReportId === reportTarget.id ? 'Baixando…' : 'Baixar PDF',
                   disabled: downloadingReportId !== null,
-                  onSelect: () => handleDownloadReport(reportTarget.id, true),
+                  onSelect: () => handleDownloadReport(reportTarget, true),
                 },
               ]
             : []),
@@ -545,7 +551,7 @@ export function ClientReportsPanel({ clientId }: { clientId: number }) {
                         variant="outline"
                         size="sm"
                         disabled={downloadingReportId !== null}
-                        onClick={() => handleDownloadReport(r.id)}
+                        onClick={() => handleDownloadReport(r)}
                       >
                         {downloadingReportId === r.id ? (
                           <>

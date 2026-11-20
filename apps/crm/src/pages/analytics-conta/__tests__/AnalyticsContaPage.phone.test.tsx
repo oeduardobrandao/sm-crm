@@ -23,6 +23,7 @@ vi.mock('sonner', () => ({
     error: vi.fn(),
     warning: vi.fn(),
     loading: vi.fn(() => 'toast-1'),
+    dismiss: vi.fn(),
   }),
 }));
 
@@ -542,6 +543,52 @@ describe('AnalyticsContaPage (phone)', () => {
       'noopener,noreferrer',
     );
     openSpy.mockRestore();
+  });
+
+  it('in the iOS app, Baixar PDF opens the share sheet right away, named after the report', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+    const shareFiles = vi.fn(async () => ({ completed: true }));
+    (window as unknown as { Capacitor: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+      getPlatform: () => 'ios',
+      isPluginAvailable: (name: string) => name === 'MesaasNative',
+      PluginHeaders: [{ name: 'MesaasNative', methods: [{ name: 'shareFiles' }] }],
+      Plugins: { MesaasNative: { shareFiles } },
+    };
+    try {
+      vi.mocked(getClientReports).mockResolvedValue([
+        {
+          id: 6,
+          report_month: '2026-07',
+          status: 'ready',
+          generation_error: null,
+          include_ai: false,
+          generated_at: '2026-08-01T10:00:00Z',
+          storage_path: 'reports/6.pdf',
+        } as never,
+      ]);
+      vi.mocked(getReportDownloadUrl).mockResolvedValue('https://files.example.com/6.pdf');
+      renderPage('relatorios');
+      await ready();
+      fireEvent.click(await screen.findByRole('button', { name: /Jul 2026/ }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Baixar PDF' }));
+
+      await waitFor(() =>
+        expect(shareFiles).toHaveBeenCalledWith({
+          files: [
+            {
+              url: 'https://files.example.com/6.pdf',
+              filename: 'Relatório Clínica Aurora Jul 2026.pdf',
+            },
+          ],
+        }),
+      );
+      expect(toast.dismiss).toHaveBeenCalledWith('toast-1');
+      expect(toast.success).not.toHaveBeenCalledWith('PDF pronto.', expect.anything());
+      expect(openSpy).not.toHaveBeenCalled();
+    } finally {
+      delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+    }
   });
 
   it('applies a custom period from a sheet with an explicit Aplicar', async () => {

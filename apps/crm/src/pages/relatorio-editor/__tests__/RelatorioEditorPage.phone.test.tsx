@@ -231,6 +231,39 @@ describe('RelatorioEditorPage no celular', () => {
     expect(screen.getByRole('button', { name: 'Gerar novamente' })).toBeEnabled();
   });
 
+  it('no app iOS, Abrir PDF abre a folha de compartilhamento em vez de sair para o Safari', async () => {
+    const shareFiles = vi.fn(async () => ({ completed: true }));
+    (window as unknown as { Capacitor: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+      getPlatform: () => 'ios',
+      isPluginAvailable: (name: string) => name === 'MesaasNative',
+      PluginHeaders: [{ name: 'MesaasNative', methods: [{ name: 'shareFiles' }] }],
+      Plugins: { MesaasNative: { shareFiles } },
+    };
+    try {
+      getReportDocMock.mockResolvedValue(doc());
+      exportReportPdfMock.mockResolvedValue({ url: 'https://cdn.example.com/doc-1.pdf' });
+      renderPage();
+      fireEvent.click(await screen.findByRole('button', { name: /Exportar PDF/ }));
+      const link = await screen.findByRole('link', { name: 'Abrir PDF' });
+
+      // fireEvent devolve false quando o clique foi cancelado (preventDefault).
+      expect(fireEvent.click(link)).toBe(false);
+      await waitFor(() =>
+        expect(shareFiles).toHaveBeenCalledWith({
+          files: [
+            {
+              url: 'https://cdn.example.com/doc-1.pdf',
+              filename: 'Relatório de Abril de 2026.pdf',
+            },
+          ],
+        }),
+      );
+    } finally {
+      delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+    }
+  });
+
   it('Exportar PDF com erro mantém a barra em Exportar PDF e mostra o erro', async () => {
     getReportDocMock.mockResolvedValue(doc());
     exportReportPdfMock.mockRejectedValue(new Error('Não foi possível gerar o PDF.'));
