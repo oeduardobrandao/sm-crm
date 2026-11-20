@@ -177,7 +177,12 @@ Deno.serve(createPostMediaCleanupCronHandler({
       } catch (e) {
         failed++;
         const nextAttempts = (row.attempts ?? 0) + 1;
-        const backoffSeconds = Math.pow(2, nextAttempts) * 60;
+        // The cron is hourly, so a minute-scale backoff (the old 2^n * 60s) meant every
+        // run was a retry and all 5 attempts were used up within ~5 hours of queueing.
+        // Hour-scale backoff (1h, 2h, 4h, 8h) spreads them over ~15h, leaving time to
+        // notice and fix a persistent failure before the row dead-letters. The 5-minute
+        // slack keeps a 1h wait from just missing the next :05 run.
+        const backoffSeconds = Math.pow(2, nextAttempts - 1) * 3600 - 300;
         await svc.from("file_deletions").update({
           attempts: nextAttempts,
           last_error: (e as Error).message,
