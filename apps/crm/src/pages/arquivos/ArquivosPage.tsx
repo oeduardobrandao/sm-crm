@@ -52,6 +52,7 @@ import { PhoneArquivosView } from './phone/PhoneArquivosView';
 import { PhoneFolderPickerSheet } from './phone/PhoneFolderPickerSheet';
 import { PhoneNameSheet } from './phone/PhoneNameSheet';
 import { isNativeApp } from '@/native/platform';
+import { canShareNatively, shareNatively } from '@/utils/downloadMedia';
 
 /** `?pasta=<id>` on phones: each folder is a pushed screen with its own history entry. */
 function parseFolderParam(value: string | null): number | null {
@@ -345,6 +346,16 @@ export default function ArquivosPage() {
   const zipMutation = useMutation({
     mutationFn: async (params: { folder_id: number } | { file_ids: number[] }) => {
       const result = await requestZipToken(params);
+      // The iOS app: an <a download> to another origin leaves for Safari. The native side
+      // downloads the zip and opens the share sheet, under the name file-zip gives it.
+      if (canShareNatively()) {
+        const folder =
+          'folder_id' in params ? data?.subfolders.find((f) => f.id === params.folder_id) : null;
+        await shareNatively([
+          { url: result.download_url, filename: `${folder?.name ?? 'arquivos'}.zip` },
+        ]);
+        return result;
+      }
       const a = document.createElement('a');
       a.href = result.download_url;
       a.download = '';

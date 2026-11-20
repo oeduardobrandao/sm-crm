@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
-import { downloadMedia } from '../downloadMedia';
+import { downloadMedia, shareLinkInApp, shareUrlInApp } from '../downloadMedia';
+import { asNativeShareBinary } from '@/test/nativeShareBinary';
 
-vi.mock('sonner', () => ({ toast: vi.fn() }));
+vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { error: vi.fn() }) }));
 
 const OBJECT_URL = 'blob:mock-object-url';
 
@@ -238,5 +239,40 @@ describe('downloadMedia in an app binary with the native download', () => {
     expect(outcome).toBe('shared');
     expect(shareFiles).not.toHaveBeenCalled();
     expect(navigator.share).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('shareUrlInApp / shareLinkInApp', () => {
+  it('do nothing on the web, so the link or tab keeps working', () => {
+    expect(shareUrlInApp('https://media.test/a.pdf', 'a.pdf')).toBe(false);
+    const e = { preventDefault: vi.fn() };
+    shareLinkInApp('https://media.test/a.pdf', 'a.pdf')(e);
+    expect(e.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('share the file natively in the app and cancel the link', () => {
+    const shareFiles = asNativeShareBinary();
+    const e = { preventDefault: vi.fn() };
+    shareLinkInApp('https://media.test/a.pdf', 'Contrato.pdf')(e);
+    expect(e.preventDefault).toHaveBeenCalled();
+    expect(shareFiles).toHaveBeenCalledWith({
+      files: [{ url: 'https://media.test/a.pdf', filename: 'Contrato.pdf' }],
+    });
+  });
+
+  it('leave a link without a url alone', () => {
+    const shareFiles = asNativeShareBinary();
+    const e = { preventDefault: vi.fn() };
+    shareLinkInApp(null, 'a.pdf')(e);
+    expect(e.preventDefault).not.toHaveBeenCalled();
+    expect(shareFiles).not.toHaveBeenCalled();
+  });
+
+  it('toast when the native download fails', async () => {
+    asNativeShareBinary(async () => {
+      throw new Error('HTTP 403');
+    });
+    expect(shareUrlInApp('https://media.test/a.pdf', 'a.pdf')).toBe(true);
+    await vi.waitFor(() => expect(toast.error).toHaveBeenCalledWith('Erro ao baixar arquivo'));
   });
 });

@@ -31,6 +31,7 @@ import { fileInUseMessage } from '../fileInUse';
 import { FolderInfoModal } from './FolderInfoModal';
 import type { Folder, FileRecord } from '../types';
 import { openExternalUrl, sanitizeExternalUrl } from '@/utils/security';
+import { shareLinkInApp, shareUrlInApp } from '@/utils/downloadMedia';
 import {
   ContextMenu,
   type ContextMenuAction,
@@ -252,7 +253,8 @@ export function FileContextMenu({
         // Inside the tap: a new tab opened after the menu's history pop is popup-blocked.
         immediate: true,
         onSelect: () => {
-          openExternalUrl(url);
+          // The iOS app: the share sheet (Save to Files...) instead of leaving for Safari.
+          if (!shareUrlInApp(url, item.name)) openExternalUrl(url);
         },
       });
     }
@@ -376,7 +378,10 @@ export function FileContextMenu({
                 href={sanitizeExternalUrl(file.url)}
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={closeMenu}
+                onClick={(e) => {
+                  shareLinkInApp(file.url, item.name)(e);
+                  closeMenu();
+                }}
                 className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
               >
                 <Download className="h-3.5 w-3.5 text-[var(--text-muted)]" />
