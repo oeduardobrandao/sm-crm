@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import type { ReferenceItem } from '@/store/postReferences';
 import { sanitizeUrl } from '@/utils/security';
+import { shareLinkInApp } from '@/utils/downloadMedia';
 import {
   formatReferenceDate,
   formatReferenceDuration,
@@ -130,6 +131,7 @@ export function ReferenceTile({
                 <a
                   href={downloadHref}
                   download={item.name ?? true}
+                  onClick={shareLinkInApp(item.download_url, item.name ?? label)}
                   className={OVERLAY_ICON_BTN}
                   aria-label={t('references.download')}
                   title={t('references.download')}

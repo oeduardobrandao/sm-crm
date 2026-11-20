@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeCan, fakeMembership } from '@/test/makeCan';
 
 // Phone branch of /arquivos (below 768px, PLAN F2c). jsdom's matchMedia reports false,
@@ -44,7 +44,10 @@ import {
   getFolderContents,
   getTreeChildren,
   renameFile,
+  requestZipToken,
 } from '@/services/fileService';
+import { toast } from 'sonner';
+import { asNativeShareBinary, leaveNativeApp } from '@/test/nativeShareBinary';
 import type { FolderContents, Folder, FileRecord } from '../types';
 import ArquivosPage from '../ArquivosPage';
 
@@ -360,5 +363,89 @@ describe('ArquivosPage on phones', () => {
         .getAllByRole('button')
         .map((b) => b.textContent),
     ).toEqual(['ZIP']);
+  });
+});
+
+describe('ArquivosPage (phone) in the iOS app', () => {
+  afterEach(() => leaveNativeApp());
+
+  it('Download from the item menu opens the share sheet instead of leaving for Safari', async () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    const shareFiles = asNativeShareBinary();
+    renderPage();
+    await screen.findByText('vitrine.jpg');
+    fireEvent.click(screen.getByRole('button', { name: 'Ações de vitrine.jpg' }));
+    const menu = await screen.findByRole('menu');
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Download' }));
+
+    await waitFor(() =>
+      expect(shareFiles).toHaveBeenCalledWith({
+        files: [{ url: 'https://media.test/vitrine.jpg', filename: 'vitrine.jpg' }],
+      }),
+    );
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it('ZIP of a folder downloads natively under the folder name', async () => {
+    vi.mocked(requestZipToken).mockResolvedValue({
+      token: 't',
+      download_url: 'https://sb.test/functions/v1/file-zip?token=t',
+    });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const shareFiles = asNativeShareBinary();
+    renderPage();
+    await screen.findByText('vitrine.jpg');
+    fireEvent.click(screen.getByRole('button', { name: 'Selecionar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Selecionar Identidade visual' }));
+    fireEvent.click(within(screen.getByRole('toolbar')).getByRole('button', { name: 'ZIP' }));
+
+    await waitFor(() =>
+      expect(shareFiles).toHaveBeenCalledWith({
+        files: [
+          {
+            url: 'https://sb.test/functions/v1/file-zip?token=t',
+            filename: 'Identidade visual.zip',
+          },
+        ],
+      }),
+    );
+    expect(requestZipToken).toHaveBeenCalledWith({ folder_id: 1 });
+    expect(click).not.toHaveBeenCalled();
+  });
+
+  it('ZIP of loose files is named arquivos.zip, like file-zip names it', async () => {
+    vi.mocked(requestZipToken).mockResolvedValue({
+      token: 't',
+      download_url: 'https://sb.test/functions/v1/file-zip?token=t',
+    });
+    const shareFiles = asNativeShareBinary();
+    renderPage();
+    await screen.findByText('vitrine.jpg');
+    fireEvent.click(screen.getByRole('button', { name: 'Selecionar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Selecionar vitrine.jpg' }));
+    fireEvent.click(within(screen.getByRole('toolbar')).getByRole('button', { name: 'ZIP' }));
+
+    await waitFor(() =>
+      expect(shareFiles).toHaveBeenCalledWith({
+        files: [{ url: 'https://sb.test/functions/v1/file-zip?token=t', filename: 'arquivos.zip' }],
+      }),
+    );
+  });
+
+  it('a failed native download of the zip shows the zip error', async () => {
+    vi.mocked(requestZipToken).mockResolvedValue({
+      token: 't',
+      download_url: 'https://sb.test/functions/v1/file-zip?token=t',
+    });
+    asNativeShareBinary(async () => {
+      throw new Error('HTTP 500');
+    });
+    renderPage();
+    await screen.findByText('vitrine.jpg');
+    fireEvent.click(screen.getByRole('button', { name: 'Selecionar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Selecionar vitrine.jpg' }));
+    fireEvent.click(within(screen.getByRole('toolbar')).getByRole('button', { name: 'ZIP' }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled(), { timeout: 4000 });
   });
 });

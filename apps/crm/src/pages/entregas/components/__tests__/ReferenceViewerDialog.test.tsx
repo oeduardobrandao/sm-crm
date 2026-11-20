@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { asNativeShareBinary, leaveNativeApp } from '@/test/nativeShareBinary';
 import type { ReferenceItem } from '@/store/postReferences';
 import { ReferenceViewerDialog, VIDEO_PLAYBACK_ERROR } from '../references/ReferenceViewerDialog';
 
@@ -78,5 +79,21 @@ describe('ReferenceViewerDialog', () => {
     render(<ReferenceViewerDialog item={base} onClose={onClose} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Fechar' }));
     expect(onClose).toHaveBeenCalled();
+  });
+});
+
+describe('ReferenceViewerDialog in the iOS app', () => {
+  afterEach(() => leaveNativeApp());
+
+  it('Baixar shares the file under its name instead of leaving for Safari', async () => {
+    const shareFiles = asNativeShareBinary();
+    render(<ReferenceViewerDialog item={base} onClose={vi.fn()} />);
+    const link = await screen.findByRole('link', { name: 'Baixar' });
+
+    // fireEvent returns false when the click was cancelled (preventDefault).
+    expect(fireEvent.click(link)).toBe(false);
+    expect(shareFiles).toHaveBeenCalledWith({
+      files: [{ url: 'https://r2.example.com/full.jpg?download=1', filename: 'foto-praia.jpg' }],
+    });
   });
 });

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import type { ReferenceItem } from '@/store/postReferences';
 import { sanitizeUrl } from '@/utils/security';
+import { shareLinkInApp } from '@/utils/downloadMedia';
 import { referenceLabel } from './referenceFormat';
 
 // Reference videos are plain R2 files (never Cloudflare Stream), so codecs the browser cannot
@@ -73,6 +74,7 @@ function ReferenceViewerContent({ item }: { item: ReferenceItem }) {
           <a
             href={downloadHref}
             download={item.name ?? true}
+            onClick={shareLinkInApp(item.download_url, item.name ?? label)}
             className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-[12.5px] font-medium text-[var(--text-main)] transition-colors hover:bg-[var(--surface-hover)]"
           >
             <Download className="h-3.5 w-3.5" aria-hidden="true" />

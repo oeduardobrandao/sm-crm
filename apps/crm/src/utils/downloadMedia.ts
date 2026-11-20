@@ -172,3 +172,33 @@ function canShare(files: File[]): boolean {
     return false;
   }
 }
+
+/** The iOS app binary can download a remote file natively and share it (shareNatively). */
+export function canShareNatively(): boolean {
+  return hasMesaasNativeMethod('shareFiles');
+}
+
+/**
+ * In the iOS app, downloads the remote file natively and opens the share sheet, with a
+ * toast if that fails. Returns false when this binary can't (web, older app), so the
+ * caller keeps its own link or new tab. Needs no fresh tap: it can run after an await.
+ */
+export function shareUrlInApp(url: string, filename: string): boolean {
+  if (!canShareNatively()) return false;
+  shareNatively([{ url, filename }]).catch(() => {
+    toast.error(i18n.t('posts:mediaLightbox.downloadFailed'));
+  });
+  return true;
+}
+
+/**
+ * onClick for an `<a href={signedUrl}>` that downloads or opens a remote file. In the
+ * iOS app that link leaves for Safari (Capacitor opens every other origin outside the
+ * web view); an app binary with the native download shares the file instead. Elsewhere
+ * the link works as is.
+ */
+export function shareLinkInApp(url: string | null | undefined, filename: string) {
+  return (e: { preventDefault(): void }) => {
+    if (url && shareUrlInApp(url, filename)) e.preventDefault();
+  };
+}
