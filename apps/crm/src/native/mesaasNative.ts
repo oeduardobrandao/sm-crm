@@ -21,6 +21,24 @@ export interface MesaasNativePlugin {
   shareFiles(options: {
     files: { url: string; filename: string }[];
   }): Promise<{ completed: boolean }>;
+  /**
+   * Opens the system "New Event" screen filled with the event; resolves `{ saved }`
+   * when it closes. All-day events pass `startDay`/`endDay` (yyyy-mm-dd, end
+   * exclusive); timed ones `start`/`end` (ISO instants). Rejects with code DENIED on
+   * iOS 16 when calendar access is refused. Older app binaries lack it: check
+   * `hasMesaasNativeMethod('addCalendarEvent')` first.
+   */
+  addCalendarEvent(options: {
+    title: string;
+    notes?: string;
+    location?: string;
+    url?: string;
+    allDay: boolean;
+    startDay?: string;
+    endDay?: string;
+    start?: string;
+    end?: string;
+  }): Promise<{ saved: boolean }>;
 }
 
 interface CapacitorPluginsBridge {

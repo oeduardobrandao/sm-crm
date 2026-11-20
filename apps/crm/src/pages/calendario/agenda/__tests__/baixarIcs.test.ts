@@ -140,3 +140,111 @@ describe('baixarIcsDaOcorrencia in the iOS app', () => {
     expect(toastErrorMock).not.toHaveBeenCalled();
   });
 });
+
+describe('baixarIcsDaOcorrencia in an app binary that adds to the calendar', () => {
+  function asCalendarBinary(
+    addCalendarEvent: (opts: unknown) => Promise<unknown> = async () => ({ saved: true }),
+  ) {
+    const fn = vi.fn(addCalendarEvent);
+    (window as unknown as { Capacitor: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+      getPlatform: () => 'ios',
+      isPluginAvailable: (name: string) => name === 'MesaasNative',
+      PluginHeaders: [
+        {
+          name: 'MesaasNative',
+          methods: [{ name: 'shareFiles' }, { name: 'addCalendarEvent' }],
+        },
+      ],
+      Plugins: { MesaasNative: { addCalendarEvent: fn, shareFiles: vi.fn() } },
+    };
+    return fn;
+  }
+
+  afterEach(() => {
+    delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+  });
+
+  const timed = {
+    ...o,
+    descricao: ' Roteiro na pasta ',
+    local: 'Rua A, 10',
+    link_reuniao: 'https://meet.test/abc',
+    dia_inteiro: false,
+    inicio: '2026-11-21T13:00:00+00:00',
+    fim: '2026-11-21T14:30:00+00:00',
+    data_inicio_local: '2026-11-21',
+    data_fim_local: '2026-11-21',
+  } as AgendaOcorrencia;
+
+  it('opens the native New Event screen for a timed event, never fetching the .ics', async () => {
+    const add = asCalendarBinary();
+
+    await baixarIcsDaOcorrencia(timed);
+
+    expect(add).toHaveBeenCalledWith({
+      title: 'Gravação: Clínica Sorriso',
+      notes: 'Roteiro na pasta\n\nLink da reunião: https://meet.test/abc',
+      location: 'Rua A, 10',
+      url: 'https://meet.test/abc',
+      allDay: false,
+      start: '2026-11-21T13:00:00+00:00',
+      end: '2026-11-21T14:30:00+00:00',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(toastErrorMock).not.toHaveBeenCalled();
+  });
+
+  it('sends local days for an all-day event and omits empty fields', async () => {
+    const add = asCalendarBinary();
+
+    await baixarIcsDaOcorrencia({
+      ...o,
+      dia_inteiro: true,
+      descricao: null,
+      local: '  ',
+      link_reuniao: null,
+      data_inicio_local: '2026-11-24',
+      data_fim_local: '2026-11-26',
+    } as AgendaOcorrencia);
+
+    expect(add).toHaveBeenCalledWith({
+      title: 'Gravação: Clínica Sorriso',
+      notes: undefined,
+      location: undefined,
+      url: undefined,
+      allDay: true,
+      startDay: '2026-11-24',
+      endDay: '2026-11-26',
+    });
+  });
+
+  it('treats a cancelled editor as done, without a toast', async () => {
+    asCalendarBinary(async () => ({ saved: false }));
+
+    await baixarIcsDaOcorrencia(timed);
+
+    expect(toastErrorMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('toasts when calendar access is denied', async () => {
+    asCalendarBinary(async () => {
+      throw new Error('DENIED');
+    });
+
+    await baixarIcsDaOcorrencia(timed);
+
+    expect(toastErrorMock).toHaveBeenCalledWith('Não foi possível baixar o arquivo.');
+  });
+
+  it('adds nothing for a masked occurrence', async () => {
+    const add = asCalendarBinary();
+
+    await baixarIcsDaOcorrencia({ ...timed, mascarado: true } as AgendaOcorrencia);
+
+    expect(add).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith('Não foi possível baixar o arquivo.');
+  });
+});

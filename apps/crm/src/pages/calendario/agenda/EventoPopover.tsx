@@ -17,6 +17,7 @@ import {
   Trash2,
   Video,
   X,
+  CalendarPlus,
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -61,7 +62,7 @@ import { getWorkspaceUsers } from '@/store/workspace';
 import { sanitizeUrl } from '@/utils/security';
 import { parseDateOnly } from '../../tarefas/tarefasLogic';
 import { corDoEvento, descreverRegra, emFuso, rotuloLembrete } from './agendaLogic';
-import { baixarIcsDaOcorrencia } from './baixarIcs';
+import { baixarIcsDaOcorrencia, podeAdicionarAoCalendario } from './baixarIcs';
 import { EscopoEventoDialog } from './EscopoEventoDialog';
 import { linkGoogleAgenda } from './googleAgenda';
 
@@ -817,8 +818,17 @@ export function EventoPopover({
                       window.open(linkGoogleAgenda(o), '_blank', 'noopener,noreferrer'),
                   },
                   {
-                    label: t('popover.baixarIcs'),
-                    icon: <Download aria-hidden="true" />,
+                    // In the app: the system "New Event" screen instead of a .ics file.
+                    label: t(
+                      podeAdicionarAoCalendario()
+                        ? 'popover.adicionarCalendario'
+                        : 'popover.baixarIcs',
+                    ),
+                    icon: podeAdicionarAoCalendario() ? (
+                      <CalendarPlus aria-hidden="true" />
+                    ) : (
+                      <Download aria-hidden="true" />
+                    ),
                     immediate: true,
                     onSelect: () => void baixarIcsDaOcorrencia(o),
                   },
@@ -949,7 +959,11 @@ export function EventoPopover({
                     {t('popover.adicionarGoogle')}
                   </DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => void baixarIcsDaOcorrencia(o)}>
-                    {t('popover.baixarIcs')}
+                    {t(
+                      podeAdicionarAoCalendario()
+                        ? 'popover.adicionarCalendario'
+                        : 'popover.baixarIcs',
+                    )}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
