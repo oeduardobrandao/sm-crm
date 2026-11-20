@@ -11,6 +11,7 @@ import { BottomActionBar } from '@/components/mobile/BottomActionBar';
 import { PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
 import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
 import { usePhoneChrome } from '@/components/layout/PhoneLayoutContext';
+import { pdfLinkClick } from '@/utils/openPdf';
 import './reportPhone.css';
 
 export const PHONE_EDIT_NOTE = 'Edite o layout no computador.';
@@ -104,6 +105,8 @@ export interface ReportExportBarProps {
   exporting: boolean;
   /** URL do PDF já gerado. Presente, a barra mostra "Abrir PDF" em vez de exportar. */
   pdfUrl: string | null;
+  /** Nome do arquivo na folha de compartilhamento do app iOS ("Relatório X.pdf"). */
+  pdfName: string;
   onExport: () => void;
 }
 
@@ -113,7 +116,7 @@ export interface ReportExportBarProps {
  * num app nativo, trocar a página pelo PDF deixaria a pessoa sem Voltar). A barra vira
  * um link "Abrir PDF" de verdade, que a pessoa toca: um gesto novo.
  */
-export function ReportExportBar({ exporting, pdfUrl, onExport }: ReportExportBarProps) {
+export function ReportExportBar({ exporting, pdfUrl, pdfName, onExport }: ReportExportBarProps) {
   return (
     <BottomActionBar className="phone-report__bar">
       {pdfUrl ? (
@@ -131,6 +134,7 @@ export function ReportExportBar({ exporting, pdfUrl, onExport }: ReportExportBar
             href={pdfUrl}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={pdfLinkClick(pdfUrl, pdfName)}
           >
             <ExternalLink aria-hidden="true" />
             Abrir PDF

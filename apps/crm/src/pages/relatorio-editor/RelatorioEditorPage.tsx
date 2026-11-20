@@ -28,6 +28,7 @@ import {
   type ReportDocumentRow,
 } from '../../services/reportDocs';
 import { getHubToken, getWorkspaceSlug } from '../../store/hub';
+import { pdfFilename, pdfLinkClick } from '../../utils/openPdf';
 import { useLayoutAutosave } from './useLayoutAutosave';
 import { enabledReportPlatforms, useBlockEditing } from './useBlockEditing';
 import { usePreventStrayFileDrop } from './usePreventStrayFileDrop';
@@ -255,6 +256,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
             <ReportExportBar
               exporting={exporting}
               pdfUrl={phonePdfUrl}
+              pdfName={pdfFilename(doc.title)}
               onExport={handleExportPdfPhone}
             />
           }
@@ -327,7 +329,12 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
           </Button>
           {isTablet && phonePdfUrl && (
             <Button variant="outline" size="sm" asChild>
-              <a href={phonePdfUrl} target="_blank" rel="noopener noreferrer">
+              <a
+                href={phonePdfUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={pdfLinkClick(phonePdfUrl, pdfFilename(doc.title))}
+              >
                 <ExternalLink className="h-3.5 w-3.5" /> Abrir PDF
               </a>
             </Button>
