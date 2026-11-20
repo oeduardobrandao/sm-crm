@@ -450,8 +450,10 @@ export function EventoFormDialog(props: EventoFormDialogProps) {
             noValidate
           >
             <div
-              className="sticky top-0 z-10 flex shrink-0 items-start gap-2 border-b py-3 md:static"
+              className="sticky top-0 z-10 flex shrink-0 items-start gap-2 border-b pb-3 md:static"
               style={{
+                // Fullscreen covers the status bar on an iPhone (viewport-fit=cover).
+                paddingTop: 'calc(0.75rem + env(safe-area-inset-top, 0px))',
                 background: 'var(--bg-color)',
                 borderColor: 'var(--border-color)',
                 paddingInline: GUTTER,

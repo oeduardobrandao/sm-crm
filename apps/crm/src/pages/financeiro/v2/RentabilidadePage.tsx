@@ -435,7 +435,11 @@ export default function RentabilidadePage() {
       </div>
       <Dialog open={expandido} onOpenChange={setExpandido}>
         <DialogContent layout="fullscreen" className="flex flex-col">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-5 py-3">
+          <div
+            className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-5 pb-3"
+            // Fullscreen covers the status bar on an iPhone (viewport-fit=cover).
+            style={{ paddingTop: 'calc(0.75rem + env(safe-area-inset-top, 0px))' }}
+          >
             <div className="min-w-0 flex-1">
               <DialogTitle className="text-base font-semibold">
                 {t('rentabilidade.expandidoTitle')}
