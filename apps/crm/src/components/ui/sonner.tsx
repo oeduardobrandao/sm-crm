@@ -1,4 +1,5 @@
 import { Toaster as Sonner } from 'sonner';
+import { useTouchSafeToaster } from '@mesaas/ui/toast/touchSafeToaster';
 
 type ToasterProps = React.ComponentProps<typeof Sonner>;
 
@@ -14,6 +15,8 @@ export const TOASTER_OFFSET = { bottom: 'var(--phone-toast-offset, 24px)' } as c
 export const TOASTER_MOBILE_OFFSET = { bottom: 'var(--phone-toast-offset, 16px)' } as const;
 
 const Toaster = ({ ...props }: ToasterProps) => {
+  // A tap on a toast must not pause it for good on a phone (see the hook).
+  useTouchSafeToaster();
   return (
     <Sonner
       theme="system"
