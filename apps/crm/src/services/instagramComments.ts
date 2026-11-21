@@ -24,6 +24,8 @@ export interface IgComment {
 
 export type Sentimento = 'positivo' | 'misto' | 'negativo' | 'polemico';
 
+export type Categoria = keyof CommentAnalysis['distribuicao'];
+
 export interface CommentAnalysis {
   sentimento_geral: Sentimento;
   resumo: string;
@@ -37,6 +39,10 @@ export interface CommentAnalysis {
   temas: { tema: string; peso: number; exemplo: string; post_ids?: string[] }[];
   perguntas_frequentes: string[];
   ideias: { id: string; titulo: string; descricao: string; motivo: string }[];
+  /** Type of each public comment, by id; null = the model gave no type. Absent on older readings. */
+  tipos?: Record<string, Categoria | null>;
+  /** Absent on readings saved before comment types existed. */
+  tipos_status?: 'ok' | 'failed';
 }
 
 export interface StoredAnalysis {

@@ -1,9 +1,9 @@
-import { Fragment, useState } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { format, formatDistanceToNow, formatDistanceToNowStrict } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import type { Locale } from 'date-fns';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
@@ -14,24 +14,21 @@ import {
   analyzePostComments,
   commentsErrorMessage,
   getPostComments,
-  type IgComment,
+  type Categoria,
   type PostCommentsResponse,
 } from '../../../services/instagramComments';
 import { sanitizeUrl } from '../../../utils/security';
-import { CommentActions } from './CommentActions';
+import { CommentFilters } from './CommentFilters';
+import { CommentRow, type Moderation } from './CommentRow';
 import { CommentsAnalysisView, countText } from './CommentsAnalysisView';
+import { CommentThread } from './CommentThread';
+import { countByTipo, tipoOf, tiposState, untypedCounts } from './commentTipos';
 import { groupComments } from './groupComments';
 import { ReconnectState, reconnectReason } from './ReconnectState';
 import { useCommentModeration } from './useCommentModeration';
 
 /** Server minimum for a post reading (`too_few_comments` below it). */
 const MIN_COMMENTS = 5;
-
-function relative(ts: string, locale: Locale): string {
-  const d = new Date(ts);
-  if (isNaN(d.getTime())) return '';
-  return formatDistanceToNowStrict(d, { addSuffix: true, locale });
-}
 
 function analyzedAgo(ts: string, locale: Locale): string {
   const d = new Date(ts);
@@ -51,70 +48,6 @@ export function postSourceLabel(post: PostAnalytics, t: TFunction, locale: Local
   return t('post.sourceWithDate', { kind, date: format(d, t('post.dateFormat'), { locale }) });
 }
 
-/** What a row needs to show the "⋯" menu; absent when the user can't moderate. */
-interface Moderation {
-  compact: boolean;
-  pending: ReadonlySet<string>;
-  hide(c: IgComment, hidden: boolean): Promise<void>;
-  remove(c: IgComment): Promise<void>;
-}
-
-function CommentRow({
-  c,
-  reply = false,
-  moderation,
-}: {
-  c: IgComment;
-  reply?: boolean;
-  moderation: Moderation | null;
-}) {
-  const { t } = useTranslation('analyticsComments');
-  const dfLocale = useDateFnsLocale();
-  const locale = useIntlLocale();
-  const name = (c.username || '').replace(/^@/, '');
-  const initial = name.charAt(0).toUpperCase() || '?';
-  const replies =
-    c.replies_more || c.replies_count >= 25
-      ? t('count.repliesMany')
-      : c.replies_count > 0
-        ? countText(t, 'reply', c.replies_count, locale)
-        : null;
-  const meta = [countText(t, 'like', c.like_count || 0, locale), replies]
-    .filter(Boolean)
-    .join(' · ');
-  const when = relative(c.timestamp, dfLocale);
-  const hidden = c.hidden === true;
-  const className = ['igc-comment', reply && 'igc-comment--reply', hidden && 'igc-comment--hidden']
-    .filter(Boolean)
-    .join(' ');
-  return (
-    <li className={className}>
-      <span className="igc-comment__avatar" aria-hidden="true">
-        {initial}
-      </span>
-      <div className="igc-comment__body">
-        <span className="igc-comment__head">
-          <b>{name ? `@${name}` : t('post.unknownUser')}</b>
-          {c.from_owner && <span className="igc-badge">{t('moderation.ownerBadge')}</span>}
-          {hidden && <span className="igc-badge">{t('moderation.hiddenBadge')}</span>}
-          {when && <span className="igc-comment__when">{` · ${when}`}</span>}
-        </span>
-        <span className="igc-comment__text">{c.text}</span>
-        <span className="igc-comment__meta">{meta}</span>
-      </div>
-      {moderation && (
-        <CommentActions
-          comment={c}
-          compact={moderation.compact}
-          disabled={moderation.pending.has(c.id)}
-          onHide={(next) => void moderation.hide(c, next)}
-          onDelete={() => moderation.remove(c)}
-        />
-      )}
-    </li>
-  );
-}
-
 // Lista longa cansa: mostra os primeiros e libera mais a cada clique.
 const COMMENTS_PAGE = 20;
 
@@ -124,34 +57,119 @@ function CommentsList({
   compact,
   moderation,
   refreshFailed,
+  onRedo,
+  redoing,
 }: {
   data: PostCommentsResponse;
   post: PostAnalytics;
   compact: boolean;
   moderation: Moderation | null;
   refreshFailed: boolean;
+  /** Redo the reading (the panel's `analyze`), from the legacy / failed notice. */
+  onRedo: () => void;
+  redoing: boolean;
 }) {
   const { t } = useTranslation('analyticsComments');
   const locale = useIntlLocale();
   const [visible, setVisible] = useState(COMMENTS_PAGE);
-  // Pages by top-level comment; a group always shows with all its replies.
-  const groups = groupComments(data.comments);
-  const shown = groups.slice(0, visible);
-  const remaining = data.comments.length - shown.reduce((n, g) => n + 1 + g.replies.length, 0);
+  // Top-level ids whose replies are open; kept here so "Ver mais" doesn't close them.
+  const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
+  const toggle = (id: string) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  const analysis = data.cached_analysis;
+  const state = tiposState(analysis);
+  const counts = countByTipo(data.comments, analysis);
+  const [active, setActive] = useState<Categoria | null>(null);
+  // The chosen type only applies while the reading has types and the list still holds one
+  // of it (deleting the last one, or a redo that failed, falls back to the conversations).
+  const tipo = active && state === 'ok' && counts[active] > 0 ? active : null;
+  if (active !== null && tipo === null) {
+    // Adjust-state-during-render: drop the stale choice so it never comes back on its own.
+    setActive(null);
+    setVisible(COMMENTS_PAGE);
+  }
+  const choose = (next: Categoria | null) => {
+    setActive(next);
+    setVisible(COMMENTS_PAGE);
+  };
+
+  let rows;
+  let remaining;
+  if (tipo) {
+    // Flat list of that type, top-level or reply, in list order.
+    const byId = new Map(data.comments.map((c) => [c.id, c]));
+    const flat = data.comments.filter((c) => tipoOf(c, analysis) === tipo);
+    remaining = Math.max(0, flat.length - visible);
+    rows = flat.slice(0, visible).map((c) => {
+      const parent = c.parent_id && c.parent_id !== c.id ? byId.get(c.parent_id) : undefined;
+      const parentName = parent ? (parent.username || '').replace(/^@/, '') : '';
+      return (
+        <CommentRow
+          key={c.id}
+          c={c}
+          moderation={moderation}
+          tipo={tipo}
+          inReplyTo={parentName || null}
+        />
+      );
+    });
+  } else {
+    // Pages by top-level comment; a group always shows with all its replies.
+    const shown = groupComments(data.comments).slice(0, visible);
+    remaining = data.comments.length - shown.reduce((n, g) => n + 1 + g.replies.length, 0);
+    rows = shown.map((group) => (
+      <CommentThread
+        key={group.comment.id}
+        group={group}
+        open={open.has(group.comment.id)}
+        onToggle={() => toggle(group.comment.id)}
+        moderation={moderation}
+        permalink={post.permalink}
+        tipoFor={(c) => tipoOf(c, analysis)}
+      />
+    ));
+  }
+  const untyped = tipo && analysis ? untypedCounts(data.comments, analysis) : null;
+  const filters = data.comments.length > 0 && (
+    <>
+      <CommentFilters
+        state={state}
+        counts={counts}
+        total={data.comments.length}
+        active={tipo}
+        onChange={choose}
+        onRedo={onRedo}
+        redoing={redoing}
+      />
+      {untyped && untyped.late > 0 && (
+        <p className="igc-filters__note">
+          {t('filter.lateArrivals', {
+            count: untyped.late,
+            n: untyped.late.toLocaleString(locale),
+          })}
+        </p>
+      )}
+      {untyped && untyped.unclassified > 0 && (
+        <p className="igc-filters__note">
+          {t('filter.unclassified', {
+            count: untyped.unclassified,
+            n: untyped.unclassified.toLocaleString(locale),
+          })}
+        </p>
+      )}
+    </>
+  );
   const list =
     data.comments.length === 0 ? (
       <p className="igc-empty">{t('post.empty')}</p>
     ) : (
       <>
         <ul className="igc-comments" aria-label={t('common.comments')}>
-          {shown.map(({ comment, replies }) => (
-            <Fragment key={comment.id}>
-              <CommentRow c={comment} moderation={moderation} />
-              {replies.map((r) => (
-                <CommentRow key={r.id} c={r} reply moderation={moderation} />
-              ))}
-            </Fragment>
-          ))}
+          {rows}
         </ul>
         {remaining > 0 && (
           <Button
@@ -187,6 +205,7 @@ function CommentsList({
         <h3 className="igc-eyebrow">{t('common.comments')}</h3>
         <div className="igc-card igc-card--flush">
           {refreshError}
+          {filters}
           {list}
           {footer}
         </div>
@@ -199,6 +218,7 @@ function CommentsList({
         <h3 className="igc-card__title">{t('common.comments')}</h3>
       </div>
       {refreshError}
+      {filters}
       {list}
       {footer}
     </section>
@@ -365,11 +385,14 @@ export function PostCommentsPanel({
     <div className={`igc-panel${compact ? ' igc-panel--compact' : ''}`}>
       {reading}
       <CommentsList
+        key={postId}
         data={data}
         post={post}
         compact={compact}
         moderation={canModerate ? { compact, pending, hide, remove } : null}
         refreshFailed={query.error != null}
+        onRedo={() => void analyze()}
+        redoing={analyzing}
       />
     </div>
   );

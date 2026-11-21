@@ -19723,6 +19723,111 @@ button.phone-stat-tile:active {
 }
 
 /* ---- Comment list ---- */
+/* Type filter above the list: chips wrap on desktop and scroll sideways on the phone. */
+.igc-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border-color);
+}
+.igc-panel--compact .igc-filters {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding: 10px 14px;
+  scrollbar-width: none;
+}
+.igc-panel--compact .igc-filters::-webkit-scrollbar {
+  display: none;
+}
+.igc-filters__chip {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--card-bg);
+  color: var(--text-main);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.igc-filters__chip:hover {
+  background: var(--surface-hover);
+}
+.igc-filters__chip[aria-pressed='true'] {
+  border-color: var(--text-main);
+  background: var(--text-main);
+  color: var(--card-bg);
+}
+.igc-filters__chip:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+.igc-filters__dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+}
+.igc-filters__chip[aria-pressed='true'] .igc-filters__dot {
+  box-shadow: 0 0 0 1px var(--card-bg);
+}
+.igc-panel--compact .igc-filters__chip {
+  min-height: 32px;
+  justify-content: center;
+}
+.igc-panel--compact .igc-thread__toggle {
+  min-height: 32px;
+}
+.igc-filters__count {
+  color: var(--text-muted);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.igc-filters__chip[aria-pressed='true'] .igc-filters__count {
+  color: inherit;
+  opacity: 0.7;
+}
+.igc-filters__notice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 18px;
+  padding: 10px 12px;
+  border: 1px dashed color-mix(in srgb, var(--text-light) 55%, transparent);
+  border-radius: 12px;
+  background: var(--surface-hover);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+.igc-panel--compact .igc-filters__notice {
+  margin: 10px 14px;
+}
+.igc-filters__notice-text p {
+  margin: 0;
+}
+.igc-filters__notice-text .igc-filters__notice-title {
+  display: block;
+  color: var(--text-main);
+  font-weight: 600;
+}
+.igc-filters__note {
+  margin: 0;
+  padding: 8px 18px 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+.igc-panel--compact .igc-filters__note {
+  padding: 8px 14px 0;
+}
 .igc-comment {
   display: flex;
   gap: 10px;
@@ -19765,7 +19870,26 @@ button.phone-stat-tile:active {
   overflow-wrap: anywhere;
 }
 .igc-comment__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
   font-size: 0.75rem;
+}
+.igc-comment__reply-to {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+.igc-tipo {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.igc-tipo__dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
 }
 .igc-comment--reply {
   padding-left: 60px;
@@ -19777,6 +19901,63 @@ button.phone-stat-tile:active {
   width: 26px;
   height: 26px;
   font-size: 0.7rem;
+}
+.igc-comment:has(+ .igc-thread) {
+  border-bottom: 0;
+  padding-bottom: 4px;
+}
+.igc-thread {
+  list-style: none;
+  padding: 0 18px 12px 60px;
+  border-bottom: 1px solid var(--border-color);
+}
+.igc-panel--compact .igc-thread {
+  padding: 0 14px 12px 56px;
+}
+.igc-thread__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.igc-thread__toggle::before {
+  content: '';
+  width: 22px;
+  height: 1px;
+  background: var(--border-color);
+}
+.igc-thread__toggle:hover {
+  color: var(--text-main);
+}
+.igc-thread__toggle:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.igc-thread__replies {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+}
+.igc-thread__replies > .igc-comment--reply {
+  padding-left: 0;
+  padding-right: 0;
+  border-bottom: 0;
+}
+.igc-thread__more {
+  padding: 4px 0 0;
+  font-size: 0.75rem;
+}
+.igc-thread__more a {
+  color: var(--text-muted);
+  text-decoration: underline;
 }
 .igc-comment--hidden {
   background: var(--surface-hover);
