@@ -476,38 +476,91 @@ describe('PostCommentsPanel: moderação', () => {
     expect(screen.queryByRole('button', { name: 'Ações do comentário' })).not.toBeInTheDocument();
   });
 
-  it('respostas aparecem recuadas sob o pai e o rodapé conta itens únicos', async () => {
+  const texts = (list: HTMLElement) =>
+    Array.from(list.querySelectorAll('.igc-comment__text')).map((e) => e.textContent);
+
+  it('respostas ficam recolhidas atrás de Ver N respostas e abrem recuadas', async () => {
     getPostCommentsMock.mockResolvedValue(response({ comments: THREAD }));
     renderPanel();
     const list = await screen.findByRole('list', { name: 'Comentários' });
-    const items = within(list).getAllByRole('listitem');
-    expect(items.map((li) => li.querySelector('.igc-comment__text')?.textContent)).toEqual([
-      'Comentário pai',
-      'Primeira resposta',
-      'Segunda resposta',
-      'Outro comentário',
-    ]);
-    expect(items[0]).not.toHaveClass('igc-comment--reply');
-    expect(items[1]).toHaveClass('igc-comment--reply');
-    expect(items[2]).toHaveClass('igc-comment--reply');
-    expect(items[3]).not.toHaveClass('igc-comment--reply');
-    // Respostas também têm o menu.
-    expect(within(items[1]).getByRole('button', { name: 'Ações do comentário' })).toBeEnabled();
+    expect(texts(list)).toEqual(['Comentário pai', 'Outro comentário']);
+    const toggle = screen.getByRole('button', { name: 'Ver 2 respostas' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(rowOf('Comentário pai').querySelector('.igc-comment__meta')?.textContent).not.toContain(
+      '2 respostas',
+    );
+    fireEvent.click(toggle);
+    const hide = screen.getByRole('button', { name: 'Ocultar respostas' });
+    expect(hide).toHaveAttribute('aria-expanded', 'true');
+    const replies = document.getElementById(hide.getAttribute('aria-controls') as string)!;
+    expect(replies.tagName).toBe('UL');
+    expect(within(replies).getByText('Primeira resposta')).toBeInTheDocument();
+    expect(within(replies).getByText('Segunda resposta')).toBeInTheDocument();
+    expect(rowOf('Primeira resposta')).toHaveClass('igc-comment--reply');
+    expect(rowOf('Segunda resposta')).toHaveClass('igc-comment--reply');
+    expect(
+      within(rowOf('Primeira resposta')).getByRole('button', { name: 'Ações do comentário' }),
+    ).toBeEnabled();
+    expect(screen.getByText(/Mostrando 4 comentários/)).toBeInTheDocument();
+    fireEvent.click(hide);
+    expect(screen.queryByText('Primeira resposta')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ver 2 respostas' })).toBeInTheDocument();
     expect(screen.getByText(/Mostrando 4 comentários/)).toBeInTheDocument();
   });
 
-  it('Ver mais pagina por comentários de topo e cada grupo vem com as respostas', async () => {
+  function pagedComments() {
     const tops = manyComments(21);
     const replies = Array.from({ length: 3 }, (_, i) =>
       comment({ id: `r${i}`, text: `Resposta ${i}`, parent_id: 'c0' }),
     );
-    getPostCommentsMock.mockResolvedValue(response({ comments: [...tops, ...replies] }));
+    return response({ comments: [...tops, ...replies] });
+  }
+
+  it('Ver mais pagina por comentários de topo e as respostas só contam abertas', async () => {
+    getPostCommentsMock.mockResolvedValue(pagedComments());
     renderPanel();
     const list = await screen.findByRole('list', { name: 'Comentários' });
-    // 20 grupos de topo; o primeiro traz as 3 respostas.
-    expect(within(list).getAllByRole('listitem')).toHaveLength(23);
+    expect(list.querySelectorAll('.igc-comment')).toHaveLength(20);
+    expect(screen.getByRole('button', { name: 'Ver 3 respostas' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Ver mais comentários (1)' }));
-    expect(within(list).getAllByRole('listitem')).toHaveLength(24);
+    expect(list.querySelectorAll('.igc-comment')).toHaveLength(21);
+  });
+
+  it('conversa aberta continua aberta depois de Ver mais', async () => {
+    getPostCommentsMock.mockResolvedValue(pagedComments());
+    renderPanel();
+    await screen.findByRole('list', { name: 'Comentários' });
+    fireEvent.click(screen.getByRole('button', { name: 'Ver 3 respostas' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ver mais comentários (1)' }));
+    expect(screen.getByText('Resposta 0')).toBeInTheDocument();
+    expect(screen.getByText('Resposta 2')).toBeInTheDocument();
+  });
+
+  it('mais respostas no Instagram: link só quando a lista não tem todas', async () => {
+    getPostCommentsMock.mockResolvedValue(
+      response({
+        comments: [
+          comment({ id: 'a', text: 'Pai A', replies_count: 5 }),
+          comment({ id: 'a1', text: 'Resp A1', parent_id: 'a' }),
+          comment({ id: 'a2', text: 'Resp A2', parent_id: 'a' }),
+          comment({ id: 'b', text: 'Pai B', replies_count: 2, replies_more: true }),
+          comment({ id: 'b1', text: 'Resp B1', parent_id: 'b' }),
+          comment({ id: 'c', text: 'Pai C', replies_count: 2 }),
+          comment({ id: 'c1', text: 'Resp C1', parent_id: 'c' }),
+          comment({ id: 'c2', text: 'Resp C2', parent_id: 'c' }),
+        ],
+      }),
+    );
+    renderPanel();
+    await screen.findByText('Pai A');
+    expect(screen.queryByRole('link', { name: /ver no Instagram/ })).not.toBeInTheDocument();
+    const toggles = screen.getAllByRole('button', { name: /^Ver \d respostas?$/ });
+    toggles.forEach((b) => fireEvent.click(b));
+    const more = screen.getByRole('link', { name: 'Mais 3 respostas · ver no Instagram' });
+    expect(more).toHaveAttribute('href', post().permalink);
+    expect(more).toHaveAttribute('target', '_blank');
+    expect(screen.getByRole('link', { name: 'Mais respostas · ver no Instagram' })).toBeVisible();
+    expect(screen.getAllByRole('link', { name: /ver no Instagram/ })).toHaveLength(2);
   });
 
   it('comentário oculto mostra o selo Oculto e o menu oferece Mostrar comentário', async () => {

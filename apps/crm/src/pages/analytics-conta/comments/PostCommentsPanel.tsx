@@ -1,9 +1,9 @@
-import { Fragment, useState } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { format, formatDistanceToNow, formatDistanceToNowStrict } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import type { Locale } from 'date-fns';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
@@ -14,24 +14,18 @@ import {
   analyzePostComments,
   commentsErrorMessage,
   getPostComments,
-  type IgComment,
   type PostCommentsResponse,
 } from '../../../services/instagramComments';
 import { sanitizeUrl } from '../../../utils/security';
-import { CommentActions } from './CommentActions';
+import type { Moderation } from './CommentRow';
 import { CommentsAnalysisView, countText } from './CommentsAnalysisView';
+import { CommentThread } from './CommentThread';
 import { groupComments } from './groupComments';
 import { ReconnectState, reconnectReason } from './ReconnectState';
 import { useCommentModeration } from './useCommentModeration';
 
 /** Server minimum for a post reading (`too_few_comments` below it). */
 const MIN_COMMENTS = 5;
-
-function relative(ts: string, locale: Locale): string {
-  const d = new Date(ts);
-  if (isNaN(d.getTime())) return '';
-  return formatDistanceToNowStrict(d, { addSuffix: true, locale });
-}
 
 function analyzedAgo(ts: string, locale: Locale): string {
   const d = new Date(ts);
@@ -49,70 +43,6 @@ export function postSourceLabel(post: PostAnalytics, t: TFunction, locale: Local
   );
   if (isNaN(d.getTime())) return kind;
   return t('post.sourceWithDate', { kind, date: format(d, t('post.dateFormat'), { locale }) });
-}
-
-/** What a row needs to show the "⋯" menu; absent when the user can't moderate. */
-interface Moderation {
-  compact: boolean;
-  pending: ReadonlySet<string>;
-  hide(c: IgComment, hidden: boolean): Promise<void>;
-  remove(c: IgComment): Promise<void>;
-}
-
-function CommentRow({
-  c,
-  reply = false,
-  moderation,
-}: {
-  c: IgComment;
-  reply?: boolean;
-  moderation: Moderation | null;
-}) {
-  const { t } = useTranslation('analyticsComments');
-  const dfLocale = useDateFnsLocale();
-  const locale = useIntlLocale();
-  const name = (c.username || '').replace(/^@/, '');
-  const initial = name.charAt(0).toUpperCase() || '?';
-  const replies =
-    c.replies_more || c.replies_count >= 25
-      ? t('count.repliesMany')
-      : c.replies_count > 0
-        ? countText(t, 'reply', c.replies_count, locale)
-        : null;
-  const meta = [countText(t, 'like', c.like_count || 0, locale), replies]
-    .filter(Boolean)
-    .join(' · ');
-  const when = relative(c.timestamp, dfLocale);
-  const hidden = c.hidden === true;
-  const className = ['igc-comment', reply && 'igc-comment--reply', hidden && 'igc-comment--hidden']
-    .filter(Boolean)
-    .join(' ');
-  return (
-    <li className={className}>
-      <span className="igc-comment__avatar" aria-hidden="true">
-        {initial}
-      </span>
-      <div className="igc-comment__body">
-        <span className="igc-comment__head">
-          <b>{name ? `@${name}` : t('post.unknownUser')}</b>
-          {c.from_owner && <span className="igc-badge">{t('moderation.ownerBadge')}</span>}
-          {hidden && <span className="igc-badge">{t('moderation.hiddenBadge')}</span>}
-          {when && <span className="igc-comment__when">{` · ${when}`}</span>}
-        </span>
-        <span className="igc-comment__text">{c.text}</span>
-        <span className="igc-comment__meta">{meta}</span>
-      </div>
-      {moderation && (
-        <CommentActions
-          comment={c}
-          compact={moderation.compact}
-          disabled={moderation.pending.has(c.id)}
-          onHide={(next) => void moderation.hide(c, next)}
-          onDelete={() => moderation.remove(c)}
-        />
-      )}
-    </li>
-  );
 }
 
 // Lista longa cansa: mostra os primeiros e libera mais a cada clique.
@@ -134,6 +64,14 @@ function CommentsList({
   const { t } = useTranslation('analyticsComments');
   const locale = useIntlLocale();
   const [visible, setVisible] = useState(COMMENTS_PAGE);
+  // Top-level ids whose replies are open; kept here so "Ver mais" doesn't close them.
+  const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
+  const toggle = (id: string) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
   // Pages by top-level comment; a group always shows with all its replies.
   const groups = groupComments(data.comments);
   const shown = groups.slice(0, visible);
@@ -144,13 +82,15 @@ function CommentsList({
     ) : (
       <>
         <ul className="igc-comments" aria-label={t('common.comments')}>
-          {shown.map(({ comment, replies }) => (
-            <Fragment key={comment.id}>
-              <CommentRow c={comment} moderation={moderation} />
-              {replies.map((r) => (
-                <CommentRow key={r.id} c={r} reply moderation={moderation} />
-              ))}
-            </Fragment>
+          {shown.map((group) => (
+            <CommentThread
+              key={group.comment.id}
+              group={group}
+              open={open.has(group.comment.id)}
+              onToggle={() => toggle(group.comment.id)}
+              moderation={moderation}
+              permalink={post.permalink}
+            />
           ))}
         </ul>
         {remaining > 0 && (
@@ -365,6 +305,7 @@ export function PostCommentsPanel({
     <div className={`igc-panel${compact ? ' igc-panel--compact' : ''}`}>
       {reading}
       <CommentsList
+        key={postId}
         data={data}
         post={post}
         compact={compact}

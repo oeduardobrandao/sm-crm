@@ -127,5 +127,13 @@
     "writeRateLimited": "Too many actions in a row. Try again in a few minutes.",
     "commentGone": "Could not find this comment on Instagram. The list was refreshed.",
     "ownerNotHideable": "Instagram does not allow hiding comments from your own account."
+  },
+  "threads": {
+    "view_one": "View 1 reply",
+    "view_other": "View {{n}} replies",
+    "hide": "Hide replies",
+    "moreOnInstagram_one": "{{n}} more reply · see on Instagram",
+    "moreOnInstagram_other": "{{n}} more replies · see on Instagram",
+    "moreOnInstagramMany": "More replies · see on Instagram"
   }
 }

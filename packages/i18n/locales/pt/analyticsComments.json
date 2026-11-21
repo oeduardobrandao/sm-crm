@@ -127,5 +127,13 @@
     "writeRateLimited": "Muitas ações seguidas. Tente de novo em alguns minutos.",
     "commentGone": "Não foi possível encontrar esse comentário no Instagram. A lista foi atualizada.",
     "ownerNotHideable": "O Instagram não permite ocultar comentários da própria conta."
+  },
+  "threads": {
+    "view_one": "Ver 1 resposta",
+    "view_other": "Ver {{n}} respostas",
+    "hide": "Ocultar respostas",
+    "moreOnInstagram_one": "Mais {{n}} resposta · ver no Instagram",
+    "moreOnInstagram_other": "Mais {{n}} respostas · ver no Instagram",
+    "moreOnInstagramMany": "Mais respostas · ver no Instagram"
   }
 }

@@ -19778,6 +19778,58 @@ button.phone-stat-tile:active {
   height: 26px;
   font-size: 0.7rem;
 }
+.igc-comment:has(+ .igc-thread) {
+  border-bottom: 0;
+  padding-bottom: 4px;
+}
+.igc-thread {
+  list-style: none;
+  padding: 0 18px 12px 60px;
+  border-bottom: 1px solid var(--border-color);
+}
+.igc-panel--compact .igc-thread {
+  padding: 0 14px 12px 56px;
+}
+.igc-thread__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.igc-thread__toggle::before {
+  content: '';
+  width: 22px;
+  height: 1px;
+  background: var(--border-color);
+}
+.igc-thread__toggle:hover {
+  color: var(--text-main);
+}
+.igc-thread__replies {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+}
+.igc-thread__replies > .igc-comment--reply {
+  padding-left: 0;
+  padding-right: 0;
+  border-bottom: 0;
+}
+.igc-thread__more {
+  padding: 4px 0 0;
+  font-size: 0.75rem;
+}
+.igc-thread__more a {
+  color: var(--text-muted);
+  text-decoration: underline;
+}
 .igc-comment--hidden {
   background: var(--surface-hover);
 }
