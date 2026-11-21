@@ -28,6 +28,7 @@ vi.mock('sonner', () => ({
 }));
 
 vi.mock('../../../store', () => ({ getClientes: vi.fn() }));
+vi.mock('@/context/AuthContext', () => ({ useAuth: () => ({ can: () => true }) }));
 
 vi.mock('../../../services/instagram', () => ({
   getInstagramSummary: vi.fn(),
