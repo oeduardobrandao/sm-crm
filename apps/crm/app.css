@@ -19734,6 +19734,10 @@ button.phone-stat-tile:active {
 .igc-panel--compact .igc-filters {
   flex-wrap: nowrap;
   overflow-x: auto;
+  /* The panel aligns its cards to start (fit-content): without this the nowrap row's
+     min-content would widen the card past the screen instead of scrolling. */
+  width: 0;
+  min-width: 100%;
   padding: 10px 14px;
   scrollbar-width: none;
 }
