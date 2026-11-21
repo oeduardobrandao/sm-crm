@@ -55,7 +55,16 @@ Spam e crítica são o que se oculta ou exclui, e os tipos casam com a barra já
 
 ### Backend (`supabase/functions/instagram-analytics`)
 
-**Nova parte de IA `tipos`** em `comments-ai.ts`, só no scope `post`:
+**Classificação `tipos`** em `comments-ai.ts`, só no scope `post`:
+
+- **Fora do contrato compartilhado:** `AnalysisPart`, `AnalysisPrompts`, os builders de
+  prompt e `analyze()` continuam com exatamente `leitura` e `ideias` (a leitura da conta
+  não muda e nunca dispara classificação). A classificação tem builder próprio
+  (`buildClassifyPrompts(comments, lang)` → lotes de `{ prompt, ids: string[] }`, onde
+  `ids[i]` é o id do comentário de índice `i + 1`; a associação índice→id fica só no
+  servidor) e é disparada por `analyzePostRoute` em paralelo com `analyze()`
+  (`Promise.allSettled` dos lotes junto com a chamada de `analyze()`). A entrada vem de
+  `comments` (com `id` e `from_owner`), não de `textsOf`.
 
 - Entrada: os comentários do público (`from_owner === false`, texto não vazio), na ordem da
   lista, que couberem em `PROMPT_COMMENT_CHARS`, numerados a partir de 1 dentro de um
@@ -78,7 +87,7 @@ Spam e crítica são o que se oculta ou exclui, e os tipos casam com a barra já
   estourar o prazo, o builder reduz o lote.
 - `MAX_OUTPUT_TOKENS.tipos`: suficiente para 100 pares (builder ajusta).
   Mesmo modelo (`COMMENTS_MODEL`) e mesmo prazo da análise.
-- `analyze()` dispara tudo junto. `leitura` e `ideias` seguem obrigatórias
+- `analyzePostRoute` espera `analyze()` e os lotes juntos. `leitura` e `ideias` seguem obrigatórias
   (mesmos erros de hoje). Os lotes de `tipos` são opcionais: rejeitado, com timeout ou
   inválido, loga `[comments-routes] comments-analysis tipos failed: <motivo>` e a leitura
   salva sem os tipos daquele lote. A espera total continua sendo a da chamada mais lenta,
