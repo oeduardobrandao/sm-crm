@@ -81,8 +81,8 @@ Conta @mesaas.com.br (staging, escopo `instagram_business_manage_comments`), Gra
   Resposta 200 `{ "id": "<commentId>", "hidden": boolean }`.
 - `DELETE /post-comments/:clientId/:postId/:commentId`. Resposta 200 `{ "id": "<commentId>", "deleted": true }`.
 
-`index.ts` precisa aceitar `DELETE` nesse caminho (CORS: conferir que `buildCorsHeaders`
-inclui `DELETE` em `Access-Control-Allow-Methods`; se não, incluir para esta function).
+`index.ts` já repassa todo método para `handleCommentsRoute` e `buildCorsHeaders` já libera
+`DELETE` (`_shared/cors.ts`): só `parseRoute` muda.
 
 **Fluxo de cada ação**, na ordem:
 
@@ -99,7 +99,7 @@ inclui `DELETE` em `Access-Control-Allow-Methods`; se não, incluir para esta fu
 5. `loadAccount` (escopo OAuth → 409 `missing_comments_scope`, token vencido → caminho
    `TOKEN_EXPIRED` de hoje) e `loadPost` (→ 404 `post_not_found`).
 6. Conferência do comentário: `GET /{commentId}?fields=id,media{id},from{id}` com o token.
-   - Graph `code 100` + `subcode 33` → 404 `comment_not_found`.
+   - Graph `code 100` + `subcode 33` → 404 `comment_unavailable`.
    - `media.id` ausente na resposta → 502 `instagram_unavailable`, sem ação (fail-closed: sem a
      mídia não dá para provar que o comentário é deste post). A Meta não garante esse campo no
      webhook (`instagram-webhook/process.ts`); no GET direto ele veio no spike, mas o código
@@ -112,11 +112,29 @@ inclui `DELETE` em `Access-Control-Allow-Methods`; se não, incluir para esta fu
      (`hidden: false`) passa.
 7. Ação na Graph: `POST /{commentId}?hide=true|false` ou `DELETE /{commentId}`. Resposta sem
    `success: true` → 502 `instagram_unavailable`. Erro com `code 100/subcode 33` aqui também →
-   404 `comment_not_found`.
+   404 `comment_unavailable`.
 8. `insertAuditLog(svc, { conta_id, actor_user_id, action, resource_type: "instagram_comment",
    resource_id: commentId, metadata: { client_id, instagram_post_id } })` com `action`
    `instagram-comment-hide` | `instagram-comment-unhide` | `instagram-comment-delete`. Sem texto,
    sem username. Falha do audit não derruba a ação (o helper já engole).
+
+**`100/33` não quer dizer só "excluído".** A Graph usa o mesmo código para "não existe" e "não
+pode ser carregado por falta de permissão / operação não suportada". Por isso a rota responde
+404 `comment_unavailable` (nome neutro) e o frontend **não** apaga a linha por conta própria:
+ele refaz a lista uma vez e mostra o resultado real (ver Frontend).
+
+**Respostas (replies):** o spike testou só comentário de topo. Os itens soltos de resposta na
+lista já vieram com `hidden` preenchido (`false`), então o selo "Oculto" de respostas sai da
+lista. A primeira tarefa da implementação confere em staging, numa resposta de outra conta:
+(a) se o GET do passo 6 traz `media` para uma resposta; se não trouxer, o passo 6 lê
+`parent_id` e confere o `media` do pai; (b) se hide e delete funcionam numa resposta; se não
+funcionarem, o "⋯" não aparece em respostas e a spec é atualizada antes de seguir.
+
+**Dono da conta:** `from_owner` e a guarda do passo 6 comparam `from.id` com
+`instagram_user_id` **e** com `professional_account_id` (quando não nulo), porque o repositório
+usa os dois para a mesma conta (`instagram-webhook/process.ts`). `loadAccount` passa a
+selecionar `professional_account_id`. `mapComment` hoje descarta `from.id`; ele passa a usá-lo
+só para calcular `from_owner`, sem devolver o id.
 
 Erros de Graph sem classificação especial seguem o padrão atual: `token_expired` sobe como
 `TOKEN_EXPIRED`, o resto vira 502 `instagram_unavailable`, com log só do `kind`.
@@ -154,7 +172,8 @@ graphSubcode === 33`.
 **Serviço `services/instagramComments.ts`:** `request` aceita `'DELETE'` e body JSON;
 `setCommentHidden(clientId, postId, commentId, hidden)` e `deleteComment(clientId, postId,
 commentId)`. Tipos `IgComment` atualizados (`hidden`, `from_owner`, `parent_id`).
-`commentsErrorMessage` ganha `forbidden`, `comment_not_found`, `owner_comment_not_hideable` e
+`commentsErrorMessage` ganha `forbidden`, `comment_not_found`, `comment_unavailable`,
+`owner_comment_not_hideable` e
 `write_rate_limited` (checado antes do ramo genérico de 429; ver Textos).
 
 **`PostCommentsPanel.tsx`:**
@@ -175,10 +194,18 @@ commentId)`. Tipos `IgComment` atualizados (`hidden`, `from_owner`, `parent_id`)
 - Excluir: `AlertDialog` "Excluir comentário?" citando `@usuario: texto` (truncado), "Cancelar"
   e "Excluir". Enquanto a chamada roda, o botão fica em carregamento e o diálogo não fecha
   sozinho. Sucesso: remove a linha (e as respostas dela) do cache e mostra "Comentário
-  excluído". Depois invalida a query em segundo plano para pegar o estado real (respostas
-  apagadas junto, contagem).
-- `comment_not_found` em qualquer ação: remove a linha do cache e mostra "Esse comentário não
-  existe mais no Instagram".
+  excluído".
+- **Recarga da lista depois de excluir:** uma só, com debounce (uns 5 s depois da última
+  exclusão), para pegar respostas apagadas junto e a contagem. Nada de invalidar a cada ação:
+  cada recarga gasta o limite de leitura `ig-comments-read` (120/hora por workspace, o mesmo das
+  aberturas normais da aba). Ocultar/mostrar não recarrega.
+- **Recarga em segundo plano que falha não apaga a lista.** Hoje `if (query.error ||
+  !query.data)` troca o painel inteiro pelo cartão de erro mesmo com dados em cache
+  (`retry: false`). O painel passa a mostrar o cartão de erro só quando não há `data`; com
+  `data`, mantém a lista e mostra o erro numa linha discreta.
+- `comment_not_found` / `comment_unavailable` em qualquer ação: não apaga a linha por conta
+  própria; faz uma recarga da lista e mostra "Não foi possível encontrar esse comentário no
+  Instagram. A lista foi atualizada."
 - Ação em voo: `useUnsavedWork(pendingActions > 0)` (troca silenciosa de deploy espera).
 - O "Mostrando N comentários" do rodapé passa a contar sem duplicatas.
 
@@ -195,7 +222,7 @@ commentId)`. Tipos `IgComment` atualizados (`hidden`, `from_owner`, `parent_id`)
 - Diálogo: título "Excluir comentário?"; corpo "Ele sai do Instagram para todo mundo e não dá
   para desfazer. Se quiser só tirar da vista, use Ocultar."; botões "Cancelar", "Excluir".
 - Toasts: "Comentário oculto", "Comentário visível de novo", "Desfazer", "Comentário excluído",
-  "Esse comentário não existe mais no Instagram".
+  "Não foi possível encontrar esse comentário no Instagram. A lista foi atualizada.".
 - Erros: `forbidden` "Você não tem permissão para moderar comentários."; `write_rate_limited`
   "Muitas ações seguidas. Tente de novo em alguns minutos."; `owner_comment_not_hideable`
   "O Instagram não permite ocultar comentários da própria conta."; genérico o de hoje.
@@ -211,7 +238,8 @@ commentId)`. Tipos `IgComment` atualizados (`hidden`, `from_owner`, `parent_id`)
   `parent_id`, dedupe (lista plana, id único), `total_fetched`, e as duas rotas de análise
   recebendo textos sem duplicata.
 - Vitest: `CommentRow`/painel com e sem `analytics:editar`, opção Ocultar ausente para
-  `from_owner`, otimista + desfazer, diálogo de exclusão, `comment_not_found` remove a linha,
+  `from_owner`, otimista + desfazer, diálogo de exclusão, `comment_unavailable` recarrega a lista
+  sem apagar a linha antes, recarga com debounce, erro de recarga com cache mantém a lista,
   respostas aninhadas.
 - Os testes existentes de `comments-routes` e `PostCommentsPanel` que fixam o formato da lista
   mudam junto (contrato mudou).
@@ -235,8 +263,12 @@ uma linha no `audit_log`.
 - Comentários ocultos continuam na leitura por IA.
 - Ocultar/mostrar sem confirmação, com "Desfazer"; excluir com confirmação.
 - Sem moderação no Hub e no MCP.
+- `100/33` vira `comment_unavailable` e a UI recarrega a lista em vez de dizer "excluído".
+- Dono comparado com `instagram_user_id` e `professional_account_id`.
+- Uma recarga com debounce depois de excluir; erro de recarga com cache não apaga a lista.
+- Se hide/delete não funcionarem em respostas (conferido na primeira tarefa), o menu sai das
+  respostas.
 
 ## Para quem for construir
 
 - Nome exato das funções e componentes, estrutura dos testes.
-- Se `buildCorsHeaders` já libera `DELETE`.
