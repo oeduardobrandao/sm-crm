@@ -19774,6 +19774,16 @@ button.phone-stat-tile:active {
   height: 7px;
   border-radius: 2px;
 }
+.igc-filters__chip[aria-pressed='true'] .igc-filters__dot {
+  box-shadow: 0 0 0 1px var(--card-bg);
+}
+.igc-panel--compact .igc-filters__chip {
+  min-height: 32px;
+  justify-content: center;
+}
+.igc-panel--compact .igc-thread__toggle {
+  min-height: 32px;
+}
 .igc-filters__count {
   color: var(--text-muted);
   font-weight: 600;
@@ -19790,7 +19800,7 @@ button.phone-stat-tile:active {
   gap: 8px;
   margin: 12px 18px;
   padding: 10px 12px;
-  border: 1px dashed var(--border-color);
+  border: 1px dashed color-mix(in srgb, var(--text-light) 55%, transparent);
   border-radius: 12px;
   background: var(--surface-hover);
   color: var(--text-muted);
@@ -19800,10 +19810,10 @@ button.phone-stat-tile:active {
 .igc-panel--compact .igc-filters__notice {
   margin: 10px 14px;
 }
-.igc-filters__notice-text {
+.igc-filters__notice-text p {
   margin: 0;
 }
-.igc-filters__notice-text b {
+.igc-filters__notice-text .igc-filters__notice-title {
   display: block;
   color: var(--text-main);
   font-weight: 600;

@@ -59,6 +59,11 @@ describe('tipoOf', () => {
     expect(tipoOf(c('o', { from_owner: true }), a)).toBeNull();
     expect(tipoOf(c('a'), null)).toBeNull();
   });
+  it('valor fora das categorias conhecidas vira null e não entra na contagem', () => {
+    const bad = analysis({ z: 'inventada' as unknown as Categoria, a: 'apoio' }, 'ok');
+    expect(tipoOf(c('z'), bad)).toBeNull();
+    expect(countByTipo([c('z'), c('a')], bad).apoio).toBe(1);
+  });
 });
 
 describe('countByTipo', () => {

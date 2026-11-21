@@ -16,7 +16,8 @@ export function tiposState(a: StoredAnalysis | null): TiposState {
 /** Type of a comment; null for owner comments, no reading, or no type. */
 export function tipoOf(c: IgComment, a: StoredAnalysis | null): Categoria | null {
   if (c.from_owner || !a) return null;
-  return a.result.tipos?.[c.id] ?? null;
+  const v = a.result.tipos?.[c.id];
+  return v && CATEGORIAS.includes(v) ? v : null;
 }
 
 export function countByTipo(

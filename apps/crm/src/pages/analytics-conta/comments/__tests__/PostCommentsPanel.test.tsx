@@ -721,6 +721,26 @@ describe('PostCommentsPanel: moderação', () => {
     expect(toastMock).toHaveBeenCalledWith('Comentário excluído');
   });
 
+  it('excluir uma resposta aberta atualiza a contagem do pai: sem "ver no Instagram" e sem "1 resposta" velha', async () => {
+    getPostCommentsMock.mockResolvedValue(response({ comments: THREAD }));
+    deleteMock.mockResolvedValueOnce({ id: 'r1', deleted: true });
+    renderPanel();
+    await screen.findByText('Comentário pai');
+    fireEvent.click(screen.getByRole('button', { name: 'Ver 2 respostas' }));
+    await deleteVia('Primeira resposta');
+    expect(screen.queryByText('Primeira resposta')).not.toBeInTheDocument();
+    expect(screen.getByText('Segunda resposta')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /ver no Instagram/ })).not.toBeInTheDocument();
+
+    deleteMock.mockResolvedValueOnce({ id: 'r2', deleted: true });
+    await deleteVia('Segunda resposta');
+    expect(screen.queryByText('Segunda resposta')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Ver \d+ respostas?$/ })).not.toBeInTheDocument();
+    expect(rowOf('Comentário pai').querySelector('.igc-comment__meta')?.textContent).not.toMatch(
+      /resposta/,
+    );
+  });
+
   it('citação do diálogo trunca em 140 caracteres com …', async () => {
     const long = '😀'.repeat(200);
     getPostCommentsMock.mockResolvedValue(
@@ -1147,6 +1167,7 @@ describe('PostCommentsPanel: filtro por tipo', () => {
     fireEvent.click(redo);
     expect(analyzeMock).toHaveBeenCalledWith(42, 'ig-1');
     await waitFor(() => expect(redo).toBeDisabled());
+    expect(redo).toHaveTextContent('Refazendo...');
 
     await act(async () => call.resolve(typedAnalysis()));
     expect(await screen.findByRole('group', FILTER)).toBeInTheDocument();

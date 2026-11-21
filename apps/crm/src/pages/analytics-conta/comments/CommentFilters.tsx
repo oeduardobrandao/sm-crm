@@ -1,3 +1,4 @@
+import { RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useIntlLocale } from '@mesaas/i18n';
 import { Button } from '@/components/ui/button';
@@ -34,17 +35,15 @@ export function CommentFilters({
   if (state === 'legacy' || state === 'failed') {
     return (
       <div className="igc-filters__notice">
-        <p className="igc-filters__notice-text">
-          {state === 'legacy' ? (
-            <>
-              <b>{t('filter.legacyTitle')}</b> {t('filter.legacyText')}
-            </>
-          ) : (
-            t('filter.failedText')
+        <div className="igc-filters__notice-text">
+          {state === 'legacy' && (
+            <p className="igc-filters__notice-title">{t('filter.legacyTitle')}</p>
           )}
-        </p>
+          <p>{state === 'legacy' ? t('filter.legacyText') : t('filter.failedText')}</p>
+        </div>
         <Button variant="outline" className="igc-btn" disabled={redoing} onClick={onRedo}>
-          {t('filter.redo')}
+          <RefreshCw aria-hidden="true" size={14} className={redoing ? 'animate-spin' : ''} />
+          {redoing ? t('analysis.redoing') : t('filter.redo')}
         </Button>
       </div>
     );

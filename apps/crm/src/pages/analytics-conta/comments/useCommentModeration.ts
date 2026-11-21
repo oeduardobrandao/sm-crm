@@ -167,7 +167,16 @@ export function useCommentModeration({
       await deleteComment(clientId, postId, id);
       qc.setQueryData<PostCommentsResponse>(key, (old) =>
         old
-          ? { ...old, comments: old.comments.filter((x) => x.id !== id && x.parent_id !== id) }
+          ? {
+              ...old,
+              comments: old.comments
+                .filter((x) => x.id !== id && x.parent_id !== id)
+                .map((x) =>
+                  x.id === c.parent_id
+                    ? { ...x, replies_count: Math.max(0, x.replies_count - 1) }
+                    : x,
+                ),
+            }
           : old,
       );
       toast(t('moderation.deleted'));
