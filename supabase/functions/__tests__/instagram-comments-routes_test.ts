@@ -829,7 +829,14 @@ Deno.test("hide: fromId ausente segue como não dono", async () => {
 });
 
 Deno.test("hide: sucesso grava audit instagram-comment-hide com metadata só client_id e instagram_post_id", async () => {
-  const { deps, mod } = setup({ body: { hidden: true } });
+  // Sentinelas em campos de onde uma implementação com bug poderia copiar para o audit.
+  const { deps, mod } = setup({
+    body: { hidden: true },
+    tables: {
+      instagram_accounts: [account({ username: "SENTINELA_USER", handle: "SENTINELA_USER" })],
+      instagram_posts: [post("p1", 1, 1, { caption: "SENTINELA_TEXTO" })],
+    },
+  });
   const r = await handleCommentsRoute("POST", HIDE, deps);
   assertEquals(r?.status, 200);
   assertEquals(body(r), { id: "1789000000001", hidden: true });
@@ -839,8 +846,23 @@ Deno.test("hide: sucesso grava audit instagram-comment-hide com metadata só cli
     metadata: { client_id: "7", instagram_post_id: "p1" },
   }]);
   const json = JSON.stringify(mod.audits);
-  assert(!json.includes("comentário"));
-  assert(!json.includes("fulano"));
+  assert(!json.includes("SENTINELA"));
+  assert(!json.includes("enc"));
+});
+
+Deno.test("hide: cliente fora do escopo (verifyClientOwnership rejeita) propaga e não toca em nada", async () => {
+  const { deps, mod, calls } = setup({ body: { hidden: true } });
+  deps.verifyClientOwnership = () => Promise.reject(new Error("Unauthorized: client not in workspace"));
+  let thrown: unknown = null;
+  try {
+    await handleCommentsRoute("POST", HIDE, deps);
+  } catch (e) {
+    thrown = e;
+  }
+  assert(thrown instanceof Error && thrown.message.startsWith("Unauthorized"));
+  assertEquals(mod.perm.length, 0);
+  assertEquals(calls.rate.length, 0);
+  assertEquals(mod.refs.length + mod.hides.length + mod.deletes.length + mod.audits.length, 0);
 });
 
 Deno.test("unhide: sucesso grava instagram-comment-unhide", async () => {
