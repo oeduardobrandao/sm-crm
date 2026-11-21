@@ -474,3 +474,26 @@ Deno.test("validateTipos rejeita formato errado", () => {
 Deno.test("validateTipos sem ids devolve {}", () => {
   assertEquals(validateTipos({ tipos: {} }, []), {});
 });
+
+Deno.test("validateTipos ignora valores herdados de Object.prototype", () => {
+  assertEquals(
+    validateTipos({ tipos: { "1": "constructor", "2": "a" } }, ["10", "20"]),
+    { "20": "apoio" },
+  );
+  assertEquals(
+    validateTipos({ tipos: { "1": "__proto__", "2": "toString", "3": "valueOf", "4": "a" } }, [
+      "1",
+      "2",
+      "3",
+      "4",
+    ]),
+    null,
+  );
+});
+
+Deno.test("validateTipos: a primeira ocorrência de um índice vence, mesmo inválida", () => {
+  assertEquals(
+    validateTipos({ tipos: { "1": "x", "01": "a", "2": "c" } }, ["10", "20"]),
+    { "20": "critica" },
+  );
+});

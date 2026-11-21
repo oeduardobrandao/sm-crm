@@ -236,8 +236,9 @@ export function validateTipos(
     if (seen.has(idx)) continue;
     seen.add(idx);
     const val = v.trim().toLowerCase();
-    const cat: Categoria | undefined = TIPO_LETTERS[val] ??
-      (DIST_KEYS.find((d) => d === val));
+    const cat: Categoria | undefined = Object.hasOwn(TIPO_LETTERS, val)
+      ? TIPO_LETTERS[val]
+      : DIST_KEYS.find((d) => d === val);
     if (cat) out[ids[idx - 1]] = cat;
   }
   if (Object.keys(out).length * 2 < ids.length) return null;
