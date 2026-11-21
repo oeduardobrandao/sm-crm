@@ -71,15 +71,25 @@ export function useCommentModeration({
   const inFlight = useRef(new Set<string>());
   const mounted = useRef(true);
   const reloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Key of the pending debounced reload, for the unmount cleanup.
+  const reloadKey = useRef<unknown[] | null>(null);
 
+  // `qc` is stable, so this runs once: the cleanup is the unmount.
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
-      if (reloadTimer.current) clearTimeout(reloadTimer.current);
-      reloadTimer.current = null;
+      if (reloadTimer.current) {
+        clearTimeout(reloadTimer.current);
+        reloadTimer.current = null;
+        // The locally filtered list (stale counts, 5 min staleTime) must not be served as
+        // fresh on the next open; mark it stale without spending a fetch now.
+        if (reloadKey.current) {
+          void qc.invalidateQueries({ queryKey: reloadKey.current, refetchType: 'none' });
+        }
+      }
     };
-  }, []);
+  }, [qc]);
 
   // A silent deploy swap waits while a moderation call is in flight.
   useUnsavedWork(pending.size > 0);
@@ -114,6 +124,7 @@ export function useCommentModeration({
       return;
     }
     cancelScheduledReload();
+    reloadKey.current = key;
     reloadTimer.current = setTimeout(() => {
       reloadTimer.current = null;
       void qc.invalidateQueries({ queryKey: key });

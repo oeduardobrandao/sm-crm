@@ -731,6 +731,43 @@ describe('PostCommentsPanel: moderação', () => {
     expect(screen.getByText('Comentário D')).toBeInTheDocument();
   });
 
+  it('sair da tela com a recarga pendente marca a lista como velha sem buscar', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    getPostCommentsMock.mockResolvedValue(response({ comments: THREAD }));
+    deleteMock.mockResolvedValue({ id: 'q', deleted: true });
+    const { client, unmount } = renderPanel();
+    await screen.findByText('Outro comentário');
+    await deleteVia('Outro comentário');
+    await act(() => vi.advanceTimersByTimeAsync(2000));
+    const key = ['ig-post-comments', 42, 'ig-1'];
+    expect(client.getQueryState(key)?.isInvalidated).toBe(false);
+    unmount();
+    expect(client.getQueryState(key)?.isInvalidated).toBe(true);
+    await act(() => vi.advanceTimersByTimeAsync(10000));
+    expect(getPostCommentsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('exclusão bem-sucedida seguida de comment_unavailable recarrega uma vez só', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    getPostCommentsMock.mockResolvedValue(response({ comments: THREAD }));
+    deleteMock.mockResolvedValueOnce({ id: 'q', deleted: true });
+    setHiddenMock.mockRejectedValueOnce(new CommentsApiError('comment_unavailable', 404));
+    renderPanel();
+    await screen.findByText('Outro comentário');
+    await deleteVia('Outro comentário');
+    expect(getPostCommentsMock).toHaveBeenCalledTimes(1);
+
+    const menu = await openMenu(rowOf('Comentário pai'));
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Ocultar comentário' }));
+    await waitFor(() => expect(getPostCommentsMock).toHaveBeenCalledTimes(2));
+    expect(toastMock.error).toHaveBeenCalledWith(
+      'Não foi possível encontrar esse comentário no Instagram. A lista foi atualizada.',
+    );
+    // A recarga imediata cancelou a do debounce.
+    await act(() => vi.advanceTimersByTimeAsync(6000));
+    expect(getPostCommentsMock).toHaveBeenCalledTimes(2);
+  });
+
   it('comment_unavailable não apaga a linha localmente; recarrega a lista e mostra error.commentGone', async () => {
     const reload = deferred<PostCommentsResponse>();
     getPostCommentsMock
