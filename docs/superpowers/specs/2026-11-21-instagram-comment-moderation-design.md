@@ -93,15 +93,23 @@ inclui `DELETE` em `Access-Control-Allow-Methods`; se não, incluir para esta fu
    `_shared/permissions.ts`. Falso → 403 `forbidden`. (O handler recebe `userId` e `contaId`
    em `CommentsRouteDeps`; injetar `hasPermission` como dependência para teste.)
 4. Rate limit separado da leitura: `ig-comments-write:${contaId}`, 120 por hora. Estourou →
-   429 `rate_limited`.
+   429 `write_rate_limited` (código próprio: `commentsErrorMessage` hoje trata todo 429 como o
+   limite de análise, então o frontend checa `write_rate_limited` antes do ramo genérico de
+   429).
 5. `loadAccount` (escopo OAuth → 409 `missing_comments_scope`, token vencido → caminho
    `TOKEN_EXPIRED` de hoje) e `loadPost` (→ 404 `post_not_found`).
 6. Conferência do comentário: `GET /{commentId}?fields=id,media{id},from{id}` com o token.
    - Graph `code 100` + `subcode 33` → 404 `comment_not_found`.
+   - `media.id` ausente na resposta → 502 `instagram_unavailable`, sem ação (fail-closed: sem a
+     mídia não dá para provar que o comentário é deste post). A Meta não garante esse campo no
+     webhook (`instagram-webhook/process.ts`); no GET direto ele veio no spike, mas o código
+     não pode supor.
    - `media.id !== post.instagram_post_id` → 404 `comment_not_found` (não revela que o
      comentário existe em outro post).
    - Ocultar (`hidden: true`) quando `from.id === account.instagram_user_id` → 409
-     `owner_comment_not_hideable`. Mostrar (`hidden: false`) passa.
+     `owner_comment_not_hideable`. `from.id` ausente: segue como "não é do dono" (o
+     frontend já não oferece Ocultar para `from_owner`, que vem da lista) e loga o caso. Mostrar
+     (`hidden: false`) passa.
 7. Ação na Graph: `POST /{commentId}?hide=true|false` ou `DELETE /{commentId}`. Resposta sem
    `success: true` → 502 `instagram_unavailable`. Erro com `code 100/subcode 33` aqui também →
    404 `comment_not_found`.
@@ -125,22 +133,29 @@ graphSubcode === 33`.
 - `IgComment` ganha `hidden: boolean`, `from_owner: boolean` (calculado no servidor:
   `from.id === account.instagram_user_id`; o `from.id` em si não vai para o cliente) e
   `parent_id: string | null`.
-- Respostas soltas: se `parent_id` vier no item, ele é resposta. Se o campo não vier na lista
-  (não verificado no spike), derivar o pai pelo `replies{id}` que já é buscado. A resposta da
-  rota passa a devolver os comentários de topo, cada um com `replies: IgComment[]` (as respostas
-  encontradas na página), em vez de itens duplicados. Resposta cujo pai não veio na página
-  aparece como item de topo.
-- A leitura por IA (`textsOf`) passa a usar a lista sem duplicatas. Comentários ocultos
-  continuam entrando na análise (seguem sendo comentários do post).
-- `total_fetched` conta comentários + respostas sem duplicar.
+- **A resposta continua sendo uma lista plana** `comments[]` (compatível com o frontend antigo,
+  que só renderiza `data.comments`; aninhar no servidor sumiria com as respostas durante o
+  deploy e depois de um rollback). O que muda: cada id aparece uma vez só, e cada item traz
+  `parent_id`. Quem aninha é o frontend novo, agrupando por `parent_id`; resposta cujo pai não
+  está na lista aparece como item de topo. `replies_count`/`replies_more` continuam.
+- **Dedupe e `parent_id` ficam em `fetchMediaComments`** (`comments-graph.ts`), que as três
+  rotas usam: lista, `analyzePostRoute` e `accountRoute`. Assim a leitura por IA também para de
+  contar resposta duas vezes. Comentários ocultos continuam entrando na análise (seguem sendo
+  comentários do post).
+- **Origem do `parent_id`:** primeira tarefa da implementação é conferir em staging se
+  `parent_id` vem em `/{media-id}/comments` (o spike só pediu no GET do comentário). Se vier,
+  ele é a única fonte. Se não vier, deriva do `replies.limit(25){id}` já buscado, e uma resposta
+  além das 25 primeiras de um comentário aparece como item de topo (caso raro, aceito e citado
+  no teste).
+- `total_fetched` conta itens sem duplicar.
 
 ### Frontend (`apps/crm/src`)
 
 **Serviço `services/instagramComments.ts`:** `request` aceita `'DELETE'` e body JSON;
 `setCommentHidden(clientId, postId, commentId, hidden)` e `deleteComment(clientId, postId,
-commentId)`. Tipos `IgComment` atualizados (`hidden`, `from_owner`, `parent_id`, `replies`).
+commentId)`. Tipos `IgComment` atualizados (`hidden`, `from_owner`, `parent_id`).
 `commentsErrorMessage` ganha `forbidden`, `comment_not_found`, `owner_comment_not_hideable` e
-o `rate_limited` de escrita (texto próprio, ver Textos).
+`write_rate_limited` (checado antes do ramo genérico de 429; ver Textos).
 
 **`PostCommentsPanel.tsx`:**
 
@@ -181,7 +196,7 @@ o `rate_limited` de escrita (texto próprio, ver Textos).
   para desfazer. Se quiser só tirar da vista, use Ocultar."; botões "Cancelar", "Excluir".
 - Toasts: "Comentário oculto", "Comentário visível de novo", "Desfazer", "Comentário excluído",
   "Esse comentário não existe mais no Instagram".
-- Erros: `forbidden` "Você não tem permissão para moderar comentários."; `rate_limited` (escrita)
+- Erros: `forbidden` "Você não tem permissão para moderar comentários."; `write_rate_limited`
   "Muitas ações seguidas. Tente de novo em alguns minutos."; `owner_comment_not_hideable`
   "O Instagram não permite ocultar comentários da própria conta."; genérico o de hoje.
 - Sem travessão (em-dash) em nenhum texto.
@@ -190,9 +205,11 @@ o `rate_limited` de escrita (texto próprio, ver Textos).
 
 - Deno (`supabase/functions/instagram-analytics/__tests__/`): rotas novas com deps falsas
   cobrindo 403 sem permissão, 404 id inválido, 404 comentário de outro post, 404 subcode 33,
-  409 ocultar comentário do dono, 409 sem escopo, 429, sucesso de hide/unhide/delete com audit
-  sem texto/username, `TOKEN_EXPIRED` propagado. Lista: `hidden`/`from_owner`/`parent_id`,
-  dedupe de respostas, `total_fetched`.
+  409 ocultar comentário do dono, 409 sem escopo, 429 `write_rate_limited`, 502 com `media`
+  ausente (sem chamada de escrita na Graph), sucesso de hide/unhide/delete com audit sem
+  texto/username, `TOKEN_EXPIRED` propagado. `fetchMediaComments`: `hidden`/`from_owner`/
+  `parent_id`, dedupe (lista plana, id único), `total_fetched`, e as duas rotas de análise
+  recebendo textos sem duplicata.
 - Vitest: `CommentRow`/painel com e sem `analytics:editar`, opção Ocultar ausente para
   `from_owner`, otimista + desfazer, diálogo de exclusão, `comment_not_found` remove a linha,
   respostas aninhadas.
@@ -201,11 +218,11 @@ o `rate_limited` de escrita (texto próprio, ver Textos).
 
 ### Deploy e rollback
 
-Sem migration. Ordem: (1) redeploy de `instagram-analytics` (o frontend antigo ignora os
-campos novos; a lista nova sem duplicatas é compatível porque o frontend antigo só lê
-`comments[]`. Conferir que o frontend antigo não quebra com `replies` como array de objetos:
-hoje ele lê `replies_count`/`replies_more`, então manter esses dois campos na resposta);
-(2) merge (Vercel publica o frontend). Rollback: frontend primeiro; a function pode ficar.
+Sem migration. Ordem: (1) redeploy de `instagram-analytics` (o frontend antigo segue lendo
+`comments[]` plano; só deixa de ver as duplicatas e ignora `hidden`, `from_owner` e
+`parent_id`); (2) merge (Vercel publica o frontend). Rollback: frontend primeiro; a function
+pode ficar. Voltar só a function também é seguro: o frontend novo, sem `parent_id`, mostra a
+lista plana e sem o menu de ações não quebra (tratar campos ausentes como `false`/`null`).
 
 Antes do merge: em staging, ocultar/mostrar/excluir um comentário real pela UI nova e conferir
 uma linha no `audit_log`.
@@ -222,5 +239,4 @@ uma linha no `audit_log`.
 ## Para quem for construir
 
 - Nome exato das funções e componentes, estrutura dos testes.
-- Se o `parent_id` vem na lista (senão, derivar pelo `replies{id}`).
 - Se `buildCorsHeaders` já libera `DELETE`.
