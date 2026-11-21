@@ -76,6 +76,7 @@ class GraphFailure extends Error {}
 interface Account {
   id: string;
   instagram_user_id: string;
+  professional_account_id: string | null;
   encrypted_access_token: string;
 }
 
@@ -130,10 +131,14 @@ function toStored(row: Record<string, unknown>): StoredAnalysis {
   };
 }
 
+function ownerIdsOf(account: Account): string[] {
+  return [account.instagram_user_id, account.professional_account_id].filter((v): v is string => Boolean(v));
+}
+
 async function loadAccount(deps: CommentsRouteDeps, clientId: string): Promise<Account | RouteResult> {
   const { data, error } = await deps.svc
     .from("instagram_accounts")
-    .select("id, instagram_user_id, encrypted_access_token, authorization_status, permissions")
+    .select("id, instagram_user_id, professional_account_id, encrypted_access_token, authorization_status, permissions")
     .eq("client_id", clientId)
     .maybeSingle();
   if (error) throw new Error(`account query failed: ${error.message}`);
@@ -152,6 +157,7 @@ async function loadAccount(deps: CommentsRouteDeps, clientId: string): Promise<A
   return {
     id: String(data.id),
     instagram_user_id: String(data.instagram_user_id),
+    professional_account_id: data.professional_account_id ? String(data.professional_account_id) : null,
     encrypted_access_token: String(data.encrypted_access_token),
   };
 }
@@ -204,7 +210,7 @@ async function loadStored(
 async function fetchOrFail(
   deps: CommentsRouteDeps,
   route: string,
-  args: { mediaId: string; token: string; max: number; deadlineAt: number },
+  args: { mediaId: string; token: string; max: number; deadlineAt: number; ownerIds: string[] },
 ): Promise<{ comments: IgComment[]; truncated: boolean }> {
   try {
     return await deps.fetchComments({ now: deps.now }, args);
@@ -345,6 +351,7 @@ async function listRoute(
     token,
     max: POST_MAX_COMMENTS,
     deadlineAt: start + REQUEST_BUDGET_MS,
+    ownerIds: ownerIdsOf(account),
   });
   const cached = await loadStored(deps, account, "post", post.instagram_post_id);
   return {
@@ -375,6 +382,7 @@ async function analyzePostRoute(
     token,
     max: POST_MAX_COMMENTS,
     deadlineAt: start + FETCH_BUDGET_MS,
+    ownerIds: ownerIdsOf(account),
   });
   const texts = fitTexts(textsOf(comments), PROMPT_COMMENT_CHARS);
   if (texts.length < POST_MIN) return err(422, "too_few_comments");
@@ -440,6 +448,7 @@ async function accountRoute(
         token,
         max: ACCOUNT_PER_POST,
         deadlineAt,
+        ownerIds: ownerIdsOf(account),
       })
     ),
   );

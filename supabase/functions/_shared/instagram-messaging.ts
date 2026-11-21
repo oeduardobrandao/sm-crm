@@ -47,7 +47,7 @@ export function classifyIgError(err: unknown): IgErrorKind {
 
 export async function igRequest(
   deps: IgMessagingDeps,
-  method: "GET" | "POST",
+  method: "GET" | "POST" | "DELETE",
   path: string,
   token: string,
   body?: unknown,

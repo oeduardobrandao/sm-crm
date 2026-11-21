@@ -89,6 +89,9 @@ function comments(n: number, prefix = "c"): IgComment[] {
     like_count: 0,
     replies_count: 0,
     replies_more: false,
+    hidden: false,
+    from_owner: false,
+    parent_id: null,
   }));
 }
 
@@ -633,4 +636,15 @@ Deno.test("as duas partes da IA são juntadas antes de validar", async () => {
   });
   const r = await handleCommentsRoute("POST", "/comments-analysis/7/p1", deps);
   assertEquals(r?.status, 200);
+});
+
+Deno.test("análise do post recebe textos sem duplicata", async () => {
+  const { deps, calls } = setup({ graph: () => comments(8) });
+  const r = await handleCommentsRoute("POST", "/comments-analysis/7/p1", deps);
+  assertEquals(r?.status, 200);
+  const prompt = calls.ai[0].prompt;
+  for (let i = 0; i < 8; i++) {
+    const t = `comentário ${i} de c`;
+    assertEquals(prompt.split(t).length - 1, 1, `texto ${i} aparece uma vez`);
+  }
 });
