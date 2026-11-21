@@ -97,6 +97,23 @@
     "alreadySaved": "Esta sugestão já estava salva em Ideias.",
     "origin": "Origem: comentários {{source}} ({{reason}})"
   },
+  "moderation": {
+    "actions": "Ações do comentário",
+    "hide": "Ocultar comentário",
+    "show": "Mostrar comentário",
+    "delete": "Excluir comentário",
+    "hiddenBadge": "Oculto",
+    "ownerBadge": "Você",
+    "confirmTitle": "Excluir comentário?",
+    "confirmBody": "Ele sai do Instagram para todo mundo e não dá para desfazer. Se quiser só tirar da vista, use Ocultar.",
+    "cancel": "Cancelar",
+    "confirmDelete": "Excluir",
+    "hidden": "Comentário oculto",
+    "shown": "Comentário visível de novo",
+    "undo": "Desfazer",
+    "deleted": "Comentário excluído",
+    "refreshFailed": "Não foi possível atualizar a lista agora."
+  },
   "error": {
     "rateLimited": "Muitas análises seguidas. Tente de novo em alguns minutos.",
     "missingScope": "Reconecte o Instagram deste cliente para ver os comentários.",
@@ -105,6 +122,10 @@
     "aiUnavailable": "A análise por IA está indisponível no momento.",
     "aiTimeout": "A análise demorou demais. Tente de novo.",
     "aiBadOutput": "Não foi possível gerar a análise. Tente de novo.",
-    "generic": "Não foi possível carregar os comentários."
+    "generic": "Não foi possível carregar os comentários.",
+    "forbidden": "Você não tem permissão para moderar comentários.",
+    "writeRateLimited": "Muitas ações seguidas. Tente de novo em alguns minutos.",
+    "commentGone": "Não foi possível encontrar esse comentário no Instagram. A lista foi atualizada.",
+    "ownerNotHideable": "O Instagram não permite ocultar comentários da própria conta."
   }
 }
