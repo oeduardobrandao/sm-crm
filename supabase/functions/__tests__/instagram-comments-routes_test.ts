@@ -111,9 +111,17 @@ function goodRaw(over: Record<string, unknown> = {}) {
   };
 }
 
+/** Responde `{ tipos: { [i]: letter } }` para cada linha `N| ` do prompt. */
+function allTipos(prompt: string, letter = "a") {
+  const tipos: Record<string, string> = {};
+  for (const m of prompt.matchAll(/^(\d+)\| /gm)) tipos[m[1]] = letter;
+  return { tipos };
+}
+
 interface Calls {
   graph: { mediaId: string; max: number; deadlineAt: number }[];
   ai: { prompt: string; deadlineAt: number }[];
+  tipos: { prompt: string; deadlineAt: number; maxTokens?: number }[];
   rate: string[];
 }
 
@@ -121,6 +129,7 @@ function setup(opts: {
   tables?: Record<string, Row[]>;
   graph?: (mediaId: string, max: number) => IgComment[] | Error;
   aiRaw?: () => unknown;
+  tiposRaw?: (prompt: string) => unknown;
   ai?: { accountId: string; token: string } | null;
   lang?: "pt" | "en";
   rateOk?: boolean;
@@ -136,7 +145,7 @@ function setup(opts: {
     instagram_comment_analyses: [],
   };
   const { svc, upserts } = makeSvc(tables);
-  const calls: Calls = { graph: [], ai: [], rate: [] };
+  const calls: Calls = { graph: [], ai: [], tipos: [], rate: [] };
   const mod = {
     perm: [] as string[],
     refs: [] as string[],
@@ -195,6 +204,14 @@ function setup(opts: {
       },
     },
     callAi: (_d, args) => {
+      if (args.prompt.includes('{"tipos":')) {
+        calls.tipos.push({ prompt: args.prompt, deadlineAt: args.deadlineAt, maxTokens: args.maxTokens });
+        try {
+          return Promise.resolve((opts.tiposRaw ?? allTipos)(args.prompt));
+        } catch (e) {
+          return Promise.reject(e);
+        }
+      }
       calls.ai.push({ prompt: args.prompt, deadlineAt: args.deadlineAt });
       try {
         return Promise.resolve(opts.aiRaw ? opts.aiRaw() : goodRaw());
@@ -922,4 +939,161 @@ Deno.test("GET /post-comments/... e POST de análise continuam roteando", async 
   assertEquals(await handleCommentsRoute("GET", HIDE, deps), null);
   assertEquals(await handleCommentsRoute("POST", DEL, deps), null);
   assertEquals(await handleCommentsRoute("DELETE", "/post-comments/7/p1", deps), null);
+});
+
+// ---- classificação por tipo ----
+
+function silenceConsole() {
+  const errors: string[] = [];
+  const logs: unknown[][] = [];
+  const oe = console.error;
+  const ol = console.log;
+  console.error = (...a: unknown[]) => void errors.push(a.map(String).join(" "));
+  console.log = (...a: unknown[]) => void logs.push(a);
+  return {
+    errors,
+    logs,
+    restore() {
+      console.error = oe;
+      console.log = ol;
+    },
+  };
+}
+
+async function withConsole<T>(fn: (c: ReturnType<typeof silenceConsole>) => Promise<T>): Promise<T> {
+  const c = silenceConsole();
+  try {
+    return await fn(c);
+  } finally {
+    c.restore();
+  }
+}
+
+Deno.test("POST classifica os comentários do público e salva tipos com a leitura", async () => {
+  const all = [...comments(8), { ...comments(1, "dono")[0], text: "resposta do dono", from_owner: true }];
+  const { deps, calls, upserts } = setup({ graph: () => all });
+  const r = await withConsole(() => handleCommentsRoute("POST", "/comments-analysis/7/p1", deps));
+  assertEquals(r?.status, 200);
+  assertEquals(calls.tipos.length, 1);
+  assertEquals(calls.tipos[0].deadlineAt, NOW + 50_000);
+  assertEquals(calls.tipos[0].maxTokens, 900);
+  assert(!calls.tipos[0].prompt.includes("resposta do dono"));
+  assert(!calls.tipos[0].prompt.includes("fulano_"));
+  const saved = upserts[0].row.result as { tipos: Record<string, string>; tipos_status: string };
+  assertEquals(saved.tipos_status, "ok");
+  assertEquals(Object.keys(saved.tipos).sort(), comments(8).map((c) => c.id).sort());
+  assert(Object.values(saved.tipos).every((v) => v === "apoio"));
+  assert(!("dono0" in saved.tipos));
+  assertEquals(body(r).analysis.result.tipos, saved.tipos);
+});
+
+Deno.test("POST com 150 comentários manda dois lotes em paralelo", async () => {
+  const { deps, calls } = setup({ graph: () => comments(150) });
+  const r = await withConsole(() => handleCommentsRoute("POST", "/comments-analysis/7/p1", deps));
+  assertEquals(r?.status, 200);
+  assertEquals(calls.tipos.length, 2);
+  const lines = calls.tipos.map((t) => [...t.prompt.matchAll(/^\d+\| /gm)].length).sort((a, b) => b - a);
+  assertEquals(lines, [100, 50]);
+});
+
+Deno.test("lote de tipos que falha deixa os ids dele com null e a leitura salva", async () => {
+  const { deps, upserts } = setup({
+    graph: () => comments(150),
+    tiposRaw: (prompt) => {
+      if (prompt.includes("100| ")) throw new AiTimeoutError("t");
+      return allTipos(prompt);
+    },
+  });
+  const r = await withConsole(async (c) => {
+    const res = await handleCommentsRoute("POST", "/comments-analysis/7/p1", deps);
+    assert(c.errors.some((e) => e.includes("[comments-routes] comments-analysis tipos failed: timeout")));
+    return res;
+  });
+  assertEquals(r?.status, 200);
+  const saved = upserts[0].row.result as { tipos: Record<string, string | null>; tipos_status: string };
+  assertEquals(saved.tipos_status, "ok");
+  const vals = Object.values(saved.tipos);
+  assertEquals(vals.length, 150);
+  assertEquals(vals.filter((v) => v === null).length, 100);
+  assertEquals(vals.filter((v) => v === "apoio").length, 50);
+});
+
+Deno.test("todos os lotes falhando gravam tipos_status failed sem derrubar a leitura", async () => {
+  const { deps, upserts } = setup({
+    tiposRaw: () => {
+      throw new Error("ai_unavailable");
+    },
+  });
+  const r = await withConsole(() => handleCommentsRoute("POST", "/comments-analysis/7/p1", deps));
+  assertEquals(r?.status, 200);
+  assertEquals(upserts.length, 1);
+  const saved = upserts[0].row.result as { tipos: Record<string, string | null>; tipos_status: string };
+  assertEquals(saved.tipos_status, "failed");
+  assertEquals(Object.keys(saved.tipos).length, 8);
+  assert(Object.values(saved.tipos).every((v) => v === null));
+});
+
+Deno.test("saída de tipos inválida conta como falha do lote", async () => {
+  const { deps, upserts } = setup({ tiposRaw: () => ({ tipos: { "1": "a" } }) });
+  const r = await withConsole(async (c) => {
+    const res = await handleCommentsRoute("POST", "/comments-analysis/7/p1", deps);
+    assert(c.errors.some((e) => e.includes("validation")));
+    return res;
+  });
+  assertEquals(r?.status, 200);
+  assertEquals((upserts[0].row.result as { tipos_status: string }).tipos_status, "failed");
+});
+
+Deno.test("falha da leitura continua mandando no status mesmo com tipos ok", async () => {
+  const { deps, upserts } = setup({
+    aiRaw: () => {
+      throw new AiTimeoutError("t");
+    },
+  });
+  const r = await withConsole(() => handleCommentsRoute("POST", "/comments-analysis/7/p1", deps));
+  assertEquals(r?.status, 504);
+  assertEquals(upserts.length, 0);
+});
+
+Deno.test("post só com comentários do dono não chama a classificação", async () => {
+  const owner = comments(8).map((c) => ({ ...c, from_owner: true }));
+  const { deps, calls, upserts } = setup({ graph: () => owner });
+  const r = await withConsole(() => handleCommentsRoute("POST", "/comments-analysis/7/p1", deps));
+  assertEquals(r?.status, 200);
+  assertEquals(calls.tipos.length, 0);
+  const saved = upserts[0].row.result as { tipos: unknown; tipos_status: string };
+  assertEquals(saved.tipos_status, "ok");
+  assertEquals(saved.tipos, {});
+});
+
+Deno.test("leitura da conta não classifica", async () => {
+  const { deps, calls, upserts } = setup({
+    tables: {
+      instagram_accounts: [account()],
+      instagram_posts: [post("p1", 12), post("p2", 8)],
+      instagram_comment_analyses: [],
+    },
+    graph: (id) => comments(8, id),
+  });
+  const r = await withConsole(() => handleCommentsRoute("POST", "/comments-analysis-account/7", deps));
+  assertEquals(r?.status, 200);
+  assertEquals(calls.tipos.length, 0);
+  const saved = upserts[0].row.result as Record<string, unknown>;
+  assert(!("tipos" in saved));
+  assert(!("tipos_status" in saved));
+});
+
+Deno.test("POST loga duração e lotes da classificação sem texto", async () => {
+  const { deps } = setup();
+  await withConsole(async (c) => {
+    await handleCommentsRoute("POST", "/comments-analysis/7/p1", deps);
+    const line = c.logs.find((a) => String(a[0]).startsWith("[comments-routes] comments-analysis tipos"));
+    assert(line, "log de tipos ausente");
+    const text = String(line[0]);
+    assert(text.includes("ms=") && text.includes("batches="));
+    for (const a of [...c.logs.flat(), ...c.errors]) {
+      assert(!String(a).includes("comentário "));
+      assert(!String(a).includes("fulano_"));
+    }
+  });
 });
