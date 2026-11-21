@@ -14,12 +14,15 @@ import {
   analyzePostComments,
   commentsErrorMessage,
   getPostComments,
+  type Categoria,
   type PostCommentsResponse,
 } from '../../../services/instagramComments';
 import { sanitizeUrl } from '../../../utils/security';
-import type { Moderation } from './CommentRow';
+import { CommentFilters } from './CommentFilters';
+import { CommentRow, type Moderation } from './CommentRow';
 import { CommentsAnalysisView, countText } from './CommentsAnalysisView';
 import { CommentThread } from './CommentThread';
+import { countByTipo, tipoOf, tiposState, untypedCounts } from './commentTipos';
 import { groupComments } from './groupComments';
 import { ReconnectState, reconnectReason } from './ReconnectState';
 import { useCommentModeration } from './useCommentModeration';
@@ -54,12 +57,17 @@ function CommentsList({
   compact,
   moderation,
   refreshFailed,
+  onRedo,
+  redoing,
 }: {
   data: PostCommentsResponse;
   post: PostAnalytics;
   compact: boolean;
   moderation: Moderation | null;
   refreshFailed: boolean;
+  /** Redo the reading (the panel's `analyze`), from the legacy / failed notice. */
+  onRedo: () => void;
+  redoing: boolean;
 }) {
   const { t } = useTranslation('analyticsComments');
   const locale = useIntlLocale();
@@ -72,26 +80,96 @@ function CommentsList({
       if (!next.delete(id)) next.add(id);
       return next;
     });
-  // Pages by top-level comment; a group always shows with all its replies.
-  const groups = groupComments(data.comments);
-  const shown = groups.slice(0, visible);
-  const remaining = data.comments.length - shown.reduce((n, g) => n + 1 + g.replies.length, 0);
+  const analysis = data.cached_analysis;
+  const state = tiposState(analysis);
+  const counts = countByTipo(data.comments, analysis);
+  const [active, setActive] = useState<Categoria | null>(null);
+  // The chosen type only applies while the reading has types and the list still holds one
+  // of it (deleting the last one, or a redo that failed, falls back to the conversations).
+  const tipo = active && state === 'ok' && counts[active] > 0 ? active : null;
+  if (active !== null && tipo === null) {
+    // Adjust-state-during-render: drop the stale choice so it never comes back on its own.
+    setActive(null);
+    setVisible(COMMENTS_PAGE);
+  }
+  const choose = (next: Categoria | null) => {
+    setActive(next);
+    setVisible(COMMENTS_PAGE);
+  };
+
+  let rows;
+  let remaining;
+  if (tipo) {
+    // Flat list of that type, top-level or reply, in list order.
+    const byId = new Map(data.comments.map((c) => [c.id, c]));
+    const flat = data.comments.filter((c) => tipoOf(c, analysis) === tipo);
+    remaining = Math.max(0, flat.length - visible);
+    rows = flat.slice(0, visible).map((c) => {
+      const parent = c.parent_id && c.parent_id !== c.id ? byId.get(c.parent_id) : undefined;
+      const parentName = parent ? (parent.username || '').replace(/^@/, '') : '';
+      return (
+        <CommentRow
+          key={c.id}
+          c={c}
+          moderation={moderation}
+          tipo={tipo}
+          inReplyTo={parentName || null}
+        />
+      );
+    });
+  } else {
+    // Pages by top-level comment; a group always shows with all its replies.
+    const shown = groupComments(data.comments).slice(0, visible);
+    remaining = data.comments.length - shown.reduce((n, g) => n + 1 + g.replies.length, 0);
+    rows = shown.map((group) => (
+      <CommentThread
+        key={group.comment.id}
+        group={group}
+        open={open.has(group.comment.id)}
+        onToggle={() => toggle(group.comment.id)}
+        moderation={moderation}
+        permalink={post.permalink}
+        tipoFor={(c) => tipoOf(c, analysis)}
+      />
+    ));
+  }
+  const untyped = tipo && analysis ? untypedCounts(data.comments, analysis) : null;
+  const filters = data.comments.length > 0 && (
+    <>
+      <CommentFilters
+        state={state}
+        counts={counts}
+        total={data.comments.length}
+        active={tipo}
+        onChange={choose}
+        onRedo={onRedo}
+        redoing={redoing}
+      />
+      {untyped && untyped.late > 0 && (
+        <p className="igc-filters__note">
+          {t('filter.lateArrivals', {
+            count: untyped.late,
+            n: untyped.late.toLocaleString(locale),
+          })}
+        </p>
+      )}
+      {untyped && untyped.unclassified > 0 && (
+        <p className="igc-filters__note">
+          {t('filter.unclassified', {
+            count: untyped.unclassified,
+            n: untyped.unclassified.toLocaleString(locale),
+          })}
+        </p>
+      )}
+    </>
+  );
   const list =
     data.comments.length === 0 ? (
       <p className="igc-empty">{t('post.empty')}</p>
     ) : (
       <>
         <ul className="igc-comments" aria-label={t('common.comments')}>
-          {shown.map((group) => (
-            <CommentThread
-              key={group.comment.id}
-              group={group}
-              open={open.has(group.comment.id)}
-              onToggle={() => toggle(group.comment.id)}
-              moderation={moderation}
-              permalink={post.permalink}
-            />
-          ))}
+          {rows}
         </ul>
         {remaining > 0 && (
           <Button
@@ -127,6 +205,7 @@ function CommentsList({
         <h3 className="igc-eyebrow">{t('common.comments')}</h3>
         <div className="igc-card igc-card--flush">
           {refreshError}
+          {filters}
           {list}
           {footer}
         </div>
@@ -139,6 +218,7 @@ function CommentsList({
         <h3 className="igc-card__title">{t('common.comments')}</h3>
       </div>
       {refreshError}
+      {filters}
       {list}
       {footer}
     </section>
@@ -311,6 +391,8 @@ export function PostCommentsPanel({
         compact={compact}
         moderation={canModerate ? { compact, pending, hide, remove } : null}
         refreshFailed={query.error != null}
+        onRedo={() => void analyze()}
+        redoing={analyzing}
       />
     </div>
   );

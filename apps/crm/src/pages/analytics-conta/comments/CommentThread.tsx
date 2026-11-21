@@ -60,14 +60,7 @@ export function CommentThread({
           {open && (
             <ul id={repliesId} className="igc-thread__replies">
               {replies.map((r) => (
-                <CommentRow
-                  key={r.id}
-                  c={r}
-                  reply
-                  moderation={moderation}
-                  tipo={tipoFor?.(r)}
-                  inReplyTo={comment.id}
-                />
+                <CommentRow key={r.id} c={r} reply moderation={moderation} tipo={tipoFor?.(r)} />
               ))}
               {moreOnInstagram && (
                 <li className="igc-thread__more">

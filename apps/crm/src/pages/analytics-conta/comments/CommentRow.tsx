@@ -25,12 +25,15 @@ export function CommentRow({
   reply = false,
   moderation,
   hideRepliesCount = false,
+  tipo = null,
+  inReplyTo = null,
 }: {
   c: IgComment;
   reply?: boolean;
   moderation: Moderation | null;
-  /** Rendered in a later step; accepted now so the thread can already pass them. */
+  /** AI type from the reading; null shows nothing (owner, untyped or no reading). */
   tipo?: Categoria | null;
+  /** Parent's username (no `@`), shown only in the flat filtered list. */
   inReplyTo?: string | null;
   /** The thread toggle already says how many replies there are. */
   hideRepliesCount?: boolean;
@@ -67,8 +70,21 @@ export function CommentRow({
           {hidden && <span className="igc-badge">{t('moderation.hiddenBadge')}</span>}
           {when && <span className="igc-comment__when">{` · ${when}`}</span>}
         </span>
+        {inReplyTo && (
+          <span className="igc-comment__reply-to">
+            {t('filter.inReplyTo', { name: inReplyTo })}
+          </span>
+        )}
         <span className="igc-comment__text">{c.text}</span>
-        <span className="igc-comment__meta">{meta}</span>
+        <span className="igc-comment__meta">
+          {meta}
+          {tipo && (
+            <span className="igc-tipo">
+              <span className={`igc-tipo__dot igc-cat--${tipo}`} aria-hidden="true" />
+              {t(`distribution.${tipo}`)}
+            </span>
+          )}
+        </span>
       </div>
       {moderation && (
         <CommentActions

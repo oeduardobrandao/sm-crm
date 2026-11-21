@@ -135,5 +135,18 @@
     "moreOnInstagram_one": "Mais {{n}} resposta · ver no Instagram",
     "moreOnInstagram_other": "Mais {{n}} respostas · ver no Instagram",
     "moreOnInstagramMany": "Mais respostas · ver no Instagram"
+  },
+  "filter": {
+    "ariaLabel": "Filtrar comentários por tipo",
+    "all": "Todos",
+    "lateArrivals_one": "1 comentário chegou depois da leitura e ainda não tem tipo. Refaça a leitura para incluí-lo.",
+    "lateArrivals_other": "{{n}} comentários chegaram depois da leitura e ainda não têm tipo. Refaça a leitura para incluí-los.",
+    "unclassified_one": "1 comentário não foi classificado.",
+    "unclassified_other": "{{n}} comentários não foram classificados.",
+    "inReplyTo": "Em resposta a @{{name}}",
+    "legacyTitle": "Filtre os comentários por tipo",
+    "legacyText": "Esta leitura é anterior ao filtro. Refaça a leitura para classificar cada comentário.",
+    "failedText": "Não deu para classificar os comentários nesta leitura. Refaça a leitura para tentar de novo.",
+    "redo": "Refazer leitura"
   }
 }

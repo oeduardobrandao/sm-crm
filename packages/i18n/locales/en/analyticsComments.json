@@ -135,5 +135,18 @@
     "moreOnInstagram_one": "{{n}} more reply · see on Instagram",
     "moreOnInstagram_other": "{{n}} more replies · see on Instagram",
     "moreOnInstagramMany": "More replies · see on Instagram"
+  },
+  "filter": {
+    "ariaLabel": "Filter comments by type",
+    "all": "All",
+    "lateArrivals_one": "1 comment arrived after the reading and has no type yet. Redo the reading to include it.",
+    "lateArrivals_other": "{{n}} comments arrived after the reading and have no type yet. Redo the reading to include them.",
+    "unclassified_one": "1 comment was not classified.",
+    "unclassified_other": "{{n}} comments were not classified.",
+    "inReplyTo": "Replying to @{{name}}",
+    "legacyTitle": "Filter comments by type",
+    "legacyText": "This reading predates the filter. Redo the reading to classify each comment.",
+    "failedText": "Couldn't classify the comments in this reading. Redo the reading to try again.",
+    "redo": "Redo reading"
   }
 }
