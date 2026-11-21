@@ -97,6 +97,23 @@
     "alreadySaved": "This suggestion was already saved in Ideas.",
     "origin": "Source: comments {{source}} ({{reason}})"
   },
+  "moderation": {
+    "actions": "Comment actions",
+    "hide": "Hide comment",
+    "show": "Show comment",
+    "delete": "Delete comment",
+    "hiddenBadge": "Hidden",
+    "ownerBadge": "You",
+    "confirmTitle": "Delete comment?",
+    "confirmBody": "It is removed from Instagram for everyone and cannot be undone. If you only want it out of sight, use Hide.",
+    "cancel": "Cancel",
+    "confirmDelete": "Delete",
+    "hidden": "Comment hidden",
+    "shown": "Comment visible again",
+    "undo": "Undo",
+    "deleted": "Comment deleted",
+    "refreshFailed": "Could not refresh the list right now."
+  },
   "error": {
     "rateLimited": "Too many analyses in a row. Try again in a few minutes.",
     "missingScope": "Reconnect this client's Instagram to see the comments.",
@@ -105,6 +122,10 @@
     "aiUnavailable": "AI analysis is unavailable right now.",
     "aiTimeout": "The analysis took too long. Try again.",
     "aiBadOutput": "Could not generate the analysis. Try again.",
-    "generic": "Could not load the comments."
+    "generic": "Could not load the comments.",
+    "forbidden": "You do not have permission to moderate comments.",
+    "writeRateLimited": "Too many actions in a row. Try again in a few minutes.",
+    "commentGone": "Could not find this comment on Instagram. The list was refreshed.",
+    "ownerNotHideable": "Instagram does not allow hiding comments from your own account."
   }
 }

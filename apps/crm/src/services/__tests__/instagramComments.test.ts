@@ -1,6 +1,7 @@
 import type { TFunction } from 'i18next';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import pt from '../../../../../packages/i18n/locales/pt/analyticsComments.json';
+import en from '../../../../../packages/i18n/locales/en/analyticsComments.json';
 
 const { i18nMock } = vi.hoisted(() => ({ i18nMock: { language: 'pt' } }));
 vi.mock('@mesaas/i18n', () => ({ i18n: i18nMock }));
@@ -15,8 +16,10 @@ import {
   analyzeAccountComments,
   analyzePostComments,
   commentsErrorMessage,
+  deleteComment,
   getAccountCommentsAnalysis,
   getPostComments,
+  setCommentHidden,
 } from '../instagramComments';
 
 function mockFetch(status: number, body: unknown) {
@@ -110,5 +113,71 @@ describe('instagramComments service', () => {
     expect(commentsErrorMessage(new Error('boom'), t)).toBe(
       'Não foi possível carregar os comentários.',
     );
+  });
+
+  it('setCommentHidden faz POST em /post-comments/:c/:p/:id/hide com {hidden}', async () => {
+    const f = mockFetch(200, { id: 'c1', hidden: true });
+    const r = await setCommentHidden(7, 'm/9', 'c1', true);
+    expect(r).toEqual({ id: 'c1', hidden: true });
+    expect(f.mock.calls[0][0]).toBe(
+      'https://edge.test/functions/v1/instagram-analytics/post-comments/7/m%2F9/c1/hide',
+    );
+    const init = f.mock.calls[0][1];
+    expect(init.method).toBe('POST');
+    expect(init.headers['Content-Type']).toBe('application/json');
+    expect(init.body).toBe(JSON.stringify({ hidden: true }));
+  });
+
+  it('deleteComment faz DELETE sem body', async () => {
+    const f = mockFetch(200, { id: 'c1', deleted: true });
+    expect(await deleteComment(7, 'm9', 'c1')).toEqual({ id: 'c1', deleted: true });
+    expect(f.mock.calls[0][0]).toMatch(/\/post-comments\/7\/m9\/c1$/);
+    const init = f.mock.calls[0][1];
+    expect(init.method).toBe('DELETE');
+    expect(init.body).toBeUndefined();
+    expect(init.headers['Content-Type']).toBeUndefined();
+  });
+
+  it('write_rate_limited usa error.writeRateLimited, não error.rateLimited', () => {
+    const msg = commentsErrorMessage(new CommentsApiError('write_rate_limited', 429), t);
+    expect(msg).toBe('Muitas ações seguidas. Tente de novo em alguns minutos.');
+    expect(msg).not.toBe(pt.error.rateLimited);
+  });
+
+  it('429 rate_limited segue error.rateLimited', () => {
+    expect(commentsErrorMessage(new CommentsApiError('rate_limited', 429), t)).toBe(
+      pt.error.rateLimited,
+    );
+  });
+
+  it('comment_unavailable e comment_not_found usam error.commentGone', () => {
+    for (const code of ['comment_unavailable', 'comment_not_found']) {
+      expect(commentsErrorMessage(new CommentsApiError(code, 404), t)).toBe(
+        'Não foi possível encontrar esse comentário no Instagram. A lista foi atualizada.',
+      );
+    }
+  });
+
+  it('forbidden e owner_comment_not_hideable têm texto próprio', () => {
+    expect(commentsErrorMessage(new CommentsApiError('forbidden', 403), t)).toBe(
+      'Você não tem permissão para moderar comentários.',
+    );
+    expect(commentsErrorMessage(new CommentsApiError('owner_comment_not_hideable', 409), t)).toBe(
+      'O Instagram não permite ocultar comentários da própria conta.',
+    );
+  });
+
+  it('pt e en têm as mesmas chaves em moderation e error', () => {
+    expect(Object.keys(en.moderation).sort()).toEqual(Object.keys(pt.moderation).sort());
+    expect(Object.keys(en.error).sort()).toEqual(Object.keys(pt.error).sort());
+  });
+
+  it('nenhum texto novo tem travessão', () => {
+    const newErrors = ['forbidden', 'writeRateLimited', 'commentGone', 'ownerNotHideable'] as const;
+    for (const lang of [pt, en]) {
+      const values = [...Object.values(lang.moderation), ...newErrors.map((k) => lang.error[k])];
+      expect(values.length).toBeGreaterThan(newErrors.length);
+      for (const v of values) expect(v).not.toContain('—');
+    }
   });
 });

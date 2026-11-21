@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/context/AuthContext';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, formatDistanceToNow, formatDistanceToNowStrict } from 'date-fns';
@@ -17,8 +18,11 @@ import {
   type PostCommentsResponse,
 } from '../../../services/instagramComments';
 import { sanitizeUrl } from '../../../utils/security';
+import { CommentActions } from './CommentActions';
 import { CommentsAnalysisView, countText } from './CommentsAnalysisView';
+import { groupComments } from './groupComments';
 import { ReconnectState, reconnectReason } from './ReconnectState';
+import { useCommentModeration } from './useCommentModeration';
 
 /** Server minimum for a post reading (`too_few_comments` below it). */
 const MIN_COMMENTS = 5;
@@ -47,7 +51,23 @@ export function postSourceLabel(post: PostAnalytics, t: TFunction, locale: Local
   return t('post.sourceWithDate', { kind, date: format(d, t('post.dateFormat'), { locale }) });
 }
 
-function CommentRow({ c }: { c: IgComment }) {
+/** What a row needs to show the "⋯" menu; absent when the user can't moderate. */
+interface Moderation {
+  compact: boolean;
+  pending: ReadonlySet<string>;
+  hide(c: IgComment, hidden: boolean): Promise<void>;
+  remove(c: IgComment): Promise<void>;
+}
+
+function CommentRow({
+  c,
+  reply = false,
+  moderation,
+}: {
+  c: IgComment;
+  reply?: boolean;
+  moderation: Moderation | null;
+}) {
   const { t } = useTranslation('analyticsComments');
   const dfLocale = useDateFnsLocale();
   const locale = useIntlLocale();
@@ -63,19 +83,34 @@ function CommentRow({ c }: { c: IgComment }) {
     .filter(Boolean)
     .join(' · ');
   const when = relative(c.timestamp, dfLocale);
+  const hidden = c.hidden === true;
+  const className = ['igc-comment', reply && 'igc-comment--reply', hidden && 'igc-comment--hidden']
+    .filter(Boolean)
+    .join(' ');
   return (
-    <li className="igc-comment">
+    <li className={className}>
       <span className="igc-comment__avatar" aria-hidden="true">
         {initial}
       </span>
       <div className="igc-comment__body">
         <span className="igc-comment__head">
           <b>{name ? `@${name}` : t('post.unknownUser')}</b>
+          {c.from_owner && <span className="igc-badge">{t('moderation.ownerBadge')}</span>}
+          {hidden && <span className="igc-badge">{t('moderation.hiddenBadge')}</span>}
           {when && <span className="igc-comment__when">{` · ${when}`}</span>}
         </span>
         <span className="igc-comment__text">{c.text}</span>
         <span className="igc-comment__meta">{meta}</span>
       </div>
+      {moderation && (
+        <CommentActions
+          comment={c}
+          compact={moderation.compact}
+          disabled={moderation.pending.has(c.id)}
+          onHide={(next) => void moderation.hide(c, next)}
+          onDelete={() => moderation.remove(c)}
+        />
+      )}
     </li>
   );
 }
@@ -87,23 +122,35 @@ function CommentsList({
   data,
   post,
   compact,
+  moderation,
+  refreshFailed,
 }: {
   data: PostCommentsResponse;
   post: PostAnalytics;
   compact: boolean;
+  moderation: Moderation | null;
+  refreshFailed: boolean;
 }) {
   const { t } = useTranslation('analyticsComments');
   const locale = useIntlLocale();
   const [visible, setVisible] = useState(COMMENTS_PAGE);
-  const remaining = data.comments.length - visible;
+  // Pages by top-level comment; a group always shows with all its replies.
+  const groups = groupComments(data.comments);
+  const shown = groups.slice(0, visible);
+  const remaining = data.comments.length - shown.reduce((n, g) => n + 1 + g.replies.length, 0);
   const list =
     data.comments.length === 0 ? (
       <p className="igc-empty">{t('post.empty')}</p>
     ) : (
       <>
         <ul className="igc-comments" aria-label={t('common.comments')}>
-          {data.comments.slice(0, visible).map((c) => (
-            <CommentRow key={c.id} c={c} />
+          {shown.map(({ comment, replies }) => (
+            <Fragment key={comment.id}>
+              <CommentRow c={comment} moderation={moderation} />
+              {replies.map((r) => (
+                <CommentRow key={r.id} c={r} reply moderation={moderation} />
+              ))}
+            </Fragment>
           ))}
         </ul>
         {remaining > 0 && (
@@ -117,6 +164,11 @@ function CommentsList({
         )}
       </>
     );
+  const refreshError = refreshFailed && (
+    <p className="igc-error igc-comments__error" role="status">
+      {t('moderation.refreshFailed')}
+    </p>
+  );
   const footer = data.comments.length > 0 && (
     <p className="igc-comments__foot">
       {data.truncated
@@ -134,6 +186,7 @@ function CommentsList({
       <section className="igc-section">
         <h3 className="igc-eyebrow">{t('common.comments')}</h3>
         <div className="igc-card igc-card--flush">
+          {refreshError}
           {list}
           {footer}
         </div>
@@ -145,6 +198,7 @@ function CommentsList({
       <div className="igc-card__head">
         <h3 className="igc-card__title">{t('common.comments')}</h3>
       </div>
+      {refreshError}
       {list}
       {footer}
     </section>
@@ -169,8 +223,11 @@ export function PostCommentsPanel({
   const dfLocale = useDateFnsLocale();
   const locale = useIntlLocale();
   const qc = useQueryClient();
+  const { can } = useAuth();
+  const canModerate = can('analytics', 'editar') === true;
   const postId = post.instagram_post_id;
   const queryKey = ['ig-post-comments', clientId, postId];
+  const { pending, hide, remove } = useCommentModeration({ clientId, postId, queryKey });
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<unknown>(null);
   // A reading can take up to ~50 s and costs one of the hourly analyses: hold a silent
@@ -199,7 +256,9 @@ export function PostCommentsPanel({
     );
   }
 
-  if (query.error || !query.data) {
+  // A failed background reload keeps the list (see `refreshFailed` below); the error card
+  // is only for a list that never loaded.
+  if (!query.data) {
     return (
       <div className="igc-card igc-state">
         <p className="igc-state__text">{commentsErrorMessage(query.error, t)}</p>
@@ -305,7 +364,13 @@ export function PostCommentsPanel({
   return (
     <div className={`igc-panel${compact ? ' igc-panel--compact' : ''}`}>
       {reading}
-      <CommentsList data={data} post={post} compact={compact} />
+      <CommentsList
+        data={data}
+        post={post}
+        compact={compact}
+        moderation={canModerate ? { compact, pending, hide, remove } : null}
+        refreshFailed={query.error != null}
+      />
     </div>
   );
 }
