@@ -14,7 +14,6 @@ import type {
 import { sanitizeUrl } from '../../../utils/security';
 import { SuggestionIdeaButton } from './SuggestionIdeaButton';
 import { CATEGORIAS } from './commentTipos';
-import type { Categoria } from '../../../services/instagramComments';
 
 export const SENTIMENTO_KEYS: Sentimento[] = ['positivo', 'misto', 'negativo', 'polemico'];
 
