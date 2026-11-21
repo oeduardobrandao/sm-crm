@@ -1188,11 +1188,13 @@ describe('PostCommentsPanel: filtro por tipo', () => {
     getPostCommentsMock.mockResolvedValue(
       response({ comments: typed(), cached_analysis: typedAnalysis() }),
     );
-    analyzeMock.mockResolvedValue({
-      ...ANALYSIS,
-      comments_count_at_analysis: 6,
-      result: { ...ANALYSIS.result, tipos_status: 'failed' },
-    });
+    analyzeMock
+      .mockResolvedValueOnce({
+        ...ANALYSIS,
+        comments_count_at_analysis: 6,
+        result: { ...ANALYSIS.result, tipos_status: 'failed' },
+      })
+      .mockResolvedValueOnce(typedAnalysis());
     // 20 on Instagram against 6 at the reading: the reading card offers Refazer análise.
     renderPanel(post({ comments: 20 }));
     const group = await screen.findByRole('group', FILTER);
@@ -1209,6 +1211,19 @@ describe('PostCommentsPanel: filtro por tipo', () => {
     expect(screen.queryByRole('group', FILTER)).not.toBeInTheDocument();
     expect(texts(list)).toEqual(TOPS);
     expect(screen.getByRole('button', { name: 'Ver 1 resposta' })).toBeInTheDocument();
+
+    // A later redo that classifies again does not bring Apoio back on its own.
+    fireEvent.click(screen.getByRole('button', { name: 'Refazer leitura' }));
+    const again = await screen.findByRole('group', FILTER);
+    expect(within(again).getByRole('button', { name: 'Todos 6' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(within(again).getByRole('button', { name: 'Apoio 2' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    expect(texts(list)).toEqual(TOPS);
   });
 
   it('filtro paginado de 20', async () => {

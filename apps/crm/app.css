@@ -19804,6 +19804,7 @@ button.phone-stat-tile:active {
   margin: 0;
 }
 .igc-filters__notice-text b {
+  display: block;
   color: var(--text-main);
   font-weight: 600;
 }
