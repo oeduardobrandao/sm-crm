@@ -159,12 +159,17 @@ describe('KbArticleEditorPage on phones', () => {
     expect(tabs).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Conteúdo' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByTestId('article-editor')).toBeInTheDocument();
-    expect(screen.getByRole('textbox', { name: 'Título' })).toHaveValue('Primeiro post');
+    // The heading renders before the article loads: wait for the field to be seeded.
+    await waitFor(() =>
+      expect(screen.getByRole('textbox', { name: 'Título' })).toHaveValue('Primeiro post'),
+    );
   });
 
   it('wraps a long title in a textarea instead of clipping it, and keeps it one logical line', async () => {
     renderEditor();
     const title = await screen.findByRole('textbox', { name: 'Título' });
+    // Let the article load first, or its title could land after the edit below.
+    await waitFor(() => expect(title).toHaveValue('Primeiro post'));
     expect(title.tagName).toBe('TEXTAREA');
     expect(title).toHaveClass('break-words');
     expect(title).toHaveClass('resize-none');
