@@ -1,13 +1,23 @@
 // Rotas de comentários do Instagram e leitura por IA (spec
 // docs/superpowers/specs/2026-11-03-instagram-comments-sentiment-design.md):
 //   GET  /post-comments/:clientId/:postId
+//   POST /post-comments/:clientId/:postId/:commentId/hide   { hidden: boolean }
+//   DELETE /post-comments/:clientId/:postId/:commentId
 //   POST /comments-analysis/:clientId/:postId
 //   GET|POST /comments-analysis-account/:clientId
 // O feature gate (feature_instagram_comments_ai) roda antes, no index.ts.
 // Log nunca leva texto de comentário nem username.
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { classifyIgError } from "../_shared/instagram-messaging.ts";
-import type { fetchMediaComments, IgComment } from "./comments-graph.ts";
+import {
+  type deleteComment,
+  type fetchMediaComments,
+  type getCommentRef,
+  GraphNoSuccess,
+  type IgComment,
+  isCommentUnavailable,
+  type setCommentHidden,
+} from "./comments-graph.ts";
 import {
   AiBadOutputError,
   AiTimeoutError,
@@ -39,6 +49,15 @@ export interface CommentsRouteDeps {
   rateLimit: (key: string, max: number, windowS: number) => Promise<boolean>;
   fetchComments: typeof fetchMediaComments;
   callAi: typeof callAi;
+  /** JSON já lido pelo index.ts (POST/DELETE de moderação); null se não houver. */
+  body: unknown;
+  hasPermission: (module: string, action: "ver" | "editar") => Promise<boolean>;
+  audit: (entry: { action: string; resource_id: string; metadata: Record<string, unknown> }) => Promise<void>;
+  commentGraph: {
+    getCommentRef: typeof getCommentRef;
+    setCommentHidden: typeof setCommentHidden;
+    deleteComment: typeof deleteComment;
+  };
 }
 
 export interface StoredAnalysis {
@@ -67,6 +86,7 @@ const DAY_MS = 86_400_000;
 const STORED_COLUMNS =
   "result, comments_analyzed, comments_count_at_analysis, posts_analyzed, analyzed_at, period_start, period_end";
 const POST_ID_RE = /^[A-Za-z0-9_]{1,64}$/;
+const COMMENT_ID_RE = /^\d{1,30}$/;
 
 const err = (status: number, code: string): RouteResult => ({ status, body: { error: code } });
 
@@ -76,6 +96,7 @@ class GraphFailure extends Error {}
 interface Account {
   id: string;
   instagram_user_id: string;
+  professional_account_id: string | null;
   encrypted_access_token: string;
 }
 
@@ -87,12 +108,18 @@ interface PostRow {
   posted_at?: string | null;
 }
 
+type RouteKind = "list" | "analyze" | "account" | "hide" | "delete";
+
 function parseRoute(
   method: string,
   path: string,
-): { kind: "list" | "analyze" | "account"; clientId: string; postId?: string } | null {
+): { kind: RouteKind; clientId: string; postId?: string; commentId?: string } | null {
   let m = path.match(/^\/post-comments\/(\d+)\/([^/]+)$/);
   if (m) return method === "GET" ? { kind: "list", clientId: m[1], postId: m[2] } : null;
+  m = path.match(/^\/post-comments\/(\d+)\/([^/]+)\/([^/]+)\/hide$/);
+  if (m) return method === "POST" ? { kind: "hide", clientId: m[1], postId: m[2], commentId: m[3] } : null;
+  m = path.match(/^\/post-comments\/(\d+)\/([^/]+)\/([^/]+)$/);
+  if (m) return method === "DELETE" ? { kind: "delete", clientId: m[1], postId: m[2], commentId: m[3] } : null;
   m = path.match(/^\/comments-analysis\/(\d+)\/([^/]+)$/);
   if (m) return method === "POST" ? { kind: "analyze", clientId: m[1], postId: m[2] } : null;
   m = path.match(/^\/comments-analysis-account\/(\d+)$/);
@@ -130,10 +157,14 @@ function toStored(row: Record<string, unknown>): StoredAnalysis {
   };
 }
 
+function ownerIdsOf(account: Account): string[] {
+  return [account.instagram_user_id, account.professional_account_id].filter((v): v is string => Boolean(v));
+}
+
 async function loadAccount(deps: CommentsRouteDeps, clientId: string): Promise<Account | RouteResult> {
   const { data, error } = await deps.svc
     .from("instagram_accounts")
-    .select("id, instagram_user_id, encrypted_access_token, authorization_status, permissions")
+    .select("id, instagram_user_id, professional_account_id, encrypted_access_token, authorization_status, permissions")
     .eq("client_id", clientId)
     .maybeSingle();
   if (error) throw new Error(`account query failed: ${error.message}`);
@@ -152,6 +183,7 @@ async function loadAccount(deps: CommentsRouteDeps, clientId: string): Promise<A
   return {
     id: String(data.id),
     instagram_user_id: String(data.instagram_user_id),
+    professional_account_id: data.professional_account_id ? String(data.professional_account_id) : null,
     encrypted_access_token: String(data.encrypted_access_token),
   };
 }
@@ -204,7 +236,7 @@ async function loadStored(
 async function fetchOrFail(
   deps: CommentsRouteDeps,
   route: string,
-  args: { mediaId: string; token: string; max: number; deadlineAt: number },
+  args: { mediaId: string; token: string; max: number; deadlineAt: number; ownerIds: string[] },
 ): Promise<{ comments: IgComment[]; truncated: boolean }> {
   try {
     return await deps.fetchComments({ now: deps.now }, args);
@@ -345,6 +377,7 @@ async function listRoute(
     token,
     max: POST_MAX_COMMENTS,
     deadlineAt: start + REQUEST_BUDGET_MS,
+    ownerIds: ownerIdsOf(account),
   });
   const cached = await loadStored(deps, account, "post", post.instagram_post_id);
   return {
@@ -375,6 +408,7 @@ async function analyzePostRoute(
     token,
     max: POST_MAX_COMMENTS,
     deadlineAt: start + FETCH_BUDGET_MS,
+    ownerIds: ownerIdsOf(account),
   });
   const texts = fitTexts(textsOf(comments), PROMPT_COMMENT_CHARS);
   if (texts.length < POST_MIN) return err(422, "too_few_comments");
@@ -440,6 +474,7 @@ async function accountRoute(
         token,
         max: ACCOUNT_PER_POST,
         deadlineAt,
+        ownerIds: ownerIdsOf(account),
       })
     ),
   );
@@ -501,6 +536,75 @@ async function accountRoute(
   return { status: 200, body: { analysis, current_comments: currentComments } };
 }
 
+/** Passos 3 a 8 da spec de moderação (a validação e o ownership já rodaram). */
+async function moderateRoute(
+  deps: CommentsRouteDeps,
+  route: { kind: "hide" | "delete"; clientId: string },
+  postId: string,
+  commentId: string,
+  hidden: boolean | null,
+): Promise<RouteResult> {
+  if (!(await deps.hasPermission("analytics", "editar"))) return err(403, "forbidden");
+  if (!(await deps.rateLimit(`ig-comments-write:${deps.contaId}`, 120, 3600))) {
+    return err(429, "write_rate_limited");
+  }
+  const account = await loadAccount(deps, route.clientId);
+  if ("status" in account) return account;
+  const post = await loadPost(deps, account, postId);
+  if (!post) return err(404, "post_not_found");
+  const token = await deps.decryptToken(account.encrypted_access_token);
+
+  // Erro da Graph: 100/33 vira comment_unavailable; token vencido sobe; o resto é 502.
+  const graphError = (step: string, e: unknown): RouteResult => {
+    if (isCommentUnavailable(e)) return err(404, "comment_unavailable");
+    const kind = classifyIgError(e);
+    if (kind === "token_expired") tokenExpired();
+    console.error(`[comments-routes] comment ${step} failed:`, e instanceof GraphNoSuccess ? "no_success" : kind);
+    return err(502, "instagram_unavailable");
+  };
+
+  let ref;
+  try {
+    ref = await deps.commentGraph.getCommentRef({}, { commentId, token });
+  } catch (e) {
+    return graphError("lookup", e);
+  }
+  if (!ref.mediaId) {
+    console.error("[comments-routes] comment lookup returned no media");
+    return err(502, "instagram_unavailable");
+  }
+  if (ref.mediaId !== post.instagram_post_id) return err(404, "comment_not_found");
+  if (hidden === true) {
+    if (ref.fromId === null) {
+      console.error("[comments-routes] owner check skipped: from missing");
+    } else if (ownerIdsOf(account).includes(ref.fromId)) {
+      return err(409, "owner_comment_not_hideable");
+    }
+  }
+
+  try {
+    if (route.kind === "hide") {
+      await deps.commentGraph.setCommentHidden({}, { commentId, token, hidden: hidden === true });
+    } else {
+      await deps.commentGraph.deleteComment({}, { commentId, token });
+    }
+  } catch (e) {
+    return graphError("write", e);
+  }
+
+  await deps.audit({
+    action: route.kind === "delete"
+      ? "instagram-comment-delete"
+      : hidden ? "instagram-comment-hide" : "instagram-comment-unhide",
+    resource_id: commentId,
+    metadata: { client_id: route.clientId, instagram_post_id: post.instagram_post_id },
+  });
+  return {
+    status: 200,
+    body: route.kind === "delete" ? { id: commentId, deleted: true } : { id: commentId, hidden },
+  };
+}
+
 /** null = a rota não é desta família (o index.ts segue roteando). */
 export async function handleCommentsRoute(
   method: string,
@@ -510,7 +614,7 @@ export async function handleCommentsRoute(
   const route = parseRoute(method, path);
   if (!route) return null;
   const start = deps.now();
-  const name = route.kind === "list"
+  const name = route.kind === "list" || route.kind === "hide" || route.kind === "delete"
     ? "post-comments"
     : route.kind === "analyze"
     ? "comments-analysis"
@@ -522,10 +626,27 @@ export async function handleCommentsRoute(
     if (!postId) return err(404, "post_not_found");
   }
 
+  // Moderação: valida o comentário e o corpo antes de qualquer outra coisa (spec, passo 1).
+  let commentId = "";
+  let hidden: boolean | null = null;
+  if (route.kind === "hide" || route.kind === "delete") {
+    if (!COMMENT_ID_RE.test(route.commentId ?? "")) return err(404, "comment_not_found");
+    commentId = route.commentId!;
+    if (route.kind === "hide") {
+      const b = deps.body;
+      const h = b && typeof b === "object" ? (b as { hidden?: unknown }).hidden : undefined;
+      if (typeof h !== "boolean") return err(400, "bad_request");
+      hidden = h;
+    }
+  }
+
   // Fora do try: "Unauthorized" segue para o catch do index.ts (401).
   await deps.verifyClientOwnership(route.clientId);
 
   try {
+    if (route.kind === "hide" || route.kind === "delete") {
+      return await moderateRoute(deps, { kind: route.kind, clientId: route.clientId }, postId!, commentId, hidden);
+    }
     const account = await loadAccount(deps, route.clientId);
     if ("status" in account) return account;
 

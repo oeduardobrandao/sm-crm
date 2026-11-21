@@ -21,7 +21,8 @@ import { UUID_RE } from "./utils.ts";
 import { parseViewsRange, sumViewsRange } from "./views.ts";
 import { handleAccountMetrics, parseAccountMetricsRange } from "./account-metrics.ts";
 import { handleCommentsRoute } from "./comments-routes.ts";
-import { fetchMediaComments } from "./comments-graph.ts";
+import { deleteComment, fetchMediaComments, getCommentRef, setCommentHidden } from "./comments-graph.ts";
+import { hasPermissionFor } from "../_shared/permissions.ts";
 import { callAi } from "./comments-ai.ts";
 import { verifyClientOwnership as verifyClientOwnershipIn, verifyPostOwnership as verifyPostOwnershipIn, visibleClients } from "./ownership.ts";
 import { type ClientScope, hasClientAccess, loadClientScope } from "../_shared/client-scope.ts";
@@ -238,6 +239,10 @@ Deno.serve(async (req) => {
       return json({ error: "feature_disabled", feature: requiredFlag }, 403);
     }
 
+    // Moderação de comentários: só POST/DELETE em /post-comments/... carregam corpo JSON.
+    const isModeration = (req.method === 'POST' || req.method === 'DELETE') && /^\/post-comments\//.test(path);
+    const commentsBody: unknown = isModeration ? await req.json().catch(() => null) : null;
+
     // Comentários do Instagram + leitura por IA (comments-routes.ts). null = outra rota.
     const commentsRoute = await handleCommentsRoute(req.method, path, {
       svc: serviceClient,
@@ -253,6 +258,16 @@ Deno.serve(async (req) => {
       rateLimit: (key, max, windowS) => checkRateLimit(serviceClient, key, max, windowS),
       fetchComments: fetchMediaComments,
       callAi,
+      body: commentsBody,
+      hasPermission: (m, a) => hasPermissionFor(serviceClient, user.id, contaId, m, a),
+      audit: (e) =>
+        insertAuditLog(serviceClient, {
+          conta_id: contaId,
+          actor_user_id: user.id,
+          resource_type: 'instagram_comment',
+          ...e,
+        }),
+      commentGraph: { getCommentRef, setCommentHidden, deleteComment },
     });
     if (commentsRoute) return json(commentsRoute.body, commentsRoute.status);
 

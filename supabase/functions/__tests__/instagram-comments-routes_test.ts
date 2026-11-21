@@ -1,6 +1,6 @@
 import { assert, assertEquals } from "./assert.ts";
 import { type CommentsRouteDeps, handleCommentsRoute } from "../instagram-analytics/comments-routes.ts";
-import type { IgComment } from "../instagram-analytics/comments-graph.ts";
+import { type CommentRef, GraphNoSuccess, type IgComment } from "../instagram-analytics/comments-graph.ts";
 import { AiBadOutputError, AiTimeoutError } from "../instagram-analytics/comments-ai.ts";
 import { IgApiError } from "../_shared/instagram-messaging.ts";
 
@@ -89,6 +89,9 @@ function comments(n: number, prefix = "c"): IgComment[] {
     like_count: 0,
     replies_count: 0,
     replies_more: false,
+    hidden: false,
+    from_owner: false,
+    parent_id: null,
   }));
 }
 
@@ -121,6 +124,11 @@ function setup(opts: {
   ai?: { accountId: string; token: string } | null;
   lang?: "pt" | "en";
   rateOk?: boolean;
+  body?: unknown;
+  canEdit?: boolean;
+  ref?: Partial<CommentRef> | Error;
+  hideErr?: Error;
+  deleteErr?: Error;
 } = {}) {
   const tables = opts.tables ?? {
     instagram_accounts: [account()],
@@ -129,6 +137,13 @@ function setup(opts: {
   };
   const { svc, upserts } = makeSvc(tables);
   const calls: Calls = { graph: [], ai: [], rate: [] };
+  const mod = {
+    perm: [] as string[],
+    refs: [] as string[],
+    hides: [] as { commentId: string; hidden: boolean }[],
+    deletes: [] as string[],
+    audits: [] as { action: string; resource_id: string; metadata: Record<string, unknown> }[],
+  };
   const deps: CommentsRouteDeps = {
     // deno-lint-ignore no-explicit-any
     svc: svc as any,
@@ -149,6 +164,36 @@ function setup(opts: {
       if (r instanceof Error) return Promise.reject(r);
       return Promise.resolve({ comments: r.slice(0, args.max), truncated: r.length > args.max });
     },
+    body: opts.body ?? null,
+    hasPermission: (m, a) => {
+      mod.perm.push(`${m}:${a}`);
+      return Promise.resolve(opts.canEdit ?? true);
+    },
+    audit: (e) => {
+      mod.audits.push(e);
+      return Promise.resolve();
+    },
+    commentGraph: {
+      getCommentRef: (_d, a) => {
+        mod.refs.push(a.commentId);
+        if (opts.ref instanceof Error) return Promise.reject(opts.ref);
+        return Promise.resolve({
+          id: a.commentId,
+          mediaId: "p1",
+          fromId: "999",
+          parentId: null,
+          ...opts.ref,
+        } as CommentRef);
+      },
+      setCommentHidden: (_d, a) => {
+        mod.hides.push({ commentId: a.commentId, hidden: a.hidden });
+        return opts.hideErr ? Promise.reject(opts.hideErr) : Promise.resolve();
+      },
+      deleteComment: (_d, a) => {
+        mod.deletes.push(a.commentId);
+        return opts.deleteErr ? Promise.reject(opts.deleteErr) : Promise.resolve();
+      },
+    },
     callAi: (_d, args) => {
       calls.ai.push({ prompt: args.prompt, deadlineAt: args.deadlineAt });
       try {
@@ -158,7 +203,7 @@ function setup(opts: {
       }
     },
   };
-  return { deps, upserts, calls, tables };
+  return { deps, upserts, calls, tables, mod };
 }
 
 // deno-lint-ignore no-explicit-any
@@ -633,4 +678,248 @@ Deno.test("as duas partes da IA são juntadas antes de validar", async () => {
   });
   const r = await handleCommentsRoute("POST", "/comments-analysis/7/p1", deps);
   assertEquals(r?.status, 200);
+});
+
+Deno.test("análise do post recebe textos sem duplicata", async () => {
+  const { deps, calls } = setup({ graph: () => comments(8) });
+  const r = await handleCommentsRoute("POST", "/comments-analysis/7/p1", deps);
+  assertEquals(r?.status, 200);
+  const prompt = calls.ai[0].prompt;
+  for (let i = 0; i < 8; i++) {
+    const t = `comentário ${i} de c`;
+    assertEquals(prompt.split(t).length - 1, 1, `texto ${i} aparece uma vez`);
+  }
+});
+
+// ---- Moderação: ocultar, mostrar, excluir ----
+
+const HIDE = "/post-comments/7/p1/1789000000001/hide";
+const DEL = "/post-comments/7/p1/1789000000001";
+
+Deno.test("hide: sem analytics:editar responde 403 forbidden e não chama a Graph", async () => {
+  const { deps, mod, calls } = setup({ body: { hidden: true }, canEdit: false });
+  const r = await handleCommentsRoute("POST", HIDE, deps);
+  assertEquals(r?.status, 403);
+  assertEquals(body(r), { error: "forbidden" });
+  assertEquals(mod.perm, ["analytics:editar"]);
+  assertEquals(mod.refs.length + mod.hides.length, 0);
+  assertEquals(calls.rate.length, 0);
+});
+
+Deno.test("hide: commentId inválido responde 404 comment_not_found", async () => {
+  for (const id of ["abc", "1'2", "1".repeat(31)]) {
+    const { deps, mod } = setup({ body: { hidden: true } });
+    const r = await handleCommentsRoute("POST", `/post-comments/7/p1/${encodeURIComponent(id)}/hide`, deps);
+    assertEquals(r?.status, 404);
+    assertEquals(body(r), { error: "comment_not_found" });
+    assertEquals(mod.perm.length + mod.refs.length, 0);
+  }
+});
+
+Deno.test("hide: hidden não booleano responde 400 bad_request", async () => {
+  for (const b of [null, {}, { hidden: "true" }, { hidden: 1 }, "x"]) {
+    const { deps, mod } = setup({ body: b });
+    const r = await handleCommentsRoute("POST", HIDE, deps);
+    assertEquals(r?.status, 400);
+    assertEquals(body(r), { error: "bad_request" });
+    assertEquals(mod.refs.length, 0);
+  }
+});
+
+Deno.test("hide: rate limit de escrita usa ig-comments-write:<conta> 120/3600 e responde 429 write_rate_limited", async () => {
+  const { deps, mod, calls } = setup({ body: { hidden: true }, rateOk: false });
+  const keys: unknown[][] = [];
+  const orig = deps.rateLimit;
+  deps.rateLimit = (k, max, w) => (keys.push([k, max, w]), orig(k, max, w));
+  const r = await handleCommentsRoute("POST", HIDE, deps);
+  assertEquals(r?.status, 429);
+  assertEquals(body(r), { error: "write_rate_limited" });
+  assertEquals(keys, [[`ig-comments-write:${CONTA}`, 120, 3600]]);
+  assertEquals(calls.rate, [`ig-comments-write:${CONTA}`]);
+  assertEquals(mod.refs.length, 0);
+});
+
+Deno.test("hide: sem escopo responde 409 missing_comments_scope", async () => {
+  const { deps, mod } = setup({
+    body: { hidden: true },
+    tables: {
+      instagram_accounts: [account({ permissions: ["instagram_business_basic"] })],
+      instagram_posts: [post("p1", 1)],
+    },
+  });
+  const r = await handleCommentsRoute("POST", HIDE, deps);
+  assertEquals(r?.status, 409);
+  assertEquals(body(r), { error: "missing_comments_scope" });
+  assertEquals(mod.refs.length, 0);
+});
+
+Deno.test("hide: post desconhecido responde 404 post_not_found", async () => {
+  const { deps, mod } = setup({ body: { hidden: true } });
+  const r = await handleCommentsRoute("POST", "/post-comments/7/zz/1789000000001/hide", deps);
+  assertEquals(r?.status, 404);
+  assertEquals(body(r), { error: "post_not_found" });
+  assertEquals(mod.refs.length, 0);
+});
+
+Deno.test("hide: comentário de outro post responde 404 comment_not_found sem chamar setCommentHidden", async () => {
+  const { deps, mod } = setup({ body: { hidden: true }, ref: { mediaId: "outro" } });
+  const r = await handleCommentsRoute("POST", HIDE, deps);
+  assertEquals(r?.status, 404);
+  assertEquals(body(r), { error: "comment_not_found" });
+  assertEquals(mod.hides.length, 0);
+  assertEquals(mod.audits.length, 0);
+});
+
+Deno.test("hide: media ausente responde 502 instagram_unavailable sem chamar setCommentHidden", async () => {
+  const { deps, mod } = setup({ body: { hidden: true }, ref: { mediaId: null } });
+  const r = await handleCommentsRoute("POST", HIDE, deps);
+  assertEquals(r?.status, 502);
+  assertEquals(body(r), { error: "instagram_unavailable" });
+  assertEquals(mod.hides.length, 0);
+});
+
+Deno.test("hide: 100/33 no getCommentRef responde 404 comment_unavailable; idem no setCommentHidden", async () => {
+  const gone = new IgApiError("gone", { graphCode: 100, graphSubcode: 33 });
+  {
+    const { deps, mod } = setup({ body: { hidden: true }, ref: gone });
+    const r = await handleCommentsRoute("POST", HIDE, deps);
+    assertEquals(r?.status, 404);
+    assertEquals(body(r), { error: "comment_unavailable" });
+    assertEquals(mod.hides.length, 0);
+  }
+  {
+    const { deps, mod } = setup({ body: { hidden: true }, hideErr: gone });
+    const r = await handleCommentsRoute("POST", HIDE, deps);
+    assertEquals(r?.status, 404);
+    assertEquals(body(r), { error: "comment_unavailable" });
+    assertEquals(mod.audits.length, 0);
+  }
+});
+
+Deno.test("hide true em comentário do dono responde 409 owner_comment_not_hideable", async () => {
+  for (const fromId of [IG_USER, "17841499999999999"]) {
+    const { deps, mod } = setup({
+      body: { hidden: true },
+      ref: { fromId },
+      tables: {
+        instagram_accounts: [account({ professional_account_id: "17841499999999999" })],
+        instagram_posts: [post("p1", 1)],
+      },
+    });
+    const r = await handleCommentsRoute("POST", HIDE, deps);
+    assertEquals(r?.status, 409);
+    assertEquals(body(r), { error: "owner_comment_not_hideable" });
+    assertEquals(mod.hides.length, 0);
+  }
+});
+
+Deno.test("hide false em comentário do dono passa", async () => {
+  const { deps, mod } = setup({ body: { hidden: false }, ref: { fromId: IG_USER } });
+  const r = await handleCommentsRoute("POST", HIDE, deps);
+  assertEquals(r?.status, 200);
+  assertEquals(body(r), { id: "1789000000001", hidden: false });
+  assertEquals(mod.hides, [{ commentId: "1789000000001", hidden: false }]);
+});
+
+Deno.test("hide: fromId ausente segue como não dono", async () => {
+  const { deps, mod } = setup({ body: { hidden: true }, ref: { fromId: null } });
+  const r = await handleCommentsRoute("POST", HIDE, deps);
+  assertEquals(r?.status, 200);
+  assertEquals(mod.hides.length, 1);
+});
+
+Deno.test("hide: sucesso grava audit instagram-comment-hide com metadata só client_id e instagram_post_id", async () => {
+  // Sentinelas em campos de onde uma implementação com bug poderia copiar para o audit.
+  const { deps, mod } = setup({
+    body: { hidden: true },
+    tables: {
+      instagram_accounts: [account({ username: "SENTINELA_USER", handle: "SENTINELA_USER" })],
+      instagram_posts: [post("p1", 1, 1, { caption: "SENTINELA_TEXTO" })],
+    },
+  });
+  const r = await handleCommentsRoute("POST", HIDE, deps);
+  assertEquals(r?.status, 200);
+  assertEquals(body(r), { id: "1789000000001", hidden: true });
+  assertEquals(mod.audits, [{
+    action: "instagram-comment-hide",
+    resource_id: "1789000000001",
+    metadata: { client_id: "7", instagram_post_id: "p1" },
+  }]);
+  const json = JSON.stringify(mod.audits);
+  assert(!json.includes("SENTINELA"));
+  assert(!json.includes("enc"));
+});
+
+Deno.test("hide: cliente fora do escopo (verifyClientOwnership rejeita) propaga e não toca em nada", async () => {
+  const { deps, mod, calls } = setup({ body: { hidden: true } });
+  deps.verifyClientOwnership = () => Promise.reject(new Error("Unauthorized: client not in workspace"));
+  let thrown: unknown = null;
+  try {
+    await handleCommentsRoute("POST", HIDE, deps);
+  } catch (e) {
+    thrown = e;
+  }
+  assert(thrown instanceof Error && thrown.message.startsWith("Unauthorized"));
+  assertEquals(mod.perm.length, 0);
+  assertEquals(calls.rate.length, 0);
+  assertEquals(mod.refs.length + mod.hides.length + mod.deletes.length + mod.audits.length, 0);
+});
+
+Deno.test("unhide: sucesso grava instagram-comment-unhide", async () => {
+  const { deps, mod } = setup({ body: { hidden: false } });
+  const r = await handleCommentsRoute("POST", HIDE, deps);
+  assertEquals(r?.status, 200);
+  assertEquals(mod.audits.map((a) => a.action), ["instagram-comment-unhide"]);
+});
+
+Deno.test("delete: sucesso responde {id, deleted:true} e grava instagram-comment-delete", async () => {
+  const { deps, mod } = setup();
+  const r = await handleCommentsRoute("DELETE", DEL, deps);
+  assertEquals(r?.status, 200);
+  assertEquals(body(r), { id: "1789000000001", deleted: true });
+  assertEquals(mod.deletes, ["1789000000001"]);
+  assertEquals(mod.audits, [{
+    action: "instagram-comment-delete",
+    resource_id: "1789000000001",
+    metadata: { client_id: "7", instagram_post_id: "p1" },
+  }]);
+});
+
+Deno.test("delete: sem analytics:editar responde 403", async () => {
+  const { deps, mod } = setup({ canEdit: false });
+  const r = await handleCommentsRoute("DELETE", DEL, deps);
+  assertEquals(r?.status, 403);
+  assertEquals(mod.deletes.length, 0);
+});
+
+Deno.test("delete: GraphNoSuccess responde 502 instagram_unavailable sem audit", async () => {
+  const { deps, mod } = setup({ deleteErr: new GraphNoSuccess("x") });
+  const r = await handleCommentsRoute("DELETE", DEL, deps);
+  assertEquals(r?.status, 502);
+  assertEquals(body(r), { error: "instagram_unavailable" });
+  assertEquals(mod.audits.length, 0);
+});
+
+Deno.test("delete: token expirado (190) propaga TOKEN_EXPIRED", async () => {
+  const { deps, mod } = setup({ deleteErr: new IgApiError("expired", { graphCode: 190 }) });
+  let thrown: unknown = null;
+  try {
+    await handleCommentsRoute("DELETE", DEL, deps);
+  } catch (e) {
+    thrown = e;
+  }
+  assertEquals((thrown as { code?: string })?.code, "TOKEN_EXPIRED");
+  assertEquals(mod.audits.length, 0);
+});
+
+Deno.test("GET /post-comments/... e POST de análise continuam roteando", async () => {
+  const { deps } = setup();
+  const list = await handleCommentsRoute("GET", "/post-comments/7/p1", deps);
+  assertEquals(list?.status, 200);
+  const an = await handleCommentsRoute("POST", "/comments-analysis/7/p1", deps);
+  assertEquals(an?.status, 200);
+  // Métodos errados nas rotas de moderação não casam.
+  assertEquals(await handleCommentsRoute("GET", HIDE, deps), null);
+  assertEquals(await handleCommentsRoute("POST", DEL, deps), null);
+  assertEquals(await handleCommentsRoute("DELETE", "/post-comments/7/p1", deps), null);
 });
