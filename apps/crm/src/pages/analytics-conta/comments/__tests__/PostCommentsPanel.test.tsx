@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PostAnalytics } from '../../../../services/analytics';
 import type {
   IgComment,
@@ -16,11 +16,33 @@ import enComments from '../../../../../../../packages/i18n/locales/en/analyticsC
 i18n.addResourceBundle('pt', 'analyticsComments', ptComments, true, true);
 i18n.addResourceBundle('en', 'analyticsComments', enComments, true, true);
 
-const { getPostCommentsMock, analyzeMock, savedIdsMock, navigateMock } = vi.hoisted(() => ({
+const {
+  getPostCommentsMock,
+  analyzeMock,
+  savedIdsMock,
+  navigateMock,
+  setHiddenMock,
+  deleteMock,
+  toastMock,
+  canModerateRef,
+} = vi.hoisted(() => ({
   getPostCommentsMock: vi.fn(),
   analyzeMock: vi.fn(),
   savedIdsMock: vi.fn(),
   navigateMock: vi.fn(),
+  setHiddenMock: vi.fn(),
+  deleteMock: vi.fn(),
+  toastMock: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
+  canModerateRef: { current: true as boolean | 'unknown' },
+}));
+
+vi.mock('sonner', () => ({ toast: toastMock }));
+
+vi.mock('@/context/AuthContext', () => ({
+  useAuth: () => ({
+    can: (module: string, action?: string) =>
+      module === 'analytics' && action === 'editar' ? canModerateRef.current : true,
+  }),
 }));
 
 vi.mock('../../../../services/instagramComments', async () => {
@@ -31,6 +53,8 @@ vi.mock('../../../../services/instagramComments', async () => {
     ...actual,
     getPostComments: getPostCommentsMock,
     analyzePostComments: analyzeMock,
+    setCommentHidden: setHiddenMock,
+    deleteComment: deleteMock,
   };
 });
 
@@ -166,19 +190,21 @@ function response(overrides: Partial<PostCommentsResponse> = {}): PostCommentsRe
 
 function renderPanel(p: PostAnalytics = post(), compact = false) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
-  return render(
+  const result = render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
         <PostCommentsPanel clientId={42} post={p} compact={compact} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return { ...result, client };
 }
 
 describe('PostCommentsPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     savedIdsMock.mockResolvedValue(new Set());
+    canModerateRef.current = true;
   });
 
   it('lista comentários como texto', async () => {
@@ -380,5 +406,410 @@ describe('PostCommentsPanel', () => {
     fireEvent.click(toggle);
     expect(screen.getByText('Pele oleosa')).toBeInTheDocument();
     expect(screen.getByText('Serve para pele oleosa?')).toBeInTheDocument();
+  });
+});
+
+function deferred<T>() {
+  let resolve!: (v: T) => void;
+  let reject!: (e: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+/** The `<li>` of the comment whose text is `text`. */
+function rowOf(text: string): HTMLElement {
+  return screen.getByText(text).closest('li') as HTMLElement;
+}
+
+function moreButton(row: HTMLElement): HTMLElement {
+  return within(row).getByRole('button', { name: 'Ações do comentário' });
+}
+
+/** Radix opens a dropdown on keydown/pointerdown, not on click. */
+async function openMenu(row: HTMLElement): Promise<HTMLElement> {
+  fireEvent.keyDown(moreButton(row), { key: 'Enter' });
+  return screen.findByRole('menu');
+}
+
+async function deleteVia(text: string) {
+  const menu = await openMenu(rowOf(text));
+  fireEvent.click(within(menu).getByRole('menuitem', { name: 'Excluir comentário' }));
+  const dialog = await screen.findByRole('alertdialog', { name: 'Excluir comentário?' });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Excluir' }));
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+}
+
+const THREAD: IgComment[] = [
+  comment({ id: 'p', text: 'Comentário pai', username: 'ana', replies_count: 2 }),
+  comment({ id: 'r1', text: 'Primeira resposta', username: 'bia', parent_id: 'p' }),
+  comment({ id: 'q', text: 'Outro comentário', username: 'caio', replies_count: 0 }),
+  comment({ id: 'r2', text: 'Segunda resposta', username: 'ana', parent_id: 'p' }),
+];
+
+describe('PostCommentsPanel: moderação', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    savedIdsMock.mockResolvedValue(new Set());
+    canModerateRef.current = true;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('sem analytics:editar não mostra o botão Ações do comentário', async () => {
+    canModerateRef.current = false;
+    getPostCommentsMock.mockResolvedValue(response({ comments: THREAD }));
+    renderPanel();
+    await screen.findByText('Comentário pai');
+    expect(screen.queryByRole('button', { name: 'Ações do comentário' })).not.toBeInTheDocument();
+  });
+
+  it("can 'unknown' também não mostra", async () => {
+    canModerateRef.current = 'unknown';
+    getPostCommentsMock.mockResolvedValue(response({ comments: THREAD }));
+    renderPanel();
+    await screen.findByText('Comentário pai');
+    expect(screen.queryByRole('button', { name: 'Ações do comentário' })).not.toBeInTheDocument();
+  });
+
+  it('respostas aparecem recuadas sob o pai e o rodapé conta itens únicos', async () => {
+    getPostCommentsMock.mockResolvedValue(response({ comments: THREAD }));
+    renderPanel();
+    const list = await screen.findByRole('list', { name: 'Comentários' });
+    const items = within(list).getAllByRole('listitem');
+    expect(items.map((li) => li.querySelector('.igc-comment__text')?.textContent)).toEqual([
+      'Comentário pai',
+      'Primeira resposta',
+      'Segunda resposta',
+      'Outro comentário',
+    ]);
+    expect(items[0]).not.toHaveClass('igc-comment--reply');
+    expect(items[1]).toHaveClass('igc-comment--reply');
+    expect(items[2]).toHaveClass('igc-comment--reply');
+    expect(items[3]).not.toHaveClass('igc-comment--reply');
+    // Respostas também têm o menu.
+    expect(within(items[1]).getByRole('button', { name: 'Ações do comentário' })).toBeEnabled();
+    expect(screen.getByText(/Mostrando 4 comentários/)).toBeInTheDocument();
+  });
+
+  it('Ver mais pagina por comentários de topo e cada grupo vem com as respostas', async () => {
+    const tops = manyComments(21);
+    const replies = Array.from({ length: 3 }, (_, i) =>
+      comment({ id: `r${i}`, text: `Resposta ${i}`, parent_id: 'c0' }),
+    );
+    getPostCommentsMock.mockResolvedValue(response({ comments: [...tops, ...replies] }));
+    renderPanel();
+    const list = await screen.findByRole('list', { name: 'Comentários' });
+    // 20 grupos de topo; o primeiro traz as 3 respostas.
+    expect(within(list).getAllByRole('listitem')).toHaveLength(23);
+    fireEvent.click(screen.getByRole('button', { name: 'Ver mais comentários (1)' }));
+    expect(within(list).getAllByRole('listitem')).toHaveLength(24);
+  });
+
+  it('comentário oculto mostra o selo Oculto e o menu oferece Mostrar comentário', async () => {
+    getPostCommentsMock.mockResolvedValue(
+      response({ comments: [comment({ id: 'h', text: 'Texto oculto', hidden: true })] }),
+    );
+    renderPanel();
+    await screen.findByText('Texto oculto');
+    const row = rowOf('Texto oculto');
+    expect(row).toHaveClass('igc-comment--hidden');
+    expect(within(row).getByText('Oculto')).toBeInTheDocument();
+    const menu = await openMenu(row);
+    expect(within(menu).getByRole('menuitem', { name: 'Mostrar comentário' })).toBeInTheDocument();
+    expect(within(menu).queryByRole('menuitem', { name: 'Ocultar comentário' })).toBeNull();
+    expect(within(menu).getByRole('menuitem', { name: 'Excluir comentário' })).toBeInTheDocument();
+  });
+
+  it('comentário do dono mostra Você e o menu não tem Ocultar', async () => {
+    getPostCommentsMock.mockResolvedValue(
+      response({ comments: [comment({ id: 'o', text: 'Obrigada!', from_owner: true })] }),
+    );
+    renderPanel();
+    await screen.findByText('Obrigada!');
+    const row = rowOf('Obrigada!');
+    expect(within(row).getByText('Você')).toBeInTheDocument();
+    const menu = await openMenu(row);
+    expect(within(menu).queryByRole('menuitem', { name: 'Ocultar comentário' })).toBeNull();
+    expect(within(menu).queryByRole('menuitem', { name: 'Mostrar comentário' })).toBeNull();
+    expect(within(menu).getByRole('menuitem', { name: 'Excluir comentário' })).toBeInTheDocument();
+  });
+
+  it('ocultar é otimista, mostra toast Comentário oculto com Desfazer, e Desfazer chama setCommentHidden(false)', async () => {
+    getPostCommentsMock.mockResolvedValue(response({ comments: THREAD }));
+    const call = deferred<{ id: string; hidden: boolean }>();
+    setHiddenMock.mockReturnValueOnce(call.promise);
+    renderPanel();
+    await screen.findByText('Comentário pai');
+    const menu = await openMenu(rowOf('Comentário pai'));
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Ocultar comentário' }));
+
+    // Otimista: oculto antes da resposta do servidor.
+    await waitFor(() => expect(rowOf('Comentário pai')).toHaveClass('igc-comment--hidden'));
+    expect(setHiddenMock).toHaveBeenCalledWith(42, 'ig-1', 'p', true);
+    expect(toastMock).not.toHaveBeenCalled();
+
+    await act(async () => call.resolve({ id: 'p', hidden: true }));
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith('Comentário oculto', {
+        action: { label: 'Desfazer', onClick: expect.any(Function) },
+      }),
+    );
+    expect(getPostCommentsMock).toHaveBeenCalledTimes(1); // ocultar não recarrega
+
+    setHiddenMock.mockResolvedValueOnce({ id: 'p', hidden: false });
+    const undo = toastMock.mock.calls[0][1].action.onClick as () => void;
+    act(() => undo());
+    expect(setHiddenMock).toHaveBeenLastCalledWith(42, 'ig-1', 'p', false);
+    await waitFor(() => expect(rowOf('Comentário pai')).not.toHaveClass('igc-comment--hidden'));
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenLastCalledWith('Comentário visível de novo', {
+        action: { label: 'Desfazer', onClick: expect.any(Function) },
+      }),
+    );
+  });
+
+  it('Desfazer depois que o painel saiu da tela ainda chama o serviço, sem erro', async () => {
+    getPostCommentsMock.mockResolvedValue(response({ comments: THREAD }));
+    setHiddenMock.mockResolvedValue({ id: 'p', hidden: true });
+    const { unmount } = renderPanel();
+    await screen.findByText('Comentário pai');
+    const menu = await openMenu(rowOf('Comentário pai'));
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Ocultar comentário' }));
+    await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
+    unmount();
+    const undo = toastMock.mock.calls[0][1].action.onClick as () => void;
+    setHiddenMock.mockResolvedValue({ id: 'p', hidden: false });
+    await act(async () => undo());
+    expect(setHiddenMock).toHaveBeenLastCalledWith(42, 'ig-1', 'p', false);
+    await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(2));
+    expect(toastMock.error).not.toHaveBeenCalled();
+  });
+
+  it('recarga que chega durante o ocultar não desfaz o oculto depois do sucesso', async () => {
+    getPostCommentsMock
+      .mockResolvedValueOnce(response({ comments: THREAD }))
+      .mockResolvedValueOnce(response({ comments: THREAD }));
+    const call = deferred<{ id: string; hidden: boolean }>();
+    setHiddenMock.mockReturnValueOnce(call.promise);
+    const { client } = renderPanel();
+    await screen.findByText('Comentário pai');
+    const menu = await openMenu(rowOf('Comentário pai'));
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Ocultar comentário' }));
+    await waitFor(() => expect(rowOf('Comentário pai')).toHaveClass('igc-comment--hidden'));
+    // A recarga lê o estado antigo enquanto a chamada está em voo.
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: ['ig-post-comments', 42, 'ig-1'] });
+    });
+    await waitFor(() => expect(rowOf('Comentário pai')).not.toHaveClass('igc-comment--hidden'));
+    await act(async () => call.resolve({ id: 'p', hidden: true }));
+    await waitFor(() => expect(rowOf('Comentário pai')).toHaveClass('igc-comment--hidden'));
+  });
+
+  it('erro ao ocultar desfaz o estado local e mostra a mensagem', async () => {
+    getPostCommentsMock.mockResolvedValue(response({ comments: THREAD }));
+    const call = deferred<{ id: string; hidden: boolean }>();
+    setHiddenMock.mockReturnValueOnce(call.promise);
+    renderPanel();
+    await screen.findByText('Comentário pai');
+    const menu = await openMenu(rowOf('Comentário pai'));
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Ocultar comentário' }));
+    await waitFor(() => expect(rowOf('Comentário pai')).toHaveClass('igc-comment--hidden'));
+
+    await act(async () => call.reject(new CommentsApiError('write_rate_limited', 429)));
+    await waitFor(() => expect(rowOf('Comentário pai')).not.toHaveClass('igc-comment--hidden'));
+    expect(toastMock.error).toHaveBeenCalledWith(
+      'Muitas ações seguidas. Tente de novo em alguns minutos.',
+    );
+    expect(toastMock).not.toHaveBeenCalled();
+  });
+
+  it('excluir abre o diálogo com a citação, Excluir chama deleteComment uma vez mesmo com dois cliques, e a linha e as respostas somem', async () => {
+    getPostCommentsMock.mockResolvedValue(response({ comments: THREAD }));
+    const call = deferred<{ id: string; deleted: true }>();
+    deleteMock.mockReturnValueOnce(call.promise);
+    renderPanel();
+    await screen.findByText('Comentário pai');
+    const menu = await openMenu(rowOf('Comentário pai'));
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Excluir comentário' }));
+    const dialog = await screen.findByRole('alertdialog', { name: 'Excluir comentário?' });
+    expect(within(dialog).getByText('@ana: Comentário pai')).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        'Ele sai do Instagram para todo mundo e não dá para desfazer. Se quiser só tirar da vista, use Ocultar.',
+      ),
+    ).toBeInTheDocument();
+
+    const confirm = within(dialog).getByRole('button', { name: 'Excluir' });
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    expect(deleteMock).toHaveBeenCalledTimes(1);
+    expect(deleteMock).toHaveBeenCalledWith(42, 'ig-1', 'p');
+    // Diálogo segue aberto, com o botão em carregamento e Cancelar travado.
+    await waitFor(() => expect(confirm).toBeDisabled());
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancelar' }));
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    // A linha só sai depois do sucesso (exclusão não é otimista).
+    expect(screen.getByText('Comentário pai')).toBeInTheDocument();
+
+    await act(async () => call.resolve({ id: 'p', deleted: true }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    expect(screen.queryByText('Comentário pai')).not.toBeInTheDocument();
+    expect(screen.queryByText('Primeira resposta')).not.toBeInTheDocument();
+    expect(screen.queryByText('Segunda resposta')).not.toBeInTheDocument();
+    expect(screen.getByText('Outro comentário')).toBeInTheDocument();
+    expect(screen.getByText(/Mostrando 1 comentário/)).toBeInTheDocument();
+    expect(toastMock).toHaveBeenCalledWith('Comentário excluído');
+  });
+
+  it('citação do diálogo trunca em 140 caracteres com …', async () => {
+    const long = '😀'.repeat(200);
+    getPostCommentsMock.mockResolvedValue(
+      response({ comments: [comment({ id: 'l', text: long, username: 'maria' })] }),
+    );
+    renderPanel();
+    await screen.findByText(long);
+    const menu = await openMenu(rowOf(long));
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Excluir comentário' }));
+    const dialog = await screen.findByRole('alertdialog', { name: 'Excluir comentário?' });
+    // "@maria: " tem 8 caracteres; sobram 132 emojis inteiros, depois "…".
+    const expected = `@maria: ${'😀'.repeat(132)}…`;
+    expect(Array.from(expected)).toHaveLength(141);
+    expect(within(dialog).getByText(expected)).toBeInTheDocument();
+  });
+
+  it('enquanto uma ação está em voo, o ⋯ daquele comentário fica desabilitado', async () => {
+    getPostCommentsMock.mockResolvedValue(response({ comments: THREAD }));
+    const call = deferred<{ id: string; hidden: boolean }>();
+    setHiddenMock.mockReturnValueOnce(call.promise);
+    renderPanel();
+    await screen.findByText('Comentário pai');
+    const menu = await openMenu(rowOf('Comentário pai'));
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Ocultar comentário' }));
+    await waitFor(() => expect(moreButton(rowOf('Comentário pai'))).toBeDisabled());
+    expect(moreButton(rowOf('Outro comentário'))).toBeEnabled();
+    await act(async () => call.resolve({ id: 'p', hidden: true }));
+    await waitFor(() => expect(moreButton(rowOf('Comentário pai'))).toBeEnabled());
+  });
+
+  it('depois de excluir, recarrega a lista uma vez com debounce de 5 s (fake timers): três exclusões seguidas geram um getPostComments a mais', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const three = [
+      comment({ id: 'a', text: 'Comentário A' }),
+      comment({ id: 'b', text: 'Comentário B' }),
+      comment({ id: 'c', text: 'Comentário C' }),
+      comment({ id: 'd', text: 'Comentário D' }),
+    ];
+    getPostCommentsMock
+      .mockResolvedValueOnce(response({ comments: three }))
+      .mockResolvedValue(response({ comments: [three[3]] }));
+    deleteMock.mockImplementation((_c: number, _p: string, id: string) =>
+      Promise.resolve({ id, deleted: true }),
+    );
+    renderPanel();
+    await screen.findByText('Comentário A');
+
+    await deleteVia('Comentário A');
+    await act(() => vi.advanceTimersByTimeAsync(4000));
+    await deleteVia('Comentário B');
+    await act(() => vi.advanceTimersByTimeAsync(4000)); // 8 s desde a primeira: o timer foi reiniciado
+    await deleteVia('Comentário C');
+    await act(() => vi.advanceTimersByTimeAsync(4000));
+    expect(getPostCommentsMock).toHaveBeenCalledTimes(1);
+    expect(deleteMock).toHaveBeenCalledTimes(3);
+
+    await act(() => vi.advanceTimersByTimeAsync(1500));
+    await waitFor(() => expect(getPostCommentsMock).toHaveBeenCalledTimes(2));
+    await act(() => vi.advanceTimersByTimeAsync(10000));
+    expect(getPostCommentsMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('Comentário D')).toBeInTheDocument();
+  });
+
+  it('comment_unavailable não apaga a linha localmente; recarrega a lista e mostra error.commentGone', async () => {
+    const reload = deferred<PostCommentsResponse>();
+    getPostCommentsMock
+      .mockResolvedValueOnce(response({ comments: THREAD }))
+      .mockReturnValueOnce(reload.promise);
+    deleteMock.mockRejectedValueOnce(new CommentsApiError('comment_unavailable', 404));
+    renderPanel();
+    await screen.findByText('Outro comentário');
+    await deleteVia('Outro comentário');
+
+    expect(toastMock.error).toHaveBeenCalledWith(
+      'Não foi possível encontrar esse comentário no Instagram. A lista foi atualizada.',
+    );
+    expect(toastMock).not.toHaveBeenCalled();
+    // Recarga imediata, sem esperar o debounce; a linha segue até a lista nova chegar.
+    await waitFor(() => expect(getPostCommentsMock).toHaveBeenCalledTimes(2));
+    expect(screen.getByText('Outro comentário')).toBeInTheDocument();
+
+    await act(async () =>
+      reload.resolve(response({ comments: THREAD.filter((c) => c.id !== 'q') })),
+    );
+    await waitFor(() => expect(screen.queryByText('Outro comentário')).not.toBeInTheDocument());
+    expect(screen.getByText('Comentário pai')).toBeInTheDocument();
+  });
+
+  it('recarga em segundo plano que falha mantém a lista e mostra moderation.refreshFailed', async () => {
+    getPostCommentsMock
+      .mockResolvedValueOnce(response({ comments: THREAD }))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    const { client } = renderPanel();
+    await screen.findByText('Comentário pai');
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: ['ig-post-comments', 42, 'ig-1'] });
+    });
+    expect(getPostCommentsMock).toHaveBeenCalledTimes(2);
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Não foi possível atualizar a lista agora.',
+    );
+    expect(screen.getByText('Comentário pai')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Tentar de novo' })).not.toBeInTheDocument();
+  });
+
+  it('compact usa ActionSheet em vez de DropdownMenu', async () => {
+    getPostCommentsMock.mockResolvedValue(response({ comments: THREAD }));
+    deleteMock.mockResolvedValue({ id: 'q', deleted: true });
+    renderPanel(post(), true);
+    await screen.findByText('Outro comentário');
+    fireEvent.click(moreButton(rowOf('Outro comentário')));
+    const sheet = await screen.findByRole('dialog', { name: 'Ações do comentário' });
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(within(sheet).getByRole('button', { name: 'Ocultar comentário' })).toBeInTheDocument();
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Excluir comentário' }));
+    const dialog = await screen.findByRole('alertdialog', { name: 'Excluir comentário?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Excluir' }));
+    await waitFor(() => expect(deleteMock).toHaveBeenCalledWith(42, 'ig-1', 'q'));
+    await waitFor(() => expect(screen.queryByText('Outro comentário')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+  });
+
+  it('resultado da recarga substitui o estado otimista', async () => {
+    getPostCommentsMock.mockResolvedValueOnce(response({ comments: THREAD })).mockResolvedValueOnce(
+      response({
+        comments: [
+          comment({ id: 'q', text: 'Outro comentário', hidden: true }),
+          comment({ id: 'n', text: 'Comentário novo' }),
+        ],
+      }),
+    );
+    deleteMock.mockResolvedValue({ id: 'p', deleted: true });
+    const { client } = renderPanel();
+    await screen.findByText('Comentário pai');
+    await deleteVia('Comentário pai');
+    expect(screen.queryByText('Comentário pai')).not.toBeInTheDocument();
+
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: ['ig-post-comments', 42, 'ig-1'] });
+    });
+    expect(await screen.findByText('Comentário novo')).toBeInTheDocument();
+    expect(rowOf('Outro comentário')).toHaveClass('igc-comment--hidden');
+    expect(screen.getByText(/Mostrando 2 comentários/)).toBeInTheDocument();
   });
 });
