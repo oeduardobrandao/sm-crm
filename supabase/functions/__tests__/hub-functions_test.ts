@@ -16,6 +16,7 @@ const buildCorsHeaders = () => ({ "Access-Control-Allow-Origin": "https://hub.me
 // exercise renewal behavior, so a no-op stub keeps the handler wired without changing any
 // assertions in this file.
 const noopTouchToken = async () => {};
+const noopTouchSession = async () => {};
 
 Deno.test("hub-bootstrap returns workspace metadata for a valid workspace token", async () => {
   const db = createSupabaseQueryMock();
@@ -27,6 +28,7 @@ Deno.test("hub-bootstrap returns workspace metadata for a valid workspace token"
     data: { cliente_id: 14, is_active: true },
     error: null,
   });
+  db.queueRpc("hub_access_context", { data: { require_login: false, person: null }, error: null });
   db.queue("clientes", "select", {
     data: { nome: "Clínica Aurora" },
     error: null,
@@ -41,6 +43,7 @@ Deno.test("hub-bootstrap returns workspace metadata for a valid workspace token"
     createDb: () => db as never,
     now,
     touchToken: noopTouchToken,
+    touchSession: noopTouchSession,
     rateLimit: async () => true,
   });
 
@@ -63,6 +66,7 @@ Deno.test("hub-bootstrap serves a null client photo when no Instagram account is
     data: { cliente_id: 14, is_active: true },
     error: null,
   });
+  db.queueRpc("hub_access_context", { data: { require_login: false, person: null }, error: null });
   db.queue("clientes", "select", { data: { nome: "Clínica Aurora" }, error: null });
   db.queue("instagram_accounts", "select", { data: null, error: null });
 
@@ -71,6 +75,7 @@ Deno.test("hub-bootstrap serves a null client photo when no Instagram account is
     createDb: () => db as never,
     now,
     touchToken: noopTouchToken,
+    touchSession: noopTouchSession,
     rateLimit: async () => true,
   });
 
@@ -89,6 +94,7 @@ Deno.test("hub-bootstrap rejects missing query params", async () => {
     createDb: () => createSupabaseQueryMock() as never,
     now,
     touchToken: noopTouchToken,
+    touchSession: noopTouchSession,
     rateLimit: async () => true,
   });
 
@@ -2458,6 +2464,7 @@ Deno.test("hub-bootstrap handles CORS preflight with 200", async () => {
     createDb: () => createSupabaseQueryMock() as never,
     now,
     touchToken: noopTouchToken,
+    touchSession: noopTouchSession,
     rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-bootstrap", { method: "OPTIONS" }));
@@ -2470,6 +2477,7 @@ Deno.test("hub-bootstrap rejects non-GET methods with 405", async () => {
     createDb: () => createSupabaseQueryMock() as never,
     now,
     touchToken: noopTouchToken,
+    touchSession: noopTouchSession,
     rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-bootstrap?workspace=x&token=y", { method: "POST" }));
@@ -2485,6 +2493,7 @@ Deno.test("hub-bootstrap returns 404 when the workspace slug is unknown", async 
     createDb: () => db as never,
     now,
     touchToken: noopTouchToken,
+    touchSession: noopTouchSession,
     rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-bootstrap?workspace=nope&token=hub-123"));
@@ -2503,6 +2512,7 @@ Deno.test("hub-bootstrap returns 403 when the workspace has the hub disabled", a
     createDb: () => db as never,
     now,
     touchToken: noopTouchToken,
+    touchSession: noopTouchSession,
     rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-bootstrap?workspace=mesaas&token=hub-123"));
@@ -2525,6 +2535,7 @@ Deno.test("hub-bootstrap returns 404 when the hub token is missing or inactive",
     createDb: () => db as never,
     now,
     touchToken: noopTouchToken,
+    touchSession: noopTouchSession,
     rateLimit: async () => true,
   });
   const response = await handler(new Request("https://example.test/hub-bootstrap?workspace=mesaas&token=hub-123"));

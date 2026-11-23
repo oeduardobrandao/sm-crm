@@ -1,6 +1,8 @@
 import { assertEquals, assertInstanceOf, assert } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { createHubBootstrapHandler } from "../hub-bootstrap/handler.ts";
 import { makeTouchToken } from "../hub-bootstrap/touch.ts";
+import { hubAccessRpc } from "./hub-access-mock.ts";
+import { sha256Hex } from "../_shared/hub-token.ts";
 
 const cors = () => ({});
 const NOW = "2026-07-16T12:00:00.000Z";
@@ -44,9 +46,12 @@ function makeDb(
   tokenRow: unknown,
   clienteRow: { nome: string; foto_url?: string | null } = { nome: "Vanessa" },
   igRow: { profile_picture_url?: string | null } | null = null,
+  access?: unknown,
 ) {
+  const tables: string[] = [];
   return {
-    from: (table: string) => ({
+    tables,
+    from: (table: string) => (tables.push(table), {
       select: () => ({
         eq: () => ({
           eq: () => ({ maybeSingle: async () => ({ data: tokenRow }) }),
@@ -65,7 +70,7 @@ function makeDb(
       }),
       // effective_plan_feature is reached through rpc, below
     }),
-    rpc: async () => ({ data: true, error: null }),
+    rpc: async (fn: string) => hubAccessRpc(fn, access) ?? { data: true, error: null },
   };
 }
 
@@ -79,7 +84,9 @@ function makeDbWithFeatureFlags(
   const db = makeDb(tokenRow);
   return {
     ...db,
-    rpc: async (_fn: string, params: Record<string, unknown>) => {
+    rpc: async (fn: string, params: Record<string, unknown>) => {
+      const a = hubAccessRpc(fn);
+      if (a) return a;
       const key = params.feature_key as string;
       return key in flags
         ? { data: flags[key], error: null }
@@ -92,7 +99,9 @@ function makeDbWithThrowingFeature(tokenRow: unknown, throwingKey: string) {
   const db = makeDb(tokenRow);
   return {
     ...db,
-    rpc: async (_fn: string, params: Record<string, unknown>) => {
+    rpc: async (fn: string, params: Record<string, unknown>) => {
+      const a = hubAccessRpc(fn);
+      if (a) return a;
       if (params.feature_key === throwingKey) {
         return { data: null, error: { message: "function does not exist" } };
       }
@@ -111,6 +120,7 @@ Deno.test("touchToken is called when the token resolves", async () => {
     createDb: () => makeDb({ cliente_id: 15, conta_id: "ws-1", is_active: true }) as any,
     now: () => NOW,
     touchToken: async (t: string) => { calls.push(t); },
+    touchSession: async () => {},
     rateLimit: async () => true,
   });
   const res = await handler(req());
@@ -125,6 +135,7 @@ Deno.test("touchToken is NOT called when the token does not resolve", async () =
     createDb: () => makeDb(null) as any,
     now: () => NOW,
     touchToken: async (t: string) => { calls.push(t); },
+    touchSession: async () => {},
     rateLimit: async () => true,
   });
   const res = await handler(req());
@@ -138,6 +149,7 @@ Deno.test("a throwing touchToken must NOT break the client's portal", async () =
     createDb: () => makeDb({ cliente_id: 15, conta_id: "ws-1", is_active: true }) as any,
     now: () => NOW,
     touchToken: async () => { throw new Error("renewal exploded"); },
+    touchSession: async () => {},
     rateLimit: async () => true,
   });
   const res = await handler(req());
@@ -146,15 +158,15 @@ Deno.test("a throwing touchToken must NOT break the client's portal", async () =
 
 Deno.test("post-auth lookups run alongside touchToken, not behind it", async () => {
   const db = makeDb({ cliente_id: 15, conta_id: "ws-1", is_active: true });
-  // resolveHubToken's feature_hub_portal check is RPC #1; the six plan
-  // features the bootstrap serves are #2-#7.
+  // resolveHubToken's feature_hub_portal check is RPC #1, hub_access_context
+  // #2; the six plan features the bootstrap serves are #3-#8.
   let rpcCalls = 0;
   let allFeaturesStarted!: () => void;
   const featuresStarted = new Promise<void>((resolve) => (allFeaturesStarted = resolve));
   const rpc = db.rpc;
-  db.rpc = async () => {
-    if (++rpcCalls === 7) allFeaturesStarted();
-    return await rpc();
+  db.rpc = async (fn: string) => {
+    if (++rpcCalls === 8) allFeaturesStarted();
+    return await rpc(fn);
   };
 
   let touchWaitedOut = false;
@@ -165,6 +177,7 @@ Deno.test("post-auth lookups run alongside touchToken, not behind it", async () 
     now: () => NOW,
     // Serial code would only start the feature RPCs after this resolves, so it
     // would sit out the full timeout.
+    touchSession: async () => {},
     touchToken: () =>
       Promise.race([
         featuresStarted,
@@ -182,7 +195,7 @@ Deno.test("post-auth lookups run alongside touchToken, not behind it", async () 
   clearTimeout(timer);
   assertEquals(res.status, 200);
   assertEquals(touchWaitedOut, false);
-  assertEquals(rpcCalls, 7);
+  assertEquals(rpcCalls, 8);
 });
 
 Deno.test("feature_mensagens reflects the effective_plan_feature RPC result", async () => {
@@ -191,6 +204,7 @@ Deno.test("feature_mensagens reflects the effective_plan_feature RPC result", as
     createDb: () => makeDb({ cliente_id: 15, conta_id: "ws-1", is_active: true }) as any,
     now: () => NOW,
     touchToken: async () => {},
+    touchSession: async () => {},
     rateLimit: async () => true,
   });
   const res = await handler(req());
@@ -206,6 +220,7 @@ Deno.test("feature_agenda reflects the effective_plan_feature RPC result", async
         makeDbWithFeatureFlags({ cliente_id: 15, conta_id: "ws-1", is_active: true }, flags) as any,
       now: () => NOW,
       touchToken: async () => {},
+    touchSession: async () => {},
       rateLimit: async () => true,
     });
   const on = await (await make({ feature_agenda: true, feature_mensagens: false })(req())).json();
@@ -226,6 +241,7 @@ Deno.test("feature_agenda is false and does NOT break the response when its RPC 
       ) as any,
     now: () => NOW,
     touchToken: async () => {},
+    touchSession: async () => {},
     rateLimit: async () => true,
   });
   const res = await handler(req());
@@ -243,6 +259,7 @@ Deno.test("feature_hub_pauta reflects the effective_plan_feature RPC result", as
         makeDbWithFeatureFlags({ cliente_id: 15, conta_id: "ws-1", is_active: true }, flags) as any,
       now: () => NOW,
       touchToken: async () => {},
+    touchSession: async () => {},
       rateLimit: async () => true,
     });
   const on = await (await make({ feature_hub_pauta: true, feature_mensagens: false })(req())).json();
@@ -262,6 +279,7 @@ Deno.test("feature_hub_pauta is false and does NOT break the response when its R
       ) as any,
     now: () => NOW,
     touchToken: async () => {},
+    touchSession: async () => {},
     rateLimit: async () => true,
   });
   const res = await handler(req());
@@ -279,6 +297,7 @@ Deno.test("returns feature_linha_editorial from effectivePlanFeature, false on e
         makeDbWithFeatureFlags({ cliente_id: 15, conta_id: "ws-1", is_active: true }, flags) as any,
       now: () => NOW,
       touchToken: async () => {},
+    touchSession: async () => {},
       rateLimit: async () => true,
     });
   const on = await (await make({ feature_linha_editorial: true, feature_mensagens: false })(req())).json();
@@ -296,6 +315,7 @@ Deno.test("returns feature_linha_editorial from effectivePlanFeature, false on e
       ) as any,
     now: () => NOW,
     touchToken: async () => {},
+    touchSession: async () => {},
     rateLimit: async () => true,
   });
   const res = await broken(req());
@@ -315,6 +335,7 @@ Deno.test("feature_briefing_audio reflects the effective_plan_feature RPC result
       ) as any,
     now: () => NOW,
     touchToken: async () => {},
+    touchSession: async () => {},
     rateLimit: async () => true,
   });
   const body = await (await handler(req())).json();
@@ -333,6 +354,7 @@ Deno.test("feature_briefing_audio is false when the plan lacks it, and when its 
       ) as any,
     now: () => NOW,
     touchToken: async () => {},
+    touchSession: async () => {},
     rateLimit: async () => true,
   });
   assertEquals((await (await off(req())).json()).feature_briefing_audio, false);
@@ -347,6 +369,7 @@ Deno.test("feature_briefing_audio is false when the plan lacks it, and when its 
       ) as any,
     now: () => NOW,
     touchToken: async () => {},
+    touchSession: async () => {},
     rateLimit: async () => true,
   });
   const res = await broken(req());
@@ -364,10 +387,11 @@ Deno.test("feature_mensagens defaults to false and does NOT break the response w
     // actually reaches the code path it's meant to exercise.
     return {
       ...db,
-      rpc: async (_fn: string, params: Record<string, unknown>) =>
-        params.feature_key === "feature_mensagens"
-          ? { data: null, error: { message: "function does not exist" } }
-          : { data: true, error: null },
+      rpc: async (fn: string, params: Record<string, unknown>) =>
+        hubAccessRpc(fn) ??
+          (params.feature_key === "feature_mensagens"
+            ? { data: null, error: { message: "function does not exist" } }
+            : { data: true, error: null }),
     };
   }
   const handler = createHubBootstrapHandler({
@@ -375,6 +399,7 @@ Deno.test("feature_mensagens defaults to false and does NOT break the response w
     createDb: () => makeDbWithFailingRpc({ cliente_id: 15, conta_id: "ws-1", is_active: true }) as any,
     now: () => NOW,
     touchToken: async () => {},
+    touchSession: async () => {},
     rateLimit: async () => true,
   });
   const res = await handler(req());
@@ -395,6 +420,7 @@ Deno.test("hub_theme reflects the workspace's stored columns when feature_brand_
       ) as any,
     now: () => NOW,
     touchToken: async () => {},
+    touchSession: async () => {},
     rateLimit: async () => true,
   });
   const res = await handler(req());
@@ -424,6 +450,7 @@ Deno.test("hub_theme falls back to neutral defaults (hide_branding: false) when 
       ) as any,
     now: () => NOW,
     touchToken: async () => {},
+    touchSession: async () => {},
     rateLimit: async () => true,
   });
   const res = await handler(req());
@@ -442,6 +469,7 @@ Deno.test("hub_theme falls back to neutral defaults (fail closed) when the featu
       ) as any,
     now: () => NOW,
     touchToken: async () => {},
+    touchSession: async () => {},
     rateLimit: async () => true,
   });
   const res = await handler(req());
@@ -460,6 +488,7 @@ Deno.test("feature_mensagens and feature_brand_customization are resolved indepe
       ) as any,
     now: () => NOW,
     touchToken: async () => {},
+    touchSession: async () => {},
     rateLimit: async () => true,
   });
   const res = await handler(req());
@@ -492,6 +521,7 @@ Deno.test("cliente_foto_url uses the manual foto_url when set, ignoring a connec
       ) as any,
     now: () => NOW,
     touchToken: async () => {},
+    touchSession: async () => {},
     rateLimit: async () => true,
   });
   const res = await handler(req());
@@ -510,6 +540,7 @@ Deno.test("cliente_foto_url falls back to the Instagram avatar when no manual ph
       ) as any,
     now: () => NOW,
     touchToken: async () => {},
+    touchSession: async () => {},
     rateLimit: async () => true,
   });
   const res = await handler(req());
@@ -528,11 +559,138 @@ Deno.test("cliente_foto_url is null when neither a manual photo nor a connected 
       ) as any,
     now: () => NOW,
     touchToken: async () => {},
+    touchSession: async () => {},
     rateLimit: async () => true,
   });
   const res = await handler(req());
   const body = await res.json();
   assertEquals(body.cliente_foto_url, null);
+});
+
+// --- client login (hub_access_context) -------------------------------------------------
+
+const GATED_TOKEN_ROW = { cliente_id: 15, conta_id: "ws-1", is_active: true };
+const PERSON = { id: "person-uuid", nome: "Ana", email: "ana@example.com" };
+const GATED_THEME = {
+  customized: true,
+  surface: "warm",
+  font_display: "sora",
+  font_body: "inter",
+  radius: "pill",
+  card_style: "outline",
+  logo_style: "wordmark",
+  logo_dark_url: "https://example.com/dark-logo.png",
+  hide_branding: true,
+  default_appearance: "dark",
+};
+
+function loginHandler(
+  db: ReturnType<typeof makeDb>,
+  touches: { token: string[]; session: string[] },
+) {
+  return createHubBootstrapHandler({
+    buildCorsHeaders: cors,
+    createDb: () => db as any,
+    now: () => NOW,
+    touchToken: async (t: string) => { touches.token.push(t); },
+    touchSession: async (h: string) => { touches.session.push(h); },
+    rateLimit: async () => true,
+  });
+}
+
+Deno.test("gated link without session -> 401 login_required carrying nothing about the client", async () => {
+  const db = makeDb(GATED_TOKEN_ROW, { nome: "Vanessa", foto_url: "https://x/foto.png" }, null, {
+    require_login: true,
+    person: null,
+  });
+  const touches = { token: [] as string[], session: [] as string[] };
+  const res = await loginHandler(db, touches)(req());
+  assertEquals(res.status, 401);
+  const body = await res.json();
+  assertEquals(body.code, "login_required");
+  assertEquals(body.error, "Login necessário.");
+  assertEquals(body.login.workspace, { name: "WS", logo_url: null, brand_color: "#111" });
+  assertEquals(body.login.hub_theme, GATED_THEME);
+  const text = JSON.stringify(body);
+  assert(!text.includes("Vanessa"));
+  assert(!text.includes("cliente_"));
+  assert(!text.includes("foto"));
+  assertEquals(touches.token, []);
+  assertEquals(touches.session, []);
+  assert(!db.tables.includes("clientes"), "clientes must not be queried before access is granted");
+});
+
+Deno.test("gated link in an unentitled workspace -> login hub_theme is NEUTRAL_HUB_THEME", async () => {
+  const db = {
+    ...makeDb(GATED_TOKEN_ROW, undefined, null, { require_login: true, person: null }),
+  };
+  const base = db.rpc;
+  db.rpc = async (fn: string, params?: any) =>
+    params?.feature_key === "feature_brand_customization"
+      ? { data: false, error: null }
+      : await base(fn);
+  const res = await loginHandler(db, { token: [], session: [] })(req());
+  assertEquals(res.status, 401);
+  assertEquals((await res.json()).login.hub_theme, NEUTRAL_HUB_THEME);
+});
+
+Deno.test("valid session -> 200 with person { nome, email } (no id) and touchSession with the hash", async () => {
+  const session = "session-token-abc";
+  const db = makeDb(GATED_TOKEN_ROW, undefined, null, { require_login: true, person: PERSON });
+  const touches = { token: [] as string[], session: [] as string[] };
+  const r = new Request(`https://x/?workspace=dk-marketing-medico&token=${TOKEN}`, {
+    method: "GET",
+    headers: { "x-hub-session": session },
+  });
+  const res = await loginHandler(db, touches)(r);
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.person, { nome: "Ana", email: "ana@example.com" });
+  assertEquals(body.require_login, true);
+  assertEquals(touches.token, [TOKEN]);
+  assertEquals(touches.session, [await sha256Hex(session)]);
+});
+
+Deno.test("open link -> 200 with person null, require_login false, touchSession not called", async () => {
+  const db = makeDb(GATED_TOKEN_ROW);
+  const touches = { token: [] as string[], session: [] as string[] };
+  const res = await loginHandler(db, touches)(req());
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.person, null);
+  assertEquals(body.require_login, false);
+  assertEquals(touches.session, []);
+});
+
+Deno.test("a throwing touchSession must NOT break the portal", async () => {
+  const db = makeDb(GATED_TOKEN_ROW, undefined, null, { require_login: false, person: PERSON });
+  const handler = createHubBootstrapHandler({
+    buildCorsHeaders: cors,
+    createDb: () => db as any,
+    now: () => NOW,
+    touchToken: async () => {},
+    touchSession: async () => { throw new Error("boom"); },
+    rateLimit: async () => true,
+  });
+  const r = new Request(`https://x/?workspace=w&token=${TOKEN}`, { headers: { "x-hub-session": "s" } });
+  assertEquals((await handler(r)).status, 200);
+});
+
+Deno.test("access read failure -> 500 with a generic body", async () => {
+  const db = makeDb(GATED_TOKEN_ROW);
+  db.rpc = async (fn: string) =>
+    fn === "hub_access_context"
+      ? { data: null, error: { message: "boom detail" } } as any
+      : { data: true, error: null };
+  const orig = console.error;
+  console.error = () => {};
+  try {
+    const res = await loginHandler(db, { token: [], session: [] })(req());
+    assertEquals(res.status, 500);
+    assertEquals(await res.json(), { error: "Erro interno." });
+  } finally {
+    console.error = orig;
+  }
 });
 
 // --- makeTouchToken (the real factory wired in index.ts) -------------------------------
