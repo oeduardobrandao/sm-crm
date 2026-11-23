@@ -15,7 +15,13 @@ import type { PostAnalytics } from '../../../services/analytics';
 import type { RateDistributions, RateKey } from '../../../lib/ig-rates';
 import { missingActionMetricTitle, type ActionMetricKey } from '../../../lib/post-action-metrics';
 import { PostCommentsPanel } from '../comments/PostCommentsPanel';
-import { formatMediaType, formatPublishedAt, formatSyncedAgo, rateBenchmark } from '../contaFormat';
+import {
+  GOOD_ENGAGEMENT_RATE,
+  formatMediaType,
+  formatPublishedAt,
+  formatSyncedAgo,
+  rateBenchmark,
+} from '../contaFormat';
 import { ActionMetricValue } from './PostInsightsDetail';
 import { PostThumbnail } from './PostThumbnail';
 
@@ -178,7 +184,13 @@ function OverviewPanel({ post, footer }: { post: PostAnalytics; footer?: ReactNo
         <div className="post-metrics__ratios">
           <div className="post-metrics__ratio">
             <span>Engajamento</span>
-            <strong className="post-metrics__ratio-value--good">
+            <strong
+              className={
+                post.engagement_rate >= GOOD_ENGAGEMENT_RATE
+                  ? 'post-metrics__ratio-value--good'
+                  : undefined
+              }
+            >
               {fmtPercent(post.engagement_rate)}
             </strong>
           </div>

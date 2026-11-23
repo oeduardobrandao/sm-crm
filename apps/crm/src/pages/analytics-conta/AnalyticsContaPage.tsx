@@ -91,6 +91,7 @@ import { useVidroShell } from '@/components/layout/PageToolbarContext';
 import { ContaPhone, ContaPhoneMessage } from './phone/ContaPhone';
 import {
   BEST_TIME_BUCKET_STARTS,
+  GOOD_ENGAGEMENT_RATE,
   bucketBestTimes,
   formatMediaType,
   toStatDelta,
@@ -2564,7 +2565,7 @@ function AnalyticsContent({
                           style={{
                             fontFamily: 'var(--font-mono)',
                             color:
-                              post.engagement_rate >= 3
+                              post.engagement_rate >= GOOD_ENGAGEMENT_RATE
                                 ? 'var(--success)'
                                 : post.engagement_rate < 1
                                   ? 'var(--danger)'

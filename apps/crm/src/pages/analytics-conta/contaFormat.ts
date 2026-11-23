@@ -68,6 +68,9 @@ export function bucketBestTimes(data: BestPostingTimes) {
   return { buckets, bucketSize, max, topCell };
 }
 
+/** Engagement rate (%) from which a post's rate reads as good (painted green). */
+export const GOOD_ENGAGEMENT_RATE = 3;
+
 export function formatMediaType(type: string): string {
   switch (type) {
     case 'VIDEO':

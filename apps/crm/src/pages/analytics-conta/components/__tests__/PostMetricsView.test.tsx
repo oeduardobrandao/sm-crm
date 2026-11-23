@@ -139,6 +139,14 @@ describe('PostMetricsView', () => {
     expect(screen.queryByText('Seguidores por mil alcançados')).not.toBeInTheDocument();
   });
 
+  it('paints the engagement rate green only from 3%', () => {
+    const { unmount } = renderView({ post: post({ engagement_rate: 3 }) });
+    expect(screen.getByText('3,00%')).toHaveClass('post-metrics__ratio-value--good');
+    unmount();
+    renderView({ post: post({ engagement_rate: 2.99 }) });
+    expect(screen.getByText('2,99%')).not.toHaveClass('post-metrics__ratio-value--good');
+  });
+
   it('Resumo for a Reel shows "—" with the Reels reason for follows and profile visits', () => {
     renderView({
       post: post({

@@ -20267,7 +20267,11 @@ button.phone-stat-tile:active {
   font-size: 15px;
 }
 .post-metrics__ratio-value--good {
-  color: var(--success);
+  /* Text-safe greens (the .badge-success ink); --success is a fill colour, ~2:1 on white. */
+  color: #15803d;
+}
+[data-theme='dark'] .post-metrics__ratio-value--good {
+  color: #4ade80;
 }
 
 /* Engajamento rows and per-view bars. */
