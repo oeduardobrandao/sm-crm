@@ -1,5 +1,6 @@
 import { assert, assertEquals, readJson } from "./assert.ts";
-import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
+import { createSupabaseQueryMock as createBaseQueryMock } from "../../../test/shared/supabaseMock.ts";
+import { withHubAccess } from "./hub-access-mock.ts";
 import { createHubApproveHandler } from "../hub-approve/handler.ts";
 import { createHubBootstrapHandler } from "../hub-bootstrap/handler.ts";
 import { createHubBrandHandler } from "../hub-brand/handler.ts";
@@ -9,6 +10,9 @@ import { createHubIdeiasHandler } from "../hub-ideias/handler.ts";
 import { createHubPagesHandler } from "../hub-pages/handler.ts";
 import { createHubPostsHandler } from "../hub-posts/handler.ts";
 import { createHubInstagramFeedHandler } from "../hub-instagram-feed/handler.ts";
+
+// Hub functions now resolve access through hub_access_context (client login).
+const createSupabaseQueryMock = () => withHubAccess(createBaseQueryMock());
 
 const now = () => "2026-04-17T12:00:00.000Z";
 const buildCorsHeaders = () => ({ "Access-Control-Allow-Origin": "https://hub.mesaas.com" });
@@ -380,7 +384,7 @@ Deno.test("hub-posts never ships team-authored mensagem rows in postApprovals", 
       // internal note from the CRM Mensagens page (replyToPostApproval): must be dropped
       { id: 1, post_id: 99, action: "mensagem", comentario: "Ana, o CTA está fraco", is_workspace_user: true, created_at: "2026-04-10T10:00:00.000Z" },
       { id: 2, post_id: 99, action: "correcao", comentario: "Trocar a foto", is_workspace_user: false, created_at: "2026-04-11T10:00:00.000Z" },
-      { id: 3, post_id: 99, action: "mensagem", comentario: "Ficou ótimo", is_workspace_user: false, created_at: "2026-04-12T10:00:00.000Z" },
+      { id: 3, post_id: 99, action: "mensagem", comentario: "Ficou ótimo", is_workspace_user: false, hub_person_nome: "Marina Souza", created_at: "2026-04-12T10:00:00.000Z" },
       // team-authored approval rows do not exist in practice (hub-approve hardcodes false) but are not messages: kept
       { id: 4, post_id: 99, action: "aprovado", comentario: null, is_workspace_user: true, created_at: "2026-04-13T10:00:00.000Z" },
     ],
@@ -408,6 +412,11 @@ Deno.test("hub-posts never ships team-authored mensagem rows in postApprovals", 
     !body.postApprovals.some((a: { action: string; is_workspace_user: boolean }) => a.action === "mensagem" && a.is_workspace_user),
     "team mensagem rows must not leave hub-posts",
   );
+  // Client login: the approval DTO carries who acted by name, never the person id.
+  assertEquals(body.postApprovals[1].hub_person_nome, "Marina Souza");
+  const approvalsQuery = db.calls.find((c: { table: string; operation: string }) => c.table === "post_approvals" && c.operation === "select");
+  assert(approvalsQuery);
+  assertEquals(approvalsQuery.selectArgs[0], ["id, post_id, action, comentario, is_workspace_user, hub_person_nome, created_at"]);
 });
 
 function hubPostsNotesDb(noteRows: Record<string, unknown>[]) {
@@ -1704,7 +1713,10 @@ Deno.test("hub-approve stores a trimmed mensagem in any client-visible status an
   assertEquals(response.status, 200);
   const insert = db.calls.find((c: { table: string; operation: string }) => c.table === "post_approvals" && c.operation === "insert");
   assert(insert);
-  assertEquals(insert.payload, { post_id: 99, token: "hub-123", action: "mensagem", comentario: "Ficou ótimo!", is_workspace_user: false });
+  assertEquals(insert.payload, {
+    post_id: 99, token: "hub-123", action: "mensagem", comentario: "Ficou ótimo!", is_workspace_user: false,
+    hub_person_id: null, hub_person_nome: null,
+  });
   const notif = db.calls.find((c: { table: string }) => c.table === "rpc:create_post_approval_notification");
   assert(notif);
   assertEquals(notif.payload, { p_post_id: 99, p_action: "mensagem", p_comentario: "Ficou ótimo!" });
@@ -1719,6 +1731,78 @@ Deno.test("hub-approve returns a generic message when the mensagem insert fails"
   }));
   assertEquals(response.status, 500);
   assertEquals((await readJson(response)).error, "Erro ao registrar comentário.");
+});
+
+// ── Client login: who acted (hub_person_id / hub_person_nome) ──────────────
+const HUB_PERSON = { id: "8d1b7c2e-0000-4000-8000-000000000001", nome: "Marina Souza", email: "marina@cliente.test" };
+
+function hubApproveRequest(body: Record<string, unknown>) {
+  return new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, ...body }),
+  });
+}
+
+Deno.test("hub-approve passes the logged-in person to record_client_approval_with_notes", async () => {
+  const db = hubApproveDbForPost();
+  db.queueRpc("hub_access_context", { data: { require_login: true, person: HUB_PERSON }, error: null });
+  const response = await hubApproveHandlerFor(db)(hubApproveRequest({ action: "aprovado" }));
+  assertEquals(response.status, 200);
+  const approvalRpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval_with_notes");
+  assert(approvalRpc);
+  const payload = approvalRpc.payload as Record<string, unknown>;
+  assertEquals(payload.p_hub_person_id, HUB_PERSON.id);
+  assertEquals(payload.p_hub_person_nome, HUB_PERSON.nome);
+  assert(!JSON.stringify(payload).includes(HUB_PERSON.email), "the person's email never reaches the RPC");
+});
+
+Deno.test("hub-approve stores the logged-in person on a mensagem insert", async () => {
+  const db = hubApproveDbForPost("postado");
+  db.queueRpc("hub_access_context", { data: { require_login: false, person: HUB_PERSON }, error: null });
+  db.queue("post_approvals", "insert", { data: null, error: null });
+  const response = await hubApproveHandlerFor(db)(hubApproveRequest({ action: "mensagem", comentario: "Amei" }));
+  assertEquals(response.status, 200);
+  const insert = db.calls.find((c: { table: string; operation: string }) => c.table === "post_approvals" && c.operation === "insert");
+  assert(insert);
+  const payload = insert.payload as Record<string, unknown>;
+  assertEquals(payload.hub_person_id, HUB_PERSON.id);
+  assertEquals(payload.hub_person_nome, HUB_PERSON.nome);
+  assert(!JSON.stringify(payload).includes(HUB_PERSON.email), "the person's email is never stored");
+});
+
+Deno.test("hub-approve with no person sends null attribution to the RPC and the insert", async () => {
+  const db = hubApproveDbForPost();
+  const response = await hubApproveHandlerFor(db)(hubApproveRequest({ action: "aprovado" }));
+  assertEquals(response.status, 200);
+  const approvalRpc = db.calls.find((c: { table: string }) => c.table === "rpc:record_client_approval_with_notes");
+  assert(approvalRpc);
+  const rpcPayload = approvalRpc.payload as Record<string, unknown>;
+  assertEquals(rpcPayload.p_hub_person_id, null);
+  assertEquals(rpcPayload.p_hub_person_nome, null);
+
+  const db2 = hubApproveDbForPost("postado");
+  db2.queue("post_approvals", "insert", { data: null, error: null });
+  const response2 = await hubApproveHandlerFor(db2)(hubApproveRequest({ action: "mensagem", comentario: "oi" }));
+  assertEquals(response2.status, 200);
+  const insert = db2.calls.find((c: { table: string; operation: string }) => c.table === "post_approvals" && c.operation === "insert");
+  assert(insert);
+  const insertPayload = insert.payload as Record<string, unknown>;
+  assertEquals(insertPayload.hub_person_id, null);
+  assertEquals(insertPayload.hub_person_nome, null);
+});
+
+Deno.test("hub-approve answers 401 login_required for a gated client and writes nothing", async () => {
+  for (const action of ["aprovado", "mensagem"]) {
+    const db = hubApproveDbForPost("postado");
+    db.queueRpc("hub_access_context", { data: { require_login: true, person: null }, error: null });
+    const response = await hubApproveHandlerFor(db)(hubApproveRequest({ action, comentario: "oi" }));
+    assertEquals(response.status, 401, action);
+    const body = await readJson(response);
+    assertEquals(body.code, "login_required");
+    assert(!db.calls.some((c: { table: string; operation: string }) => c.table === "post_approvals" && c.operation === "insert"));
+    assert(!db.calls.some((c: { table: string }) => c.table === "workflow_posts"), "post is never read before access");
+    assert(!db.calls.some((c: { table: string }) => c.table === "rpc:record_client_approval_with_notes"));
+  }
 });
 
 Deno.test("hub-approve rejects a mensagem on a post the client has not received yet and never inserts", async () => {
@@ -4192,6 +4276,8 @@ Deno.test("hub-approve aprovado uses record_client_approval_with_notes with the 
     p_comentario: "Ok",
     p_new_status: "aprovado_cliente",
     p_motivo: null,
+    p_hub_person_id: null,
+    p_hub_person_nome: null,
   });
 });
 

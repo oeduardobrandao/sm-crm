@@ -1,11 +1,11 @@
 // Hub do relatório de blocos (spec §9). Deploy OBRIGATÓRIO com --no-verify-jwt:
-// /list e /doc autenticam por token de portal (resolveHubToken, que impõe
-// feature_hub_portal); /print-doc autentica SÓ pelo print token HMAC — export
+// /list e /doc autenticam por token de portal (resolveHubAccess, que impõe
+// feature_hub_portal e o login do cliente); /print-doc autentica SÓ pelo print token HMAC — export
 // de PDF é entitlement de relatórios, independente do portal.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
-import { resolveHubToken } from "../_shared/hub-token.ts";
-import { checkRateLimit, getClientIP } from "../_shared/rate-limit.ts";
+import { hubAccessDenied, resolveHubAccess } from "../_shared/hub-token.ts";
+import { checkRateLimit } from "../_shared/rate-limit.ts";
 import { signGetUrl } from "../_shared/r2.ts";
 import { isMediaProxyEnabled, signMediaUrl } from "../_shared/media-url.ts";
 import type { SignFn } from "./sign-images.ts";
@@ -53,12 +53,9 @@ Deno.serve(async (req: Request) => {
 
     const token = url.searchParams.get("token");
     if (!token) return json({ error: "token required" }, 400);
-    const hubToken = await resolveHubToken(db, token, new Date().toISOString());
-    if (!hubToken) {
-      const okBadToken = await checkRateLimit(db, `hub-badtoken:${getClientIP(req)}`, 30, 600);
-      if (!okBadToken) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
-      return json({ error: "Link inválido." }, 404);
-    }
+    const access = await resolveHubAccess(db, req, token, new Date().toISOString());
+    if (!access.ok) return hubAccessDenied(access.reason, { db, req, json, rateLimit: checkRateLimit });
+    const hubToken = access.token;
 
     const okRead = await checkRateLimit(
       db, `hub-read:${hubToken.conta_id}:${hubToken.cliente_id}`, 300, 300,

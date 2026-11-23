@@ -1,7 +1,6 @@
 import { createJsonResponder, internalServerError } from "../_shared/http.ts";
-import { resolveHubToken, type HubToken } from "../_shared/hub-token.ts";
+import { hubAccessDenied, resolveHubAccess, type HubToken } from "../_shared/hub-token.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
-import { getClientIP } from "../_shared/rate-limit.ts";
 import {
   AUDIO_COLUMNS,
   buildAudioView,
@@ -70,12 +69,9 @@ export function createHubBriefingHandler(deps: HubBriefingHandlerDeps) {
       opts: { debitRead: boolean },
     ): Promise<HubToken | Response> => {
       if (!token) return json({ error: "token required" }, 400);
-      const hubToken = await resolveHubToken(db as never, token, deps.now());
-      if (!hubToken) {
-        const okBadToken = await deps.rateLimit(db, `hub-badtoken:${getClientIP(req)}`, 30, 600);
-        if (!okBadToken) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
-        return json({ error: "Link inválido." }, 404);
-      }
+      const access = await resolveHubAccess(db as never, req, token, deps.now());
+      if (!access.ok) return hubAccessDenied(access.reason, { db, req, json, rateLimit: deps.rateLimit });
+      const hubToken = access.token;
       if (opts.debitRead) {
         const okRead = await deps.rateLimit(db, `hub-read:${hubToken.conta_id}:${hubToken.cliente_id}`, 300, 300);
         if (!okRead) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);

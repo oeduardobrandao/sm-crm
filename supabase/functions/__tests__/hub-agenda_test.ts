@@ -1,6 +1,10 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert";
-import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
+import { createSupabaseQueryMock as createBaseQueryMock } from "../../../test/shared/supabaseMock.ts";
+import { withHubAccess } from "./hub-access-mock.ts";
 import { createHubAgendaHandler, type HubAgendaAuditEntry } from "../hub-agenda/handler.ts";
+
+// Hub functions now resolve access through hub_access_context (client login).
+const createSupabaseQueryMock = () => withHubAccess(createBaseQueryMock());
 
 const BASE = "https://x.test/hub-agenda";
 const CORS = { "Access-Control-Allow-Origin": "https://app.mesaas.com" };

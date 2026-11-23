@@ -1,6 +1,10 @@
 import { assertEquals, readJson } from "./assert.ts";
-import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
+import { createSupabaseQueryMock as createBaseQueryMock } from "../../../test/shared/supabaseMock.ts";
+import { withHubAccess } from "./hub-access-mock.ts";
 import { createHubMensagensHandler } from "../hub-mensagens/handler.ts";
+
+// Hub functions now resolve access through hub_access_context (client login).
+const createSupabaseQueryMock = () => withHubAccess(createBaseQueryMock());
 
 const buildCorsHeaders = () => ({ "Access-Control-Allow-Origin": "https://app.mesaas.com" });
 
@@ -163,7 +167,46 @@ Deno.test("hub-mensagens: POST inserts a general message scoped to the token's c
     cliente_id: 14,
     content: "Olá equipe!",
     is_workspace_user: false,
+    hub_person_id: null,
+    hub_person_nome: null,
   });
+});
+
+Deno.test("hub-mensagens: POST records the logged-in person on the mensagens insert", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  const person = { id: "8d1b7c2e-0000-4000-8000-000000000001", nome: "Marina Souza", email: "marina@cliente.test" };
+  db.queueRpc("hub_access_context", { data: { require_login: true, person }, error: null });
+  db.queue("mensagens", "insert", { data: { id: 9 }, error: null });
+  const res = await makeHandler(db)(new Request("https://x.test/hub-mensagens", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-hub-session": "sess-abc" },
+    body: JSON.stringify({ token: "t", content: "Olá equipe!" }),
+  }));
+  assertEquals(res.status, 200);
+  const insertCall = db.calls.find((c) => c.table === "mensagens" && c.operation === "insert");
+  assertEquals(insertCall?.payload, {
+    conta_id: "conta-1",
+    cliente_id: 14,
+    content: "Olá equipe!",
+    is_workspace_user: false,
+    hub_person_id: person.id,
+    hub_person_nome: person.nome,
+  });
+});
+
+Deno.test("hub-mensagens: a gated client without a session gets 401 login_required and nothing is inserted", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  db.queueRpc("hub_access_context", { data: { require_login: true, person: null }, error: null });
+  const res = await makeHandler(db)(new Request("https://x.test/hub-mensagens", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: "t", content: "Olá equipe!" }),
+  }));
+  assertEquals(res.status, 401);
+  assertEquals((await readJson(res)).code, "login_required");
+  assertEquals(db.calls.some((c) => c.table === "mensagens" && c.operation === "insert"), false);
 });
 
 // ---------------------------------------------------------------------------

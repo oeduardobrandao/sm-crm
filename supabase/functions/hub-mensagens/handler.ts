@@ -1,7 +1,6 @@
 import { createJsonResponder } from "../_shared/http.ts";
-import { resolveHubToken } from "../_shared/hub-token.ts";
+import { hubAccessDenied, resolveHubAccess } from "../_shared/hub-token.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
-import { getClientIP } from "../_shared/rate-limit.ts";
 
 type DbClient = {
   from: (table: string) => any;
@@ -42,12 +41,9 @@ export function createHubMensagensHandler(deps: HubMensagensHandlerDeps) {
       url.searchParams.get("token") ?? (await req.clone().json().catch(() => ({}))).token;
     if (!token) return json({ error: "token required" }, 400);
 
-    const hubToken = await resolveHubToken(db as any, token, deps.now());
-    if (!hubToken) {
-      const okBadToken = await deps.rateLimit(db, `hub-badtoken:${getClientIP(req)}`, 30, 600);
-      if (!okBadToken) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
-      return json({ error: "Link inválido." }, 404);
-    }
+    const access = await resolveHubAccess(db as any, req, token, deps.now());
+    if (!access.ok) return hubAccessDenied(access.reason, { db, req, json, rateLimit: deps.rateLimit });
+    const hubToken = access.token;
 
     const okRead = await deps.rateLimit(
       db, `hub-read:${hubToken.conta_id}:${hubToken.cliente_id}`, 300, 300,
@@ -129,6 +125,9 @@ export function createHubMensagensHandler(deps: HubMensagensHandlerDeps) {
           cliente_id: clienteId,
           content,
           is_workspace_user: false,
+          // Who wrote it, when the client logged in (client login). Never the email.
+          hub_person_id: access.person?.id ?? null,
+          hub_person_nome: access.person?.nome ?? null,
         })
         .select("id")
         .single();

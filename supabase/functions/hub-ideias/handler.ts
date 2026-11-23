@@ -1,5 +1,5 @@
 import { createJsonResponder, internalServerError } from "../_shared/http.ts";
-import { resolveHubToken } from "../_shared/hub-token.ts";
+import { hubAccessDenied, resolveHubAccess } from "../_shared/hub-token.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 import { presignIdeiaImage, finalizeIdeiaImage, removeIdeiaImage } from "../_shared/ideia-media.ts";
 import {
@@ -11,7 +11,6 @@ import {
   transcribeIdeiaAudio,
   type Transcriber,
 } from "../_shared/ideia-audio.ts";
-import { getClientIP } from "../_shared/rate-limit.ts";
 
 type DbClient = {
   from: (table: string) => any;
@@ -90,12 +89,9 @@ export function createHubIdeiasHandler(deps: HubIdeiasHandlerDeps) {
     const token = url.searchParams.get("token") ?? (await req.clone().json().catch(() => ({}))).token;
     if (!token) return json({ error: "token required" }, 400);
 
-    const hubToken = await resolveHubToken(db as any, token, deps.now());
-    if (!hubToken) {
-      const okBadToken = await deps.rateLimit(db, `hub-badtoken:${getClientIP(req)}`, 30, 600);
-      if (!okBadToken) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
-      return json({ error: "Link inválido." }, 404);
-    }
+    const access = await resolveHubAccess(db as any, req, token, deps.now());
+    if (!access.ok) return hubAccessDenied(access.reason, { db, req, json, rateLimit: deps.rateLimit });
+    const hubToken = access.token;
 
     const clienteId = hubToken.cliente_id;
     const workspaceId = hubToken.conta_id;

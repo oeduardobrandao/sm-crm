@@ -20,8 +20,7 @@
  * Spec: docs/superpowers/specs/2026-10-26-linha-editorial-design.md (sections 4, 5.2, 8.1, 13.4)
  */
 import { createJsonResponder } from "../_shared/http.ts";
-import { resolveHubToken } from "../_shared/hub-token.ts";
-import { getClientIP } from "../_shared/rate-limit.ts";
+import { hubAccessDenied, resolveHubAccess } from "../_shared/hub-token.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 
 type DbClient = {
@@ -108,7 +107,6 @@ const VISIBLE_STATUSES = ["enviada", "ajustes", "aprovada"];
 const MSG_GENERIC = "Não foi possível concluir. Tente novamente.";
 const MSG_INVALID = "Dados inválidos.";
 const MSG_RATE = "Muitas tentativas. Aguarde alguns minutos.";
-const MSG_BAD_TOKEN = "Link inválido.";
 const FEATURE_DISABLED_BODY = { error: "feature_disabled", feature: FEATURE };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -261,12 +259,9 @@ export function createHubLinhaEditorialHandler(deps: HubLinhaEditorialHandlerDep
 
     const db = deps.createDb();
     // deno-lint-ignore no-explicit-any
-    const hubToken = await resolveHubToken(db as any, token, deps.now());
-    if (!hubToken) {
-      const okBadToken = await deps.rateLimit(db, `hub-badtoken:${getClientIP(req)}`, 30, 600);
-      if (!okBadToken) return fail(429, MSG_RATE);
-      return fail(404, MSG_BAD_TOKEN);
-    }
+    const access = await resolveHubAccess(db as any, req, token, deps.now());
+    if (!access.ok) return hubAccessDenied(access.reason, { db, req, json, rateLimit: deps.rateLimit });
+    const hubToken = access.token;
     const contaId = hubToken.conta_id;
     const clienteId = hubToken.cliente_id;
 

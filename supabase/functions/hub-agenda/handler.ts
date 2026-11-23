@@ -12,8 +12,7 @@
  * the `de`/`ate` period read: 2026-10-07-agenda-camadas-convidados-design.md (section 2)
  */
 import { createJsonResponder } from "../_shared/http.ts";
-import { resolveHubToken } from "../_shared/hub-token.ts";
-import { getClientIP } from "../_shared/rate-limit.ts";
+import { hubAccessDenied, resolveHubAccess } from "../_shared/hub-token.ts";
 import { gerarCalendario, type IcsEvento } from "../_shared/ics.ts";
 
 type DbClient = {
@@ -190,12 +189,9 @@ export function createHubAgendaHandler(deps: HubAgendaHandlerDeps) {
 
     const db = deps.createDb();
 
-    const hubToken = await resolveHubToken(db as any, token, deps.now());
-    if (!hubToken) {
-      const okBadToken = await deps.rateLimit(db, `hub-badtoken:${getClientIP(req)}`, 30, 600);
-      if (!okBadToken) return fail(429, MSG_RATE);
-      return fail(404, "Link inválido.");
-    }
+    const access = await resolveHubAccess(db as any, req, token, deps.now());
+    if (!access.ok) return hubAccessDenied(access.reason, { db, req, json, rateLimit: deps.rateLimit });
+    const hubToken = access.token;
 
     const contaId = hubToken.conta_id;
     const clienteId = hubToken.cliente_id;

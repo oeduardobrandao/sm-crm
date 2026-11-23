@@ -1,6 +1,10 @@
 import { assert, assertEquals, readJson } from "./assert.ts";
-import { createSupabaseQueryMock, type QueryCall } from "../../../test/shared/supabaseMock.ts";
+import { createSupabaseQueryMock as createBaseQueryMock, type QueryCall } from "../../../test/shared/supabaseMock.ts";
+import { withHubAccess } from "./hub-access-mock.ts";
 import { createHubLinhaEditorialHandler, type HubLinhaAuditEntry } from "../hub-linha-editorial/handler.ts";
+
+// Hub functions now resolve access through hub_access_context (client login).
+const createSupabaseQueryMock = () => withHubAccess(createBaseQueryMock());
 
 // 12:00 UTC on Oct 26 is 09:00 in São Paulo: current month = 2026-10.
 const NOW = "2026-10-26T12:00:00.000Z";
