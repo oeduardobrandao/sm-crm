@@ -45,7 +45,7 @@ export function PostDetailSheet({
   const [busyTag, setBusyTag] = useState<number | null>(null);
   // The tab belongs to one post: any other post opens on Insights, decided during render
   // so the comments panel never mounts (and fetches) for a post nobody asked about.
-  const [tabState, setTabState] = useState<{ postId: number | null; tab: 'insights' | 'comments' }>(
+  const [tabState, setTabState] = useState<{ postId: string | null; tab: 'insights' | 'comments' }>(
     {
       postId: null,
       tab: 'insights',

@@ -1041,7 +1041,7 @@ function AnalyticsContent({
     col: 'posted_at',
     dir: 'desc',
   });
-  const [expandedPostId, setExpandedPostId] = useState<number | null>(null);
+  const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
   const commentsAiEnabled = useWorkspaceLimits().features?.feature_instagram_comments_ai === true;
   const [syncing, setSyncing] = useState(false);
   // Collapsed by default on phones (and the phone shell on touch tablets), where the
@@ -1447,7 +1447,7 @@ function AnalyticsContent({
     }
   };
 
-  const handleAssignTag = async (postId: number, tagId: number) => {
+  const handleAssignTag = async (postId: string, tagId: number) => {
     try {
       await assignTagToPost(postId, tagId);
       qc.invalidateQueries({ queryKey: ['analytics-posts', clientId] });

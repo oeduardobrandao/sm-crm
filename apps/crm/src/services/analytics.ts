@@ -126,11 +126,11 @@ export interface AccountViews {
 }
 
 export interface PostAnalytics {
-  id: number;
+  id: string;
   instagram_post_id: string;
   caption: string;
   media_type: string;
-  permalink: string;
+  permalink: string | null;
   posted_at: string;
   likes: number;
   comments: number;
@@ -152,6 +152,8 @@ export interface PostAnalytics {
   engagement_rate: number;
   saves_rate: number;
   tags: PostTag[];
+  /** Last time the sync wrote this row; null if never synced. */
+  synced_at: string | null;
 }
 
 export interface AudienceDemographics {
@@ -754,7 +756,7 @@ export async function getPostsAnalytics(
 
   // Get tag assignments
   const postIds = allPosts.map((p) => p.id);
-  const tagMap: Record<number, PostTag[]> = {};
+  const tagMap: Record<string, PostTag[]> = {};
 
   if (postIds.length > 0) {
     try {
@@ -802,6 +804,7 @@ export async function getPostsAnalytics(
       unavailable_metrics: unavailable,
       ig_score: dists ? scorePost({ media_type: p.media_type, rates }, dists) : null,
       tags: tagMap[p.id] || [],
+      synced_at: p.synced_at ?? null,
     };
   });
 
@@ -1018,7 +1021,7 @@ export async function deleteTag(tagId: number): Promise<void> {
   if (error) throw error;
 }
 
-export async function assignTagToPost(postId: number, tagId: number): Promise<void> {
+export async function assignTagToPost(postId: string, tagId: number): Promise<void> {
   const { error } = await supabase
     .from('instagram_post_tag_assignments')
     .insert({ post_id: postId, tag_id: tagId });
@@ -1026,7 +1029,7 @@ export async function assignTagToPost(postId: number, tagId: number): Promise<vo
   if (error && error.code !== '23505' && error.code !== '42P01') throw error;
 }
 
-export async function removeTagFromPost(postId: number, tagId: number): Promise<void> {
+export async function removeTagFromPost(postId: string, tagId: number): Promise<void> {
   const { error } = await supabase
     .from('instagram_post_tag_assignments')
     .delete()

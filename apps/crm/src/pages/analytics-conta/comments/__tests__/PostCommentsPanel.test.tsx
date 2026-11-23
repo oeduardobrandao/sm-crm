@@ -99,7 +99,7 @@ import { PostCommentsPanel } from '../PostCommentsPanel';
 
 function post(overrides: Partial<PostAnalytics> = {}): PostAnalytics {
   return {
-    id: 1,
+    id: 'post-1',
     instagram_post_id: 'ig-1',
     caption: 'Rotina de skincare',
     media_type: 'VIDEO',
@@ -123,6 +123,7 @@ function post(overrides: Partial<PostAnalytics> = {}): PostAnalytics {
     engagement_rate: 3.2,
     saves_rate: 0.8,
     tags: [],
+    synced_at: null,
     ...overrides,
   } as PostAnalytics;
 }

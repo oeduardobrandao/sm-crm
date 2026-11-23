@@ -6,7 +6,7 @@ import { PostInsightsDetail } from '../PostInsightsDetail';
 
 function post(over: Partial<PostAnalytics> = {}): PostAnalytics {
   return {
-    id: 1,
+    id: 'post-1',
     instagram_post_id: 'ig1',
     caption: 'Dá preguiça. Dá medo.',
     media_type: 'CAROUSEL_ALBUM',
@@ -26,6 +26,7 @@ function post(over: Partial<PostAnalytics> = {}): PostAnalytics {
     engagement_rate: 18.4,
     saves_rate: 1.7,
     tags: [],
+    synced_at: null,
     profile_visits: 328,
     follows: 75,
     bio_link_clicks: 1,

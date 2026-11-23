@@ -256,7 +256,7 @@ vi.mock('@/components/ui/sheet', async () => {
 
 // Its own suite covers the panel; here only whether the expanded row mounts it.
 vi.mock('../comments/PostCommentsPanel', () => ({
-  PostCommentsPanel: ({ clientId, post }: { clientId: number; post: { id: number } }) => (
+  PostCommentsPanel: ({ clientId, post }: { clientId: number; post: { id: string } }) => (
     <div data-testid="post-comments-panel">{`painel ${clientId}/${post.id}`}</div>
   ),
 }));
@@ -361,7 +361,7 @@ function seedCommonAnalyticsData() {
   };
   const posts = [
     {
-      id: 1,
+      id: 'post-1',
       posted_at: '2026-04-15T12:00:00Z',
       media_type: 'VIDEO',
       reach: 2500,
@@ -379,7 +379,7 @@ function seedCommonAnalyticsData() {
       tags: [{ id: 1, tag_name: 'Educação', color: '#3ecf8e' }],
     },
     {
-      id: 2,
+      id: 'post-2',
       posted_at: '2026-04-12T12:00:00Z',
       media_type: 'IMAGE',
       reach: 3000,
@@ -700,7 +700,7 @@ describe('AnalyticsContaPage', () => {
       data: {
         posts: [
           {
-            id: 1,
+            id: 'post-1',
             instagram_post_id: 'x',
             caption: '',
             media_type: 'VIDEO',
@@ -761,7 +761,7 @@ describe('AnalyticsContaPage', () => {
         posts: [
           {
             ...base,
-            id: 1,
+            id: 'post-1',
             caption: 'Dá preguiça. Dá medo.',
             media_type: 'CAROUSEL_ALBUM',
             posted_at: '2026-09-23T12:00:00Z',
@@ -774,7 +774,7 @@ describe('AnalyticsContaPage', () => {
           },
           {
             ...base,
-            id: 2,
+            id: 'post-2',
             caption: 'Reel sem dados de ação',
             media_type: 'VIDEO',
             posted_at: '2026-09-19T12:00:00Z',
@@ -815,7 +815,7 @@ describe('AnalyticsContaPage', () => {
       data: {
         posts: [
           {
-            id: 7,
+            id: 'post-7',
             instagram_post_id: 'ig-7',
             permalink: 'https://instagram.com/p/7',
             caption: 'Rotina de skincare',
@@ -874,7 +874,7 @@ describe('AnalyticsContaPage', () => {
 
     fireEvent.click(comments);
     expect(comments).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByTestId('post-comments-panel')).toHaveTextContent('painel 42/7');
+    expect(screen.getByTestId('post-comments-panel')).toHaveTextContent('painel 42/post-7');
     expect(within(detail).queryByText('Ações após a visualização')).not.toBeInTheDocument();
   });
 

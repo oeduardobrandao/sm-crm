@@ -243,7 +243,7 @@ export function ContaPhone(props: ContaPhoneProps) {
 
   const [sortOpen, setSortOpen] = useState(false);
   const sortButtonRef = useRef<HTMLButtonElement>(null);
-  const [selectedPostId, setSelectedPostId] = useState<number | null>(null);
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [newTagOpen, setNewTagOpen] = useState(false);
   const [tagToRemove, setTagToRemove] = useState<PostTag | null>(null);
   const [section, setSection] = useState<SectionKey | null>(null);
@@ -281,7 +281,7 @@ export function ContaPhone(props: ContaPhoneProps) {
 
   const drawerRows: AllPostsRow[] = drawer.posts.map((post) => ({
     key: post.id,
-    href: post.permalink,
+    href: post.permalink ?? '',
     thumbnailUrl: post.thumbnail_url,
     mediaType: post.media_type,
     title: post.caption || 'Sem legenda',

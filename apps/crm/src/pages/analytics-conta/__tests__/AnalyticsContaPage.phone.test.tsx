@@ -151,7 +151,7 @@ const kpi = (current: number, previous: number) => ({
 
 function post(overrides: Partial<PostAnalytics>): PostAnalytics {
   return {
-    id: 1,
+    id: 'post-1',
     instagram_post_id: 'ig1',
     caption: 'Post sobre botox',
     media_type: 'IMAGE',
@@ -175,6 +175,7 @@ function post(overrides: Partial<PostAnalytics>): PostAnalytics {
     engagement_rate: 3.2,
     saves_rate: 0.8,
     tags: [],
+    synced_at: null,
     ...overrides,
   } as PostAnalytics;
 }
@@ -220,9 +221,9 @@ describe('AnalyticsContaPage (phone)', () => {
     vi.mocked(getClientRateBaseline).mockRejectedValue(new Error('sem baseline'));
     vi.mocked(getPostsAnalytics).mockResolvedValue({
       posts: [
-        post({ id: 1, tags: [TAG] }),
+        post({ id: 'post-1', tags: [TAG] }),
         post({
-          id: 2,
+          id: 'post-2',
           instagram_post_id: 'ig2',
           caption: 'Reel de bastidores',
           media_type: 'VIDEO',
@@ -339,7 +340,7 @@ describe('AnalyticsContaPage (phone)', () => {
     expect(within(sheet).getByRole('link', { name: 'Ver no Instagram' })).toBeInTheDocument();
 
     fireEvent.click(within(sheet).getByRole('button', { name: 'Educativo' }));
-    await waitFor(() => expect(assignTagToPost).toHaveBeenCalledWith(2, 9));
+    await waitFor(() => expect(assignTagToPost).toHaveBeenCalledWith('post-2', 9));
   });
 
   it('flag desligada: o sheet do post não tem abas nem busca comentários', async () => {
@@ -446,8 +447,8 @@ describe('AnalyticsContaPage (phone)', () => {
         </MemoryRouter>
       </QueryClientProvider>
     );
-    const a = post({ id: 1, instagram_post_id: 'ig1' });
-    const b = post({ id: 2, instagram_post_id: 'ig2', caption: 'Reel de bastidores' });
+    const a = post({ id: 'post-1', instagram_post_id: 'ig1' });
+    const b = post({ id: 'post-2', instagram_post_id: 'ig2', caption: 'Reel de bastidores' });
     const { rerender } = render(sheet(a));
     fireEvent.click(await screen.findByRole('tab', { name: 'Comentários' }));
     await waitFor(() => expect(getPostComments).toHaveBeenCalledWith(42, 'ig1'));
@@ -467,7 +468,7 @@ describe('AnalyticsContaPage (phone)', () => {
     const toggle = within(sheet).getByRole('button', { name: 'Educativo' });
     expect(toggle).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(toggle);
-    await waitFor(() => expect(removeTagFromPost).toHaveBeenCalledWith(1, 9));
+    await waitFor(() => expect(removeTagFromPost).toHaveBeenCalledWith('post-1', 9));
   });
 
   it('creates a tag in a sheet instead of prompt()', async () => {

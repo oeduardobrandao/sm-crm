@@ -128,7 +128,7 @@ function CommentsList({
         open={open.has(group.comment.id)}
         onToggle={() => toggle(group.comment.id)}
         moderation={moderation}
-        permalink={post.permalink}
+        permalink={post.permalink ?? ''}
         tipoFor={(c) => tipoOf(c, analysis)}
       />
     ));

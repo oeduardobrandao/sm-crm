@@ -8,7 +8,7 @@ import { SectionHead, fmtNumber, mediaTypeLabel } from './shared';
 export interface RankedPostLike {
   id: string | number;
   /** Empty when the platform gave no link: the card then shows its numbers without one. */
-  permalink: string;
+  permalink: string | null;
   thumbnail_url?: string | null;
   media_type: string;
   /** Null where the platform has no date: the card leaves it out. */
