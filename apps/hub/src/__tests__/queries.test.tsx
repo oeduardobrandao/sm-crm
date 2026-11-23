@@ -1,9 +1,16 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { QueryClientProvider, useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import {
+  QueryClientProvider,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+} from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../api', () => ({
+vi.mock('../api', async (importOriginal) => ({
+  // Real HubApiError / isLoginRequired: the login handling matches on them.
+  ...(await importOriginal<typeof import('../api')>()),
   fetchBootstrap: vi.fn(),
   fetchPosts: vi.fn(),
   fetchOlderPosts: vi.fn(),
@@ -11,7 +18,14 @@ vi.mock('../api', () => ({
   fetchPost: vi.fn(),
 }));
 
-import { fetchBootstrap, fetchOlderPosts, fetchPosts, fetchPostsInRange } from '../api';
+import {
+  HubApiError,
+  fetchBootstrap,
+  fetchOlderPosts,
+  fetchPosts,
+  fetchPostsInRange,
+} from '../api';
+import { HUB_SESSION_STORAGE_KEY } from '../lib/hubSession';
 import {
   createHubQueryClient,
   HISTORY_OPTS,
@@ -19,6 +33,7 @@ import {
   hubPostsHistoryKey,
   hubPostsQuery,
   hubPostsRangeQuery,
+  handleLoginRequired,
   invalidateHubPosts,
   prefetchHubShell,
 } from '../queries';
@@ -152,6 +167,108 @@ describe('history and range options', () => {
     const range = hubPostsRangeQuery('tk', '2025-11-01T03:00:00.000Z', '2025-12-01T03:00:00.000Z');
     expect(range.staleTime).toBe(Infinity);
     expect(range.refetchOnWindowFocus).toBe(false);
-    expect(range.retry).toBe(1);
+    // One quick retry for ordinary failures, none for a missing login.
+    const retry = range.retry as (failures: number, error: Error) => boolean;
+    expect(retry(0, new Error('boom'))).toBe(true);
+    expect(retry(1, new Error('boom'))).toBe(false);
+    expect(retry(0, new HubApiError('Login necessário.', 401, 'login_required'))).toBe(false);
+  });
+});
+
+const loginRequired = () => new HubApiError('Login necessário.', 401, 'login_required');
+
+describe('login_required handling', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    mockedFetchBootstrap.mockReset();
+    mockedFetchPosts.mockReset();
+  });
+
+  function wrapperFor(qc: ReturnType<typeof createHubQueryClient>) {
+    return ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+  }
+
+  it('with a stored session, clears it and refetches bootstrap once', async () => {
+    window.localStorage.setItem(HUB_SESSION_STORAGE_KEY, 'sess-1');
+    mockedFetchBootstrap.mockResolvedValue({} as never);
+    mockedFetchPosts.mockRejectedValue(loginRequired());
+    const qc = createHubQueryClient();
+    const wrapper = wrapperFor(qc);
+    renderHook(() => useQuery(hubBootstrapQuery('mesaas', 'tk')), { wrapper });
+    await waitFor(() => expect(mockedFetchBootstrap).toHaveBeenCalledTimes(1));
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
+
+    renderHook(() => useQuery(hubPostsQuery('tk')), { wrapper });
+
+    await waitFor(() => expect(window.localStorage.getItem(HUB_SESSION_STORAGE_KEY)).toBeNull());
+    await waitFor(() => expect(mockedFetchBootstrap).toHaveBeenCalledTimes(2));
+    expect(invalidate).toHaveBeenCalledTimes(1);
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['hub-bootstrap'] });
+    // login_required is not retried: one posts call, not four.
+    expect(mockedFetchPosts).toHaveBeenCalledTimes(1);
+  });
+
+  it('with no stored session, leaves storage alone and does not refetch bootstrap', async () => {
+    mockedFetchBootstrap.mockRejectedValue(loginRequired());
+    const qc = createHubQueryClient();
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
+    const { result } = renderHook(() => useQuery(hubBootstrapQuery('mesaas', 'tk')), {
+      wrapper: wrapperFor(qc),
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    // Let any (wrongly) scheduled refetch run before asserting it did not.
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(invalidate).not.toHaveBeenCalled();
+    expect(mockedFetchBootstrap).toHaveBeenCalledTimes(1);
+    expect(window.localStorage.length).toBe(0);
+  });
+
+  it('also reacts to a failed mutation', async () => {
+    window.localStorage.setItem(HUB_SESSION_STORAGE_KEY, 'sess-1');
+    const qc = createHubQueryClient();
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
+    const { result } = renderHook(
+      () =>
+        useMutation({
+          mutationFn: async () => {
+            throw loginRequired();
+          },
+        }),
+      { wrapper: wrapperFor(qc) },
+    );
+
+    await act(async () => {
+      await result.current.mutateAsync().catch(() => undefined);
+    });
+
+    expect(window.localStorage.getItem(HUB_SESSION_STORAGE_KEY)).toBeNull();
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['hub-bootstrap'] });
+  });
+
+  it('ignores other errors', () => {
+    window.localStorage.setItem(HUB_SESSION_STORAGE_KEY, 'sess-1');
+    const qc = createHubQueryClient();
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
+    handleLoginRequired(qc, new HubApiError('Erro', 500));
+    handleLoginRequired(qc, new Error('login_required'));
+    expect(window.localStorage.getItem(HUB_SESSION_STORAGE_KEY)).toBe('sess-1');
+    expect(invalidate).not.toHaveBeenCalled();
+  });
+
+  it('keeps TanStack retries for other failures and refetches nothing on focus', async () => {
+    mockedFetchPosts.mockRejectedValue(new HubApiError('Erro', 500));
+    const qc = createHubQueryClient();
+    expect(qc.getDefaultOptions().queries?.retry).toBeTypeOf('function');
+    const retry = qc.getDefaultOptions().queries?.retry as (n: number, e: Error) => boolean;
+    expect(retry(2, new HubApiError('Erro', 500))).toBe(true);
+    expect(retry(3, new HubApiError('Erro', 500))).toBe(false);
+    expect(hubBootstrapQuery('w', 't')).toMatchObject({
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+    });
   });
 });

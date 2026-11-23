@@ -128,6 +128,47 @@ describe('postReferences service', () => {
     await expect(fetchPostReferences('tok', 1)).rejects.toMatchObject({ code: 'internal' });
   });
 
+  it('sends the stored session to hub-post-references but never to the R2 upload', async () => {
+    window.localStorage.setItem('mesaas:hub-session', 'sess-1');
+    mediaMock.prepareReferenceMedia.mockResolvedValue({});
+    fetchHarness.queueResponse({
+      json: { upload_url: 'https://r2/put', r2_key: 'k', thumbnail_upload_url: null },
+    });
+    fetchHarness.queueResponse({ status: 201, json: { item: ITEM } });
+
+    const pending = uploadPostReference('tok', 42, sizedFile('a.pdf', 'application/pdf', 1000));
+    await vi.waitFor(() => expect(FakeXHR.all).toHaveLength(1));
+    FakeXHR.all[0].respond();
+    await pending;
+
+    for (const call of fetchHarness.calls) {
+      expect((call.init?.headers as Record<string, string>)['x-hub-session']).toBe('sess-1');
+    }
+    // The PUT goes to a presigned R2 URL, not a hub function: a custom header there would fail
+    // the bucket's CORS preflight.
+    expect(FakeXHR.all[0].headers['x-hub-session']).toBeUndefined();
+    window.localStorage.clear();
+  });
+
+  it('omits the session header when there is none', async () => {
+    window.localStorage.clear();
+    fetchHarness.queueResponse({ json: { can_add: true, items: [] } });
+    await fetchPostReferences('tok', 1);
+    expect(fetchHarness.calls[0].init?.headers).toEqual({ apikey: 'anon-key-for-tests' });
+  });
+
+  it('maps a 401 login_required to its own code, not internal', async () => {
+    fetchHarness.queueResponse({
+      ok: false,
+      status: 401,
+      json: { error: 'Login necessário.', code: 'login_required' },
+    });
+    await expect(fetchPostReferences('tok', 1)).rejects.toMatchObject({
+      name: 'PostReferenceError',
+      code: 'login_required',
+    });
+  });
+
   it('validates type and size on the client', () => {
     expect(validateReferenceFile(sizedFile('a.svg', 'image/svg+xml', 10))).toBe('unsupported_type');
     expect(validateReferenceFile(sizedFile('a.jpg', 'image/jpeg', 25 * 1024 * 1024 + 1))).toBe(

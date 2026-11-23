@@ -44,6 +44,7 @@ export type ReferenceErrorCode =
   | 'not_found'
   | 'locked'
   | 'rate_limited'
+  | 'login_required'
   | 'upload_mismatch'
   | 'item_required'
   | 'request_closed'

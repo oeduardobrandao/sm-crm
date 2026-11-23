@@ -1,11 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createFetchMock } from '../../../../test/shared/fetchMock';
+import { HUB_SESSION_STORAGE_KEY } from '../lib/hubSession';
 import {
+  HubApiError,
   createIdeia,
   deleteBriefingAudio,
   deleteIdeia,
   deleteIdeiaAudio,
+  deleteIdeiaImage,
+  downloadAgendaIcs,
+  fetchConvite,
+  fetchReportHtml,
   fetchBootstrap,
   fetchBriefing,
   fetchPostHistory,
@@ -13,7 +19,12 @@ import {
   finalizeBriefingAudio,
   finalizeIdeiaAudio,
   presignBriefingAudio,
+  hubHeaders,
+  isLoginRequired,
+  logoutHub,
   presignIdeiaAudio,
+  reorderPostSchedules,
+  requestLoginCode,
   retryBriefingTranscription,
   retryIdeiaTranscription,
   submitApproval,
@@ -21,6 +32,7 @@ import {
   submitEditSuggestion,
   submitLinhaAcao,
   updateIdeia,
+  verifyLoginCode,
 } from '../api';
 
 const fetchHarness = createFetchMock();
@@ -463,5 +475,200 @@ describe('hub api client', () => {
     expect(JSON.parse(String(fetchHarness.calls[2].init?.body))).not.toHaveProperty(
       'reference_ids',
     );
+  });
+});
+
+const LOGIN_BODY = {
+  error: 'Login necessário.',
+  code: 'login_required',
+  login: {
+    workspace: { name: 'Agência Aurora', logo_url: null, brand_color: '#123456' },
+    hub_theme: undefined,
+  },
+};
+
+describe('hub client login', () => {
+  beforeEach(() => {
+    fetchHarness.reset();
+    window.localStorage.clear();
+    vi.stubGlobal('fetch', fetchHarness.fetchMock);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    window.localStorage.clear();
+  });
+
+  const headersOf = (i = 0) => fetchHarness.calls[i].init?.headers as Record<string, string>;
+
+  it('sends the stored session as x-hub-session on hub-* calls, and omits it without one', async () => {
+    fetchHarness.queueResponse({ json: { posts: [] } });
+    await fetchPosts('tk');
+    expect(headersOf()).toEqual({ apikey: 'anon-key-for-tests' });
+
+    window.localStorage.setItem(HUB_SESSION_STORAGE_KEY, 'sess-1');
+    fetchHarness.queueResponse({ json: { posts: [] } });
+    await fetchPosts('tk');
+    expect(headersOf(1)).toEqual({ apikey: 'anon-key-for-tests', 'x-hub-session': 'sess-1' });
+
+    fetchHarness.queueResponse({ json: { ok: true } });
+    await submitApproval('tk', 1, 'aprovado');
+    expect(headersOf(2)).toMatchObject({
+      'Content-Type': 'application/json',
+      'x-hub-session': 'sess-1',
+    });
+    expect(hubHeaders({ A: 'b' })).toEqual({
+      apikey: 'anon-key-for-tests',
+      A: 'b',
+      'x-hub-session': 'sess-1',
+    });
+  });
+
+  it('agenda-convite never carries the session', async () => {
+    fetchHarness.queueResponse({ json: {} });
+    await fetchConvite('tk');
+    expect(headersOf()).toEqual({ apikey: 'anon-key-for-tests' });
+
+    window.localStorage.setItem(HUB_SESSION_STORAGE_KEY, 'sess-1');
+    fetchHarness.queueResponse({ json: {} });
+    await fetchConvite('tk');
+    expect(headersOf(1)).toEqual({ apikey: 'anon-key-for-tests' });
+  });
+
+  it('keeps the parsed 401 body on the error', async () => {
+    fetchHarness.queueResponse({ ok: false, status: 401, json: LOGIN_BODY });
+
+    const err = await fetchBootstrap('mesaas', 'tk').catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(HubApiError);
+    expect(isLoginRequired(err)).toBe(true);
+    expect(isLoginRequired(new Error('x'))).toBe(false);
+    const login = (err as HubApiError).body?.login as { workspace: { name: string } };
+    expect(login.workspace.name).toBe('Agência Aurora');
+  });
+
+  it('reorderPostSchedules, deleteIdeiaImage and fetchReportHtml throw HubApiError with the code', async () => {
+    window.localStorage.setItem(HUB_SESSION_STORAGE_KEY, 'sess-1');
+    const calls = [
+      () => reorderPostSchedules('tk', []),
+      () => deleteIdeiaImage('tk', 'i1', 3),
+      () => fetchReportHtml('tk', '2026-10'),
+    ];
+    for (const run of calls) {
+      fetchHarness.queueResponse({ ok: false, status: 401, json: LOGIN_BODY });
+      await expect(run()).rejects.toMatchObject({
+        name: 'HubApiError',
+        status: 401,
+        code: 'login_required',
+      });
+    }
+    for (let i = 0; i < 3; i++) expect(headersOf(i)['x-hub-session']).toBe('sess-1');
+    expect(fetchHarness.calls[0].init?.method).toBe('PATCH');
+    expect(fetchHarness.calls[1].init?.method).toBe('DELETE');
+  });
+
+  it('fetchReportHtml still resolves the HTML text on success', async () => {
+    fetchHarness.queueResponse({ text: '<html>ok</html>' });
+    await expect(fetchReportHtml('tk', '2026-10')).resolves.toBe('<html>ok</html>');
+  });
+
+  it('verifyLoginCode posts the code to hub-auth', async () => {
+    fetchHarness.queueResponse({ json: { session_token: 's' } });
+
+    await expect(verifyLoginCode('mesaas', 'tk', 'a@b.co', '123456')).resolves.toEqual({
+      session_token: 's',
+    });
+
+    expect(String(fetchHarness.calls[0].input)).toContain('/functions/v1/hub-auth');
+    expect(JSON.parse(String(fetchHarness.calls[0].init?.body))).toEqual({
+      action: 'verify_code',
+      workspace: 'mesaas',
+      token: 'tk',
+      email: 'a@b.co',
+      code: '123456',
+    });
+  });
+
+  it('requestLoginCode and logoutHub post their actions; logout sends the session', async () => {
+    window.localStorage.setItem(HUB_SESSION_STORAGE_KEY, 'sess-1');
+    fetchHarness.queueResponse({ json: { ok: true } });
+    fetchHarness.queueResponse({ json: { ok: true } });
+
+    await requestLoginCode('mesaas', 'tk', 'a@b.co');
+    await logoutHub();
+
+    expect(JSON.parse(String(fetchHarness.calls[0].init?.body))).toEqual({
+      action: 'request_code',
+      workspace: 'mesaas',
+      token: 'tk',
+      email: 'a@b.co',
+    });
+    expect(JSON.parse(String(fetchHarness.calls[1].init?.body))).toEqual({ action: 'logout' });
+    expect(headersOf(1)['x-hub-session']).toBe('sess-1');
+  });
+
+  it('surfaces invalid_code with its message', async () => {
+    fetchHarness.queueResponse({
+      ok: false,
+      status: 400,
+      json: { error: 'Código inválido ou expirado.', code: 'invalid_code' },
+    });
+    await expect(verifyLoginCode('w', 'tk', 'a@b.co', '000000')).rejects.toMatchObject({
+      status: 400,
+      code: 'invalid_code',
+      message: 'Código inválido ou expirado.',
+    });
+  });
+
+  it('never replays a 429 on login calls', async () => {
+    fetchHarness.queueResponse({
+      ok: false,
+      status: 429,
+      json: { error: 'Muitas tentativas. Aguarde alguns minutos.' },
+    });
+    fetchHarness.queueResponse({ ok: false, status: 429, json: { error: 'x' } });
+    fetchHarness.queueResponse({ ok: false, status: 429, json: { error: 'x' } });
+
+    await expect(requestLoginCode('w', 'tk', 'a@b.co')).rejects.toMatchObject({
+      status: 429,
+      message: 'Muitas tentativas. Aguarde alguns minutos.',
+    });
+    await expect(verifyLoginCode('w', 'tk', 'a@b.co', '123456')).rejects.toMatchObject({
+      status: 429,
+    });
+    await expect(logoutHub()).rejects.toMatchObject({ status: 429 });
+    expect(fetchHarness.calls).toHaveLength(3);
+  });
+
+  it('downloadAgendaIcs fetches with the session and saves the blob from a temporary link', async () => {
+    window.localStorage.setItem(HUB_SESSION_STORAGE_KEY, 'sess-1');
+    const blob = new Blob(['BEGIN:VCALENDAR'], { type: 'text/calendar' });
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200, blob: async () => blob }));
+    vi.stubGlobal('fetch', fetchMock);
+    const create = vi.fn(() => 'blob:ics');
+    const revoke = vi.fn();
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: create, revokeObjectURL: revoke }));
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    await downloadAgendaIcs('tk', 10);
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toContain('/functions/v1/hub-agenda/ocorrencia/10.ics');
+    expect(url).toContain('token=tk');
+    expect(init.headers).toEqual({ apikey: 'anon-key-for-tests', 'x-hub-session': 'sess-1' });
+    expect(create).toHaveBeenCalledWith(blob);
+    expect(click).toHaveBeenCalledTimes(1);
+    expect(revoke).toHaveBeenCalledWith('blob:ics');
+    expect(document.querySelector('a[download]')).toBeNull();
+    click.mockRestore();
+  });
+
+  it('downloadAgendaIcs rejects with a HubApiError on a 401', async () => {
+    fetchHarness.queueResponse({ ok: false, status: 401, json: LOGIN_BODY });
+    await expect(downloadAgendaIcs('tk', 10)).rejects.toMatchObject({
+      name: 'HubApiError',
+      code: 'login_required',
+    });
   });
 });

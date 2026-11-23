@@ -1,9 +1,9 @@
 import { trackUnsavedWork } from '@mesaas/app-lifecycle';
 import type { ReferenceErrorCode, ReferenceFileKind, ReferenceItem } from '../types/postReferences';
+import { hubHeaders } from '../api';
 import { prepareReferenceMedia, type ReferenceMedia } from './referenceMedia';
 
 const BASE = import.meta.env.VITE_SUPABASE_URL as string;
-const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 const FN = 'hub-post-references';
 const MB = 1024 * 1024;
 
@@ -54,6 +54,7 @@ const ERROR_CODES: ReadonlySet<string> = new Set<ReferenceErrorCode>([
   'not_found',
   'locked',
   'rate_limited',
+  'login_required',
   'upload_mismatch',
   'item_required',
   'request_closed',
@@ -153,10 +154,7 @@ export async function call<T>(
   try {
     res = await fetch(url.toString(), {
       method,
-      headers:
-        opts.body === undefined
-          ? { apikey: ANON }
-          : { 'Content-Type': 'application/json', apikey: ANON },
+      headers: hubHeaders(opts.body === undefined ? {} : { 'Content-Type': 'application/json' }),
       body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
       signal: opts.signal,
     });
@@ -166,7 +164,12 @@ export async function call<T>(
   }
   if (res.ok) return (await res.json()) as T;
   if (res.status === 429) throw new PostReferenceError('rate_limited');
-  const body = (await res.json().catch(() => ({}))) as { error?: unknown };
+  const body = (await res.json().catch(() => ({}))) as { error?: unknown; code?: unknown };
+  // The login gate answers { error: <message>, code: 'login_required' }, unlike this
+  // function's own { error: <code> } shape.
+  if (res.status === 401 && body.code === 'login_required') {
+    throw new PostReferenceError('login_required');
+  }
   const code =
     typeof body.error === 'string' && ERROR_CODES.has(body.error)
       ? (body.error as ReferenceErrorCode)

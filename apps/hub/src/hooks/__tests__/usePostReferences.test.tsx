@@ -84,6 +84,21 @@ describe('usePostReferences', () => {
     expect(postReferencesKey(5)).toEqual(['hub-post-references', 5]);
   });
 
+  it('hands a login_required answer to the global handler (session cleared, bootstrap refetched)', async () => {
+    window.localStorage.setItem('mesaas:hub-session', 'sess-1');
+    const { result, qc } = setup({ can_add: true, items: [] });
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
+    svc.addPostReferenceLink.mockRejectedValue(new PostReferenceError('login_required'));
+
+    await act(async () => {
+      await result.current.addLink({ url: 'exemplo.com' }).catch(() => undefined);
+    });
+
+    expect(window.localStorage.getItem('mesaas:hub-session')).toBeNull();
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['hub-bootstrap'] });
+  });
+
   it('runs at most two uploads at once and appends each finished item', async () => {
     const { result } = setup({ can_add: true, items: [] });
     await waitFor(() => expect(result.current.data).toBeDefined());
