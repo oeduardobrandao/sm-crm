@@ -617,7 +617,7 @@ export function ContaPhone(props: ContaPhoneProps) {
         }}
       />
 
-      {/* After the list: a post opened from it stacks on top. */}
+      {/* Opens over the list too: sheets mount on open, so the latest one is on top. */}
       <PostDetailSheet
         clientId={clientId}
         post={selectedPost}
