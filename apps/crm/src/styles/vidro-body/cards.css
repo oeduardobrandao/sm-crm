@@ -113,6 +113,23 @@
       0 0 0 3px rgba(255, 191, 48, 0.55),
       var(--vd-cards-shadow-lift);
   }
+  /* On Analytics Conta the card is a <div>; focus sits on its inner open button. */
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .analytics-post-card:has(.analytics-post-card__open:focus-visible) {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 191, 48, 0.55);
+  }
+  html[data-look='vidro']
+    body:has(.app-container)
+    .vidro-panel
+    .analytics-post-card:hover:has(.analytics-post-card__open:focus-visible) {
+    outline: none;
+    box-shadow:
+      0 0 0 3px rgba(255, 191, 48, 0.55),
+      var(--vd-cards-shadow-lift);
+  }
 
   /* Tinted shadcn cards (Importar StepOrigem: border-primary/30 bg-primary/5) keep a primary wash
      inside the group look; the group rule would otherwise flatten them to white. */

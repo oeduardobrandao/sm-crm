@@ -20,7 +20,8 @@
     "reading_one": "Reading {{n}} comment...",
     "reading_other": "Reading {{n}} comments...",
     "comments": "Comments",
-    "tabInsights": "Insights",
+    "tabOverview": "Overview",
+    "tabEngagement": "Engagement",
     "tabComments": "Comments · {{n}}",
     "tabsAriaLabel": "Post details"
   },

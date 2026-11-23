@@ -654,6 +654,7 @@ describe('analytics service', () => {
         follows: 75,
         profile_visits: 328,
         bio_link_clicks: 1,
+        reposts: 41,
       },
       {
         ...base,
@@ -686,9 +687,11 @@ describe('analytics service', () => {
     expect(pre.follows).toBeNull();
     expect(pre.profile_visits).toBeNull();
     expect(pre.bio_link_clicks).toBeNull();
+    expect(pre.reposts).toBeNull(); // absent column, never 0
     const top = desc.posts[0];
     expect(top.profile_visits).toBe(328);
     expect(top.bio_link_clicks).toBe(1);
+    expect(top.reposts).toBe(41);
     expect(top.follows_per_mil_reach).toBeCloseTo(1.9947, 3);
     expect(desc.posts.find((p) => p.id === 1)!.profile_visits).toBe(0); // real 0 kept
     expect(desc.posts.find((p) => p.id === 4)!.follows_per_mil_reach).toBeNull(); // reach 0

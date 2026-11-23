@@ -18,6 +18,7 @@ import {
   type PostCommentsResponse,
 } from '../../../services/instagramComments';
 import { sanitizeUrl } from '../../../utils/security';
+import { hasInstagramLink } from '@/components/instagram/InstagramLinkButton';
 import { CommentFilters } from './CommentFilters';
 import { CommentRow, type Moderation } from './CommentRow';
 import { CommentsAnalysisView, countText } from './CommentsAnalysisView';
@@ -192,10 +193,14 @@ function CommentsList({
       {data.truncated
         ? t('post.showingTruncated')
         : t('post.showing', { comments: countText(t, 'comment', data.comments.length, locale) })}
-      {' · '}
-      <a href={sanitizeUrl(post.permalink)} target="_blank" rel="noopener noreferrer">
-        {t('post.openInstagram')}
-      </a>
+      {hasInstagramLink(post.permalink) && (
+        <>
+          {' · '}
+          <a href={sanitizeUrl(post.permalink)} target="_blank" rel="noopener noreferrer">
+            {t('post.openInstagram')}
+          </a>
+        </>
+      )}
     </p>
   );
 

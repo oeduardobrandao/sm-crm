@@ -20,7 +20,17 @@ const {
   chartCalls,
   deleteReportDocMock,
 } = vi.hoisted(() => {
-  const queryState: Record<string, { data?: unknown; isLoading?: boolean; error?: unknown }> = {};
+  const queryState: Record<
+    string,
+    {
+      data?: unknown;
+      isLoading?: boolean;
+      error?: unknown;
+      isSuccess?: boolean;
+      isFetching?: boolean;
+      isPlaceholderData?: boolean;
+    }
+  > = {};
   const chartCalls: Array<unknown[]> = [];
 
   class ChartMock {
@@ -57,7 +67,14 @@ vi.mock('react-router-dom', () => ({
 vi.mock('@tanstack/react-query', () => ({
   useQuery: vi.fn((options: { queryKey: unknown[] }) => {
     const key = String(options.queryKey[0]);
-    return queryState[key] ?? { data: undefined, isLoading: false, error: undefined };
+    const state = queryState[key];
+    if (!state) return { data: undefined, isLoading: false, error: undefined };
+    // A query with data has settled unless a test says it is still fetching.
+    return {
+      ...state,
+      isSuccess: state.isSuccess ?? state.data !== undefined,
+      isFetching: state.isFetching ?? false,
+    };
   }),
   useQueryClient: () => queryClientMock,
 }));
@@ -159,12 +176,14 @@ vi.mock('@/components/ui/dialog', async () => {
 
   interface DialogContextValue {
     open: boolean;
+    onOpenChange?: (open: boolean) => void;
   }
 
   const DialogContext = ReactModule.createContext<DialogContextValue>({ open: false });
 
   function Dialog({
     open = false,
+    onOpenChange,
     children,
   }: {
     open?: boolean;
@@ -172,15 +191,22 @@ vi.mock('@/components/ui/dialog', async () => {
     children: React.ReactNode;
   }) {
     return (
-      <DialogContext.Provider value={{ open }}>
+      <DialogContext.Provider value={{ open, onOpenChange }}>
         <div>{children}</div>
       </DialogContext.Provider>
     );
   }
 
   function DialogContent({ children }: { children: React.ReactNode }) {
-    const { open } = ReactModule.useContext(DialogContext);
-    return open ? <div role="dialog">{children}</div> : null;
+    const { open, onOpenChange } = ReactModule.useContext(DialogContext);
+    return open ? (
+      <div role="dialog">
+        {children}
+        <button type="button" onClick={() => onOpenChange?.(false)}>
+          mock-fechar-dialog
+        </button>
+      </div>
+    ) : null;
   }
 
   function DialogHeader({ children }: { children: React.ReactNode }) {
@@ -228,9 +254,21 @@ vi.mock('@/components/ui/sheet', async () => {
     );
   }
 
-  function SheetContent({ children }: { children: React.ReactNode }) {
+  function SheetContent({
+    children,
+    className,
+    overlayClassName,
+  }: {
+    children: React.ReactNode;
+    className?: string;
+    overlayClassName?: string;
+  }) {
     const { open } = ReactModule.useContext(SheetContext);
-    return open ? <aside>{children}</aside> : null;
+    return open ? (
+      <aside className={className} data-overlay-class={overlayClassName}>
+        {children}
+      </aside>
+    ) : null;
   }
 
   function SheetHeader({ children }: { children: React.ReactNode }) {
@@ -254,9 +292,9 @@ vi.mock('@/components/ui/sheet', async () => {
   };
 });
 
-// Its own suite covers the panel; here only whether the expanded row mounts it.
+// Its own suite covers the panel; here only whether the metrics dialog mounts it.
 vi.mock('../comments/PostCommentsPanel', () => ({
-  PostCommentsPanel: ({ clientId, post }: { clientId: number; post: { id: number } }) => (
+  PostCommentsPanel: ({ clientId, post }: { clientId: number; post: { id: string } }) => (
     <div data-testid="post-comments-panel">{`painel ${clientId}/${post.id}`}</div>
   ),
 }));
@@ -361,7 +399,7 @@ function seedCommonAnalyticsData() {
   };
   const posts = [
     {
-      id: 1,
+      id: 'post-1',
       posted_at: '2026-04-15T12:00:00Z',
       media_type: 'VIDEO',
       reach: 2500,
@@ -379,7 +417,7 @@ function seedCommonAnalyticsData() {
       tags: [{ id: 1, tag_name: 'Educação', color: '#3ecf8e' }],
     },
     {
-      id: 2,
+      id: 'post-2',
       posted_at: '2026-04-12T12:00:00Z',
       media_type: 'IMAGE',
       reach: 3000,
@@ -700,7 +738,7 @@ describe('AnalyticsContaPage', () => {
       data: {
         posts: [
           {
-            id: 1,
+            id: 'post-1',
             instagram_post_id: 'x',
             caption: '',
             media_type: 'VIDEO',
@@ -738,7 +776,7 @@ describe('AnalyticsContaPage', () => {
     expect(screen.queryByText('Baseline Instagram')).not.toBeInTheDocument();
   });
 
-  it('shows the "Novos seg." column and the insights panel in the expanded row', () => {
+  it('shows the "Novos seg." column and the insights in the metrics dialog', () => {
     seedCommonAnalyticsData();
     const base = {
       instagram_post_id: 'x',
@@ -761,7 +799,7 @@ describe('AnalyticsContaPage', () => {
         posts: [
           {
             ...base,
-            id: 1,
+            id: 'post-1',
             caption: 'Dá preguiça. Dá medo.',
             media_type: 'CAROUSEL_ALBUM',
             posted_at: '2026-09-23T12:00:00Z',
@@ -774,7 +812,7 @@ describe('AnalyticsContaPage', () => {
           },
           {
             ...base,
-            id: 2,
+            id: 'post-2',
             caption: 'Reel sem dados de ação',
             media_type: 'VIDEO',
             posted_at: '2026-09-19T12:00:00Z',
@@ -801,21 +839,24 @@ describe('AnalyticsContaPage', () => {
       'O Instagram não fornece este dado para Reels',
     );
 
-    fireEvent.click(table.querySelector('tbody tr') as HTMLTableRowElement);
-    const detail = table.querySelector('tr.post-detail-row') as HTMLTableRowElement;
-    expect(detail.querySelector('td')).toHaveAttribute('colspan', '12');
-    expect(within(detail).getByText('Ações após a visualização')).toBeInTheDocument();
-    expect(within(detail).getByText('Novos seguidores').nextSibling).toHaveTextContent('75');
-    expect(within(detail).queryByText('Reposts')).not.toBeInTheDocument();
+    fireEvent.click(
+      within(table).getByRole('button', { name: 'Ver métricas do post de 23 de set. às 09:00' }),
+    );
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText('Métricas do post')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Engajamento' }));
+    const actions = within(dialog).getByRole('region', { name: 'Ações após a visualização' });
+    expect(within(actions).getByText('Novos seguidores').nextSibling).toHaveTextContent('75');
+    expect(within(dialog).queryByText('Reposts')).not.toBeInTheDocument();
   });
 
-  function seedOneExpandablePost() {
+  function seedOneOpenablePost() {
     seedCommonAnalyticsData();
     queryState['analytics-posts'] = {
       data: {
         posts: [
           {
-            id: 7,
+            id: 'post-7',
             instagram_post_id: 'ig-7',
             permalink: 'https://instagram.com/p/7',
             caption: 'Rotina de skincare',
@@ -845,37 +886,182 @@ describe('AnalyticsContaPage', () => {
     };
   }
 
-  it('flag desligada: não renderiza aba nem o painel de comentários', () => {
-    seedOneExpandablePost();
-    const { container } = render(<AnalyticsContaPage />);
+  function openFromTable(container: HTMLElement) {
     const table = container.querySelector('#posts-table') as HTMLTableElement;
     fireEvent.click(table.querySelector('tbody tr') as HTMLTableRowElement);
-    const detail = table.querySelector('tr.post-detail-row') as HTMLTableRowElement;
-    expect(within(detail).getByText('Ações após a visualização')).toBeInTheDocument();
-    expect(within(detail).queryByRole('tablist')).not.toBeInTheDocument();
+    return screen.getByRole('dialog');
+  }
+
+  it('flag desligada: o pop-up não tem aba nem painel de comentários', () => {
+    seedOneOpenablePost();
+    const { container } = render(<AnalyticsContaPage />);
+    const dialog = openFromTable(container);
+    expect(within(dialog).getByRole('tab', { name: 'Visão geral' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('tab', { name: 'Engajamento' })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('tab', { name: /Comentários/ })).not.toBeInTheDocument();
     expect(screen.queryByTestId('post-comments-panel')).not.toBeInTheDocument();
   });
 
-  it('linha expandida tem abas Insights e Comentários com a flag', () => {
-    seedOneExpandablePost();
+  it('pop-up tem as abas Visão geral, Engajamento e Comentários com a flag', () => {
+    seedOneOpenablePost();
     queryState['workspace-limits'] = {
       data: { plan_name: null, limits: null, features: { feature_instagram_comments_ai: true } },
     };
     const { container } = render(<AnalyticsContaPage />);
-    const table = container.querySelector('#posts-table') as HTMLTableElement;
-    fireEvent.click(table.querySelector('tbody tr') as HTMLTableRowElement);
-    const detail = table.querySelector('tr.post-detail-row') as HTMLTableRowElement;
+    const dialog = openFromTable(container);
 
-    const insights = within(detail).getByRole('tab', { name: 'Insights' });
-    const comments = within(detail).getByRole('tab', { name: 'Comentários · 142' });
-    expect(insights).toHaveAttribute('aria-selected', 'true');
-    expect(within(detail).getByText('Ações após a visualização')).toBeInTheDocument();
+    const overview = within(dialog).getByRole('tab', { name: 'Visão geral' });
+    const comments = within(dialog).getByRole('tab', { name: 'Comentários · 142' });
+    expect(overview).toHaveAttribute('aria-selected', 'true');
+    expect(within(dialog).getByRole('region', { name: 'Resumo' })).toBeInTheDocument();
     expect(screen.queryByTestId('post-comments-panel')).not.toBeInTheDocument();
 
     fireEvent.click(comments);
     expect(comments).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByTestId('post-comments-panel')).toHaveTextContent('painel 42/7');
-    expect(within(detail).queryByText('Ações após a visualização')).not.toBeInTheDocument();
+    expect(screen.getByTestId('post-comments-panel')).toHaveTextContent('painel 42/post-7');
+    expect(within(dialog).queryByRole('region', { name: 'Resumo' })).not.toBeInTheDocument();
+  });
+
+  it('a Melhores Posts card opens the metrics dialog; its Instagram chip links out', () => {
+    seedCommonAnalyticsData();
+    render(<AnalyticsContaPage />);
+    const best = screen.getByRole('region', { name: 'Melhores Posts' });
+    const open = within(best).getByRole('button', {
+      name: 'Ver métricas: Post em reels com alta performance',
+    });
+    const card = open.closest('.analytics-post-card') as HTMLElement;
+    const link = within(card).getByRole('link', { name: 'Abrir no Instagram' });
+    expect(link).toHaveAttribute('href', 'https://instagram.com/p/1');
+    expect(link).toHaveAttribute('target', '_blank');
+
+    fireEvent.click(link);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    fireEvent.click(open);
+    expect(within(screen.getByRole('dialog')).getByText('Métricas do post')).toBeInTheDocument();
+  });
+
+  it('a "Ver mais" row opens the dialog above the sheet, which steps down a layer meanwhile', () => {
+    seedCommonAnalyticsData();
+    queryState['analytics-posts'] = {
+      data: {
+        posts: Array.from({ length: 6 }, (_, index) => ({
+          id: `ranked-${index + 1}`,
+          instagram_post_id: `ig-${index + 1}`,
+          posted_at: `2020-01-0${index + 1}T12:00:00Z`,
+          media_type: 'IMAGE',
+          reach: 1000 + index,
+          impressions: 1400 + index,
+          views: 1400 + index,
+          engagement_rate: 5,
+          likes: 10,
+          saved: 1,
+          saves_rate: 1,
+          comments: 1,
+          shares: 1,
+          caption: `Post ranqueado ${index + 1}`,
+          thumbnail_url: null,
+          permalink: `https://instagram.com/p/ranked-${index + 1}`,
+          rates: { share_rate: null, like_rate: null, save_rate: null, comment_rate: null },
+          unavailable_metrics: [],
+          synced_at: null,
+          tags: [],
+        })),
+      },
+    };
+    render(<AnalyticsContaPage />);
+    fireEvent.click(screen.getAllByText('Ver mais')[0]);
+    const drawer = screen.getByText('6 de 6 posts de @clinicaaurora').closest('aside')!;
+    const open = within(drawer).getByRole('button', { name: 'Ver métricas: Post ranqueado 6' });
+    const row = open.parentElement as HTMLElement;
+    expect(within(row).getByRole('link', { name: 'Abrir no Instagram' })).toHaveAttribute(
+      'href',
+      'https://instagram.com/p/ranked-6',
+    );
+
+    expect(drawer.className).not.toContain('z-[9005]');
+    expect(drawer).not.toHaveAttribute('data-overlay-class');
+
+    fireEvent.click(open);
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText('Métricas do post')).toBeInTheDocument();
+    expect(within(dialog).getByText('Post ranqueado 6')).toBeInTheDocument();
+    expect(screen.getByText('6 de 6 posts de @clinicaaurora').closest('aside')).toBeInTheDocument();
+    // The comment menus and the idea modal portal at the Dialog layer (9010/9011): while a post
+    // is open the drawer goes under it, so they stack above the pop-up, not behind it.
+    expect(drawer.className).toContain('z-[9005]');
+    expect(drawer).toHaveAttribute('data-overlay-class', 'z-[9004]');
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'mock-fechar-dialog' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(drawer.className).not.toContain('z-[9005]');
+    expect(drawer).not.toHaveAttribute('data-overlay-class');
+  });
+
+  it('a posts table row opens the dialog; clicking a tag does not', () => {
+    seedCommonAnalyticsData();
+    const { container, unmount } = render(<AnalyticsContaPage />);
+    let table = container.querySelector('#posts-table') as HTMLTableElement;
+    fireEvent.click(within(table).getByText('Educação'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    const rows = table.querySelectorAll('tbody tr');
+    fireEvent.click(rows[1].querySelector('td[data-label="Alcance"]') as HTMLElement);
+    expect(
+      within(screen.getByRole('dialog')).getByText('Conteúdo institucional'),
+    ).toBeInTheDocument();
+    unmount();
+
+    const second = render(<AnalyticsContaPage />);
+    table = second.container.querySelector('#posts-table') as HTMLTableElement;
+    fireEvent.click(
+      within(table).getByRole('button', { name: 'Ver métricas do post de 15 de abr. às 09:00' }),
+    );
+    expect(
+      within(screen.getByRole('dialog')).getByText('Post em reels com alta performance'),
+    ).toBeInTheDocument();
+  });
+
+  it('closes the dialog when the open post leaves a settled list, not while refetching', () => {
+    const { posts } = seedCommonAnalyticsData();
+    const { container, rerender } = render(<AnalyticsContaPage />);
+    openFromTable(container);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    // A baseline refetch moves the posts query to a new key. Its placeholderData
+    // (keepPostsAcrossBaselineRefresh) keeps the previous posts, so react-query reports them as
+    // placeholder data while fetching, never isLoading: no skeleton, and the dialog stays.
+    queryState['analytics-posts'] = {
+      data: { posts },
+      isFetching: true,
+      isLoading: false,
+      isSuccess: true,
+      isPlaceholderData: true,
+    };
+    rerender(<AnalyticsContaPage />);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    queryState['analytics-posts'] = { data: { posts: [] }, isFetching: true };
+    rerender(<AnalyticsContaPage />);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    queryState['analytics-posts'] = { data: { posts: [] }, isFetching: false };
+    rerender(<AnalyticsContaPage />);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('a post with an empty permalink still opens; no Instagram link', () => {
+    const { posts } = seedCommonAnalyticsData();
+    queryState['analytics-posts'] = { data: { posts: [{ ...posts[0], permalink: '' }] } };
+    render(<AnalyticsContaPage />);
+    expect(screen.queryByRole('link', { name: 'Abrir no Instagram' })).not.toBeInTheDocument();
+    const best = screen.getByRole('region', { name: 'Melhores Posts' });
+    fireEvent.click(
+      within(best).getByRole('button', {
+        name: 'Ver métricas: Post em reels com alta performance',
+      }),
+    );
+    expect(within(screen.getByRole('dialog')).getByText('Métricas do post')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Abrir no Instagram' })).not.toBeInTheDocument();
   });
 
   it('opens the reach-ranked posts drawer using only this client account posts', () => {
@@ -883,7 +1069,7 @@ describe('AnalyticsContaPage', () => {
     queryState['analytics-posts'] = {
       data: {
         posts: Array.from({ length: 6 }, (_, index) => ({
-          id: index + 1,
+          id: `post-${index + 1}`,
           posted_at: `2020-01-${String(index + 1).padStart(2, '0')}T12:00:00Z`,
           media_type: index % 2 === 0 ? 'VIDEO' : 'IMAGE',
           reach: 1000 + index * 100,
@@ -923,7 +1109,7 @@ describe('AnalyticsContaPage', () => {
     queryState['analytics-posts'] = {
       data: {
         posts: follows.map((f, index) => ({
-          id: index + 1,
+          id: `post-${index + 1}`,
           posted_at: `2020-01-${String(index + 1).padStart(2, '0')}T12:00:00Z`,
           media_type: 'IMAGE',
           reach: 1000,
@@ -969,7 +1155,7 @@ describe('AnalyticsContaPage', () => {
     queryState['analytics-posts'] = {
       data: {
         posts: [75, null].map((f, index) => ({
-          id: index + 1,
+          id: `post-${index + 1}`,
           posted_at: `2020-01-0${index + 1}T12:00:00Z`,
           media_type: 'IMAGE',
           reach: 1000,
@@ -1218,7 +1404,7 @@ describe('AnalyticsContaPage in the Vidro toolbar', () => {
   });
 });
 
-// Inline-style escapes (spec "Inline-style escapes"): the four inline var(--card-bg) surfaces drop
+// Inline-style escapes (spec "Inline-style escapes"): the three inline var(--card-bg) surfaces drop
 // their background under the Vidro shell, so cards.css / forms.css paint them; with the shell off
 // the inline style stays byte-identical.
 describe('AnalyticsContaPage card-bg escapes', () => {
@@ -1227,7 +1413,7 @@ describe('AnalyticsContaPage card-bg escapes', () => {
     queryState['analytics-posts'] = {
       data: {
         posts: Array.from({ length: 6 }, (_, index) => ({
-          id: index + 1,
+          id: `post-${index + 1}`,
           instagram_post_id: `x${index}`,
           posted_at: `2020-01-0${index + 1}T12:00:00Z`,
           media_type: 'IMAGE',
@@ -1257,40 +1443,36 @@ describe('AnalyticsContaPage card-bg escapes', () => {
         <AnalyticsContaPage />
       </VidroToolbarHarness>,
     );
-    const table = container.querySelector('#posts-table') as HTMLTableElement;
-    fireEvent.click(table.querySelector('tbody tr') as HTMLTableRowElement);
-    const detailCell = table.querySelector('tr.post-detail-row > td') as HTMLElement;
+    expect(container.querySelector('#posts-table')).toBeInTheDocument();
     fireEvent.click(screen.getAllByText('Ver mais')[0]);
     const drawer = screen.getByText(/de 6 posts de @clinicaaurora/).closest('aside')!;
     const order = within(drawer).getByLabelText('Ordenar posts');
     const format = within(drawer).getByLabelText('Filtrar formato');
     const item = within(drawer)
       .getAllByText(/Post ranqueado/)[0]
-      .closest('a') as HTMLElement;
-    return { detailCell, order, format, item };
+      .closest('.ranked-drawer-row') as HTMLElement;
+    return { order, format, item };
   }
 
   const SELECT_TAIL =
     'border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); padding: 0px 0.6rem; font-size: 0.85rem;';
 
-  it('drops the four inline backgrounds under the Vidro shell', () => {
-    const { detailCell, order, format, item } = surfaces(true);
-    for (const el of [detailCell, order, format, item]) {
+  it('drops the three inline backgrounds under the Vidro shell', () => {
+    const { order, format, item } = surfaces(true);
+    for (const el of [order, format, item]) {
       expect(el.getAttribute('style'), el.tagName).not.toContain('background');
     }
-    expect(detailCell.getAttribute('style')).toBe('padding: 1rem;');
     expect(order.getAttribute('style')).toBe(
       'height: 36px; border-radius: 8px; border: 1px solid var(--border-color); color: var(--text-main); padding: 0px 0.6rem; font-size: 0.85rem;',
     );
   });
 
   it('keeps the inline backgrounds byte-identical with the shell off', () => {
-    const { detailCell, order, format, item } = surfaces(false);
-    expect(detailCell.getAttribute('style')).toBe('padding: 1rem; background: var(--card-bg);');
+    const { order, format, item } = surfaces(false);
     expect(order.getAttribute('style')).toBe(`height: 36px; border-radius: 8px; ${SELECT_TAIL}`);
     expect(format.getAttribute('style')).toBe(`height: 36px; border-radius: 8px; ${SELECT_TAIL}`);
     expect(item.getAttribute('style')).toContain(
-      'border: 1px solid var(--border-color); background: var(--card-bg); text-decoration: none;',
+      'border: 1px solid var(--border-color); background: var(--card-bg);',
     );
   });
 });

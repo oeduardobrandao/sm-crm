@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useIntlLocale } from '@mesaas/i18n';
 import type { Categoria, IgComment } from '../../../services/instagramComments';
 import { sanitizeUrl } from '../../../utils/security';
+import { hasInstagramLink } from '@/components/instagram/InstagramLinkButton';
 import { CommentRow, type Moderation } from './CommentRow';
 import type { CommentGroup } from './groupComments';
 
@@ -19,7 +20,7 @@ export function CommentThread({
   open: boolean;
   onToggle(): void;
   moderation: Moderation | null;
-  permalink: string;
+  permalink: string | null;
   tipoFor?(c: IgComment): Categoria | null;
 }) {
   const { t } = useTranslation('analyticsComments');
@@ -28,11 +29,14 @@ export function CommentThread({
   const { comment, replies } = group;
   const hasReplies = replies.length > 0;
   const missing = comment.replies_count - replies.length;
-  const moreOnInstagram = comment.replies_more
-    ? t('threads.moreOnInstagramMany')
-    : missing > 0
-      ? t('threads.moreOnInstagram', { count: missing, n: missing.toLocaleString(locale) })
-      : null;
+  // Without a safe permalink the link would go nowhere, so the row is left out.
+  const moreOnInstagram = !hasInstagramLink(permalink)
+    ? null
+    : comment.replies_more
+      ? t('threads.moreOnInstagramMany')
+      : missing > 0
+        ? t('threads.moreOnInstagram', { count: missing, n: missing.toLocaleString(locale) })
+        : null;
   return (
     <>
       <CommentRow
