@@ -76,6 +76,8 @@ export function HubLogin({ workspace, token, login, onLoggedIn }: HubLoginProps)
   const emailRef = useRef<HTMLInputElement>(null);
   const codeRef = useRef<HTMLInputElement>(null);
   const mounted = useRef(true);
+  // True from a successful verify until the portal replaces this screen.
+  const awaitingPortal = useRef(false);
 
   useEffect(() => {
     mounted.current = true;
@@ -94,6 +96,17 @@ export function HubLogin({ workspace, token, login, onLoggedIn }: HubLoginProps)
     const id = setTimeout(() => setRemaining((r) => r - 1), 1000);
     return () => clearTimeout(id);
   }, [step, remaining]);
+
+  // A new login payload after a successful verify means the hub asked for login again (the new
+  // session was refused, or cleared by a late answer to an older request). Unlock the form, or
+  // it would stay disabled until a reload.
+  useEffect(() => {
+    if (!awaitingPortal.current) return;
+    awaitingPortal.current = false;
+    setBusy(false);
+    setCode('');
+    setErrorKey('hub.login.genericError');
+  }, [login]);
 
   const trimmedEmail = email.trim();
   const emailValid = EMAIL_RE.test(trimmedEmail);
@@ -140,6 +153,7 @@ export function HubLogin({ workspace, token, login, onLoggedIn }: HubLoginProps)
       const { session_token } = await verifyLoginCode(workspace, token, trimmedEmail, code);
       setHubSession(session_token);
       loggedIn = true;
+      awaitingPortal.current = true;
       onLoggedIn();
     } catch (err) {
       if (!mounted.current) return;

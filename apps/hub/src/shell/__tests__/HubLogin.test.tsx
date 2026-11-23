@@ -167,6 +167,29 @@ describe('HubLogin', () => {
     expect(mockedVerify).toHaveBeenCalledTimes(1);
   });
 
+  it('unlocks with an error when the hub asks for login again after a successful verify', async () => {
+    mockedVerify.mockResolvedValue({ session_token: 'sess-1' });
+    const onLoggedIn = vi.fn();
+    const { rerender } = render(
+      <HubLogin workspace="aurora" token="tok" login={LOGIN} onLoggedIn={onLoggedIn} />,
+    );
+    await goToCodeStep();
+    fireEvent.change(screen.getByLabelText('Código de 6 dígitos'), { target: { value: '482931' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Entrar' }));
+    await waitFor(() => expect(onLoggedIn).toHaveBeenCalled());
+    // The bootstrap refetch answered login_required again: a new payload object arrives.
+    rerender(
+      <HubLogin workspace="aurora" token="tok" login={{ ...LOGIN }} onLoggedIn={onLoggedIn} />,
+    );
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Não foi possível continuar. Tente de novo.',
+    );
+    expect(screen.getByLabelText('Código de 6 dígitos')).toHaveValue('');
+    fireEvent.click(screen.getByRole('button', { name: 'Usar outro e-mail' }));
+    fireEvent.change(screen.getByLabelText('E-mail'), { target: { value: 'a@b.co' } });
+    expect(screen.getByRole('button', { name: 'Enviar código' })).toBeEnabled();
+  });
+
   it('counts the resend cooldown down and lets the person resend at zero', async () => {
     vi.useFakeTimers();
     setup();

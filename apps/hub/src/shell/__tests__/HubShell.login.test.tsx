@@ -228,6 +228,24 @@ describe('HubShell login', () => {
     expect(screen.getAllByText('Clínica Vida').length).toBeGreaterThan(0);
   });
 
+  it('keeps the portal recoverable when the bootstrap refetch after sign out fails for another reason', async () => {
+    const qc = new QueryClient();
+    const removeSpy = vi.spyOn(qc, 'removeQueries');
+    mockedBootstrap
+      .mockResolvedValueOnce(BOOTSTRAP)
+      .mockRejectedValue(new HubApiError('Erro interno.', 500));
+    mockedLogout.mockResolvedValue({ ok: true });
+    mount(qc);
+    const [trigger] = await screen.findAllByRole('button', { name: 'Conta de Marina Costa' });
+    await waitFor(() => expect(vi.mocked(fetchPosts)).toHaveBeenCalled());
+    const before = vi.mocked(fetchPosts).mock.calls.length;
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Sair' })[0]);
+    // Not a login_required: the portal stays mounted, so its queries are reset, not removed.
+    await waitFor(() => expect(vi.mocked(fetchPosts).mock.calls.length).toBeGreaterThan(before));
+    expect(removeSpy).not.toHaveBeenCalled();
+  });
+
   it('signs out locally even when logoutHub rejects', async () => {
     const qc = new QueryClient();
     const spy = vi.spyOn(qc, 'invalidateQueries');

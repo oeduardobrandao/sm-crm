@@ -160,9 +160,9 @@ export function HubShell() {
       clearHubSession();
       // Drop everything the previous person loaded (a shared device keeps no cached data).
       // Bootstrap goes first: on a gated hub it fails with login_required, the portal unmounts
-      // and the rest is simply removed, with no refetch (they would all 401). On an open hub it
-      // succeeds and the still-mounted portal needs its queries reset, because removed queries
-      // are not refetched by observers that stay mounted.
+      // and the rest is simply removed, with no refetch (they would all 401). Otherwise (an open
+      // hub, or a refetch that failed for another reason) the portal stays mounted and needs its
+      // queries reset, because removed queries are not refetched by observers that stay mounted.
       await queryClient.invalidateQueries({ queryKey: ['hub-bootstrap'] });
       const others = {
         predicate: (q: { queryKey: readonly unknown[] }) => q.queryKey[0] !== 'hub-bootstrap',
@@ -170,7 +170,7 @@ export function HubShell() {
       const gated = queryClient
         .getQueryCache()
         .findAll({ queryKey: ['hub-bootstrap'] })
-        .some((q) => q.state.status === 'error');
+        .some((q) => isLoginRequiredError(q.state.error));
       if (gated) queryClient.removeQueries(others);
       else await queryClient.resetQueries(others);
     }

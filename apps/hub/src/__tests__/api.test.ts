@@ -718,6 +718,9 @@ describe('hub client login', () => {
         expect(revoke).toHaveBeenCalledWith('blob:ics');
         expect(document.querySelector('a[download]')).toBeNull();
       } finally {
+        // Restore the spies first: restoring after the delete would put the dummies back.
+        vi.restoreAllMocks();
+        vi.useRealTimers();
         if (!hadCreate) {
           delete urlApi.createObjectURL;
           delete urlApi.revokeObjectURL;
