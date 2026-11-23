@@ -67,6 +67,38 @@
     "deactivateConfirm": {
       "title": "Deactivate access?",
       "message": "The link stops working until you activate it again. The client loses access to the portal in the meantime."
+    },
+    "people": {
+      "title": "Who can sign in",
+      "requireLabel": "Require login",
+      "requireHelp": "With login on, the link opens a sign-in screen. Only the people on the list can enter, with a code sent by email.",
+      "requireOffHelp": "With login off, anyone with the link opens the portal.",
+      "empty": "Nobody on the list yet. Add the first person to be able to require login.",
+      "neverLoggedIn": "Never signed in",
+      "lastLogin": "Last access on {{date}}",
+      "nameLabel": "Name",
+      "emailLabel": "Email",
+      "add": "Add person",
+      "remove": "Remove {{name}}",
+      "removeTitle": "Remove {{name}}?",
+      "removeBody": "This person loses access to the portal right away.",
+      "removeConfirm": "Remove",
+      "toast": {
+        "added": "Person added.",
+        "removed": "Person removed.",
+        "requireOn": "Login is now required for this client.",
+        "requireOff": "Login is no longer required."
+      },
+      "errors": {
+        "duplicate": "This email is already on the list.",
+        "limit": "The limit is 20 people per client.",
+        "no_people": "Add at least one person before requiring login.",
+        "last_person": "Turn off \"Require login\" before removing the last person.",
+        "invalid": "Check the name and the email.",
+        "forbidden": "You do not have permission to change access.",
+        "not_found": "Client not found.",
+        "generic": "Could not save. Try again."
+      }
     }
   },
   "ideias": {
