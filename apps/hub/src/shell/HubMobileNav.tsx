@@ -11,6 +11,7 @@ import { getVisibleNavItems, type HubBadgeKey } from './navItems';
 import { PAUTA_BADGE_CLASS, pautaBadgeStyle } from './pautaNav';
 import { ClientAvatar } from '../components/ClientAvatar';
 import { WorkspaceMark, isWordmarkStyle } from '../components/WorkspaceMark';
+import { HubAccountMenu } from './HubAccountMenu';
 import { FlagIcon } from '@mesaas/ui/FlagIcon';
 import { changeLanguage, SUPPORTED_LANGUAGES } from '@mesaas/i18n';
 import type { Language } from '@mesaas/i18n';
@@ -21,7 +22,7 @@ function cycleLanguage(current: string) {
 }
 
 export function HubMobileNav() {
-  const { bootstrap, theme, toggleTheme, token, workspace } = useHub();
+  const { bootstrap, theme, toggleTheme, token, workspace, person, signOut } = useHub();
   const { pathname } = useLocation();
   const { t, i18n } = useTranslation();
   const pauta = useHubLook() === 'pauta';
@@ -141,9 +142,13 @@ export function HubMobileNav() {
             )}
           </span>
           <div className="flex items-center gap-2">
-            <span className="text-[12px] hub-tx3 truncate max-w-[100px]">
-              {bootstrap.cliente_nome}
-            </span>
+            {/* The account button takes this slot's width on a phone; the client name is still in the drawer. */}
+            {!(person && signOut) && (
+              <span className="text-[12px] hub-tx3 truncate max-w-[100px]">
+                {bootstrap.cliente_nome}
+              </span>
+            )}
+            {person && signOut && <HubAccountMenu person={person} onSignOut={signOut} />}
             <button
               type="button"
               ref={triggerRef}

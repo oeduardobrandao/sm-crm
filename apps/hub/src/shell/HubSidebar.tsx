@@ -10,6 +10,7 @@ import { getVisibleNavItems, type HubBadgeKey } from './navItems';
 import { PAUTA_BADGE_CLASS, pautaBadgeStyle } from './pautaNav';
 import { ClientAvatar } from '../components/ClientAvatar';
 import { WorkspaceMark, isWordmarkStyle } from '../components/WorkspaceMark';
+import { HubAccountMenu } from './HubAccountMenu';
 import { FlagIcon } from '@mesaas/ui/FlagIcon';
 import { changeLanguage, SUPPORTED_LANGUAGES } from '@mesaas/i18n';
 import type { Language } from '@mesaas/i18n';
@@ -20,7 +21,7 @@ function cycleLanguage(current: string) {
 }
 
 export function HubSidebar() {
-  const { bootstrap, theme, toggleTheme, token, workspace } = useHub();
+  const { bootstrap, theme, toggleTheme, token, workspace, person, signOut } = useHub();
   const { pathname } = useLocation();
   const { t, i18n } = useTranslation();
   const pauta = useHubLook() === 'pauta';
@@ -134,6 +135,9 @@ export function HubSidebar() {
         >
           {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
         </button>
+        {person && signOut && (
+          <HubAccountMenu person={person} onSignOut={signOut} placement="above-start" size={32} />
+        )}
       </div>
     </aside>
   );

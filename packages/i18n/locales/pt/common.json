@@ -152,6 +152,28 @@
     "noData": "Nenhum dado encontrado."
   },
   "hub": {
+    "login": {
+      "emailTitle": "Entre no seu portal",
+      "emailBody": "Digite o e-mail que a agência cadastrou. Vamos enviar um código de 6 dígitos.",
+      "emailLabel": "E-mail",
+      "sendCode": "Enviar código",
+      "noAccess": "Não tem acesso? Fale com a {{agency}}.",
+      "codeTitle": "Digite o código",
+      "codeBody": "Se este e-mail tiver acesso, o código chega em instantes em {{email}}.",
+      "codeLabel": "Código de 6 dígitos",
+      "enter": "Entrar",
+      "resendIn": "Reenviar código em {{time}}",
+      "resend": "Reenviar código",
+      "otherEmail": "Usar outro e-mail",
+      "validity": "O código vale por 10 minutos.",
+      "invalidCode": "Código inválido ou expirado.",
+      "tooMany": "Muitas tentativas. Aguarde alguns minutos.",
+      "genericError": "Não foi possível continuar. Tente de novo."
+    },
+    "account": {
+      "menuLabel": "Conta de {{name}}",
+      "signOut": "Sair"
+    },
     "invalidLink": "Link inválido ou expirado.",
     "accessDisabled": "Acesso desativado.",
     "contactAgency": "Entre em contato com a agência.",

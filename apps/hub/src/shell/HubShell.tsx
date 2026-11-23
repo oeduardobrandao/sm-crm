@@ -1,30 +1,37 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import { useTouchSafeToaster } from '@mesaas/ui/toast/touchSafeToaster';
 import { useTranslation } from 'react-i18next';
 import { HubContext } from '../HubContext';
 import { HubSidebar } from './HubSidebar';
 import { HubMobileNav } from './HubMobileNav';
+import { HubLogin } from './HubLogin';
+import { buildHubThemeConfig } from './hubThemeConfig';
+import { logoutHub } from '../api';
+import { clearHubSession } from '../lib/hubSession';
 import { useTheme } from '../hooks/useTheme';
 import { PoweredByMesaas } from '../components/PoweredByMesaas';
-import {
-  resolveHubTheme,
-  buildGoogleFontsHref,
-  effectiveHubFonts,
-  DEFAULT_HUB_THEME,
-  type HubLook,
-  type HubThemeConfig,
-  type HubSurface,
-  type HubRadius,
-  type HubCardStyle,
-} from '../theme';
-import { hubBootstrapQuery } from '../queries';
+import { resolveHubTheme, buildGoogleFontsHref, effectiveHubFonts, type HubLook } from '../theme';
+import { hubBootstrapQuery, isLoginRequiredError } from '../queries';
+import type { HubLoginPayload } from '../types';
 import { canonicalHubToken, compactHubToken } from '../lib/hubLinks';
 import { ShellSkeleton } from '../components/Skeleton';
 
 const FONT_LINK_ID = 'hub-custom-fonts';
+
+/**
+ * The `login` payload of a 401 `login_required` bootstrap error, or null when the error is
+ * something else or carries no usable payload (then the invalid-link screen is the safe answer).
+ */
+function loginPayloadOf(error: unknown): HubLoginPayload | null {
+  if (!isLoginRequiredError(error)) return null;
+  const login = (error as { body?: { login?: Partial<HubLoginPayload> } }).body?.login;
+  const ws = login?.workspace;
+  if (!ws || typeof ws.name !== 'string' || typeof ws.brand_color !== 'string') return null;
+  return login as HubLoginPayload;
+}
 
 export function HubShell() {
   const { workspace, token: urlToken } = useParams<{ workspace: string; token: string }>();
@@ -33,6 +40,7 @@ export function HubShell() {
   const token = urlToken ? canonicalHubToken(urlToken) : undefined;
   const { pathname, search, hash } = useLocation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { t } = useTranslation();
   // A tap on a toast must not pause it for good on a phone (see the hook).
   useTouchSafeToaster();
@@ -56,8 +64,14 @@ export function HubShell() {
   const bootstrap = bootstrapQuery.data ?? null;
   const error = bootstrapQuery.error?.message ?? null;
   const loading = bootstrapQuery.isPending;
+  // The error is checked BEFORE the data: a mid-session `login_required` (session expired or
+  // revoked) must show the login even while an earlier bootstrap is still cached.
+  const loginRequired = isLoginRequiredError(bootstrapQuery.error);
+  const loginPayload = loginPayloadOf(bootstrapQuery.error);
   const { theme, toggleTheme, setTheme, hasStoredPreference } = useTheme();
-  const ht = bootstrap?.hub_theme;
+  // Branding comes from the login payload while logged out, from the bootstrap otherwise.
+  const ht = loginPayload ? loginPayload.hub_theme : bootstrap?.hub_theme;
+  const brandColor = loginPayload?.workspace.brand_color ?? bootstrap?.workspace.brand_color;
   // Defense in depth: hub-bootstrap already fails closed (serves NEUTRAL_HUB_THEME
   // when the workspace isn't entitled), but the client must not trust a `hub_theme`
   // object's preset fields (surface/font_display/font_body/radius/card_style)
@@ -71,7 +85,9 @@ export function HubShell() {
   // defaults, even if a stale/tampered payload carries contrary values.
   const effectiveHideBranding = isCustomized ? (ht?.hide_branding ?? false) : false;
   // Visual identity flag. HubShell provides HubContext, so it can't use useHubLook.
-  const look: HubLook = bootstrap?.feature_hub_pauta === true ? 'pauta' : 'classic';
+  // The login payload carries no look flag, so the login screen is always classic.
+  const look: HubLook =
+    !loginPayload && bootstrap?.feature_hub_pauta === true ? 'pauta' : 'classic';
   const appliedDefaultAppearance = useRef(false);
 
   useEffect(() => {
@@ -135,11 +151,45 @@ export function HubShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bootstrap, hasStoredPreference, ht, isCustomized]);
 
+  const signOut = useCallback(async () => {
+    try {
+      await logoutHub();
+    } catch {
+      // The server copy may linger until it expires; the local sign-out still goes ahead.
+    } finally {
+      clearHubSession();
+      await queryClient.invalidateQueries();
+    }
+  }, [queryClient]);
+
   if (loading) {
     return <ShellSkeleton />;
   }
 
-  if (error || !bootstrap) {
+  if (loginPayload && workspace && token) {
+    const loginStyle = Object.entries(
+      resolveHubTheme(buildHubThemeConfig(brandColor!, ht), theme === 'dark', 'classic').vars,
+    )
+      .map(([k, v]) => `${k}: ${v};`)
+      .join(' ');
+    return (
+      <>
+        <style>{`:root { ${loginStyle} }`}</style>
+        <div className="hub-root min-h-screen flex flex-col">
+          <HubLogin
+            workspace={workspace}
+            token={token}
+            login={loginPayload}
+            onLoggedIn={() => void queryClient.invalidateQueries()}
+          />
+        </div>
+      </>
+    );
+  }
+
+  // A refetch error other than login_required keeps the cached portal; only a missing
+  // bootstrap (or a login_required with no usable payload) is the invalid-link screen.
+  if (loginRequired || !bootstrap) {
     return (
       <div className="hub-root min-h-screen flex flex-col items-center justify-center gap-3 px-6 text-center">
         <p className="font-display text-2xl font-medium hub-txt">{t('hub.invalidLink')}</p>
@@ -157,18 +207,7 @@ export function HubShell() {
     );
   }
 
-  const config: HubThemeConfig =
-    isCustomized && ht
-      ? {
-          accent: bootstrap.workspace.brand_color,
-          surface: ht.surface as HubSurface,
-          fontDisplay: ht.font_display,
-          fontBody: ht.font_body,
-          radius: ht.radius as HubRadius,
-          cardStyle: ht.card_style as HubCardStyle,
-          customized: true,
-        }
-      : { ...DEFAULT_HUB_THEME, accent: bootstrap.workspace.brand_color };
+  const config = buildHubThemeConfig(bootstrap.workspace.brand_color, ht);
 
   const resolved = resolveHubTheme(config, theme === 'dark', look);
   const styleText = Object.entries(resolved.vars)
@@ -177,7 +216,15 @@ export function HubShell() {
 
   return (
     <HubContext.Provider
-      value={{ bootstrap, token: token!, workspace: workspace!, theme, toggleTheme }}
+      value={{
+        bootstrap,
+        token: token!,
+        workspace: workspace!,
+        theme,
+        toggleTheme,
+        person: bootstrap.person ?? null,
+        signOut: () => void signOut(),
+      }}
     >
       <style>{`:root { ${styleText} }`}</style>
       <div

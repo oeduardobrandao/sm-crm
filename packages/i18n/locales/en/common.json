@@ -152,6 +152,28 @@
     "noData": "No data found."
   },
   "hub": {
+    "login": {
+      "emailTitle": "Sign in to your portal",
+      "emailBody": "Enter the email your agency registered. We will send you a 6-digit code.",
+      "emailLabel": "Email",
+      "sendCode": "Send code",
+      "noAccess": "No access? Contact {{agency}}.",
+      "codeTitle": "Enter the code",
+      "codeBody": "If this email has access, the code arrives shortly at {{email}}.",
+      "codeLabel": "6-digit code",
+      "enter": "Sign in",
+      "resendIn": "Resend code in {{time}}",
+      "resend": "Resend code",
+      "otherEmail": "Use another email",
+      "validity": "The code is valid for 10 minutes.",
+      "invalidCode": "Invalid or expired code.",
+      "tooMany": "Too many attempts. Please wait a few minutes.",
+      "genericError": "We could not continue. Please try again."
+    },
+    "account": {
+      "menuLabel": "{{name}}'s account",
+      "signOut": "Sign out"
+    },
     "invalidLink": "Invalid or expired link.",
     "accessDisabled": "Access disabled.",
     "contactAgency": "Please contact the agency.",
