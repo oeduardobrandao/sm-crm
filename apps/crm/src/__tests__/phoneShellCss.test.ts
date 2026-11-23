@@ -356,7 +356,9 @@ describe('CRM stylesheets follow the phone-shell queries', () => {
   it('banner, Crisp bubble and toasts clear the tab bar on tablets', () => {
     const holding = (selector: string) => blocks.filter((b) => b.selectors.includes(selector));
     const banner = holding('body:has(.mobile-nav-glass) .cookie-banner');
-    const crisp = holding('body:has(.mobile-nav-glass) .crisp-client');
+    const crisp = holding(
+      "body:has(.mobile-nav-glass) .crisp-client:has([data-chat-status][data-visible='false'])",
+    );
     const toast = blocks.filter((b) => b.rules.some((r) => declares(r, '--phone-toast-offset')));
     expect(banner.length).toBeGreaterThan(0);
     expect(crisp.length).toBeGreaterThan(0);
