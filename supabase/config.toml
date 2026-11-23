@@ -49,6 +49,9 @@ verify_jwt = false
 [functions.hub-bootstrap]
 verify_jwt = false
 
+[functions.hub-auth]
+verify_jwt = false
+
 [functions.hub-posts]
 verify_jwt = false
 
