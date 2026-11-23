@@ -99,6 +99,7 @@ import { ActionMetricValue } from './components/PostMetricsView';
 import { PostMetricsDialog } from './components/PostMetricsDialog';
 import { InstagramLinkButton } from '@/components/instagram/InstagramLinkButton';
 import { AccountCommentsCard } from './comments/AccountCommentsCard';
+import { keepPostsAcrossBaselineRefresh } from './postsPlaceholder';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 
 Chart.register(...registerables);
@@ -959,25 +960,29 @@ function AnalyticsContent({
     queryFn: () => getClientRateBaseline(clientId),
     retry: false, // non-critical: never block/delay the posts query
   });
+  const postsKey = [
+    'analytics-posts',
+    clientId,
+    days,
+    sort.col,
+    sort.dir,
+    periodStart,
+    periodEnd,
+    baselineQuery.dataUpdatedAt,
+  ];
   const {
     data: postsRes,
     isLoading: loadingPosts,
     isSuccess: postsSettled,
     isFetching: postsFetching,
   } = useQuery({
-    queryKey: [
-      'analytics-posts',
-      clientId,
-      days,
-      sort.col,
-      sort.dir,
-      periodStart,
-      periodEnd,
-      baselineQuery.dataUpdatedAt,
-    ],
+    queryKey: postsKey,
     queryFn: () =>
       getPostsAnalytics(clientId, days, sort.col, sort.dir, dateRange, baselineQuery.data?.dists),
     enabled: baselineQuery.isSuccess || baselineQuery.isError,
+    // A baseline refetch only changes the key's last part: keep the posts on screen (and an
+    // open metrics dialog mounted) instead of dropping to the skeleton.
+    placeholderData: (prev, prevQuery) => keepPostsAcrossBaselineRefresh(prev, prevQuery, postsKey),
   });
   const { data: historyRes } = useQuery({
     queryKey: ['analytics-history', clientId, days, periodStart, periodEnd],

@@ -28,6 +28,7 @@ const {
       error?: unknown;
       isSuccess?: boolean;
       isFetching?: boolean;
+      isPlaceholderData?: boolean;
     }
   > = {};
   const chartCalls: Array<unknown[]> = [];
@@ -988,13 +989,21 @@ describe('AnalyticsContaPage', () => {
   });
 
   it('closes the dialog when the open post leaves a settled list, not while refetching', () => {
-    seedCommonAnalyticsData();
+    const { posts } = seedCommonAnalyticsData();
     const { container, rerender } = render(<AnalyticsContaPage />);
     openFromTable(container);
     expect(screen.getByRole('dialog')).toBeInTheDocument();
 
-    // A key change (the baseline refetch) leaves the new key without data for a moment.
-    queryState['analytics-posts'] = { data: undefined, isFetching: true };
+    // A baseline refetch moves the posts query to a new key. Its placeholderData
+    // (keepPostsAcrossBaselineRefresh) keeps the previous posts, so react-query reports them as
+    // placeholder data while fetching, never isLoading: no skeleton, and the dialog stays.
+    queryState['analytics-posts'] = {
+      data: { posts },
+      isFetching: true,
+      isLoading: false,
+      isSuccess: true,
+      isPlaceholderData: true,
+    };
     rerender(<AnalyticsContaPage />);
     expect(screen.getByRole('dialog')).toBeInTheDocument();
 
