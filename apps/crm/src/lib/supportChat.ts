@@ -1,10 +1,15 @@
 import { getConsent, openConsentPreferences } from './consent';
 import { loadCrisp } from './crispLoader';
+import { ensureCrispListeners } from './supportChatUnread';
 
 let pendingOpen = false;
 
 function showChat(): void {
   loadCrisp();
+  // Closing the chat hides the bubble again. The desktop top bar registers this on mount, but the
+  // phone shell never renders it, so without this the bubble stayed on screen after the first chat.
+  // Crisp keeps one callback per event, so this must be the shared, once-guarded registration.
+  ensureCrispListeners();
   window.$crisp?.push(['do', 'chat:show']);
   window.$crisp?.push(['do', 'chat:open']);
 }
