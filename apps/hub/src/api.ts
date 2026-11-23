@@ -96,6 +96,7 @@ export class HubApiError extends Error {
 }
 
 /** The answer a client without a valid login session gets from a hub-* function. */
+// Twin of queries.ts `isLoginRequiredError` (structural, also matches PostReferenceError); keep in step.
 export function isLoginRequired(error: unknown): boolean {
   return error instanceof HubApiError && error.code === 'login_required';
 }
@@ -115,7 +116,7 @@ interface RequestOptions {
   /** Default true. Login calls turn it off: a 429 there is an answer for the person, not a blip. */
   retry429?: boolean;
   /** How a successful body is read. Default 'json'. */
-  parse?: 'json' | 'text';
+  parse?: 'json' | 'text' | 'blob';
 }
 
 async function request<T>(
@@ -126,7 +127,11 @@ async function request<T>(
   for (let attempt = 0; ; attempt++) {
     throwIfAborted(signal);
     const res = await fetch(input, init);
-    if (res.ok) return (parse === 'text' ? res.text() : res.json()) as Promise<T>;
+    if (res.ok) {
+      return (
+        parse === 'text' ? res.text() : parse === 'blob' ? res.blob() : res.json()
+      ) as Promise<T>;
+    }
     if (retry429 && res.status === 429 && attempt < RETRY_AFTER_429_MS.length) {
       await sleep(RETRY_AFTER_429_MS[attempt], signal);
       continue;
@@ -619,28 +624,16 @@ export function agendaIcsUrl(token: string, ocorrenciaId: number) {
 export async function downloadAgendaIcs(token: string, ocorrenciaId: number): Promise<void> {
   const url = new URL(`${BASE}/functions/v1/hub-agenda/ocorrencia/${ocorrenciaId}.ics`);
   url.searchParams.set('token', token);
-  const res = await fetch(url.toString(), { headers: hubHeaders() });
-  if (!res.ok) {
-    const raw = await res.json().catch(() => null);
-    const body = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
-    throw new HubApiError(
-      typeof body.error === 'string' ? body.error : `HTTP ${res.status}`,
-      res.status,
-      typeof body.code === 'string' ? body.code : undefined,
-      body,
-    );
-  }
-  const blobUrl = URL.createObjectURL(await res.blob());
-  try {
-    const a = document.createElement('a');
-    a.href = blobUrl;
-    a.download = `evento-${ocorrenciaId}.ics`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  } finally {
-    URL.revokeObjectURL(blobUrl);
-  }
+  const blob = await request<Blob>(url.toString(), { headers: hubHeaders() }, { parse: 'blob' });
+  const blobUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = blobUrl;
+  a.download = `evento-${ocorrenciaId}.ics`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Revoked later: some browsers cancel the download if the URL dies in the click's own tick.
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
 }
 
 // ── Guest invite (agenda-convite) ───────────────────────────────────────────

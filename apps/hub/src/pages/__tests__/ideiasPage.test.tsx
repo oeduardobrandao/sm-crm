@@ -195,6 +195,22 @@ describe('IdeiasPage', () => {
     expect(await screen.findByText('Ideia recuperada')).toBeInTheDocument();
   });
 
+  it('does not retry a login_required failure', async () => {
+    mockedFetchIdeias.mockRejectedValue(
+      Object.assign(new Error('Login necessário.'), { code: 'login_required' }),
+    );
+
+    renderHubPage(
+      '/mesaas/hub/token-publico/ideias',
+      '/:workspace/hub/:token/ideias',
+      <IdeiasPage />,
+      createQueryClient(),
+    );
+
+    expect(await screen.findByText('Erro ao carregar ideias')).toBeInTheDocument();
+    expect(mockedFetchIdeias).toHaveBeenCalledTimes(1);
+  });
+
   it('retries non-4xx failures before surfacing the error', async () => {
     mockedFetchIdeias.mockRejectedValue(new Error('HTTP 500'));
 

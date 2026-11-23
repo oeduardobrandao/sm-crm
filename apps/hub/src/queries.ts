@@ -69,7 +69,9 @@ export const hubPostsQuery = (token: string) =>
  * reads it structurally (same test as `isLoginRequired`, wider than HubApiError) and the
  * query layer stays independent of those modules.
  */
-function isLoginRequiredError(error: unknown) {
+// Twin of api.ts `isLoginRequired`: that one is HubApiError-only (the public contract); this one
+// is structural so it also covers PostReferenceError and survives tests that mock `./api`.
+export function isLoginRequiredError(error: unknown) {
   return (
     typeof error === 'object' &&
     error !== null &&

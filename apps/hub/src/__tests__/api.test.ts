@@ -651,6 +651,7 @@ describe('hub client login', () => {
     vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: create, revokeObjectURL: revoke }));
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
 
+    vi.useFakeTimers();
     await downloadAgendaIcs('tk', 10);
 
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
@@ -659,6 +660,9 @@ describe('hub client login', () => {
     expect(init.headers).toEqual({ apikey: 'anon-key-for-tests', 'x-hub-session': 'sess-1' });
     expect(create).toHaveBeenCalledWith(blob);
     expect(click).toHaveBeenCalledTimes(1);
+    // Not revoked in the click's own tick, but soon after.
+    expect(revoke).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1000);
     expect(revoke).toHaveBeenCalledWith('blob:ics');
     expect(document.querySelector('a[download]')).toBeNull();
     click.mockRestore();

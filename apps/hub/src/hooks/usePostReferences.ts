@@ -343,7 +343,7 @@ export function usePostReferences(token: string, postId: number) {
         throw err;
       }
     },
-    [token, postId, appendItem, invalidateAfterError],
+    [token, postId, appendItem, invalidateAfterError, qc],
   );
 
   const updateNote = useCallback(
