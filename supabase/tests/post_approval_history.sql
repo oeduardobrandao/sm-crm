@@ -89,11 +89,11 @@ rollback;
 begin;
 do $$
 begin
-  assert has_function_privilege('service_role', 'record_client_approval(bigint, text, text, text, boolean, text, text)', 'execute'),
+  assert has_function_privilege('service_role', 'record_client_approval(bigint, text, text, text, boolean, text, text, uuid, text)', 'execute'),
     'service_role deve poder executar';
-  assert not has_function_privilege('authenticated', 'record_client_approval(bigint, text, text, text, boolean, text, text)', 'execute'),
+  assert not has_function_privilege('authenticated', 'record_client_approval(bigint, text, text, text, boolean, text, text, uuid, text)', 'execute'),
     'authenticated nao pode executar';
-  assert not has_function_privilege('anon', 'record_client_approval(bigint, text, text, text, boolean, text, text)', 'execute'),
+  assert not has_function_privilege('anon', 'record_client_approval(bigint, text, text, text, boolean, text, text, uuid, text)', 'execute'),
     'anon nao pode executar';
 end $$;
 rollback;

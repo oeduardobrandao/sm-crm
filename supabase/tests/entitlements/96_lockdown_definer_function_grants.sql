@@ -39,7 +39,7 @@ declare
     'public.set_story_segment_field(bigint, int, text, text)',
     'public.mark_platform_published(bigint, text, text, uuid, jsonb)',
     'public.record_post_status_change(bigint, text, text, uuid, bigint, jsonb)',
-    'public.record_client_approval(bigint, text, text, text, boolean, text, text)',
+    'public.record_client_approval(bigint, text, text, text, boolean, text, text, uuid, text)',
     'public.claim_cron_triage(text, text, int)',
     'public.claim_automation_send(text, uuid, uuid, text, text, text, text, timestamptz, int)',
     'public.claim_retryable_automation_sends(int)',

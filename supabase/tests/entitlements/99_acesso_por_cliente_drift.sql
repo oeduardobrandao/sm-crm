@@ -89,7 +89,9 @@ declare
     -- policy única "Service role full access" TO public USING (auth.role() = 'service_role'):
     -- authenticated não lê; só os syncs/analytics do Instagram e TikTok (Task 13)
     'instagram_account_metrics_daily', 'instagram_account_metrics_monthly',
-    'instagram_story_insights', 'tiktok_account_metrics_daily'
+    'instagram_story_insights', 'tiktok_account_metrics_daily',
+    -- login do cliente no Hub: só service role; o CRM passa pelas RPCs hub_people_*, que aplicam o escopo
+    'hub_client_people', 'hub_client_settings', 'hub_login_codes'
   ];
 
   -- Outras isenções, cada uma com o motivo.
