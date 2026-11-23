@@ -120,4 +120,13 @@ describe('post metrics on phones', () => {
     });
     expect(topLevelDecls('.phone-an-post-card__ig').position).toBe('absolute');
   });
+
+  // As a flex item, min-width:auto takes the nowrap caption's min-content, so each wrap stretched
+  // to ~1147px in a real browser (jsdom cannot measure it).
+  it('keeps the strip card wrap at 112px instead of its caption min-content', () => {
+    expect(topLevelDecls('.phone-an-post-card-wrap')).toMatchObject({
+      'min-width': '0',
+      width: '112px',
+    });
+  });
 });
