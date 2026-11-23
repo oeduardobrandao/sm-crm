@@ -129,20 +129,33 @@ describe('HubPeopleSection (desktop)', () => {
     ).toBeInTheDocument();
   });
 
-  it('while the list loads or fails: no empty text, no pre-fill, switch disabled', async () => {
+  it('while the list loads: no empty text, no pre-fill, switch disabled', async () => {
     vi.mocked(store.getHubPeople).mockReturnValue(new Promise(() => {}));
     renderSection();
     expect(screen.getByRole('switch', { name: 'Exigir login' })).toBeDisabled();
     expect(screen.queryByText(/Ninguém na lista/)).not.toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: 'Nome' })).not.toBeInTheDocument();
-    cleanup();
+  });
 
+  it('when the list fails: no empty text, no pre-fill, switch disabled', async () => {
     vi.mocked(store.getHubPeople).mockRejectedValue({ message: 'boom' });
     renderSection();
-    await waitFor(() => expect(store.getHubPeople).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(store.getHubPeople).toHaveBeenCalledTimes(1));
+    await new Promise((r) => setTimeout(r, 20));
     expect(screen.getByRole('switch', { name: 'Exigir login' })).toBeDisabled();
     expect(screen.queryByText(/Ninguém na lista/)).not.toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: 'Nome' })).not.toBeInTheDocument();
+  });
+
+  it('ties the helper line to the switch with aria-describedby', async () => {
+    listReturns([MARINA], false);
+    renderSection();
+    const sw = await screen.findByRole('switch', { name: 'Exigir login' });
+    await waitFor(() =>
+      expect(sw).toHaveAccessibleDescription(
+        'Com o login desligado, qualquer pessoa com o link abre o portal.',
+      ),
+    );
   });
 
   it('adding calls addHubPerson, toasts, invalidates the list and clears the row', async () => {
@@ -268,19 +281,54 @@ describe('HubPeopleSection (desktop)', () => {
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Login não é mais exigido.'));
   });
 
-  it('a failing toggle returns the switch to its previous position and shows the mapped error', async () => {
+  it('a failing toggle moves the switch, then returns it to its previous position with the mapped error', async () => {
     listReturns([MARINA], false);
-    vi.mocked(store.setHubRequireLogin).mockRejectedValue({ message: 'no_people' });
+    let reject!: (e: unknown) => void;
+    vi.mocked(store.setHubRequireLogin).mockReturnValue(
+      new Promise<void>((_, rej) => {
+        reject = rej;
+      }),
+    );
     renderSection();
     const sw = await screen.findByRole('switch', { name: 'Exigir login' });
     await waitFor(() => expect(sw).toBeEnabled());
     fireEvent.click(sw);
+    expect(store.setHubRequireLogin).toHaveBeenCalledWith(15, true);
+    await waitFor(() => expect(sw).toBeChecked());
+    reject({ message: 'no_people' });
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(
         'Adicione ao menos uma pessoa antes de exigir login.',
       ),
     );
     await waitFor(() => expect(sw).not.toBeChecked());
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it('after a successful toggle the switch keeps the new value even if the refetch fails', async () => {
+    vi.mocked(store.getHubPeople).mockResolvedValueOnce({ require_login: false, people: [MARINA] });
+    vi.mocked(store.setHubRequireLogin).mockResolvedValue(undefined);
+    renderSection();
+    const sw = await screen.findByRole('switch', { name: 'Exigir login' });
+    await waitFor(() => expect(sw).toBeEnabled());
+    vi.mocked(store.getHubPeople).mockRejectedValue({ message: 'boom' });
+    fireEvent.click(sw);
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith('Login exigido para este cliente.'),
+    );
+    await waitFor(() => expect(sw).toBeChecked());
+  });
+
+  it('disables the remove buttons while a remove is in flight', async () => {
+    listReturns([MARINA, RECEPCAO]);
+    vi.mocked(store.removeHubPerson).mockReturnValue(new Promise(() => {}));
+    renderSection();
+    fireEvent.click(await screen.findByRole('button', { name: 'Remover Marina Costa' }));
+    const dialog = await screen.findByRole('alertdialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Remover' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Remover Recepção' })).toBeDisabled(),
+    );
   });
 
   it('an enabled switch with zero people stays operable so it can be turned off', async () => {
@@ -359,6 +407,17 @@ describe('HubPeopleSection (phone)', () => {
     expect(screen.getByText('marina@clinicavida.com.br')).toBeInTheDocument();
     expect(screen.getByText('Nunca entrou')).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: 'Exigir login' })).toBeInTheDocument();
+  });
+
+  it('person rows keep name, e-mail and last access readable; only the trash button acts', async () => {
+    listReturns([MARINA]);
+    renderSection('phone');
+    await screen.findByText('Marina Costa');
+    expect(screen.getByText('marina@clinicavida.com.br')).toBeInTheDocument();
+    expect(screen.getByText(/^Último acesso em/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Marina Costa'));
+    expect(screen.queryByRole('dialog', { name: 'Remover Marina Costa?' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /^Remover / })).toHaveLength(1);
   });
 
   it('remove goes through the confirm sheet', async () => {

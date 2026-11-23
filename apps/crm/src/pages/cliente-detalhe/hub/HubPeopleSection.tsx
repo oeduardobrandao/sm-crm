@@ -36,6 +36,7 @@ import {
   hubPeopleKey,
   removeHubPerson,
   setHubRequireLogin,
+  type HubPeopleData,
   type HubPerson,
 } from '@/store/hubPeople';
 import { useHubPortalDataEnabled } from './HubRoleGate';
@@ -85,6 +86,13 @@ export function HubPeopleSection({
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<HubPerson | null>(null);
+  // Kept after the target clears so the dialog/sheet title does not read "Remover ?"
+  // while it animates closed.
+  const [removeName, setRemoveName] = useState('');
+  const askRemove = (p: HubPerson) => {
+    setRemoveName(p.nome);
+    setRemoveTarget(p);
+  };
   // Saves in flight are invisible to the DOM heuristic of the silent update.
   useUnsavedWork(toggling || adding || removing);
 
@@ -116,6 +124,11 @@ export function HubPeopleSection({
     setToggling(true);
     try {
       await setHubRequireLogin(clienteId, next);
+      // Write the saved value first: a failed refetch must not leave a success toast
+      // next to a stale switch.
+      qc.setQueryData<HubPeopleData>(hubPeopleKey(clienteId), (old) =>
+        old ? { ...old, require_login: next } : old,
+      );
       await qc.invalidateQueries({ queryKey: hubPeopleKey(clienteId) });
       toast.success(
         next ? t('acesso.people.toast.requireOn') : t('acesso.people.toast.requireOff'),
@@ -167,13 +180,12 @@ export function HubPeopleSection({
         })
       : t('acesso.people.neverLoggedIn');
 
+  const helperId = `hub-require-help-${clienteId}`;
   const helper = loaded
     ? switchChecked
       ? t('acesso.people.requireHelp')
       : t('acesso.people.requireOffHelp')
     : undefined;
-
-  const removeName = removeTarget?.nome ?? '';
 
   if (variant === 'phone') {
     return (
@@ -197,9 +209,17 @@ export function HubPeopleSection({
                 label={p.nome}
                 subtitle={p.email}
                 value={lastAccess(p)}
-                accessory={<Trash2 aria-hidden="true" className="size-4 text-destructive" />}
-                aria-label={t('acesso.people.remove', { name: p.nome })}
-                onClick={() => setRemoveTarget(p)}
+                accessory={
+                  <button
+                    type="button"
+                    className="inline-flex size-11 shrink-0 items-center justify-center rounded-full text-destructive disabled:opacity-50"
+                    aria-label={t('acesso.people.remove', { name: p.nome })}
+                    disabled={removing}
+                    onClick={() => askRemove(p)}
+                  >
+                    <Trash2 aria-hidden="true" className="size-4" />
+                  </button>
+                }
               />
             ))}
           </GroupedList>
@@ -228,7 +248,7 @@ export function HubPeopleSection({
                 <Cell
                   label={t('acesso.people.add')}
                   icon={<Plus />}
-                  disabled={adding}
+                  disabled={adding || form.formState.isSubmitting}
                   onClick={() => void submit()}
                 />
               </GroupedList>
@@ -267,10 +287,15 @@ export function HubPeopleSection({
               id={`hub-require-login-${clienteId}`}
               checked={switchChecked}
               disabled={switchDisabled}
+              aria-describedby={helper ? helperId : undefined}
               onCheckedChange={(v) => void onToggle(v)}
             />
           </div>
-          {helper && <p className="max-w-md text-right text-xs text-muted-foreground">{helper}</p>}
+          {helper && (
+            <p id={helperId} className="max-w-md text-right text-xs text-muted-foreground">
+              {helper}
+            </p>
+          )}
         </div>
       </div>
 
@@ -293,7 +318,8 @@ export function HubPeopleSection({
                 variant="ghost"
                 size="icon"
                 aria-label={t('acesso.people.remove', { name: p.nome })}
-                onClick={() => setRemoveTarget(p)}
+                disabled={removing}
+                onClick={() => askRemove(p)}
               >
                 <Trash2 size={16} aria-hidden="true" />
               </Button>
@@ -306,8 +332,12 @@ export function HubPeopleSection({
         (limitReached ? (
           <p className="text-sm text-muted-foreground">{t('acesso.people.errors.limit')}</p>
         ) : (
-          <form noValidate onSubmit={(e) => void submit(e)} className="flex items-end gap-3">
-            <div className="flex w-72 flex-col gap-1.5">
+          <form
+            noValidate
+            onSubmit={(e) => void submit(e)}
+            className="flex flex-wrap items-end gap-3"
+          >
+            <div className="flex min-w-[12rem] flex-1 flex-col gap-1.5">
               <Label htmlFor={`hub-person-nome-${clienteId}`}>{t('acesso.people.nameLabel')}</Label>
               <Input
                 id={`hub-person-nome-${clienteId}`}
@@ -316,7 +346,7 @@ export function HubPeopleSection({
                 {...form.register('nome')}
               />
             </div>
-            <div className="flex w-80 flex-col gap-1.5">
+            <div className="flex min-w-[14rem] flex-[1.2] flex-col gap-1.5">
               <Label htmlFor={`hub-person-email-${clienteId}`}>
                 {t('acesso.people.emailLabel')}
               </Label>
@@ -327,7 +357,7 @@ export function HubPeopleSection({
                 {...form.register('email')}
               />
             </div>
-            <Button type="submit" disabled={adding}>
+            <Button type="submit" disabled={adding || form.formState.isSubmitting}>
               {t('acesso.people.add')}
             </Button>
           </form>
