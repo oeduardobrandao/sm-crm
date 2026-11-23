@@ -12,7 +12,7 @@ import {
   uploadPostReference,
   validateReferenceFile,
 } from '../services/postReferences';
-import { HUB_MATERIAL_KEY, handleLoginRequired } from '../queries';
+import { HUB_MATERIAL_KEY } from '../queries';
 import type { ReferenceErrorCode, ReferenceFileKind, ReferenceItem } from '../types/postReferences';
 
 /** Per post, no token: the contract key. The Hub serves one token per tab. */
@@ -214,7 +214,6 @@ export function usePostReferences(token: string, postId: number) {
               dropUpload(job.localId);
             } else {
               const code = codeOf(err);
-              handleLoginRequired(qc, err);
               patchUpload(job.localId, { status: 'error', error: code });
               invalidateAfterError(code, job.materialItemId !== undefined);
             }
@@ -338,12 +337,11 @@ export function usePostReferences(token: string, postId: number) {
         appendItem(item);
         return item;
       } catch (err) {
-        handleLoginRequired(qc, err);
         invalidateAfterError(codeOf(err), input.materialItemId !== undefined);
         throw err;
       }
     },
-    [token, postId, appendItem, invalidateAfterError, qc],
+    [token, postId, appendItem, invalidateAfterError],
   );
 
   const updateNote = useCallback(
@@ -352,7 +350,6 @@ export function usePostReferences(token: string, postId: number) {
         replaceItem(await updatePostReferenceNote(token, id, note));
         if (mounted.current) setFreshIds((ids) => ids.filter((x) => x !== id));
       } catch (err) {
-        handleLoginRequired(qc, err);
         if (codeOf(err) === 'locked' || codeOf(err) === 'not_found') {
           void qc.invalidateQueries({ queryKey: key });
         }
@@ -369,9 +366,6 @@ export function usePostReferences(token: string, postId: number) {
         qc.setQueryData<ReferencesData>(key, (old) =>
           old ? { ...old, items: old.items.filter((i) => i.id !== id) } : old,
         );
-      } catch (err) {
-        handleLoginRequired(qc, err);
-        throw err;
       } finally {
         // can_add depends on the count and the post status: let the server say.
         void qc.invalidateQueries({ queryKey: key });

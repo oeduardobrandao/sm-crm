@@ -20,6 +20,7 @@ import {
   fetchPost,
   fetchPosts,
   fetchPostsInRange,
+  setLoginRequiredListener,
   CONVITE_INDISPONIVEL,
 } from './api';
 import { fetchMaterialRequests } from './services/materialRequests';
@@ -269,6 +270,9 @@ export function createHubQueryClient() {
   // staleTime of 0 each reader's mount would refetch them straight away.
   // Mutations still invalidate, so this only drops redundant background refetches.
   queryClient.setQueryDefaults([HUB_POSTS_KEY], { staleTime: 30_000 });
+  // Writes awaited straight from components never pass through the caches above; the
+  // transport reports their login_required here (a no-op once the session is cleared).
+  setLoginRequiredListener((error) => handleLoginRequired(queryClient, error));
   return queryClient;
 }
 

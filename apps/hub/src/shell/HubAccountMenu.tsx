@@ -62,7 +62,6 @@ export function HubAccountMenu({
         ref={triggerRef}
         type="button"
         aria-label={t('hub.account.menuLabel', { name: person.nome || person.email })}
-        aria-haspopup="true"
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         onClick={() => setOpen((v) => !v)}

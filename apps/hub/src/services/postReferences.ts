@@ -1,6 +1,6 @@
 import { trackUnsavedWork } from '@mesaas/app-lifecycle';
 import type { ReferenceErrorCode, ReferenceFileKind, ReferenceItem } from '../types/postReferences';
-import { hubHeaders } from '../api';
+import { hubHeaders, notifyLoginRequired } from '../api';
 import { prepareReferenceMedia, type ReferenceMedia } from './referenceMedia';
 
 const BASE = import.meta.env.VITE_SUPABASE_URL as string;
@@ -168,7 +168,7 @@ export async function call<T>(
   // The login gate answers { error: <message>, code: 'login_required' }, unlike this
   // function's own { error: <code> } shape.
   if (res.status === 401 && body.code === 'login_required') {
-    throw new PostReferenceError('login_required');
+    throw notifyLoginRequired(new PostReferenceError('login_required'));
   }
   const code =
     typeof body.error === 'string' && ERROR_CODES.has(body.error)

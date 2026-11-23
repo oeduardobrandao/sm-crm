@@ -127,6 +127,7 @@ describe('HubShell login', () => {
     mockedBootstrap.mockRejectedValue(new HubApiError('Login necessário.', 401, 'login_required'));
     mount();
     expect(await screen.findByText('Link inválido ou expirado.')).toBeInTheDocument();
+    expect(screen.queryByText('Login necessário.')).not.toBeInTheDocument();
   });
 
   it('invalidates all queries after a successful login', async () => {
@@ -183,23 +184,48 @@ describe('HubShell login', () => {
     );
   });
 
-  it('signs out: logoutHub, then clear the session, then invalidate everything', async () => {
+  it('signs out: logoutHub, clear the session, drop the other queries, invalidate bootstrap', async () => {
     const qc = new QueryClient();
     const spy = vi.spyOn(qc, 'invalidateQueries');
+    const removeSpy = vi.spyOn(qc, 'removeQueries');
+    const resetSpy = vi.spyOn(qc, 'resetQueries');
     mockedBootstrap.mockResolvedValueOnce(BOOTSTRAP).mockRejectedValue(loginRequired());
     mockedLogout.mockResolvedValue({ ok: true });
     mount(qc);
     const [trigger] = await screen.findAllByRole('button', { name: 'Conta de Marina Costa' });
+    qc.setQueryData(['hub-dashboard', 'tok', 30, 'default'], { secret: 'previous person' });
+    await waitFor(() => expect(vi.mocked(fetchPosts)).toHaveBeenCalled());
+    const postsCallsBefore = vi.mocked(fetchPosts).mock.calls.length;
     fireEvent.click(trigger);
     fireEvent.click(screen.getAllByRole('button', { name: 'Sair' })[0]);
-    await waitFor(() => expect(spy).toHaveBeenCalledWith());
+    await waitFor(() => expect(spy).toHaveBeenCalledWith({ queryKey: ['hub-bootstrap'] }));
+    expect(spy).not.toHaveBeenCalledWith();
     expect(mockedLogout.mock.invocationCallOrder[0]).toBeLessThan(
       mockedClear.mock.invocationCallOrder[0],
     );
-    expect(mockedClear.mock.invocationCallOrder[0]).toBeLessThan(
-      spy.mock.invocationCallOrder[spy.mock.calls.findIndex((c) => c.length === 0)],
-    );
+    expect(mockedClear.mock.invocationCallOrder[0]).toBeLessThan(spy.mock.invocationCallOrder[0]);
+    // Gated hub: bootstrap failed, so the rest is removed outright, never refetched.
+    await waitFor(() => expect(removeSpy).toHaveBeenCalled());
+    expect(resetSpy).not.toHaveBeenCalled();
+    expect(vi.mocked(fetchPosts).mock.calls.length).toBe(postsCallsBefore);
+    expect(qc.getQueryData(['hub-dashboard', 'tok', 30, 'default'])).toBeUndefined();
+    expect(qc.getQueryState(hubBootstrapQuery('aurora', 'tok').queryKey)).toBeDefined();
     expect(await screen.findByText('Entre no seu portal')).toBeInTheDocument();
+  });
+
+  it('keeps an open hub working after sign out: dropped queries load again', async () => {
+    const qc = new QueryClient();
+    mockedBootstrap.mockResolvedValue(BOOTSTRAP);
+    mockedLogout.mockResolvedValue({ ok: true });
+    mount(qc);
+    const [trigger] = await screen.findAllByRole('button', { name: 'Conta de Marina Costa' });
+    await waitFor(() => expect(vi.mocked(fetchPosts)).toHaveBeenCalled());
+    const before = vi.mocked(fetchPosts).mock.calls.length;
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Sair' })[0]);
+    await waitFor(() => expect(mockedClear).toHaveBeenCalled());
+    await waitFor(() => expect(vi.mocked(fetchPosts).mock.calls.length).toBeGreaterThan(before));
+    expect(screen.getAllByText('Clínica Vida').length).toBeGreaterThan(0);
   });
 
   it('signs out locally even when logoutHub rejects', async () => {
@@ -211,7 +237,7 @@ describe('HubShell login', () => {
     const [trigger] = await screen.findAllByRole('button', { name: 'Conta de Marina Costa' });
     fireEvent.click(trigger);
     fireEvent.click(screen.getAllByRole('button', { name: 'Sair' })[0]);
-    await waitFor(() => expect(spy).toHaveBeenCalledWith());
+    await waitFor(() => expect(spy).toHaveBeenCalledWith({ queryKey: ['hub-bootstrap'] }));
     expect(mockedClear).toHaveBeenCalled();
   });
 
@@ -223,11 +249,11 @@ describe('HubShell login', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Enviar código' }));
     await screen.findByLabelText('Código de 6 dígitos');
+    const callsBefore = mockedBootstrap.mock.calls.length;
     await act(async () => {
       focusManager.setFocused(false);
       focusManager.setFocused(true);
     });
-    const callsBefore = mockedBootstrap.mock.calls.length;
     expect(screen.getByLabelText('Código de 6 dígitos')).toBeInTheDocument();
     expect(screen.getByText(/marina@clinicavida\.com\.br/)).toBeInTheDocument();
     expect(within(document.body).queryByLabelText('E-mail')).not.toBeInTheDocument();

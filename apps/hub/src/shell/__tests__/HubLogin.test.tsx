@@ -99,8 +99,8 @@ describe('HubLogin', () => {
     );
   });
 
-  it('maps a 400 to invalidCode in an alert and keeps focus on the input', async () => {
-    mockedVerify.mockRejectedValue(new HubApiError('bad', 400));
+  it('maps a 400 invalid_code to invalidCode in an alert and keeps focus on the input', async () => {
+    mockedVerify.mockRejectedValue(new HubApiError('bad', 400, 'invalid_code'));
     const { onLoggedIn } = setup();
     await goToCodeStep();
     const input = screen.getByLabelText('Código de 6 dígitos');
@@ -141,6 +141,30 @@ describe('HubLogin', () => {
       'Muitas tentativas. Aguarde alguns minutos.',
     );
     expect(screen.getByLabelText('E-mail')).toBeInTheDocument();
+  });
+
+  it('maps a 400 without invalid_code to genericError on the email step', async () => {
+    mockedRequest.mockRejectedValue(new HubApiError('Pedido inválido.', 400));
+    setup();
+    fireEvent.change(screen.getByLabelText('E-mail'), { target: { value: 'a@b.co' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar código' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Não foi possível continuar. Tente de novo.',
+    );
+    expect(screen.getByLabelText('E-mail')).toBeInTheDocument();
+  });
+
+  it('stays busy after a successful verify so the consumed code cannot be sent twice', async () => {
+    mockedVerify.mockResolvedValue({ session_token: 'sess-1' });
+    const { onLoggedIn } = setup();
+    await goToCodeStep();
+    fireEvent.change(screen.getByLabelText('Código de 6 dígitos'), { target: { value: '482931' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Entrar' }));
+    await waitFor(() => expect(onLoggedIn).toHaveBeenCalled());
+    const enter = screen.getByRole('button', { name: 'Entrar' });
+    expect(enter).toBeDisabled();
+    fireEvent.click(enter);
+    expect(mockedVerify).toHaveBeenCalledTimes(1);
   });
 
   it('counts the resend cooldown down and lets the person resend at zero', async () => {

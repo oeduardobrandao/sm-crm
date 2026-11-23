@@ -158,7 +158,21 @@ export function HubShell() {
       // The server copy may linger until it expires; the local sign-out still goes ahead.
     } finally {
       clearHubSession();
-      await queryClient.invalidateQueries();
+      // Drop everything the previous person loaded (a shared device keeps no cached data).
+      // Bootstrap goes first: on a gated hub it fails with login_required, the portal unmounts
+      // and the rest is simply removed, with no refetch (they would all 401). On an open hub it
+      // succeeds and the still-mounted portal needs its queries reset, because removed queries
+      // are not refetched by observers that stay mounted.
+      await queryClient.invalidateQueries({ queryKey: ['hub-bootstrap'] });
+      const others = {
+        predicate: (q: { queryKey: readonly unknown[] }) => q.queryKey[0] !== 'hub-bootstrap',
+      };
+      const gated = queryClient
+        .getQueryCache()
+        .findAll({ queryKey: ['hub-bootstrap'] })
+        .some((q) => q.state.status === 'error');
+      if (gated) queryClient.removeQueries(others);
+      else await queryClient.resetQueries(others);
     }
   }, [queryClient]);
 
@@ -193,7 +207,7 @@ export function HubShell() {
     return (
       <div className="hub-root min-h-screen flex flex-col items-center justify-center gap-3 px-6 text-center">
         <p className="font-display text-2xl font-medium hub-txt">{t('hub.invalidLink')}</p>
-        <p className="text-sm hub-tx2">{error}</p>
+        {!loginRequired && <p className="text-sm hub-tx2">{error}</p>}
       </div>
     );
   }

@@ -1,12 +1,13 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import {
+  focusManager,
   QueryClientProvider,
   useInfiniteQuery,
   useMutation,
   useQuery,
 } from '@tanstack/react-query';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../api', async (importOriginal) => ({
   // Real HubApiError / isLoginRequired: the login handling matches on them.
@@ -24,6 +25,8 @@ import {
   fetchOlderPosts,
   fetchPosts,
   fetchPostsInRange,
+  submitApproval,
+  setLoginRequiredListener,
 } from '../api';
 import { HUB_SESSION_STORAGE_KEY } from '../lib/hubSession';
 import {
@@ -259,16 +262,79 @@ describe('login_required handling', () => {
     expect(invalidate).not.toHaveBeenCalled();
   });
 
-  it('keeps TanStack retries for other failures and refetches nothing on focus', async () => {
-    mockedFetchPosts.mockRejectedValue(new HubApiError('Erro', 500));
+  describe('a call awaited outside TanStack (plain await in a component)', () => {
+    afterEach(() => {
+      setLoginRequiredListener(null);
+      vi.unstubAllGlobals();
+    });
+
+    const stub401 = () =>
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => ({
+          ok: false,
+          status: 401,
+          json: async () => ({ error: 'Login necessário.', code: 'login_required' }),
+        })),
+      );
+
+    it('with a stored session, clears it and invalidates bootstrap', async () => {
+      window.localStorage.setItem(HUB_SESSION_STORAGE_KEY, 'sess-1');
+      const qc = createHubQueryClient();
+      const invalidate = vi.spyOn(qc, 'invalidateQueries');
+      stub401();
+
+      await expect(submitApproval('tk', 1, 'aprovado')).rejects.toMatchObject({
+        code: 'login_required',
+      });
+
+      expect(window.localStorage.getItem(HUB_SESSION_STORAGE_KEY)).toBeNull();
+      expect(invalidate).toHaveBeenCalledTimes(1);
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['hub-bootstrap'] });
+    });
+
+    it('with no stored session, does nothing and bootstrap is fetched once', async () => {
+      mockedFetchBootstrap.mockResolvedValue({} as never);
+      const qc = createHubQueryClient();
+      const invalidate = vi.spyOn(qc, 'invalidateQueries');
+      renderHook(() => useQuery(hubBootstrapQuery('mesaas', 'tk')), { wrapper: wrapperFor(qc) });
+      await waitFor(() => expect(mockedFetchBootstrap).toHaveBeenCalledTimes(1));
+      stub401();
+
+      await expect(submitApproval('tk', 1, 'aprovado')).rejects.toMatchObject({
+        code: 'login_required',
+      });
+      await new Promise((r) => setTimeout(r, 30));
+
+      expect(invalidate).not.toHaveBeenCalled();
+      expect(mockedFetchBootstrap).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('keeps TanStack retries for other failures', () => {
     const qc = createHubQueryClient();
-    expect(qc.getDefaultOptions().queries?.retry).toBeTypeOf('function');
     const retry = qc.getDefaultOptions().queries?.retry as (n: number, e: Error) => boolean;
+    expect(retry).toBeTypeOf('function');
     expect(retry(2, new HubApiError('Erro', 500))).toBe(true);
     expect(retry(3, new HubApiError('Erro', 500))).toBe(false);
-    expect(hubBootstrapQuery('w', 't')).toMatchObject({
-      refetchOnWindowFocus: false,
-      refetchOnReconnect: false,
+    expect(retry(0, loginRequired())).toBe(false);
+  });
+
+  it('bootstrap refetches nothing on window focus', async () => {
+    mockedFetchBootstrap.mockResolvedValue({} as never);
+    const qc = createHubQueryClient();
+    const { result } = renderHook(() => useQuery(hubBootstrapQuery('mesaas', 'tk')), {
+      wrapper: wrapperFor(qc),
     });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const callsBefore = mockedFetchBootstrap.mock.calls.length;
+
+    await act(async () => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+    });
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(mockedFetchBootstrap.mock.calls.length).toBe(callsBefore);
   });
 });

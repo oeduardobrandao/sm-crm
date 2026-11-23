@@ -19,6 +19,7 @@ import {
   uploadPostReference,
   validateReferenceFile,
 } from '../postReferences';
+import { setLoginRequiredListener } from '../../api';
 
 const fetchHarness = createFetchMock();
 
@@ -167,6 +168,27 @@ describe('postReferences service', () => {
       name: 'PostReferenceError',
       code: 'login_required',
     });
+  });
+
+  it('tells the login_required listener about a 401 login_required, and only that', async () => {
+    const listener = vi.fn();
+    setLoginRequiredListener(listener);
+    try {
+      fetchHarness.queueResponse({
+        ok: false,
+        status: 401,
+        json: { error: 'Login necessário.', code: 'login_required' },
+      });
+      const err = await fetchPostReferences('tok', 1).catch((e: unknown) => e);
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(listener).toHaveBeenCalledWith(err);
+
+      fetchHarness.queueResponse({ ok: false, status: 404, json: { error: 'not_found' } });
+      await fetchPostReferences('tok', 1).catch(() => undefined);
+      expect(listener).toHaveBeenCalledTimes(1);
+    } finally {
+      setLoginRequiredListener(null);
+    }
   });
 
   it('validates type and size on the client', () => {

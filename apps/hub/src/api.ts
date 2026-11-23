@@ -101,6 +101,24 @@ export function isLoginRequired(error: unknown): boolean {
   return error instanceof HubApiError && error.code === 'login_required';
 }
 
+let loginRequiredListener: ((error: unknown) => void) | null = null;
+
+/**
+ * Called when a hub-* call is about to fail with `login_required`, wherever it was awaited
+ * (TanStack or a plain await in a component). The query client registers the handler that
+ * drops the stale session and refetches bootstrap. The hub-auth calls never notify it: their
+ * 401s are answers for the login form.
+ */
+export function setLoginRequiredListener(fn: ((error: unknown) => void) | null) {
+  loginRequiredListener = fn;
+}
+
+/** Tells the listener, then hands the error back for the caller to throw. */
+export function notifyLoginRequired<E>(error: E): E {
+  loginRequiredListener?.(error);
+  return error;
+}
+
 function throwIfAborted(signal?: AbortSignal) {
   if (signal?.aborted) throw new DOMException('Request superseded', 'AbortError');
 }
@@ -117,12 +135,14 @@ interface RequestOptions {
   retry429?: boolean;
   /** How a successful body is read. Default 'json'. */
   parse?: 'json' | 'text' | 'blob';
+  /** Default true. The hub-auth calls turn it off: their 401 never means "session expired". */
+  notifyLogin?: boolean;
 }
 
 async function request<T>(
   input: string,
   init: RequestInit,
-  { signal, retry429 = true, parse = 'json' }: RequestOptions = {},
+  { signal, retry429 = true, parse = 'json', notifyLogin = true }: RequestOptions = {},
 ): Promise<T> {
   for (let attempt = 0; ; attempt++) {
     throwIfAborted(signal);
@@ -138,12 +158,13 @@ async function request<T>(
     }
     const raw = await res.json().catch(() => null);
     const body = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
-    throw new HubApiError(
+    const error = new HubApiError(
       typeof body.error === 'string' ? body.error : `HTTP ${res.status}`,
       res.status,
       typeof body.code === 'string' ? body.code : undefined,
       body,
     );
+    throw notifyLogin && isLoginRequired(error) ? notifyLoginRequired(error) : error;
   }
 }
 
@@ -624,7 +645,11 @@ export function agendaIcsUrl(token: string, ocorrenciaId: number) {
 export async function downloadAgendaIcs(token: string, ocorrenciaId: number): Promise<void> {
   const url = new URL(`${BASE}/functions/v1/hub-agenda/ocorrencia/${ocorrenciaId}.ics`);
   url.searchParams.set('token', token);
-  const blob = await request<Blob>(url.toString(), { headers: hubHeaders() }, { parse: 'blob' });
+  const blob = await request<Blob>(
+    url.toString(),
+    { headers: hubHeaders() },
+    { parse: 'blob', retry429: false },
+  );
   const blobUrl = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = blobUrl;
@@ -699,7 +724,7 @@ export function submitLinhaAcao(token: string, body: HubLinhaAcaoBody) {
 
 // Login calls never replay a 429: the person is told to wait, and a replay loop would keep
 // the form busy for ~23 s while burning the attempts that caused the limit.
-const LOGIN_REQUEST: RequestOptions = { retry429: false };
+const LOGIN_REQUEST: RequestOptions = { retry429: false, notifyLogin: false };
 
 export function requestLoginCode(workspace: string, token: string, email: string) {
   return postWith<{ ok: true }>(

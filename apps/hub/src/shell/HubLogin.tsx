@@ -9,11 +9,12 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type ErrorKey = 'hub.login.invalidCode' | 'hub.login.tooMany' | 'hub.login.genericError';
 
-// A wrong code is a 400, a rate limit a 429; everything else (network, 500) is generic.
+// A wrong or expired code is a 400 `invalid_code`, a rate limit a 429; everything else
+// (network, 500, any other 400) is generic.
 // request_code never reveals whether an address is listed, so no other mapping exists.
 function errorKeyOf(error: unknown): ErrorKey {
   if (error instanceof HubApiError) {
-    if (error.status === 400) return 'hub.login.invalidCode';
+    if (error.status === 400 && error.code === 'invalid_code') return 'hub.login.invalidCode';
     if (error.status === 429) return 'hub.login.tooMany';
   }
   return 'hub.login.genericError';
@@ -134,16 +135,20 @@ export function HubLogin({ workspace, token, login, onLoggedIn }: HubLoginProps)
     if (code.length !== 6 || busy) return;
     setBusy(true);
     setErrorKey(null);
+    let loggedIn = false;
     try {
       const { session_token } = await verifyLoginCode(workspace, token, trimmedEmail, code);
       setHubSession(session_token);
+      loggedIn = true;
       onLoggedIn();
     } catch (err) {
       if (!mounted.current) return;
       setErrorKey(errorKeyOf(err));
       codeRef.current?.focus();
     } finally {
-      if (mounted.current) setBusy(false);
+      // After a successful verify the code is consumed: stay busy while the bootstrap refetch
+      // runs (the login can stay mounted mid-session), so a second tap cannot resend it.
+      if (mounted.current && !loggedIn) setBusy(false);
     }
   }
 
