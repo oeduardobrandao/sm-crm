@@ -19,6 +19,7 @@ function post(over: Partial<PostAnalytics> = {}): PostAnalytics {
     saved: 630,
     shares: 1502,
     views: 66656,
+    reposts: null,
     rates: { share_rate: null, like_rate: null, save_rate: null, comment_rate: null },
     unavailable_metrics: [],
     ig_score: null,

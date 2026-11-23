@@ -139,6 +139,8 @@ export interface PostAnalytics {
   saved: number;
   shares: number;
   views: number;
+  /** Instagram rejects `reposts` for most accounts today: null = not served. */
+  reposts: number | null;
   /** Action metrics: null = no data (never fetched, or Instagram didn't return it). */
   profile_visits: number | null;
   follows: number | null;
@@ -796,6 +798,7 @@ export async function getPostsAnalytics(
       engagement_rate: Math.round(engRate * 100) / 100,
       saves_rate: Math.round(savesRate * 100) / 100,
       views: p.impressions ?? 0,
+      reposts: toNullableCount(p.reposts),
       profile_visits: toNullableCount(p.profile_visits),
       follows,
       bio_link_clicks: toNullableCount(p.bio_link_clicks),

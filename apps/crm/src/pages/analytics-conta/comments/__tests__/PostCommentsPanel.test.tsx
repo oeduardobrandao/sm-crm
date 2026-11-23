@@ -112,6 +112,7 @@ function post(overrides: Partial<PostAnalytics> = {}): PostAnalytics {
     saved: 4,
     shares: 1,
     views: 900,
+    reposts: null,
     profile_visits: 3,
     follows: 2,
     bio_link_clicks: null,

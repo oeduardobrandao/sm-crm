@@ -21,6 +21,8 @@
     "reading_other": "Lendo {{n}} comentários...",
     "comments": "Comentários",
     "tabInsights": "Insights",
+    "tabOverview": "Visão geral",
+    "tabEngagement": "Engajamento",
     "tabComments": "Comentários · {{n}}",
     "tabsAriaLabel": "Detalhes do post"
   },

@@ -20047,3 +20047,331 @@ button.phone-stat-tile:active {
   color: var(--text-main);
   text-decoration: underline;
 }
+
+/* ---- Post metrics (PostMetricsView): the Instagram-style metrics pop-up's content, hosted by
+   the desktop dialog (--dialog) and the phone sheet (--sheet). Sizes follow the variant
+   modifier, never a media query. ---- */
+.post-metrics {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  color: var(--text-main);
+  font-variant-numeric: tabular-nums;
+}
+.post-metrics__post {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 16px 20px 4px;
+}
+.post-metrics__thumb {
+  flex-shrink: 0;
+  width: 176px;
+  height: 220px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface-1);
+}
+.post-metrics--reel .post-metrics__thumb {
+  width: 132px;
+  height: 234px;
+}
+.post-metrics__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.post-metrics__meta-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.post-metrics__caption {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text-main);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.post-metrics__caption--clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.post-metrics__caption--empty {
+  color: var(--text-muted);
+}
+.post-metrics__more {
+  margin-top: 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.post-metrics__more:hover {
+  color: var(--text-main);
+}
+.post-metrics__more:focus-visible,
+.post-metrics__tab:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Icon row: Curtidas, Comentários, (Reposts), Envios, Salvos. */
+.post-metrics__stats {
+  display: flex;
+  margin: 0;
+  padding: 18px 20px 14px;
+  list-style: none;
+}
+.post-metrics__stat {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.post-metrics__stat svg {
+  width: 26px;
+  height: 26px;
+}
+.post-metrics__stat strong {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1;
+}
+.post-metrics__stat span {
+  font-size: 12px;
+  line-height: 1;
+  color: var(--text-muted);
+}
+
+/* Underline tabs (dialog). The sheet uses the phone SegmentedControl. */
+.post-metrics__tabs {
+  display: flex;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+.post-metrics__tab {
+  flex: 1;
+  padding: 12px 0 11px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.post-metrics__tab:hover {
+  color: var(--text-main);
+}
+.post-metrics__tab[data-state='active'] {
+  color: var(--text-main);
+  border-bottom-color: var(--text-main);
+}
+.post-metrics__segmented {
+  margin: 4px 0 4px;
+}
+
+.post-metrics__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 20px;
+}
+.post-metrics__section {
+  display: flex;
+  flex-direction: column;
+}
+.post-metrics__heading {
+  margin: 0 0 6px;
+  font-family: var(--font-heading);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+/* Resumo cards and ratio strip. */
+.post-metrics__cards {
+  margin-top: 6px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.post-metrics__card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--surface-1);
+}
+.post-metrics__card span {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.post-metrics__card strong {
+  font-family: var(--font-heading);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+.post-metrics__card--missing strong {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.post-metrics__card em {
+  font-style: normal;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+.post-metrics__ratios {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.post-metrics__ratio {
+  flex: 1;
+  min-width: 140px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+}
+.post-metrics__ratio span {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.post-metrics__ratio strong {
+  font-size: 15px;
+}
+.post-metrics__ratio-value--good {
+  color: var(--success);
+}
+
+/* Engajamento rows and per-view bars. */
+.post-metrics__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 0;
+  font-size: 15px;
+}
+.post-metrics__row strong {
+  font-weight: 700;
+}
+.post-metrics__hint {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+.post-metrics__rate {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) 64px;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 0;
+  font-size: 14px;
+}
+.post-metrics__rate strong {
+  text-align: right;
+}
+.post-metrics__rate-track {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+.post-metrics__rate-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 999px;
+  background: var(--text-main);
+}
+.post-metrics__rate-tick {
+  position: absolute;
+  top: -4px;
+  width: 2px;
+  height: 16px;
+  margin-left: -1px;
+  background: var(--text-light);
+}
+.post-metrics__note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.post-metrics__footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 16px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border-color);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Phone sheet: the host body already pads 16px, the post stacks under a centered thumbnail. */
+.post-metrics--sheet .post-metrics__post {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  padding: 8px 0 0;
+}
+.post-metrics--sheet .post-metrics__thumb {
+  align-self: center;
+  width: 232px;
+  height: 290px;
+}
+.post-metrics--sheet.post-metrics--reel .post-metrics__thumb {
+  width: 164px;
+  height: 290px;
+}
+.post-metrics--sheet .post-metrics__stats {
+  padding: 16px 0 12px;
+}
+.post-metrics--sheet .post-metrics__stat strong {
+  font-size: 15px;
+}
+.post-metrics--sheet .post-metrics__panel {
+  padding: 16px 0;
+}
+.post-metrics--sheet .post-metrics__card {
+  padding: 12px 14px;
+}
+.post-metrics--sheet .post-metrics__card strong {
+  font-size: 21px;
+}
+.post-metrics--sheet .post-metrics__rate {
+  grid-template-columns: 112px minmax(0, 1fr) 56px;
+  gap: 10px;
+}
+.post-metrics--sheet .post-metrics__footer {
+  padding: 12px 0 0;
+}
