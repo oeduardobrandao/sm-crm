@@ -285,6 +285,102 @@ describe('PostMetricsView', () => {
     }
   });
 
+  it("scales bars without a median against the post's own largest rate", () => {
+    // Every bucket is below MIN_SAMPLE, so no row has a median.
+    const dists: RateDistributions = { overall: buckets(), byFormat: {} };
+    renderView({ dists });
+    openTab('Engajamento');
+    const block = screen.getByRole('region', { name: 'Por visualização' });
+    const fill = (label: string) =>
+      (
+        within(block).getByText(label).closest('.post-metrics__rate') as HTMLElement
+      ).querySelector<HTMLElement>('.post-metrics__rate-fill')!.style.width;
+    // like_rate (2515) is the largest, so it fills the track; the others follow in proportion.
+    expect(fill('Curtidas')).toBe('100%');
+    expect(parseFloat(fill('Compartilhamentos'))).toBeCloseTo((1208 / 2515) * 100, 5);
+    expect(parseFloat(fill('Comentários'))).toBeCloseTo((23 / 2515) * 100, 5);
+    expect(fill('Compartilhamentos')).not.toBe(fill('Curtidas'));
+  });
+
+  it('a count Instagram did not return reads "—" with the reason, never 0', () => {
+    renderView({
+      post: post({
+        views: 0,
+        impressions: 0,
+        reach: 0,
+        likes: 0,
+        saved: 0,
+        engagement_rate: 0,
+        rates: { share_rate: null, like_rate: null, save_rate: null, comment_rate: null },
+        unavailable_metrics: ['impressions', 'reach', 'likes', 'saved'],
+      }),
+    });
+    const reason = 'O Instagram não retornou este dado na última sincronização';
+    const resumo = screen.getByRole('region', { name: 'Resumo' });
+    for (const label of ['Visualizações', 'Contas alcançadas']) {
+      const card = within(resumo).getByText(label).parentElement as HTMLElement;
+      expect(card).toHaveClass('post-metrics__card--missing');
+      expect(within(card).getByText('—')).toBeInTheDocument();
+      expect(within(card).getByText(reason)).toBeInTheDocument();
+    }
+    const engagement = within(resumo).getByText('Engajamento').parentElement as HTMLElement;
+    expect(within(engagement).getByText('—')).toBeInTheDocument();
+    expect(within(engagement).getByText(reason)).toBeInTheDocument();
+    expect(within(resumo).queryByText('0,00%')).not.toBeInTheDocument();
+
+    const row = screen.getByRole('list', { name: 'Interações' });
+    const stat = (label: string) => within(row).getByText(label).closest('li') as HTMLElement;
+    expect(stat('Curtidas').querySelector('strong')).toHaveTextContent('—');
+    expect(stat('Curtidas').querySelector('strong')).toHaveAttribute('title', reason);
+    expect(stat('Salvos').querySelector('strong')).toHaveTextContent('—');
+    // Returned counts keep their number.
+    expect(stat('Comentários').querySelector('strong')).toHaveTextContent('23');
+    expect(stat('Envios').querySelector('strong')).toHaveTextContent('1.208');
+    expect(within(row).queryByText('0')).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Curtidas e Salvos: o Instagram não retornou estes dados na última sincronização.',
+      ),
+    ).toBeInTheDocument();
+
+    openTab('Engajamento');
+    const interacoes = screen.getByRole('region', { name: 'Interações' });
+    expect(within(interacoes).getByText('Curtidas').nextSibling).toHaveTextContent('—');
+    expect(within(interacoes).getByText('Salvamentos').nextSibling).toHaveTextContent('—');
+    expect(within(interacoes).getByText('Comentários').nextSibling).toHaveTextContent('23');
+  });
+
+  it('a real 0 Instagram did return still reads 0', () => {
+    renderView({
+      post: post({
+        views: 0,
+        impressions: 0,
+        reach: 0,
+        likes: 0,
+        saved: 0,
+        engagement_rate: 0,
+        unavailable_metrics: [],
+      }),
+    });
+    const resumo = screen.getByRole('region', { name: 'Resumo' });
+    expect(within(resumo).getByText('Visualizações').nextSibling).toHaveTextContent(/^0$/);
+    expect(within(resumo).getByText('Contas alcançadas').nextSibling).toHaveTextContent(/^0$/);
+    expect(within(resumo).getByText('0,00%')).toBeInTheDocument();
+    expect(within(resumo).queryByText('—')).not.toBeInTheDocument();
+    const row = screen.getByRole('list', { name: 'Interações' });
+    const stat = (label: string) => within(row).getByText(label).closest('li') as HTMLElement;
+    expect(stat('Curtidas').querySelector('strong')).toHaveTextContent(/^0$/);
+    expect(stat('Salvos').querySelector('strong')).toHaveTextContent(/^0$/);
+  });
+
+  it('a value kept from an earlier sync still shows when this sync skipped it', () => {
+    renderView({ post: post({ unavailable_metrics: ['reach', 'likes'] }) });
+    const resumo = screen.getByRole('region', { name: 'Resumo' });
+    expect(within(resumo).getByText('Contas alcançadas').nextSibling).toHaveTextContent('74.209');
+    expect(within(resumo).getByText('5,54%')).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Interações' })).toHaveTextContent('2.515');
+  });
+
   it('mounts the comments panel only after its tab is opened, and only with the flag', () => {
     const { unmount } = renderView({ commentsEnabled: false });
     expect(screen.queryByRole('tab', { name: /Comentários/ })).not.toBeInTheDocument();
