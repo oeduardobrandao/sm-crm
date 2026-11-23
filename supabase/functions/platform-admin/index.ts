@@ -63,6 +63,7 @@ import {
 import { createStreamDirectUpload, deleteStreamVideo, getStreamVideo, isStreamCleanupEnabled } from "../_shared/stream.ts";
 import { createDemoWorkspace, type DemoDeps, resendDemoAccess } from "./demo-workspace.ts";
 import { handleSetWorkspaceAffiliate } from "./workspace-affiliate.ts";
+import { handleAddWorkspaceNote, handleDeleteWorkspaceNote, handleListWorkspaceNotes } from "./workspace-notes.ts";
 import { findAuthUserByEmail } from "../_shared/invite-actions.ts";
 import { sendDemoAccessEmail } from "../_shared/invite-email.ts";
 
@@ -183,6 +184,12 @@ Deno.serve(async (req: Request) => {
         return await handleUnsetWorkspacePlan(svc, body, admin.id, headers);
       case "set-workspace-overrides":
         return await handleSetWorkspaceOverrides(svc, body, admin.id, headers);
+      case "list-workspace-notes":
+        return await handleListWorkspaceNotes(svc, body, admin.id, headers);
+      case "add-workspace-note":
+        return await handleAddWorkspaceNote(svc, body, admin, headers);
+      case "delete-workspace-note":
+        return await handleDeleteWorkspaceNote(svc, body, admin.id, headers);
       case "clear-workspace-overrides":
         return await handleClearWorkspaceOverrides(svc, body, admin.id, headers);
       case "list-workspace-mcp-keys":

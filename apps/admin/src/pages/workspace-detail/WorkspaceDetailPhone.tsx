@@ -23,6 +23,7 @@ import {
   subscriptionTitle,
   usageTiles,
 } from './shared';
+import { NotesList, NOTE_PLACEHOLDER } from './NotesThread';
 import type { WorkspaceDetailViewProps } from './types';
 
 /** Right-aligned value of a subscription row: wraps instead of clipping, up to 65% of the row. */
@@ -272,22 +273,23 @@ export function WorkspaceDetailPhone(props: WorkspaceDetailViewProps) {
             <button
               type="button"
               className="border-0 bg-transparent p-0 text-[13px] font-semibold text-primary disabled:text-muted-foreground"
-              onClick={props.onSaveNotes}
-              disabled={props.saveNotesPending || !props.plan}
-              title={!props.plan ? 'Atribua um plano ao workspace para salvar notas' : undefined}
+              onClick={props.notes.onAdd}
+              disabled={props.notes.addPending || props.notes.draft.trim() === ''}
             >
-              {props.saveNotesPending ? 'Salvando…' : 'Salvar'}
+              {props.notes.addPending ? 'Adicionando…' : 'Adicionar'}
             </button>
           }
         />
         <textarea
-          value={props.notes}
-          onChange={(e) => props.onNotesChange(e.target.value)}
-          placeholder="Notas do admin…"
-          aria-label="Notas do admin"
+          value={props.notes.draft}
+          onChange={(e) => props.notes.onDraftChange(e.target.value)}
+          placeholder={NOTE_PLACEHOLDER}
+          aria-label="Nova nota"
           rows={3}
-          className="box-border w-full resize-none rounded-[16px] border border-border bg-card px-3.5 py-3 text-[15px] text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          maxLength={5000}
+          className="mb-3 box-border w-full resize-none rounded-[16px] border border-border bg-card px-3.5 py-3 text-[15px] text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
         />
+        <NotesList notes={props.notes} />
       </section>
     </div>
   );

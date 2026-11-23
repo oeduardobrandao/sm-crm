@@ -1,4 +1,4 @@
-import type { McpKeyRow, OAuthGrantRow, Plan, WorkspaceDetail } from '../../lib/api';
+import type { McpKeyRow, OAuthGrantRow, Plan, WorkspaceDetail, WorkspaceNote } from '../../lib/api';
 
 /** A revocable list (MCP keys, OAuth grants) with the page's handlers for it. */
 export interface ConnectionsModel<T> {
@@ -11,6 +11,20 @@ export interface ConnectionsModel<T> {
   revokePending: boolean;
   onRevokeAll: () => void;
   revokeAllPending: boolean;
+}
+
+/** Notes thread: every admin's notes plus the composer for a new one. */
+export interface NotesModel {
+  /** Newest first; undefined while the first load is in flight. */
+  items: WorkspaceNote[] | undefined;
+  loadError: boolean;
+  draft: string;
+  onDraftChange: (draft: string) => void;
+  onAdd: () => void;
+  addPending: boolean;
+  onDelete: (noteId: string) => void;
+  /** The note whose delete is in flight. */
+  deletingId: string | null;
 }
 
 /** Everything the phone and desktop views render; data and handlers live in the page. */
@@ -27,10 +41,7 @@ export interface WorkspaceDetailViewProps {
   /** Re-sends the demo owner's set-password e-mail (only offered when demo_created_at is set). */
   onResendAccess: () => void;
   resendPending: boolean;
-  notes: string;
-  onNotesChange: (notes: string) => void;
-  onSaveNotes: () => void;
-  saveNotesPending: boolean;
+  notes: NotesModel;
   onOpenLimits: () => void;
   onOpenFeatures: () => void;
   resourceOverrideCount: number;

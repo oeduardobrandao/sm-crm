@@ -376,7 +376,7 @@ export function PopupEditorPhone({ m }: { m: PopupEditorModel }) {
         >
           {value === 'pages' && <PagePanel m={m} />}
           {value === 'settings' && <SettingsPanel m={m} />}
-          {value === 'preview' && <PopupPreview m={m} />}
+          {value === 'preview' && <PopupPreview m={m} fullBleed />}
         </div>
       ))}
     </div>

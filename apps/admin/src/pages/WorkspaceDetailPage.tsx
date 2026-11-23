@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import {
   getWorkspace,
   listPlans,
@@ -16,6 +17,9 @@ import {
   listWorkspaceOAuthGrants,
   revokeOAuthGrant,
   revokeAllOAuthGrants,
+  listWorkspaceNotes,
+  addWorkspaceNote,
+  deleteWorkspaceNote,
   FEATURE_FLAG_KEYS,
 } from '../lib/api';
 import { computeOverridesPayload } from './workspace-overrides';
@@ -89,6 +93,12 @@ export default function WorkspaceDetailPage() {
     onError: (e: unknown) => toast.error((e as Error).message),
   });
 
+  const notesQuery = useQuery({
+    queryKey: ['admin', 'workspace', id, 'notes'],
+    queryFn: () => listWorkspaceNotes(id!),
+    enabled: !!id,
+  });
+
   const { data: oauthGrantsData } = useQuery({
     queryKey: ['admin', 'workspace', id, 'oauth-grants'],
     queryFn: () => listWorkspaceOAuthGrants(id!),
@@ -116,14 +126,13 @@ export default function WorkspaceDetailPage() {
 
   const [resourceEdits, setResourceEdits] = useState<Record<string, string>>({});
   const [featureEdits, setFeatureEdits] = useState<Record<string, boolean>>({});
-  const [notes, setNotes] = useState('');
+  const [noteDraft, setNoteDraft] = useState('');
   const [selectedPlanId, setSelectedPlanId] = useState('');
   const [openPanel, setOpenPanel] = useState<'limits' | 'features' | null>(null);
 
   useEffect(() => {
     if (data) {
       setSelectedPlanId(data.plan?.id || '');
-      setNotes(data.override?.notes || '');
       const edits = editsFrom(data);
       setResourceEdits(edits.resources);
       setFeatureEdits(edits.features);
@@ -157,7 +166,6 @@ export default function WorkspaceDetailPage() {
         workspace_id: id!,
         resource_overrides,
         feature_overrides,
-        notes,
       });
     },
     onSuccess: () => {
@@ -168,14 +176,27 @@ export default function WorkspaceDetailPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const saveNotesMutation = useMutation({
-    mutationFn: () => setWorkspaceOverrides({ workspace_id: id!, notes }),
+  const addNoteMutation = useMutation({
+    mutationFn: (body: string) => addWorkspaceNote(id!, body),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id] });
-      toast.success('Notas salvas');
+      setNoteDraft('');
+      queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id, 'notes'] });
+      toast.success('Nota adicionada');
     },
     onError: (err: Error) => toast.error(err.message),
   });
+
+  const deleteNoteMutation = useMutation({
+    mutationFn: (noteId: string) => deleteWorkspaceNote(noteId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id, 'notes'] });
+      toast.success('Nota excluída');
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  // Rascunho da nota ou envio em voo seguram a troca silenciosa de versão.
+  useUnsavedWork(noteDraft.trim() !== '' || addNoteMutation.isPending);
 
   const clearMutation = useMutation({
     mutationFn: () => clearWorkspaceOverrides(id!),
@@ -264,10 +285,23 @@ export default function WorkspaceDetailPage() {
     unsetPending: unsetMutation.isPending,
     onResendAccess: () => resendMutation.mutate(),
     resendPending: resendMutation.isPending,
-    notes,
-    onNotesChange: setNotes,
-    onSaveNotes: () => saveNotesMutation.mutate(),
-    saveNotesPending: saveNotesMutation.isPending,
+    notes: {
+      items: notesQuery.data?.notes,
+      loadError: notesQuery.isError,
+      draft: noteDraft,
+      onDraftChange: setNoteDraft,
+      onAdd: () => {
+        const body = noteDraft.trim();
+        if (body && !addNoteMutation.isPending) addNoteMutation.mutate(body);
+      },
+      addPending: addNoteMutation.isPending,
+      onDelete: (noteId) => {
+        if (window.confirm('Excluir esta nota? Ela some para todos os admins.')) {
+          deleteNoteMutation.mutate(noteId);
+        }
+      },
+      deletingId: deleteNoteMutation.isPending ? (deleteNoteMutation.variables ?? null) : null,
+    },
     onOpenLimits: () => setOpenPanel('limits'),
     onOpenFeatures: () => setOpenPanel('features'),
     resourceOverrideCount: overrideCount(data.override?.resource_overrides),

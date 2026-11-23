@@ -18,13 +18,18 @@ export interface AdminFormSheetProps {
   submitDisabled?: boolean;
   /** Refusable close: return false to keep the sheet open (e.g. a dirty confirm). */
   canClose?: () => boolean;
-  /** Desktop width: 680 / 820 / 1000px. */
-  width?: 'md' | 'lg' | 'xl';
+  /** Desktop width: 680 / 820 / 1000 / 1240px. */
+  width?: 'md' | 'lg' | 'xl' | '2xl';
   /** Must contain the page's single <form id={formId}>. */
   children: ReactNode;
 }
 
-const WIDTH = { md: 'max-w-[680px]', lg: 'max-w-[820px]', xl: 'max-w-[1000px]' } as const;
+const WIDTH = {
+  md: 'max-w-[680px]',
+  lg: 'max-w-[820px]',
+  xl: 'max-w-[1000px]',
+  '2xl': 'max-w-[1240px]',
+} as const;
 
 /**
  * Create/edit form as an iOS sheet: a centred glass sheet on desktop, a large bottom sheet on
