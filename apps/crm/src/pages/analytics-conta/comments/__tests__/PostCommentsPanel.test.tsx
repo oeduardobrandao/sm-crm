@@ -565,6 +565,30 @@ describe('PostCommentsPanel: moderação', () => {
     expect(screen.getAllByRole('link', { name: /ver no Instagram/ })).toHaveLength(2);
   });
 
+  it('post sem permalink seguro: nenhum link para o Instagram nas respostas nem no rodapé', async () => {
+    for (const permalink of [null, '', 'javascript:alert(1)']) {
+      getPostCommentsMock.mockResolvedValue(
+        response({
+          comments: [
+            comment({ id: 'a', text: 'Pai A', replies_count: 5 }),
+            comment({ id: 'a1', text: 'Resp A1', parent_id: 'a' }),
+            comment({ id: 'b', text: 'Pai B', replies_count: 2, replies_more: true }),
+            comment({ id: 'b1', text: 'Resp B1', parent_id: 'b' }),
+          ],
+        }),
+      );
+      const { unmount } = renderPanel(post({ permalink }));
+      await screen.findByText('Pai A');
+      screen
+        .getAllByRole('button', { name: /^Ver \d respostas?$/ })
+        .forEach((b) => fireEvent.click(b));
+      expect(screen.getByText('Resp A1')).toBeInTheDocument();
+      expect(screen.queryByText(/ver no Instagram/)).not.toBeInTheDocument();
+      expect(screen.queryAllByRole('link')).toHaveLength(0);
+      unmount();
+    }
+  });
+
   it('comentário oculto mostra o selo Oculto e o menu oferece Mostrar comentário', async () => {
     getPostCommentsMock.mockResolvedValue(
       response({ comments: [comment({ id: 'h', text: 'Texto oculto', hidden: true })] }),

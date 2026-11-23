@@ -405,7 +405,8 @@ describe('AnalyticsContaPage (phone)', () => {
           id: `post-${n}`,
           instagram_post_id: `ig${n}`,
           caption: `Legenda número ${n}`,
-          permalink: `https://instagram.com/p/${n}`,
+          // Post 6 has no permalink: no chip, and no room kept for one.
+          permalink: n === 6 ? '' : `https://instagram.com/p/${n}`,
           views: 1000 - n * 10,
         }),
       ),
@@ -415,10 +416,16 @@ describe('AnalyticsContaPage (phone)', () => {
     fireEvent.click((await screen.findAllByRole('button', { name: 'Ver mais' }))[0]);
     const drawer = await screen.findByRole('dialog', { name: 'Melhores posts' });
     const rows = within(drawer).getByRole('list', { name: 'Melhores posts' });
-    expect(within(rows).getAllByRole('link', { name: 'Abrir no Instagram' })).toHaveLength(6);
+    expect(within(rows).getAllByRole('link', { name: 'Abrir no Instagram' })).toHaveLength(5);
     for (const chip of within(rows).getAllByRole('link', { name: 'Abrir no Instagram' })) {
       expect(chip.closest('button')).toBeNull();
+      expect(chip.closest('li')).toHaveClass('phone-an-post-row--ig');
     }
+    const noChip = within(rows)
+      .getByRole('button', { name: /Legenda número 6/ })
+      .closest('li');
+    expect(noChip).toHaveClass('phone-an-post-row');
+    expect(noChip).not.toHaveClass('phone-an-post-row--ig');
 
     fireEvent.click(within(rows).getByRole('button', { name: /Legenda número 3/ }));
     const sheet = await screen.findByRole('dialog', { name: 'Métricas do post' });

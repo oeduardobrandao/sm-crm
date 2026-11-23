@@ -203,16 +203,3 @@ export function TextCell({ title, children }: { title?: ReactNode; children: Rea
     </li>
   );
 }
-
-/** A small value tile (post detail, story KPIs). `value` null reads "Sem dado". */
-export function ValueTile({ label, value }: { label: string; value: ReactNode | null }) {
-  const empty = value === null;
-  return (
-    <div className="phone-an-tile">
-      <span className={cn('phone-an-tile__value', empty && 'phone-an-tile__value--empty')}>
-        {empty ? 'Sem dado' : value}
-      </span>
-      <span className="phone-an-tile__label">{label}</span>
-    </div>
-  );
-}

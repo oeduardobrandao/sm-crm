@@ -501,7 +501,8 @@
 .phone-an-post-row {
   position: relative;
 }
-.phone-an-post-row .phone-cell__body {
+/* Room for the chip only when the row has one (no safe permalink, no chip). */
+.phone-an-post-row--ig .phone-cell__body {
   padding-right: 64px;
 }
 .phone-an-post-row__ig {
@@ -593,48 +594,6 @@
   margin-top: 2px;
   color: var(--phone-label-secondary);
   font-size: var(--phone-text-footnote);
-}
-
-/* ---- Inline value tiles (post detail: views, reach, engagement) ---- */
-.phone-an-tiles {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin: 0 0 20px;
-}
-.phone-an-tiles--4 {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-.phone-an-tile {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-  padding: 10px 10px 9px;
-  border-radius: 14px;
-  background: var(--phone-cell);
-}
-.phone-an-tile__value {
-  overflow: hidden;
-  font-size: 19px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.phone-an-tile__value--empty {
-  color: var(--phone-label-secondary);
-  font-size: var(--phone-text-subhead);
-  font-weight: 600;
-  letter-spacing: 0;
-}
-.phone-an-tile__label {
-  overflow: hidden;
-  color: var(--phone-label-secondary);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* ---- Sheets: body padding, filter rows ---- */

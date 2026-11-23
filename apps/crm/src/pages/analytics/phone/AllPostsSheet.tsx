@@ -5,7 +5,7 @@ import { CheckList } from '@/components/mobile/CheckList';
 import { Cell, GroupedList } from '@/components/mobile/GroupedList';
 import { FormRow } from '@/components/mobile/FormRow';
 import { SegmentedControl } from '@/components/mobile/SegmentedControl';
-import { InstagramLinkButton } from '@/components/instagram/InstagramLinkButton';
+import { InstagramLinkButton, hasInstagramLink } from '@/components/instagram/InstagramLinkButton';
 import { sanitizeUrl } from '../../../utils/security';
 import { PostThumb } from './shared';
 
@@ -149,7 +149,10 @@ export function AllPostsSheet({
                 );
                 if (row.onSelect) {
                   return (
-                    <li key={row.key} className="phone-cell phone-an-post-row">
+                    <li
+                      key={row.key}
+                      className={`phone-cell phone-an-post-row${hasInstagramLink(row.href || null) ? ' phone-an-post-row--ig' : ''}`}
+                    >
                       <button type="button" className="phone-cell__main" onClick={row.onSelect}>
                         {content}
                       </button>
