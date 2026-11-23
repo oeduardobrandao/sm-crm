@@ -30,7 +30,7 @@ export function buildLoginCodeEmail(input: LoginCodeEmailInput): { subject: stri
     ],
     footerHtml: [`Enviado por ${escapeHtml(input.workspaceName)} via Mesaas`],
   });
-  return { subject: `Seu código de acesso: ${input.code}`, html };
+  return { subject: "Seu código de acesso", html };
 }
 
 /**

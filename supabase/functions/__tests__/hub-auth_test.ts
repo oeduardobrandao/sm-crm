@@ -165,7 +165,8 @@ Deno.test("buildLoginCodeEmail: subject, copy and code", () => {
     brandColor: "#ff6600",
     logoUrl: null,
   });
-  assertEquals(subject, "Seu código de acesso: 123456");
+  assertEquals(subject, "Seu código de acesso");
+  assert(!subject.includes("123456"), "o código não vai no assunto");
   assert(html.includes("Use este código para entrar no portal da Agência &lt;Sol&gt;."));
   assert(html.includes("123456"));
   assert(html.includes("O código vale por 10 minutos."));
