@@ -89,7 +89,13 @@ import { FollowerChart } from './FollowerChart';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { useVidroShell } from '@/components/layout/PageToolbarContext';
 import { ContaPhone, ContaPhoneMessage } from './phone/ContaPhone';
-import { BEST_TIME_BUCKET_STARTS, bucketBestTimes, toStatDelta } from './contaFormat';
+import {
+  BEST_TIME_BUCKET_STARTS,
+  bucketBestTimes,
+  formatMediaType,
+  toStatDelta,
+} from './contaFormat';
+import { PostThumbnail } from './components/PostThumbnail';
 import { ActionMetricValue, PostInsightsDetail } from './components/PostInsightsDetail';
 import { AccountCommentsCard } from './comments/AccountCommentsCard';
 import { PostCommentsPanel } from './comments/PostCommentsPanel';
@@ -128,21 +134,6 @@ function BulletText({ text }: { text: unknown }) {
   );
 }
 
-function formatMediaType(type: string): string {
-  switch (type) {
-    case 'VIDEO':
-      return 'Reel';
-    case 'CAROUSEL_ALBUM':
-      return 'Carrossel';
-    case 'IMAGE':
-      return 'Imagem';
-    case 'STORY':
-      return 'Story';
-    default:
-      return type;
-  }
-}
-
 function formatNumber(n: number): string {
   return (n || 0).toLocaleString('pt-BR');
 }
@@ -161,60 +152,6 @@ function lastNDaysRange(days: number, today: Date = new Date()): { start: string
 
 function formatPostDate(date: string): string {
   return new Date(date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
-}
-
-function mediaAccentColor(type: string): string {
-  switch (type) {
-    case 'VIDEO':
-      return '#8b5cf6';
-    case 'CAROUSEL_ALBUM':
-      return '#10b981';
-    case 'IMAGE':
-      return '#3b82f6';
-    default:
-      return '#64748b';
-  }
-}
-
-function PostThumbnail({ post, size = 'card' }: { post: PostAnalytics; size?: 'card' | 'list' }) {
-  const accent = mediaAccentColor(post.media_type);
-  const dimensions =
-    size === 'card' ? { width: '100%', height: '100%' } : { width: 52, height: 52 };
-
-  if (post.thumbnail_url) {
-    return (
-      <img
-        src={sanitizeUrl(post.thumbnail_url)}
-        alt=""
-        style={{
-          ...dimensions,
-          objectFit: 'cover',
-          flexShrink: 0,
-          background: 'var(--surface-darker)',
-        }}
-        onError={(e) => {
-          (e.target as HTMLImageElement).style.display = 'none';
-        }}
-      />
-    );
-  }
-
-  return (
-    <div
-      style={{
-        ...dimensions,
-        flexShrink: 0,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: `linear-gradient(135deg, ${accent}, ${accent}cc)`,
-      }}
-    >
-      <span
-        style={{ width: 42, height: 42, borderRadius: 8, background: 'rgba(255,255,255,0.18)' }}
-      />
-    </div>
-  );
 }
 
 function RankedPostCard({ post, tone }: { post: PostAnalytics; tone: 'best' | 'worst' }) {
@@ -236,7 +173,7 @@ function RankedPostCard({ post, tone }: { post: PostAnalytics; tone: 'best' | 'w
           background: 'var(--surface-darker)',
         }}
       >
-        <PostThumbnail post={post} />
+        <PostThumbnail post={post} size="card" />
         <span
           style={{
             position: 'absolute',
