@@ -1,0 +1,208 @@
+import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  hubAccessDenied,
+  resolveHubAccess,
+  sha256Hex,
+} from "../_shared/hub-token.ts";
+import { buildCorsHeaders } from "../_shared/cors.ts";
+import { hubAccessRpc } from "./hub-access-mock.ts";
+
+const NOW = "2026-07-16T12:00:00.000Z";
+const TOKEN = "49ded0d7-0c34-4b88-8a60-f9d459113f3c";
+const TOKEN_ROW = { cliente_id: 7, conta_id: "ws-1", is_active: true };
+const PERSON = { id: "p-1", nome: "Ana", email: "ana@example.com" };
+
+interface Call { fn: string; args: Record<string, unknown> }
+
+function makeDb(opts: {
+  tokenRow?: unknown;
+  access?: unknown;
+  accessError?: unknown;
+} = {}) {
+  const calls: Call[] = [];
+  const tokenRow = "tokenRow" in opts ? opts.tokenRow : TOKEN_ROW;
+  const db = {
+    from: (_t: string) => ({
+      select: () => ({
+        eq: () => ({
+          gt: () => ({
+            eq: () => ({ maybeSingle: async () => ({ data: tokenRow }) }),
+            maybeSingle: async () => ({ data: tokenRow }),
+          }),
+        }),
+      }),
+    }),
+    rpc: async (fn: string, args: Record<string, unknown>) => {
+      calls.push({ fn, args });
+      if (fn === "hub_access_context" && opts.accessError) {
+        return { data: null, error: opts.accessError };
+      }
+      const r = hubAccessRpc(fn, opts.access);
+      if (r) return r;
+      return { data: true, error: null }; // effective_plan_feature
+    },
+  };
+  // deno-lint-ignore no-explicit-any
+  return { db: db as any, calls };
+}
+
+const req = (session?: string) =>
+  new Request("http://x", { headers: session === undefined ? {} : { "x-hub-session": session } });
+const accessCalls = (calls: Call[]) => calls.filter((c) => c.fn === "hub_access_context");
+
+Deno.test("switch off, no session -> ok, person null, requireLogin false", async () => {
+  const { db, calls } = makeDb();
+  const r = await resolveHubAccess(db, req(), TOKEN, NOW);
+  assert(r.ok);
+  if (r.ok) {
+    assertEquals(r.person, null);
+    assertEquals(r.requireLogin, false);
+    assertEquals(r.token.cliente_id, 7);
+  }
+  assertEquals(accessCalls(calls).length, 1);
+  assertEquals(accessCalls(calls)[0].args.p_cliente_id, 7);
+  assertEquals(accessCalls(calls)[0].args.p_session_hash, null);
+});
+
+Deno.test("switch off, valid session -> ok with person", async () => {
+  const { db } = makeDb({ access: { require_login: false, person: PERSON } });
+  const r = await resolveHubAccess(db, req("abc"), TOKEN, NOW);
+  assert(r.ok);
+  if (r.ok) {
+    assertEquals(r.person, PERSON);
+    assertEquals(r.requireLogin, false);
+  }
+});
+
+Deno.test("switch on, no session -> login_required", async () => {
+  const { db } = makeDb({ access: { require_login: true, person: null } });
+  const r = await resolveHubAccess(db, req(), TOKEN, NOW);
+  assertEquals(r, { ok: false, reason: "login_required" });
+});
+
+Deno.test("switch on, valid session -> ok with person", async () => {
+  const { db } = makeDb({ access: { require_login: true, person: PERSON } });
+  const r = await resolveHubAccess(db, req("abc"), TOKEN, NOW);
+  assert(r.ok);
+  if (r.ok) {
+    assertEquals(r.person, PERSON);
+    assertEquals(r.requireLogin, true);
+  }
+});
+
+Deno.test("switch on, session for an email not on this client -> login_required", async () => {
+  const { db } = makeDb({ access: { require_login: true, person: null } });
+  const r = await resolveHubAccess(db, req("other-client-session"), TOKEN, NOW);
+  assertEquals(r, { ok: false, reason: "login_required" });
+});
+
+Deno.test("session header is hashed; over 200 chars is treated as absent", async () => {
+  const a = makeDb();
+  await resolveHubAccess(a.db, req("abc"), TOKEN, NOW);
+  assertEquals(accessCalls(a.calls)[0].args.p_session_hash, await sha256Hex("abc"));
+  assertEquals(
+    await sha256Hex("abc"),
+    "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+  );
+
+  const b = makeDb();
+  await resolveHubAccess(b.db, req("x".repeat(201)), TOKEN, NOW);
+  assertEquals(accessCalls(b.calls)[0].args.p_session_hash, null);
+
+  const c = makeDb();
+  await resolveHubAccess(c.db, req("x".repeat(200)), TOKEN, NOW);
+  assertEquals(accessCalls(c.calls)[0].args.p_session_hash, await sha256Hex("x".repeat(200)));
+});
+
+Deno.test("rpc error -> reason error", async () => {
+  const { db } = makeDb({ accessError: { message: "boom" } });
+  const orig = console.error;
+  console.error = () => {};
+  try {
+    assertEquals(await resolveHubAccess(db, req(), TOKEN, NOW), { ok: false, reason: "error" });
+  } finally {
+    console.error = orig;
+  }
+});
+
+Deno.test("malformed rpc data -> reason error (fail closed)", async () => {
+  const bad: unknown[] = [
+    true,
+    null,
+    [],
+    { require_login: "yes", person: null },
+    { person: null },
+    { require_login: false, person: "x" },
+    { require_login: false, person: { id: "p", nome: "A" } },
+    { require_login: false, person: { id: 1, nome: "A", email: "a@b" } },
+  ];
+  const orig = console.error;
+  console.error = () => {};
+  try {
+    for (const access of bad) {
+      // null would fall back to the default via `??`, so wrap via a custom db
+      const { db } = makeDb();
+      const origRpc = db.rpc;
+      db.rpc = async (fn: string, args: Record<string, unknown>) =>
+        fn === "hub_access_context" ? { data: access, error: null } : origRpc(fn, args);
+      assertEquals(
+        await resolveHubAccess(db, req(), TOKEN, NOW),
+        { ok: false, reason: "error" },
+        JSON.stringify(access),
+      );
+    }
+  } finally {
+    console.error = orig;
+  }
+});
+
+Deno.test("missing token row -> invalid, rpc not called", async () => {
+  const { db, calls } = makeDb({ tokenRow: null });
+  assertEquals(await resolveHubAccess(db, req(), TOKEN, NOW), { ok: false, reason: "invalid" });
+  assertEquals(accessCalls(calls).length, 0);
+});
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+
+Deno.test("hubAccessDenied: invalid -> 404 with hub-badtoken rate limit", async () => {
+  const keys: string[] = [];
+  const rateLimit = async (_db: unknown, key: string, max: number, win: number) => {
+    keys.push(`${key}|${max}|${win}`);
+    return true;
+  };
+  const res = await hubAccessDenied("invalid", {
+    db: {}, req: new Request("http://x", { headers: { "x-forwarded-for": "1.2.3.4" } }), json, rateLimit,
+  });
+  assertEquals(res.status, 404);
+  assertEquals((await res.json()).error, "Link inválido.");
+  assertEquals(keys.length, 1);
+  assert(keys[0].startsWith("hub-badtoken:"));
+  assert(keys[0].endsWith("|30|600"));
+});
+
+Deno.test("hubAccessDenied: invalid over the limit -> 429", async () => {
+  const res = await hubAccessDenied("invalid", {
+    db: {}, req: new Request("http://x"), json, rateLimit: async () => false,
+  });
+  assertEquals(res.status, 429);
+  await res.body?.cancel();
+});
+
+Deno.test("hubAccessDenied: login_required -> 401 with code, error -> 500", async () => {
+  let called = 0;
+  const rateLimit = async () => { called++; return true; };
+  const ctx = { db: {}, req: new Request("http://x"), json, rateLimit };
+  const a = await hubAccessDenied("login_required", ctx);
+  assertEquals(a.status, 401);
+  assertEquals(await a.json(), { error: "Login necessário.", code: "login_required" });
+  const b = await hubAccessDenied("error", ctx);
+  assertEquals(b.status, 500);
+  assertEquals(await b.json(), { error: "Erro interno." });
+  assertEquals(called, 0);
+});
+
+Deno.test("cors allows the x-hub-session header", () => {
+  const h = buildCorsHeaders(new Request("http://x"))["Access-Control-Allow-Headers"];
+  assert(h.includes("x-hub-session"));
+});
