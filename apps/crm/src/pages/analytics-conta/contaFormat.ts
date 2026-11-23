@@ -108,12 +108,17 @@ const PUBLISHED_AT_FORMAT = new Intl.DateTimeFormat('pt-BR', {
   hourCycle: 'h23',
 });
 
-/** "Publicado em 21 de nov. às 18:02", always in São Paulo time. */
-export function formatPublishedAt(iso: string): string {
+/** "21 de nov. às 18:02", always in São Paulo time. */
+export function formatPublishedDateTime(iso: string): string {
   const parts = Object.fromEntries(
     PUBLISHED_AT_FORMAT.formatToParts(new Date(iso)).map((p) => [p.type, p.value]),
   );
-  return `Publicado em ${parts.day} de ${parts.month} às ${parts.hour}:${parts.minute}`;
+  return `${parts.day} de ${parts.month} às ${parts.hour}:${parts.minute}`;
+}
+
+/** "Publicado em 21 de nov. às 18:02", always in São Paulo time. */
+export function formatPublishedAt(iso: string): string {
+  return `Publicado em ${formatPublishedDateTime(iso)}`;
 }
 
 /** "Atualizado há 2 h"; null when the post was never synced. */

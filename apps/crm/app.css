@@ -20209,6 +20209,15 @@ button.phone-stat-tile:active {
   line-height: 1;
   color: var(--text-muted);
 }
+.post-metrics__stat--missing strong {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+/* Doubled class: .post-metrics__hint, further down, sets the margin too. */
+.post-metrics__hint.post-metrics__stats-note {
+  margin: -6px 0 10px;
+  text-align: center;
+}
 
 /* Underline tabs (dialog). The sheet uses the phone SegmentedControl. */
 .post-metrics__tabs {
@@ -20318,6 +20327,16 @@ button.phone-stat-tile:active {
 .post-metrics__ratio strong {
   font-size: 15px;
 }
+.post-metrics__ratio--missing strong {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.post-metrics__ratio em {
+  font-style: normal;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
 .post-metrics__ratio-value--good {
   /* Text-safe greens (the .badge-success ink); --success is a fill colour, ~2:1 on white. */
   color: #15803d;
@@ -20391,6 +20410,24 @@ button.phone-stat-tile:active {
   border-top: 1px solid var(--border-color);
   font-size: 12px;
   color: var(--text-muted);
+}
+
+/* Desktop dialog: DialogContent already pads its body 24px, so the view adds no side padding and
+   lines up with the header. */
+.post-metrics--dialog .post-metrics__post {
+  padding: 0 0 4px;
+}
+.post-metrics--dialog .post-metrics__stats {
+  padding: 18px 0 14px;
+}
+.post-metrics--dialog .post-metrics__tabs {
+  padding: 0;
+}
+.post-metrics--dialog .post-metrics__panel {
+  padding: 20px 0;
+}
+.post-metrics--dialog .post-metrics__footer {
+  padding: 12px 0 0;
 }
 
 /* Phone sheet: the host body already pads 16px, the post stacks under a centered thumbnail. */

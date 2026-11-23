@@ -78,6 +78,23 @@ describe('PostMetricsDialog', () => {
     expect(link.getAttribute('rel')).toBe('noopener noreferrer');
   });
 
+  it('keeps the default Dialog layer so the comment menus and the idea modal stack above it', () => {
+    wrap(
+      <PostMetricsDialog
+        post={post()}
+        onOpenChange={() => {}}
+        clientId={1}
+        commentsEnabled={false}
+      />,
+    );
+    const content = screen.getByRole('dialog');
+    expect(content.className).toContain('z-[9011]');
+    expect(content.className).not.toContain('z-[9021]');
+    const overlay = document.querySelector('[data-slot="dialog-overlay"]') as HTMLElement;
+    expect(overlay.className).toContain('z-[9010]');
+    expect(overlay.className).not.toContain('z-[9020]');
+  });
+
   it('hides the Instagram link for an unsafe or empty permalink', () => {
     for (const permalink of ['javascript:alert(1)', '', null]) {
       const { unmount } = wrap(

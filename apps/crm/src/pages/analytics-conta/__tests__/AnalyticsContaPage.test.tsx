@@ -176,12 +176,14 @@ vi.mock('@/components/ui/dialog', async () => {
 
   interface DialogContextValue {
     open: boolean;
+    onOpenChange?: (open: boolean) => void;
   }
 
   const DialogContext = ReactModule.createContext<DialogContextValue>({ open: false });
 
   function Dialog({
     open = false,
+    onOpenChange,
     children,
   }: {
     open?: boolean;
@@ -189,15 +191,22 @@ vi.mock('@/components/ui/dialog', async () => {
     children: React.ReactNode;
   }) {
     return (
-      <DialogContext.Provider value={{ open }}>
+      <DialogContext.Provider value={{ open, onOpenChange }}>
         <div>{children}</div>
       </DialogContext.Provider>
     );
   }
 
   function DialogContent({ children }: { children: React.ReactNode }) {
-    const { open } = ReactModule.useContext(DialogContext);
-    return open ? <div role="dialog">{children}</div> : null;
+    const { open, onOpenChange } = ReactModule.useContext(DialogContext);
+    return open ? (
+      <div role="dialog">
+        {children}
+        <button type="button" onClick={() => onOpenChange?.(false)}>
+          mock-fechar-dialog
+        </button>
+      </div>
+    ) : null;
   }
 
   function DialogHeader({ children }: { children: React.ReactNode }) {
@@ -245,9 +254,21 @@ vi.mock('@/components/ui/sheet', async () => {
     );
   }
 
-  function SheetContent({ children }: { children: React.ReactNode }) {
+  function SheetContent({
+    children,
+    className,
+    overlayClassName,
+  }: {
+    children: React.ReactNode;
+    className?: string;
+    overlayClassName?: string;
+  }) {
     const { open } = ReactModule.useContext(SheetContext);
-    return open ? <aside>{children}</aside> : null;
+    return open ? (
+      <aside className={className} data-overlay-class={overlayClassName}>
+        {children}
+      </aside>
+    ) : null;
   }
 
   function SheetHeader({ children }: { children: React.ReactNode }) {
@@ -819,7 +840,7 @@ describe('AnalyticsContaPage', () => {
     );
 
     fireEvent.click(
-      within(table).getByRole('button', { name: 'Ver métricas do post de 23/09/2026' }),
+      within(table).getByRole('button', { name: 'Ver métricas do post de 23 de set. às 09:00' }),
     );
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByText('Métricas do post')).toBeInTheDocument();
@@ -920,7 +941,7 @@ describe('AnalyticsContaPage', () => {
     expect(within(screen.getByRole('dialog')).getByText('Métricas do post')).toBeInTheDocument();
   });
 
-  it('a "Ver mais" row opens the dialog while the sheet stays rendered', () => {
+  it('a "Ver mais" row opens the dialog above the sheet, which steps down a layer meanwhile', () => {
     seedCommonAnalyticsData();
     queryState['analytics-posts'] = {
       data: {
@@ -958,11 +979,23 @@ describe('AnalyticsContaPage', () => {
       'https://instagram.com/p/ranked-6',
     );
 
+    expect(drawer.className).not.toContain('z-[9005]');
+    expect(drawer).not.toHaveAttribute('data-overlay-class');
+
     fireEvent.click(open);
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByText('Métricas do post')).toBeInTheDocument();
     expect(within(dialog).getByText('Post ranqueado 6')).toBeInTheDocument();
     expect(screen.getByText('6 de 6 posts de @clinicaaurora').closest('aside')).toBeInTheDocument();
+    // The comment menus and the idea modal portal at the Dialog layer (9010/9011): while a post
+    // is open the drawer goes under it, so they stack above the pop-up, not behind it.
+    expect(drawer.className).toContain('z-[9005]');
+    expect(drawer).toHaveAttribute('data-overlay-class', 'z-[9004]');
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'mock-fechar-dialog' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(drawer.className).not.toContain('z-[9005]');
+    expect(drawer).not.toHaveAttribute('data-overlay-class');
   });
 
   it('a posts table row opens the dialog; clicking a tag does not', () => {
@@ -981,7 +1014,7 @@ describe('AnalyticsContaPage', () => {
     const second = render(<AnalyticsContaPage />);
     table = second.container.querySelector('#posts-table') as HTMLTableElement;
     fireEvent.click(
-      within(table).getByRole('button', { name: 'Ver métricas do post de 15/04/2026' }),
+      within(table).getByRole('button', { name: 'Ver métricas do post de 15 de abr. às 09:00' }),
     );
     expect(
       within(screen.getByRole('dialog')).getByText('Post em reels com alta performance'),
@@ -1036,7 +1069,7 @@ describe('AnalyticsContaPage', () => {
     queryState['analytics-posts'] = {
       data: {
         posts: Array.from({ length: 6 }, (_, index) => ({
-          id: index + 1,
+          id: `post-${index + 1}`,
           posted_at: `2020-01-${String(index + 1).padStart(2, '0')}T12:00:00Z`,
           media_type: index % 2 === 0 ? 'VIDEO' : 'IMAGE',
           reach: 1000 + index * 100,
@@ -1076,7 +1109,7 @@ describe('AnalyticsContaPage', () => {
     queryState['analytics-posts'] = {
       data: {
         posts: follows.map((f, index) => ({
-          id: index + 1,
+          id: `post-${index + 1}`,
           posted_at: `2020-01-${String(index + 1).padStart(2, '0')}T12:00:00Z`,
           media_type: 'IMAGE',
           reach: 1000,
@@ -1122,7 +1155,7 @@ describe('AnalyticsContaPage', () => {
     queryState['analytics-posts'] = {
       data: {
         posts: [75, null].map((f, index) => ({
-          id: index + 1,
+          id: `post-${index + 1}`,
           posted_at: `2020-01-0${index + 1}T12:00:00Z`,
           media_type: 'IMAGE',
           reach: 1000,
@@ -1380,7 +1413,7 @@ describe('AnalyticsContaPage card-bg escapes', () => {
     queryState['analytics-posts'] = {
       data: {
         posts: Array.from({ length: 6 }, (_, index) => ({
-          id: index + 1,
+          id: `post-${index + 1}`,
           instagram_post_id: `x${index}`,
           posted_at: `2020-01-0${index + 1}T12:00:00Z`,
           media_type: 'IMAGE',

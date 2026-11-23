@@ -92,12 +92,14 @@ import {
   GOOD_ENGAGEMENT_RATE,
   bucketBestTimes,
   formatMediaType,
+  formatPublishedDateTime,
   toStatDelta,
 } from './contaFormat';
 import { PostThumbnail } from './components/PostThumbnail';
 import { ActionMetricValue } from './components/PostMetricsView';
 import { PostMetricsDialog } from './components/PostMetricsDialog';
 import { InstagramLinkButton } from '@/components/instagram/InstagramLinkButton';
+import { cn } from '@/lib/utils';
 import { AccountCommentsCard } from './comments/AccountCommentsCard';
 import { keepPostsAcrossBaselineRefresh } from './postsPlaceholder';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
@@ -1867,7 +1869,7 @@ function AnalyticsContent({
                       <button
                         type="button"
                         className="post-row-open"
-                        aria-label={`Ver métricas do post de ${new Date(p.posted_at).toLocaleDateString('pt-BR')}`}
+                        aria-label={`Ver métricas do post de ${formatPublishedDateTime(p.posted_at)}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           openPostMetrics(p, e.currentTarget);
@@ -2299,7 +2301,11 @@ function AnalyticsContent({
       >
         <SheetContent
           side="right"
-          className="!w-full !max-w-xl overflow-y-auto"
+          // While a post is open the drawer steps below the Dialog layer (9010/9011): the metrics
+          // pop-up keeps the default layer so the Comentários tab's menu, delete confirmation and
+          // idea modal, which portal at that same layer, stack above it instead of behind.
+          className={cn('!w-full !max-w-xl overflow-y-auto', openPostId !== null && 'z-[9005]')}
+          overlayClassName={openPostId !== null ? 'z-[9004]' : undefined}
           // The metrics dialog opens above the drawer: a click or focus in it must not close it.
           onInteractOutside={(e) => {
             if (openPostId !== null) e.preventDefault();
