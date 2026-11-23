@@ -32,6 +32,28 @@ function sellsInNativeApp(popup: GlobalPopup): boolean {
   );
 }
 
+/** Host of an absolute http(s) URL, lower-cased; null for paths and anything unparsable. */
+function urlHost(url: string): string | null {
+  try {
+    const parsed = new URL(url.trim());
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:'
+      ? parsed.hostname.toLowerCase()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A popup whose CTA opens the App Store announces the app itself ("baixe o app"), which makes
+ * no sense to someone already inside it. Dropped in the app like a selling popup, so it never
+ * records `seen` there and the user still gets it once in the browser.
+ */
+function promotesAppStore(popup: GlobalPopup): boolean {
+  const urls = [popup.cta_url, ...popup.pages.map((pg) => pg.cta_url)];
+  return urls.some((u) => (u ? urlHost(u) === 'apps.apple.com' : false));
+}
+
 interface Decision {
   popup: GlobalPopup;
   images: Record<string, string>;
@@ -101,7 +123,9 @@ export default function GlobalPopupHost({ openDelayMs = 800 }: { openDelayMs?: n
 
     const interactions = snap.interactions ?? [];
     const popups = snap.popups ?? [];
-    const candidates = isNativeApp() ? popups.filter((p) => !sellsInNativeApp(p)) : popups;
+    const candidates = isNativeApp()
+      ? popups.filter((p) => !sellsInNativeApp(p) && !promotesAppStore(p))
+      : popups;
     const chosen = pickPopup(candidates, interactions, readPopupSession());
     if (!chosen) return;
 

@@ -431,9 +431,41 @@ describe('GlobalPopupHost', () => {
       expect(sessionStorage.getItem('mesaas_popup_shown')).toBe('aviso');
     });
 
+    it('não abre popup que leva à App Store (anúncio do próprio app)', async () => {
+      getActivePopupsMock.mockResolvedValue([
+        {
+          ...popup,
+          pages: [
+            {
+              ...popup.pages[0],
+              cta_label: 'Baixar na App Store',
+              cta_url: 'https://apps.apple.com/br/app/mesaas/id6833122543',
+            },
+            popup.pages[1],
+          ],
+        },
+      ]);
+      renderHost();
+      await waitFor(() => expect(getMyPopupInteractionsMock).toHaveBeenCalled());
+      // The open path awaits image signing and a 0 ms timer: give it real time.
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 50));
+      });
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(recordPopupInteractionMock).not.toHaveBeenCalled();
+    });
+
     it('abre normalmente um popup sem link de venda', async () => {
       renderHost();
       expect(await screen.findByRole('dialog')).toBeInTheDocument();
     });
+  });
+
+  it('no navegador abre o popup que leva à App Store', async () => {
+    getActivePopupsMock.mockResolvedValue([
+      { ...popup, cta_url: 'https://apps.apple.com/br/app/mesaas/id6833122543' },
+    ]);
+    renderHost();
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
   });
 });
