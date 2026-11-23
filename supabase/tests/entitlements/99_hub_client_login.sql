@@ -377,6 +377,28 @@ begin
                        and metadata::text ~ '(111111|222222|333333|444444|555555|482913|000000)'),
     'audit_written: a code reached audit_log';
 
+  -- remove_ends_sessions
+  -- (a) pessoa em um cliente só: removê-la encerra as sessões do e-mail, e só as dele
+  v_px := pg_temp.as_user(v_owner, format('select public.hub_people_add(%s, %L, %L)', c2, 'Solo', 'solo@x.com'))::uuid;
+  insert into hub_sessions (token_hash, email, expires_at) values
+    (repeat('e', 64), 'solo@x.com', now() + interval '1 day'),
+    (repeat('f', 64), 'outra@x.com', now() + interval '1 day');
+  perform pg_temp.as_user(v_owner, format('select public.hub_people_remove(%L::uuid)', v_px));
+  assert not exists (select 1 from hub_sessions where email = 'solo@x.com'),
+    'remove_ends_sessions: session survived removal from the only client';
+  assert exists (select 1 from hub_sessions where token_hash = repeat('f', 64)),
+    'remove_ends_sessions: removal ended another email''s session';
+  -- (b) mesmo e-mail em dois clientes: remover de um mantém a sessão
+  v_px := pg_temp.as_user(v_owner, format('select public.hub_people_add(%s, %L, %L)', c2, 'Dupla', 'dupla@x.com'))::uuid;
+  v_p4 := pg_temp.as_user(v_owner, format('select public.hub_people_add(%s, %L, %L)', c4, 'Dupla', 'dupla@x.com'))::uuid;
+  insert into hub_sessions (token_hash, email, expires_at) values (repeat('0', 64), 'dupla@x.com', now() + interval '1 day');
+  perform pg_temp.as_user(v_owner, format('select public.hub_people_remove(%L::uuid)', v_px));
+  assert exists (select 1 from hub_sessions where token_hash = repeat('0', 64)),
+    'remove_ends_sessions: session ended while the email is still listed on another client';
+  perform pg_temp.as_user(v_owner, format('select public.hub_people_remove(%L::uuid)', v_p4));
+  assert not exists (select 1 from hub_sessions where email = 'dupla@x.com'),
+    'remove_ends_sessions: session survived removal from the last client';
+
   raise notice 'PASS 99_hub_client_login';
 end $$;
 rollback;

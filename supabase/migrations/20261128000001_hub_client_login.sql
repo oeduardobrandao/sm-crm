@@ -249,6 +249,12 @@ BEGIN
     RAISE EXCEPTION 'not_found';
   END IF;
 
+  -- A sessão é por e-mail: quem saiu da lista de todos os clientes perde o acesso já.
+  -- Quem segue na lista de outro cliente mantém a sessão.
+  DELETE FROM hub_sessions s
+   WHERE s.email = v_email
+     AND NOT EXISTS (SELECT 1 FROM hub_client_people p WHERE p.email = s.email);
+
   INSERT INTO audit_log (conta_id, actor_user_id, action, resource_type, resource_id, metadata)
   VALUES (v_conta_id, auth.uid(), 'hub_people.remove', 'hub_client_people', p_person_id::text,
           jsonb_build_object('cliente_id', v_cliente_id, 'email', v_email));
