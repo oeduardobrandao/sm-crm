@@ -270,7 +270,7 @@ vi.mock('@/components/ui/sheet', async () => {
   };
 });
 
-// Its own suite covers the panel; here only whether the expanded row mounts it.
+// Its own suite covers the panel; here only whether the metrics dialog mounts it.
 vi.mock('../comments/PostCommentsPanel', () => ({
   PostCommentsPanel: ({ clientId, post }: { clientId: number; post: { id: string } }) => (
     <div data-testid="post-comments-panel">{`painel ${clientId}/${post.id}`}</div>
@@ -828,7 +828,7 @@ describe('AnalyticsContaPage', () => {
     expect(within(dialog).queryByText('Reposts')).not.toBeInTheDocument();
   });
 
-  function seedOneExpandablePost() {
+  function seedOneOpenablePost() {
     seedCommonAnalyticsData();
     queryState['analytics-posts'] = {
       data: {
@@ -871,7 +871,7 @@ describe('AnalyticsContaPage', () => {
   }
 
   it('flag desligada: o pop-up não tem aba nem painel de comentários', () => {
-    seedOneExpandablePost();
+    seedOneOpenablePost();
     const { container } = render(<AnalyticsContaPage />);
     const dialog = openFromTable(container);
     expect(within(dialog).getByRole('tab', { name: 'Visão geral' })).toBeInTheDocument();
@@ -881,7 +881,7 @@ describe('AnalyticsContaPage', () => {
   });
 
   it('pop-up tem as abas Visão geral, Engajamento e Comentários com a flag', () => {
-    seedOneExpandablePost();
+    seedOneOpenablePost();
     queryState['workspace-limits'] = {
       data: { plan_name: null, limits: null, features: { feature_instagram_comments_ai: true } },
     };
