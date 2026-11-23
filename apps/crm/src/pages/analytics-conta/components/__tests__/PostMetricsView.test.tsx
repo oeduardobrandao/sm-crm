@@ -216,6 +216,38 @@ describe('PostMetricsView', () => {
     expect(within(actions).queryByText(/novo seguidor a cada/)).not.toBeInTheDocument();
   });
 
+  it('treats undefined action metrics (pre-migration rows) like null, never 0', () => {
+    const p = post();
+    delete (p as Partial<PostAnalytics>).profile_visits;
+    renderView({ post: p });
+    const resumo = screen.getByRole('region', { name: 'Resumo' });
+    expect(within(resumo).getByText('Visitas ao perfil').nextSibling).toHaveTextContent('—');
+    openTab('Engajamento');
+    const actions = screen.getByRole('region', { name: 'Ações após a visualização' });
+    expect(within(actions).getByText('Visitas ao perfil').nextSibling).toHaveTextContent('—');
+  });
+
+  it('Engajamento gives every action row of a Reel the Reels reason', () => {
+    renderView({
+      post: post({
+        media_type: 'VIDEO',
+        follows: null,
+        profile_visits: null,
+        bio_link_clicks: null,
+        follows_per_mil_reach: null,
+        unavailable_metrics: ['follows', 'profile_visits', 'bio_link_clicks'],
+      }),
+    });
+    openTab('Engajamento');
+    const actions = screen.getByRole('region', { name: 'Ações após a visualização' });
+    for (const label of ['Visitas ao perfil', 'Novos seguidores', 'Toques no link da bio']) {
+      expect(within(actions).getByText(label).nextSibling).toHaveAttribute(
+        'title',
+        'O Instagram não fornece este dado para Reels',
+      );
+    }
+  });
+
   it('hides the rate block without dists and omits the median tick below MIN_SAMPLE', () => {
     const { unmount } = renderView();
     openTab('Engajamento');

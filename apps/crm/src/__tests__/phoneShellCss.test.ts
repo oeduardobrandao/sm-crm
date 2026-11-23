@@ -133,7 +133,6 @@ const HUB_REVIEWED_SELECTORS: Record<string, string> = {
   '#posts-table tbody': CRM_SHELL,
   '#posts-table tbody::-webkit-scrollbar': CRM_SHELL,
   '#posts-table tbody tr': CRM_SHELL,
-  '#posts-table tbody tr.post-detail-row': CRM_SHELL,
   'body:has(.mobile-nav-glass)': CRM_SHELL,
   "body:has(.app-container[data-phone-tab-bar='hidden'])": CRM_SHELL,
   'body:has(.app-container) [data-tooltip]::before': CRM_SHELL,

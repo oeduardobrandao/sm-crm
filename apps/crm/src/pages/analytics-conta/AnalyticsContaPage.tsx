@@ -1,7 +1,5 @@
 import { Fragment, type ReactNode, useMemo, useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useTranslation } from 'react-i18next';
-import { useIntlLocale } from '@mesaas/i18n';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -97,9 +95,10 @@ import {
   toStatDelta,
 } from './contaFormat';
 import { PostThumbnail } from './components/PostThumbnail';
-import { ActionMetricValue, PostInsightsDetail } from './components/PostInsightsDetail';
+import { ActionMetricValue } from './components/PostMetricsView';
+import { PostMetricsDialog } from './components/PostMetricsDialog';
+import { InstagramLinkButton } from '@/components/instagram/InstagramLinkButton';
 import { AccountCommentsCard } from './comments/AccountCommentsCard';
-import { PostCommentsPanel } from './comments/PostCommentsPanel';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 
 Chart.register(...registerables);
@@ -155,134 +154,110 @@ function formatPostDate(date: string): string {
   return new Date(date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
 }
 
-function RankedPostCard({ post, tone }: { post: PostAnalytics; tone: 'best' | 'worst' }) {
+/** A one-line caption for an accessible name: whitespace collapsed, cut at 60 characters. */
+function captionExcerpt(caption: string | null | undefined): string {
+  const text = (caption ?? '').replace(/\s+/g, ' ').trim();
+  if (!text) return 'Sem legenda';
+  return text.length > 60 ? `${text.slice(0, 60).trimEnd()}…` : text;
+}
+
+/** Opens a post's metrics pop-up; `opener` is the control focus returns to on close. */
+type OpenPostHandler = (post: PostAnalytics, opener: HTMLElement) => void;
+
+function RankedPostCard({
+  post,
+  tone,
+  onOpen,
+}: {
+  post: PostAnalytics;
+  tone: 'best' | 'worst';
+  onOpen: OpenPostHandler;
+}) {
   const reachColor = tone === 'best' ? 'var(--success)' : 'var(--danger)';
 
   return (
-    <a
-      href={sanitizeUrl(post.permalink)}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="analytics-post-card"
-      style={{ minWidth: 180, textDecoration: 'none', color: 'inherit' }}
-    >
-      <div
-        style={{
-          aspectRatio: '3/4',
-          position: 'relative',
-          overflow: 'hidden',
-          background: 'var(--surface-darker)',
-        }}
+    <div className="analytics-post-card analytics-post-card--openable" style={{ minWidth: 180 }}>
+      <button
+        type="button"
+        className="analytics-post-card__open"
+        aria-label={`Ver métricas: ${captionExcerpt(post.caption)}`}
+        onClick={(e) => onOpen(post, e.currentTarget)}
       >
-        <PostThumbnail post={post} size="card" />
-        <span
+        <div
           style={{
-            position: 'absolute',
-            top: 8,
-            left: 8,
-            background: 'rgba(0,0,0,0.55)',
-            color: '#fff',
-            fontSize: '0.6rem',
-            padding: '2px 6px',
-            borderRadius: 4,
-            fontWeight: 600,
-          }}
-        >
-          {formatMediaType(post.media_type)}
-        </span>
-      </div>
-      <div style={{ padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-        <span
-          style={{
-            minHeight: 34,
-            fontSize: '0.72rem',
-            fontWeight: 600,
-            color: 'var(--text-muted)',
-            lineHeight: 1.35,
+            aspectRatio: '3/4',
+            position: 'relative',
             overflow: 'hidden',
-            display: '-webkit-box',
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical',
+            background: 'var(--surface-darker)',
           }}
         >
-          {post.caption || 'Sem legenda'}
-        </span>
-        <span style={{ fontSize: '0.65rem', color: 'var(--text-light)' }}>
-          {formatPostDate(post.posted_at)}
-        </span>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Visualizações</span>
+          <PostThumbnail post={post} size="card" />
           <span
             style={{
-              fontSize: '0.7rem',
-              fontWeight: 700,
-              fontFamily: 'var(--font-mono)',
-              color: reachColor,
+              position: 'absolute',
+              top: 8,
+              left: 8,
+              background: 'rgba(0,0,0,0.55)',
+              color: '#fff',
+              fontSize: '0.6rem',
+              padding: '2px 6px',
+              borderRadius: 4,
+              fontWeight: 600,
             }}
           >
-            {formatNumber(post.views)}
-          </span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Engajamento</span>
-          <span style={{ fontSize: '0.7rem', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
-            {post.engagement_rate.toFixed(2)}%
+            {formatMediaType(post.media_type)}
           </span>
         </div>
         <div
-          style={{
-            display: 'flex',
-            justifyContent: 'flex-start',
-            gap: '0.5rem',
-            marginTop: 2,
-            flexWrap: 'wrap',
-          }}
+          style={{ padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}
         >
           <span
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 3,
-              fontSize: '0.65rem',
+              minHeight: 34,
+              fontSize: '0.72rem',
+              fontWeight: 600,
               color: 'var(--text-muted)',
+              lineHeight: 1.35,
+              overflow: 'hidden',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
             }}
           >
-            <Heart className="h-3 w-3" />{' '}
-            <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>
-              {formatNumber(post.likes)}
-            </strong>
+            {post.caption || 'Sem legenda'}
           </span>
-          <span
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 3,
-              fontSize: '0.65rem',
-              color: 'var(--text-muted)',
-            }}
-          >
-            <MessageCircle className="h-3 w-3" />{' '}
-            <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>
-              {formatNumber(post.comments)}
-            </strong>
+          <span style={{ fontSize: '0.65rem', color: 'var(--text-light)' }}>
+            {formatPostDate(post.posted_at)}
           </span>
-          <span
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 3,
-              fontSize: '0.65rem',
-              color: 'var(--text-muted)',
-            }}
-          >
-            <Bookmark className="h-3 w-3" />{' '}
-            <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>
-              {formatNumber(post.saved)}
-            </strong>
-          </span>
-          {typeof post.follows === 'number' && (
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Visualizações</span>
             <span
-              title="Novos seguidores"
+              style={{
+                fontSize: '0.7rem',
+                fontWeight: 700,
+                fontFamily: 'var(--font-mono)',
+                color: reachColor,
+              }}
+            >
+              {formatNumber(post.views)}
+            </span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Engajamento</span>
+            <span style={{ fontSize: '0.7rem', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
+              {post.engagement_rate.toFixed(2)}%
+            </span>
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-start',
+              gap: '0.5rem',
+              marginTop: 2,
+              flexWrap: 'wrap',
+            }}
+          >
+            <span
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -291,15 +266,66 @@ function RankedPostCard({ post, tone }: { post: PostAnalytics; tone: 'best' | 'w
                 color: 'var(--text-muted)',
               }}
             >
-              <UserPlus className="h-3 w-3" />{' '}
+              <Heart className="h-3 w-3" />{' '}
               <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>
-                {formatNumber(post.follows)}
+                {formatNumber(post.likes)}
               </strong>
             </span>
-          )}
+            <span
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 3,
+                fontSize: '0.65rem',
+                color: 'var(--text-muted)',
+              }}
+            >
+              <MessageCircle className="h-3 w-3" />{' '}
+              <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>
+                {formatNumber(post.comments)}
+              </strong>
+            </span>
+            <span
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 3,
+                fontSize: '0.65rem',
+                color: 'var(--text-muted)',
+              }}
+            >
+              <Bookmark className="h-3 w-3" />{' '}
+              <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>
+                {formatNumber(post.saved)}
+              </strong>
+            </span>
+            {typeof post.follows === 'number' && (
+              <span
+                title="Novos seguidores"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 3,
+                  fontSize: '0.65rem',
+                  color: 'var(--text-muted)',
+                }}
+              >
+                <UserPlus className="h-3 w-3" />{' '}
+                <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>
+                  {formatNumber(post.follows)}
+                </strong>
+              </span>
+            )}
+          </div>
         </div>
-      </div>
-    </a>
+      </button>
+      <InstagramLinkButton
+        permalink={post.permalink}
+        className="analytics-post-card__ig"
+        size={32}
+        shape="round"
+      />
+    </div>
   );
 }
 
@@ -311,6 +337,7 @@ interface RankedPostsSectionProps {
   tone: 'best' | 'worst';
   onSeeMore: () => void;
   canSeeMore: boolean;
+  onOpen: OpenPostHandler;
 }
 
 function RankedPostsSection(props: RankedPostsSectionProps) {
@@ -322,7 +349,7 @@ function RankedPostsSection(props: RankedPostsSectionProps) {
       icon={props.icon}
       posts={props.posts}
       getKey={(post) => post.id}
-      renderPost={(post) => <RankedPostCard post={post} tone={props.tone} />}
+      renderPost={(post) => <RankedPostCard post={post} tone={props.tone} onOpen={props.onOpen} />}
       action={
         props.canSeeMore ? (
           <Button variant="ghost" size="sm" onClick={props.onSeeMore}>
@@ -861,96 +888,6 @@ function TagPill({ tag, onRemove }: { tag: PostTag; onRemove: () => void }) {
   );
 }
 
-/** The expanded row of the posts table. With `feature_instagram_comments_ai` it gets
- *  "Insights" / "Comentários · N" tabs; the comments panel mounts (and fetches) only once
- *  its tab is opened. Without the flag the row is exactly the insights it always was. */
-function ExpandedPostDetail({
-  clientId,
-  post: p,
-  commentsEnabled,
-}: {
-  clientId: number;
-  post: PostAnalytics;
-  commentsEnabled: boolean;
-}) {
-  const [tab, setTab] = useState<'insights' | 'comments'>('insights');
-  const { t } = useTranslation('analyticsComments');
-  const intlLocale = useIntlLocale();
-  const insights = (
-    <>
-      <p
-        style={{
-          fontSize: '0.85rem',
-          whiteSpace: 'pre-wrap',
-          marginBottom: '0.5rem',
-        }}
-      >
-        {p.caption || 'Sem legenda'}
-      </p>
-      <div
-        style={{
-          display: 'flex',
-          gap: '1rem',
-          alignItems: 'center',
-          fontSize: '0.8rem',
-        }}
-      >
-        <a
-          href={sanitizeUrl(p.permalink)}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ color: 'var(--primary-color)' }}
-        >
-          ↗ Ver no Instagram
-        </a>
-      </div>
-      <PostInsightsDetail post={p} />
-    </>
-  );
-  if (!commentsEnabled) return insights;
-
-  const tabId = (t: string) => `post-${p.id}-tab-${t}`;
-  const panelId = (t: string) => `post-${p.id}-panel-${t}`;
-  const tabs: { key: 'insights' | 'comments'; label: string }[] = [
-    { key: 'insights', label: t('common.tabInsights') },
-    {
-      key: 'comments',
-      label: t('common.tabComments', { n: (p.comments || 0).toLocaleString(intlLocale) }),
-    },
-  ];
-  return (
-    <>
-      <div
-        className="page-tabs page-tabs--inline igc-detail-tabs"
-        role="tablist"
-        aria-label={t('common.tabsAriaLabel')}
-      >
-        {tabs.map((tb) => (
-          <button
-            key={tb.key}
-            type="button"
-            role="tab"
-            id={tabId(tb.key)}
-            aria-selected={tab === tb.key}
-            aria-controls={tab === tb.key ? panelId(tb.key) : undefined}
-            className={`page-tab${tab === tb.key ? ' active' : ''}`}
-            onClick={() => setTab(tb.key)}
-          >
-            {tb.label}
-          </button>
-        ))}
-      </div>
-      <div role="tabpanel" id={panelId(tab)} aria-labelledby={tabId(tab)}>
-        {tab === 'insights' ? (
-          insights
-        ) : (
-          <PostCommentsPanel key={p.id} clientId={clientId} post={p} />
-        )}
-      </div>
-    </>
-  );
-}
-
 // ---- Main Content ----
 function AnalyticsContent({
   clientId,
@@ -966,7 +903,7 @@ function AnalyticsContent({
 }) {
   const qc = useQueryClient();
   const isPhone = !useIsDesktop(768);
-  // Under the Vidro shell the four inline var(--card-bg) surfaces below drop their background so
+  // Under the Vidro shell the three inline var(--card-bg) surfaces below drop their background so
   // the Vidro family rules paint them (spec: inline-style escapes).
   const vidroShell = useVidroShell();
 
@@ -979,7 +916,11 @@ function AnalyticsContent({
     col: 'posted_at',
     dir: 'desc',
   });
-  const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
+  const [openPostId, setOpenPostId] = useState<string | null>(null);
+  // The post as it was when opened: a posts-key change empties the list for a moment, and the
+  // dialog keeps showing this one until the list settles.
+  const [heldPost, setHeldPost] = useState<PostAnalytics | null>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
   const commentsAiEnabled = useWorkspaceLimits().features?.feature_instagram_comments_ai === true;
   const [syncing, setSyncing] = useState(false);
   // Collapsed by default on phones (and the phone shell on touch tablets), where the
@@ -1018,7 +959,12 @@ function AnalyticsContent({
     queryFn: () => getClientRateBaseline(clientId),
     retry: false, // non-critical: never block/delay the posts query
   });
-  const { data: postsRes, isLoading: loadingPosts } = useQuery({
+  const {
+    data: postsRes,
+    isLoading: loadingPosts,
+    isSuccess: postsSettled,
+    isFetching: postsFetching,
+  } = useQuery({
     queryKey: [
       'analytics-posts',
       clientId,
@@ -1054,6 +1000,21 @@ function AnalyticsContent({
   const isLoading = loadingOv || loadingPosts;
   const overview = overviewRes?.data;
   const posts = postsRes?.posts || [];
+  const openPost = posts.find((p) => p.id === openPostId) ?? null;
+  const dialogPost = openPostId === null ? null : (openPost ?? heldPost);
+  const openPostMetrics: OpenPostHandler = (post, opener) => {
+    openerRef.current = opener;
+    setHeldPost(post);
+    setOpenPostId(post.id);
+  };
+  // Close only once the list has settled without the post (a sync removed it). A key change
+  // or a refetch empties or holds the list while fetching and must not close the dialog.
+  useEffect(() => {
+    if (openPostId !== null && !openPost && postsSettled && !postsFetching) {
+      setOpenPostId(null);
+      setHeldPost(null);
+    }
+  }, [openPostId, openPost, postsSettled, postsFetching]);
   const history = historyRes?.history || [];
   const postDates = historyRes?.postDates || [];
   const demographicsData: AudienceDemographics | null = demoRes?.data || null;
@@ -1821,6 +1782,7 @@ function AnalyticsContent({
         tone="best"
         canSeeMore={rankedPosts.length > 5}
         onSeeMore={() => openRankedDrawer('best')}
+        onOpen={openPostMetrics}
       />
 
       <RankedPostsSection
@@ -1831,6 +1793,7 @@ function AnalyticsContent({
         tone="worst"
         canSeeMore={matureRankedPosts.length > 5}
         onSeeMore={() => openRankedDrawer('worst')}
+        onOpen={openPostMetrics}
       />
 
       {/* Follower Growth Chart */}
@@ -1885,152 +1848,146 @@ function AnalyticsContent({
               </thead>
               <tbody>
                 {visiblePosts.map((p) => (
-                  <Fragment key={p.id}>
-                    <tr
-                      style={{ cursor: 'pointer' }}
-                      onClick={() => setExpandedPostId(expandedPostId === p.id ? null : p.id)}
-                    >
-                      <td data-label="Data">
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                          {p.thumbnail_url ? (
-                            <img
-                              loading="lazy"
-                              src={sanitizeUrl(p.thumbnail_url)}
-                              alt=""
-                              style={{
-                                width: 40,
-                                height: 40,
-                                borderRadius: 6,
-                                objectFit: 'cover',
-                                flexShrink: 0,
-                                background: 'var(--bg-secondary)',
-                              }}
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).style.display = 'none';
-                              }}
-                            />
-                          ) : (
-                            <div
-                              style={{
-                                width: 40,
-                                height: 40,
-                                borderRadius: 6,
-                                background: 'var(--bg-secondary)',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                flexShrink: 0,
-                              }}
-                            >
-                              📷
-                            </div>
-                          )}
-                          <span>{new Date(p.posted_at).toLocaleDateString('pt-BR')}</span>
-                        </div>
-                      </td>
-                      <td data-label="Tipo">
-                        <span className="badge badge-info">{formatMediaType(p.media_type)}</span>
-                      </td>
-                      <td data-label="Visualizações">{p.views.toLocaleString('pt-BR')}</td>
-                      <td data-label="Alcance">{p.reach.toLocaleString('pt-BR')}</td>
-                      <td data-label="Eng.">
-                        <span
-                          className={`badge ${p.engagement_rate >= 5 ? 'badge-success' : p.engagement_rate >= 2 ? 'badge-warning' : 'badge-neutral'}`}
-                        >
-                          {p.engagement_rate.toFixed(1)}%
-                        </span>
-                      </td>
-                      <td data-label="IG Score">
-                        {(p as PostAnalytics).ig_score === null ||
-                        (p as PostAnalytics).ig_score === undefined ? (
-                          <span
-                            title="amostra insuficiente (<5)"
-                            style={{ color: 'var(--text-muted)' }}
-                          >
-                            —
-                          </span>
+                  <tr
+                    key={p.id}
+                    style={{ cursor: 'pointer' }}
+                    onClick={(e) => {
+                      // Focus returns to the row's button, never to the <tr>.
+                      const opener = e.currentTarget.querySelector<HTMLElement>('.post-row-open');
+                      if (opener) openPostMetrics(p, opener);
+                    }}
+                  >
+                    <td data-label="Data">
+                      <button
+                        type="button"
+                        className="post-row-open"
+                        aria-label={`Ver métricas do post de ${new Date(p.posted_at).toLocaleDateString('pt-BR')}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openPostMetrics(p, e.currentTarget);
+                        }}
+                      >
+                        {p.thumbnail_url ? (
+                          <img
+                            loading="lazy"
+                            src={sanitizeUrl(p.thumbnail_url)}
+                            alt=""
+                            style={{
+                              width: 40,
+                              height: 40,
+                              borderRadius: 6,
+                              objectFit: 'cover',
+                              flexShrink: 0,
+                              background: 'var(--bg-secondary)',
+                            }}
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = 'none';
+                            }}
+                          />
                         ) : (
-                          <span
-                            className={`badge ${(p as PostAnalytics).ig_score! >= 75 ? 'badge-success' : (p as PostAnalytics).ig_score! >= 40 ? 'badge-neutral' : 'badge-danger'}`}
-                          >
-                            {(p as PostAnalytics).ig_score}
-                          </span>
-                        )}
-                      </td>
-                      <td data-label="Curtidas">{(p.likes || 0).toLocaleString('pt-BR')}</td>
-                      <td data-label="Salvos">{p.saved}</td>
-                      <td data-label="Coment.">{p.comments}</td>
-                      <td data-label="Compart.">{p.shares}</td>
-                      <td data-label="Novos seg.">
-                        <ActionMetricValue post={p} metric="follows" as="span" />
-                      </td>
-                      <td data-label="Tags" onClick={(e) => e.stopPropagation()}>
-                        {p.tags.map((t) => (
-                          <span
-                            key={t.id}
-                            className="tag-pill"
+                          <div
                             style={{
-                              background: t.color + '20',
-                              color: t.color,
-                              border: `1px solid ${t.color}40`,
-                              marginRight: 2,
+                              width: 40,
+                              height: 40,
+                              borderRadius: 6,
+                              background: 'var(--bg-secondary)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flexShrink: 0,
                             }}
                           >
-                            {t.tag_name}
-                          </span>
-                        ))}
-                        {tagsData.length > 0 && (
-                          <span
-                            style={{
-                              cursor: 'pointer',
-                              color: 'var(--text-muted)',
-                              fontSize: '0.8rem',
-                            }}
-                          >
-                            {tagsData
-                              .filter((t) => !p.tags.some((pt) => pt.id === t.id))
-                              .map((t) => (
-                                <span
-                                  key={t.id}
-                                  title={`Adicionar "${t.tag_name}"`}
-                                  onClick={() => handleAssignTag(p.id, t.id)}
-                                  style={{
-                                    background: t.color + '20',
-                                    color: t.color,
-                                    border: `1px solid ${t.color}40`,
-                                    cursor: 'pointer',
-                                    display: 'inline-block',
-                                    padding: '1px 6px',
-                                    borderRadius: 4,
-                                    fontSize: '0.7rem',
-                                    marginRight: 2,
-                                  }}
-                                >
-                                  + {t.tag_name}
-                                </span>
-                              ))}
-                          </span>
+                            📷
+                          </div>
                         )}
-                      </td>
-                    </tr>
-                    {expandedPostId === p.id && (
-                      <tr key={`detail-${p.id}`} className="post-detail-row">
-                        <td
-                          colSpan={12}
+                        <span>{new Date(p.posted_at).toLocaleDateString('pt-BR')}</span>
+                      </button>
+                    </td>
+                    <td data-label="Tipo">
+                      <span className="badge badge-info">{formatMediaType(p.media_type)}</span>
+                    </td>
+                    <td data-label="Visualizações">{p.views.toLocaleString('pt-BR')}</td>
+                    <td data-label="Alcance">{p.reach.toLocaleString('pt-BR')}</td>
+                    <td data-label="Eng.">
+                      <span
+                        className={`badge ${p.engagement_rate >= 5 ? 'badge-success' : p.engagement_rate >= 2 ? 'badge-warning' : 'badge-neutral'}`}
+                      >
+                        {p.engagement_rate.toFixed(1)}%
+                      </span>
+                    </td>
+                    <td data-label="IG Score">
+                      {(p as PostAnalytics).ig_score === null ||
+                      (p as PostAnalytics).ig_score === undefined ? (
+                        <span
+                          title="amostra insuficiente (<5)"
+                          style={{ color: 'var(--text-muted)' }}
+                        >
+                          —
+                        </span>
+                      ) : (
+                        <span
+                          className={`badge ${(p as PostAnalytics).ig_score! >= 75 ? 'badge-success' : (p as PostAnalytics).ig_score! >= 40 ? 'badge-neutral' : 'badge-danger'}`}
+                        >
+                          {(p as PostAnalytics).ig_score}
+                        </span>
+                      )}
+                    </td>
+                    <td data-label="Curtidas">{(p.likes || 0).toLocaleString('pt-BR')}</td>
+                    <td data-label="Salvos">{p.saved}</td>
+                    <td data-label="Coment.">{p.comments}</td>
+                    <td data-label="Compart.">{p.shares}</td>
+                    <td data-label="Novos seg.">
+                      <ActionMetricValue post={p} metric="follows" as="span" />
+                    </td>
+                    <td data-label="Tags" onClick={(e) => e.stopPropagation()}>
+                      {p.tags.map((t) => (
+                        <span
+                          key={t.id}
+                          className="tag-pill"
                           style={{
-                            padding: '1rem',
-                            background: vidroShell ? undefined : 'var(--card-bg)',
+                            background: t.color + '20',
+                            color: t.color,
+                            border: `1px solid ${t.color}40`,
+                            marginRight: 2,
                           }}
                         >
-                          <ExpandedPostDetail
-                            clientId={clientId}
-                            post={p}
-                            commentsEnabled={commentsAiEnabled}
-                          />
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
+                          {t.tag_name}
+                        </span>
+                      ))}
+                      {tagsData.length > 0 && (
+                        <span
+                          style={{
+                            cursor: 'pointer',
+                            color: 'var(--text-muted)',
+                            fontSize: '0.8rem',
+                          }}
+                        >
+                          {tagsData
+                            .filter((t) => !p.tags.some((pt) => pt.id === t.id))
+                            .map((t) => (
+                              <span
+                                key={t.id}
+                                title={`Adicionar "${t.tag_name}"`}
+                                onClick={() => handleAssignTag(p.id, t.id)}
+                                style={{
+                                  background: t.color + '20',
+                                  color: t.color,
+                                  border: `1px solid ${t.color}40`,
+                                  cursor: 'pointer',
+                                  display: 'inline-block',
+                                  padding: '1px 6px',
+                                  borderRadius: 4,
+                                  fontSize: '0.7rem',
+                                  marginRight: 2,
+                                }}
+                              >
+                                + {t.tag_name}
+                              </span>
+                            ))}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
                 ))}
               </tbody>
             </table>
@@ -2314,13 +2271,40 @@ function AnalyticsContent({
 
       {dialogs}
 
+      <PostMetricsDialog
+        post={dialogPost}
+        onOpenChange={(o) => {
+          if (!o) {
+            setOpenPostId(null);
+            setHeldPost(null);
+          }
+        }}
+        returnFocusTo={openerRef}
+        dists={baselineQuery.data?.dists}
+        commentsEnabled={commentsAiEnabled}
+        clientId={clientId}
+      />
+
       <Sheet
         open={rankedDrawer !== null}
         onOpenChange={(open) => {
           if (!open) resetRankedDrawer();
         }}
       >
-        <SheetContent side="right" className="!w-full !max-w-xl overflow-y-auto">
+        <SheetContent
+          side="right"
+          className="!w-full !max-w-xl overflow-y-auto"
+          // The metrics dialog opens above the drawer: a click or focus in it must not close it.
+          onInteractOutside={(e) => {
+            if (openPostId !== null) e.preventDefault();
+          }}
+          onPointerDownOutside={(e) => {
+            if (openPostId !== null) e.preventDefault();
+          }}
+          onFocusOutside={(e) => {
+            if (openPostId !== null) e.preventDefault();
+          }}
+        >
           <SheetHeader>
             <SheetTitle style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               {rankedDrawer === 'worst' ? (
@@ -2481,11 +2465,9 @@ function AnalyticsContent({
               </p>
             ) : (
               rankedDrawerPosts.map((post, i) => (
-                <a
+                <div
                   key={post.id}
-                  href={sanitizeUrl(post.permalink)}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  className="ranked-drawer-row"
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -2494,127 +2476,133 @@ function AnalyticsContent({
                     borderRadius: 10,
                     border: '1px solid var(--border-color)',
                     background: vidroShell ? undefined : 'var(--card-bg)',
-                    textDecoration: 'none',
-                    color: 'inherit',
                   }}
                 >
-                  <span
-                    style={{
-                      fontSize: '0.75rem',
-                      fontWeight: 700,
-                      fontFamily: 'var(--font-mono)',
-                      color: 'var(--text-muted)',
-                      minWidth: 24,
-                      textAlign: 'center',
-                    }}
+                  <button
+                    type="button"
+                    className="ranked-drawer-row__open"
+                    aria-label={`Ver métricas: ${captionExcerpt(post.caption)}`}
+                    onClick={(e) => openPostMetrics(post, e.currentTarget)}
                   >
-                    {i + 1}
-                  </span>
-                  <div
-                    style={{
-                      width: 52,
-                      height: 52,
-                      borderRadius: 8,
-                      overflow: 'hidden',
-                      flexShrink: 0,
-                    }}
-                  >
-                    <PostThumbnail post={post} size="list" />
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span
-                        style={{
-                          fontSize: '0.8rem',
-                          fontWeight: 600,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {post.caption || 'Sem legenda'}
-                      </span>
-                      <span
-                        style={{ fontSize: '0.65rem', color: 'var(--text-light)', flexShrink: 0 }}
-                      >
-                        {formatPostDate(post.posted_at)}
-                      </span>
-                    </div>
-                    <div
+                    <span
                       style={{
-                        display: 'flex',
-                        gap: '0.7rem',
-                        fontSize: '0.7rem',
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        fontFamily: 'var(--font-mono)',
                         color: 'var(--text-muted)',
-                        marginTop: 3,
-                        flexWrap: 'wrap',
+                        minWidth: 24,
+                        textAlign: 'center',
                       }}
                     >
-                      <span>{formatMediaType(post.media_type)}</span>
-                      <span>
-                        Visualizações{' '}
-                        <strong
-                          style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}
-                        >
-                          {formatNumber(post.views)}
-                        </strong>
-                      </span>
-                      <span>
-                        Eng.{' '}
-                        <strong
+                      {i + 1}
+                    </span>
+                    <div
+                      style={{
+                        width: 52,
+                        height: 52,
+                        borderRadius: 8,
+                        overflow: 'hidden',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <PostThumbnail post={post} size="list" />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span
                           style={{
-                            fontFamily: 'var(--font-mono)',
-                            color:
-                              post.engagement_rate >= GOOD_ENGAGEMENT_RATE
-                                ? 'var(--success)'
-                                : post.engagement_rate < 1
-                                  ? 'var(--danger)'
-                                  : 'var(--text-main)',
+                            fontSize: '0.8rem',
+                            fontWeight: 600,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
                           }}
                         >
-                          {post.engagement_rate.toFixed(2)}%
-                        </strong>
-                      </span>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-                        <Heart className="h-3 w-3" />{' '}
-                        <strong
-                          style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}
-                        >
-                          {formatNumber(post.likes)}
-                        </strong>
-                      </span>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-                        <MessageCircle className="h-3 w-3" />{' '}
-                        <strong
-                          style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}
-                        >
-                          {formatNumber(post.comments)}
-                        </strong>
-                      </span>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-                        <Bookmark className="h-3 w-3" />{' '}
-                        <strong
-                          style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}
-                        >
-                          {formatNumber(post.saved)}
-                        </strong>
-                      </span>
-                      {typeof post.follows === 'number' && (
+                          {post.caption || 'Sem legenda'}
+                        </span>
                         <span
-                          title="Novos seguidores"
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}
+                          style={{ fontSize: '0.65rem', color: 'var(--text-light)', flexShrink: 0 }}
                         >
-                          <UserPlus className="h-3 w-3" />{' '}
+                          {formatPostDate(post.posted_at)}
+                        </span>
+                      </div>
+                      <div
+                        style={{
+                          display: 'flex',
+                          gap: '0.7rem',
+                          fontSize: '0.7rem',
+                          color: 'var(--text-muted)',
+                          marginTop: 3,
+                          flexWrap: 'wrap',
+                        }}
+                      >
+                        <span>{formatMediaType(post.media_type)}</span>
+                        <span>
+                          Visualizações{' '}
                           <strong
                             style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}
                           >
-                            {formatNumber(post.follows)}
+                            {formatNumber(post.views)}
                           </strong>
                         </span>
-                      )}
+                        <span>
+                          Eng.{' '}
+                          <strong
+                            style={{
+                              fontFamily: 'var(--font-mono)',
+                              color:
+                                post.engagement_rate >= GOOD_ENGAGEMENT_RATE
+                                  ? 'var(--success)'
+                                  : post.engagement_rate < 1
+                                    ? 'var(--danger)'
+                                    : 'var(--text-main)',
+                            }}
+                          >
+                            {post.engagement_rate.toFixed(2)}%
+                          </strong>
+                        </span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                          <Heart className="h-3 w-3" />{' '}
+                          <strong
+                            style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}
+                          >
+                            {formatNumber(post.likes)}
+                          </strong>
+                        </span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                          <MessageCircle className="h-3 w-3" />{' '}
+                          <strong
+                            style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}
+                          >
+                            {formatNumber(post.comments)}
+                          </strong>
+                        </span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                          <Bookmark className="h-3 w-3" />{' '}
+                          <strong
+                            style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}
+                          >
+                            {formatNumber(post.saved)}
+                          </strong>
+                        </span>
+                        {typeof post.follows === 'number' && (
+                          <span
+                            title="Novos seguidores"
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}
+                          >
+                            <UserPlus className="h-3 w-3" />{' '}
+                            <strong
+                              style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}
+                            >
+                              {formatNumber(post.follows)}
+                            </strong>
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </a>
+                  </button>
+                  <InstagramLinkButton permalink={post.permalink} size={36} shape="square" />
+                </div>
               ))
             )}
           </div>

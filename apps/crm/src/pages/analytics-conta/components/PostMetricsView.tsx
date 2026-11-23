@@ -22,7 +22,6 @@ import {
   formatSyncedAgo,
   rateBenchmark,
 } from '../contaFormat';
-import { ActionMetricValue } from './PostInsightsDetail';
 import { PostThumbnail } from './PostThumbnail';
 
 type Tab = 'overview' | 'engagement' | 'comments';
@@ -43,6 +42,29 @@ const RATE_ROWS: { key: RateKey; label: string }[] = [
   { key: 'save_rate', label: 'Salvamentos' },
   { key: 'comment_rate', label: 'Comentários' },
 ];
+
+/** A post's action-metric value, or "—" with a tooltip explaining why it's missing. */
+export function ActionMetricValue({
+  post,
+  metric,
+  as: Tag = 'strong',
+}: {
+  post: PostAnalytics;
+  metric: ActionMetricKey;
+  /** `span` renders plain text (table cells); `strong` is for label/value rows. */
+  as?: 'strong' | 'span';
+}) {
+  const value = post[metric];
+  if (typeof value === 'number') return <Tag>{value.toLocaleString('pt-BR')}</Tag>;
+  return (
+    <Tag
+      title={missingActionMetricTitle(metric, post.unavailable_metrics, post.media_type)}
+      style={{ color: 'var(--text-muted)', fontWeight: 400 }}
+    >
+      —
+    </Tag>
+  );
+}
 
 /** A titled block whose heading names it, so it reads as a region. */
 function Section({ title, children }: { title: string; children: ReactNode }) {

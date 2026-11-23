@@ -2269,11 +2269,6 @@ select.form-input option {
     display: none !important;
   }
 
-  /* The expanded caption rides in the strip beside the post it belongs to */
-  #posts-table tbody tr.post-detail-row {
-    flex-basis: 88%;
-  }
-
   /* Contato cell: stack email & phone, truncate overflow */
   .data-table td.td-contato {
     flex-wrap: wrap;
@@ -4902,6 +4897,74 @@ body.role-agent input[name='valor_total'] {
   box-shadow: none;
 }
 
+/*
+ * Analytics Conta: the card is a <div> holding a button that opens the metrics pop-up and,
+ * beside it, the Instagram link chip. The card clips its overflow, so the focus ring goes on
+ * the card, not on the button.
+ */
+.analytics-post-card--openable {
+  position: relative;
+}
+
+.analytics-post-card__open {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.analytics-post-card__open:focus-visible {
+  outline: none;
+}
+
+.analytics-post-card:has(.analytics-post-card__open:focus-visible) {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+.analytics-post-card__ig {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+}
+
+/* Posts table (first cell) and "Ver mais" drawer rows: button resets that keep the old look. */
+.post-row-open,
+.ranked-drawer-row__open {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ranked-drawer-row__open {
+  flex: 1;
+  min-width: 0;
+}
+
+.post-row-open:focus-visible,
+.ranked-drawer-row__open:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
 @media (max-width: 767px), (hover: none) and (pointer: coarse) {
   .instagram-post-carousel__header {
     flex-direction: column;
@@ -5007,10 +5070,6 @@ body.role-agent input[name='valor_total'] {
 
 [data-theme='dark'] .tag-assign-menu .tag-assign-option:hover {
   background: rgba(255, 255, 255, 0.06);
-}
-
-.post-detail-row td {
-  background: var(--card-bg) !important;
 }
 
 /* ===== Board (Entregas) ===== */
@@ -19329,9 +19388,6 @@ button.phone-stat-tile:active {
   --igc-notice-fg: #f5c27a;
 }
 
-.igc-detail-tabs {
-  margin-bottom: 1rem;
-}
 .igc-phone-tabs {
   margin: 4px 0 16px;
 }
