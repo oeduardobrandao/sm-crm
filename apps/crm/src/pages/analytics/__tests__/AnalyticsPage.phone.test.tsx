@@ -176,6 +176,17 @@ describe('AnalyticsPage (phone)', () => {
     expect(halves[1]).toHaveTextContent('Benchmarking de engajamento');
   });
 
+  it('portfolio strip cards still link to Instagram', () => {
+    renderPage();
+    const strip = screen.getByRole('region', { name: 'Melhores posts' });
+    const cards = within(strip).getAllByRole('link', { name: /abrir no Instagram$/ });
+    expect(cards).toHaveLength(5);
+    expect(cards[0]).toHaveClass('phone-an-post-card');
+    expect(cards[0]).toHaveAttribute('href', 'https://instagram.com/p/1');
+    expect(within(strip).queryAllByRole('button', { name: /visualizações/ })).toHaveLength(0);
+    expect(within(strip).queryAllByRole('link', { name: 'Abrir no Instagram' })).toHaveLength(0);
+  });
+
   it('shows the explanations that are tooltips on desktop as visible footers', () => {
     renderPage();
     expect(

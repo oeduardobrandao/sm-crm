@@ -1662,6 +1662,7 @@ function AnalyticsContent({
           bestTimes={bestTimesData}
           stories={storiesQuery.data ?? null}
           baseline={baselineQuery.data?.baseline ?? null}
+          dists={baselineQuery.data?.dists}
           tabs={tabs}
         />
         {dialogs}

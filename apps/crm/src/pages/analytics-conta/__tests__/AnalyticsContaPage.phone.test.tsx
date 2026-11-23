@@ -333,24 +333,114 @@ describe('AnalyticsContaPage (phone)', () => {
     await ready();
     const list = await screen.findByRole('list', { name: 'Performance de conteúdo' });
     fireEvent.click(within(list).getByRole('button', { name: /Reel de bastidores/ }));
-    const sheet = await screen.findByRole('dialog');
+    const sheet = await screen.findByRole('dialog', { name: 'Métricas do post' });
     expect(within(sheet).getByText('Reel de bastidores')).toBeInTheDocument();
-    expect(
-      within(sheet).getByText(/Visitas ao perfil: O Instagram não fornece este dado para Reels/),
-    ).toBeInTheDocument();
-    expect(within(sheet).getByRole('link', { name: 'Ver no Instagram' })).toBeInTheDocument();
+    const visits = within(sheet).getByText('Visitas ao perfil').closest('.post-metrics__card')!;
+    expect(visits).toHaveTextContent('O Instagram não fornece este dado para Reels');
+    expect(within(sheet).getByRole('link', { name: 'Abrir no Instagram' })).toHaveAttribute(
+      'href',
+      'https://instagram.com/p/1',
+    );
+    expect(within(sheet).queryByRole('link', { name: 'Ver no Instagram' })).toBeNull();
 
     fireEvent.click(within(sheet).getByRole('button', { name: 'Educativo' }));
     await waitFor(() => expect(assignTagToPost).toHaveBeenCalledWith('post-2', 9));
   });
 
-  it('flag desligada: o sheet do post não tem abas nem busca comentários', async () => {
+  it('the post sheet shows the Reel reason for follows', async () => {
     renderPage();
     await ready();
     const list = await screen.findByRole('list', { name: 'Performance de conteúdo' });
     fireEvent.click(within(list).getByRole('button', { name: /Reel de bastidores/ }));
-    const sheet = await screen.findByRole('dialog');
-    expect(within(sheet).queryByRole('tablist')).not.toBeInTheDocument();
+    const sheet = await screen.findByRole('dialog', { name: 'Métricas do post' });
+    const follows = within(sheet).getByText('Novos seguidores').closest('.post-metrics__card')!;
+    expect(follows).toHaveTextContent('—');
+    expect(follows).toHaveTextContent('O Instagram não fornece este dado para Reels');
+  });
+
+  it('the post sheet keeps Fechar, the Tags group and Nova tag', async () => {
+    renderPage();
+    await ready();
+    const list = await screen.findByRole('list', { name: 'Performance de conteúdo' });
+    fireEvent.click(within(list).getByRole('button', { name: /Post sobre botox/ }));
+    const sheet = await screen.findByRole('dialog', { name: 'Métricas do post' });
+    expect(within(sheet).getByRole('button', { name: 'Fechar' })).toBeInTheDocument();
+    expect(within(sheet).getByText('Tags')).toBeInTheDocument();
+    expect(within(sheet).getByRole('button', { name: 'Educativo' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(within(sheet).getByRole('button', { name: 'Nova tag' })).toBeInTheDocument();
+
+    // The tags are part of Visão geral only.
+    fireEvent.click(within(sheet).getByRole('tab', { name: 'Engajamento' }));
+    expect(within(sheet).queryByRole('button', { name: 'Nova tag' })).toBeNull();
+
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Fechar' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('a ranked strip card opens the post sheet; its Instagram chip links out', async () => {
+    renderPage();
+    await ready();
+    const strip = await screen.findByRole('region', { name: 'Melhores posts' });
+    const card = within(strip).getByRole('button', { name: /Post sobre botox/ });
+    expect(card).toHaveClass('phone-an-post-card');
+    expect(card).toHaveAccessibleName(expect.not.stringMatching(/abrir no Instagram/i));
+    const chips = within(strip).getAllByRole('link', { name: 'Abrir no Instagram' });
+    expect(chips).toHaveLength(2);
+    expect(chips[0]).toHaveAttribute('href', 'https://instagram.com/p/1');
+    // The chip sits next to the card, never inside it.
+    for (const chip of chips) expect(chip.closest('button')).toBeNull();
+
+    fireEvent.click(card);
+    const sheet = await screen.findByRole('dialog', { name: 'Métricas do post' });
+    expect(within(sheet).getByText('Post sobre botox')).toBeInTheDocument();
+  });
+
+  it('a "Ver mais" row opens the post sheet over the list', async () => {
+    vi.mocked(getPostsAnalytics).mockResolvedValue({
+      posts: [1, 2, 3, 4, 5, 6].map((n) =>
+        post({
+          id: `post-${n}`,
+          instagram_post_id: `ig${n}`,
+          caption: `Legenda número ${n}`,
+          permalink: `https://instagram.com/p/${n}`,
+          views: 1000 - n * 10,
+        }),
+      ),
+    } as never);
+    renderPage();
+    await ready();
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Ver mais' }))[0]);
+    const drawer = await screen.findByRole('dialog', { name: 'Melhores posts' });
+    const rows = within(drawer).getByRole('list', { name: 'Melhores posts' });
+    expect(within(rows).getAllByRole('link', { name: 'Abrir no Instagram' })).toHaveLength(6);
+    for (const chip of within(rows).getAllByRole('link', { name: 'Abrir no Instagram' })) {
+      expect(chip.closest('button')).toBeNull();
+    }
+
+    fireEvent.click(within(rows).getByRole('button', { name: /Legenda número 3/ }));
+    const sheet = await screen.findByRole('dialog', { name: 'Métricas do post' });
+    expect(within(sheet).getByText('Legenda número 3')).toBeInTheDocument();
+    // The list stays open underneath (aria-hidden while the post sheet is on top).
+    expect(drawer).toBeInTheDocument();
+    expect(drawer).toHaveAttribute('data-state', 'open');
+    expect(screen.getAllByRole('dialog', { hidden: true })).toHaveLength(2);
+  });
+
+  it('flag desligada: o sheet do post tem Visão geral e Engajamento, sem Comentários', async () => {
+    renderPage();
+    await ready();
+    const list = await screen.findByRole('list', { name: 'Performance de conteúdo' });
+    fireEvent.click(within(list).getByRole('button', { name: /Reel de bastidores/ }));
+    const sheet = await screen.findByRole('dialog', { name: 'Métricas do post' });
+    const tabs = within(sheet).getByRole('tablist', { name: 'Detalhes do post' });
+    expect(
+      within(tabs)
+        .getAllByRole('tab')
+        .map((t) => t.textContent),
+    ).toEqual(['Visão geral', 'Engajamento']);
     expect(getPostComments).not.toHaveBeenCalled();
   });
 
@@ -377,22 +467,22 @@ describe('AnalyticsContaPage (phone)', () => {
     await ready();
     const list = await screen.findByRole('list', { name: 'Performance de conteúdo' });
     fireEvent.click(within(list).getByRole('button', { name: /Reel de bastidores/ }));
-    const sheet = await screen.findByRole('dialog');
+    const sheet = await screen.findByRole('dialog', { name: 'Métricas do post' });
     const tabs = within(sheet).getByRole('tablist', { name: 'Detalhes do post' });
-    expect(within(tabs).getByRole('tab', { name: 'Insights' })).toHaveAttribute(
+    expect(within(tabs).getByRole('tab', { name: 'Visão geral' })).toHaveAttribute(
       'aria-selected',
       'true',
     );
     expect(within(sheet).getByText('Reel de bastidores')).toBeInTheDocument();
     expect(getPostComments).not.toHaveBeenCalled();
 
-    fireEvent.click(within(tabs).getByRole('tab', { name: 'Comentários' }));
+    fireEvent.click(within(tabs).getByRole('tab', { name: 'Comentários · 2' }));
     expect(await within(sheet).findByText('Amei o conteúdo')).toBeInTheDocument();
     expect(getPostComments).toHaveBeenCalledWith(42, 'ig2');
     expect(within(sheet).getByRole('button', { name: 'Analisar comentários' })).toBeDisabled();
   });
 
-  it('fechar o sheet em Comentários e abrir outro post abre em Insights, sem buscar', async () => {
+  it('fechar o sheet em Comentários e abrir outro post abre em Visão geral, sem buscar', async () => {
     limitsFeatures.feature_instagram_comments_ai = true;
     vi.mocked(getPostComments).mockResolvedValue({
       comments: [],
@@ -405,8 +495,8 @@ describe('AnalyticsContaPage (phone)', () => {
     await ready();
     const list = await screen.findByRole('list', { name: 'Performance de conteúdo' });
     fireEvent.click(within(list).getByRole('button', { name: /Post sobre botox/ }));
-    let sheet = await screen.findByRole('dialog');
-    fireEvent.click(within(sheet).getByRole('tab', { name: 'Comentários' }));
+    let sheet = await screen.findByRole('dialog', { name: 'Métricas do post' });
+    fireEvent.click(within(sheet).getByRole('tab', { name: /^Comentários/ }));
     await waitFor(() => expect(getPostComments).toHaveBeenCalledWith(42, 'ig1'));
 
     // The sheet is a Radix dialog: Escape closes it.
@@ -414,8 +504,8 @@ describe('AnalyticsContaPage (phone)', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 
     fireEvent.click(within(list).getByRole('button', { name: /Reel de bastidores/ }));
-    sheet = await screen.findByRole('dialog');
-    expect(within(sheet).getByRole('tab', { name: 'Insights' })).toHaveAttribute(
+    sheet = await screen.findByRole('dialog', { name: 'Métricas do post' });
+    expect(within(sheet).getByRole('tab', { name: 'Visão geral' })).toHaveAttribute(
       'aria-selected',
       'true',
     );
@@ -424,7 +514,7 @@ describe('AnalyticsContaPage (phone)', () => {
     expect(getPostComments).toHaveBeenCalledTimes(1);
   });
 
-  it('trocar de post com o sheet em Comentários volta a Insights sem buscar o post novo', async () => {
+  it('trocar de post com o sheet em Comentários volta a Visão geral sem buscar o post novo', async () => {
     limitsFeatures.feature_instagram_comments_ai = true;
     vi.mocked(getPostComments).mockResolvedValue({
       comments: [],
@@ -451,12 +541,15 @@ describe('AnalyticsContaPage (phone)', () => {
     const a = post({ id: 'post-1', instagram_post_id: 'ig1' });
     const b = post({ id: 'post-2', instagram_post_id: 'ig2', caption: 'Reel de bastidores' });
     const { rerender } = render(sheet(a));
-    fireEvent.click(await screen.findByRole('tab', { name: 'Comentários' }));
+    fireEvent.click(await screen.findByRole('tab', { name: /^Comentários/ }));
     await waitFor(() => expect(getPostComments).toHaveBeenCalledWith(42, 'ig1'));
 
     rerender(sheet(b));
     expect(await screen.findByText('Reel de bastidores')).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Insights' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Visão geral' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
     expect(getPostComments).not.toHaveBeenCalledWith(42, 'ig2');
   });
 

@@ -28,7 +28,7 @@ import {
   type PostTag,
   type StoriesAnalyticsResponse,
 } from '../../../services/analytics';
-import type { Baseline } from '../../../lib/ig-rates';
+import type { Baseline, RateDistributions } from '../../../lib/ig-rates';
 import { sanitizeUrl } from '../../../utils/security';
 import {
   Avatar,
@@ -193,6 +193,8 @@ export interface ContaPhoneProps {
   bestTimes: BestPostingTimes | null;
   stories: StoriesAnalyticsResponse | null;
   baseline: Baseline | null;
+  /** Rate distributions for the post sheet's Engajamento tab. */
+  dists?: RateDistributions;
   /** The client analytics shell's tab control, rendered under the identity. */
   tabs?: ReactNode;
 }
@@ -238,6 +240,7 @@ export function ContaPhone(props: ContaPhoneProps) {
     bestTimes,
     stories,
     baseline,
+    dists,
     tabs,
   } = props;
 
@@ -286,6 +289,7 @@ export function ContaPhone(props: ContaPhoneProps) {
     mediaType: post.media_type,
     title: post.caption || 'Sem legenda',
     meta: `${format(new Date(post.posted_at), "d 'de' MMM", { locale: ptBR })} · ${mediaTypeLabel(post.media_type)}`,
+    onSelect: () => setSelectedPostId(post.id),
     metrics: (
       <>
         <span>
@@ -431,6 +435,7 @@ export function ContaPhone(props: ContaPhoneProps) {
         posts={rankedPosts.slice(0, 5)}
         tone="best"
         titleOf={(p) => p.caption || 'Sem legenda'}
+        onSelect={(p) => setSelectedPostId(p.id)}
         onSeeMore={rankedPosts.length > 5 ? () => drawer.open('best') : undefined}
       />
       <RankedPostStrip
@@ -439,6 +444,7 @@ export function ContaPhone(props: ContaPhoneProps) {
         posts={matureRankedPosts.slice(0, 5)}
         tone="worst"
         titleOf={(p) => p.caption || 'Sem legenda'}
+        onSelect={(p) => setSelectedPostId(p.id)}
         onSeeMore={matureRankedPosts.length > 5 ? () => drawer.open('worst') : undefined}
       />
 
@@ -541,19 +547,6 @@ export function ContaPhone(props: ContaPhoneProps) {
         ]}
       />
 
-      <PostDetailSheet
-        clientId={clientId}
-        post={selectedPost}
-        onOpenChange={(open) => {
-          if (!open) setSelectedPostId(null);
-        }}
-        tags={tags}
-        onToggleTag={onToggleTag}
-        onNewTag={() => setNewTagOpen(true)}
-      />
-
-      <NewTagSheet open={newTagOpen} onOpenChange={setNewTagOpen} onCreate={onCreateTag} />
-
       <BottomSheet
         open={section !== null}
         onOpenChange={(open) => {
@@ -623,6 +616,21 @@ export function ContaPhone(props: ContaPhoneProps) {
           onDateTo: drawer.setDateTo,
         }}
       />
+
+      {/* After the list: a post opened from it stacks on top. */}
+      <PostDetailSheet
+        clientId={clientId}
+        post={selectedPost}
+        onOpenChange={(open) => {
+          if (!open) setSelectedPostId(null);
+        }}
+        tags={tags}
+        onToggleTag={onToggleTag}
+        onNewTag={() => setNewTagOpen(true)}
+        dists={dists}
+      />
+
+      <NewTagSheet open={newTagOpen} onOpenChange={setNewTagOpen} onCreate={onCreateTag} />
     </div>
   );
 }

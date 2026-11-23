@@ -19388,10 +19388,6 @@ button.phone-stat-tile:active {
   --igc-notice-fg: #f5c27a;
 }
 
-.igc-phone-tabs {
-  margin: 4px 0 16px;
-}
-
 .igc-panel {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
