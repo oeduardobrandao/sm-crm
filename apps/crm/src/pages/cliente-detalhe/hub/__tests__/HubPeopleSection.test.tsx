@@ -211,16 +211,15 @@ describe('HubPeopleSection (desktop)', () => {
   for (const [code, text] of Object.entries(ADD_ERRORS)) {
     it(`add error "${code}" shows its own message, never the raw text`, async () => {
       listReturns([MARINA]);
-      vi.mocked(store.addHubPerson).mockRejectedValue({
-        message: `raise_exception: ${code} (SQLSTATE P0001)`,
-      });
+      // PostgREST delivers `RAISE EXCEPTION 'code'` as the bare message, with the SQLSTATE apart.
+      vi.mocked(store.addHubPerson).mockRejectedValue({ message: code, code: 'P0001' });
       renderSection();
       await screen.findByText('Marina Costa');
       fireEvent.change(nameInput(), { target: { value: 'Paulo' } });
       fireEvent.change(emailInput(), { target: { value: 'p@x.com' } });
       fireEvent.click(screen.getByRole('button', { name: 'Adicionar pessoa' }));
       await waitFor(() => expect(toast.error).toHaveBeenCalledWith(text));
-      expect(document.body.textContent).not.toContain('SQLSTATE');
+      expect(document.body.textContent).not.toContain('P0001');
       expect(toast.success).not.toHaveBeenCalled();
     });
   }
