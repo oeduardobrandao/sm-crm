@@ -236,6 +236,23 @@ describe('PopupsPage editor', () => {
     expect(screen.getByRole('heading', { level: 2, name: 'Segunda' })).toBeInTheDocument();
   });
 
+  it('preview mostra o card na largura real do CRM e abre em tela cheia sobre o véu', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByText('Analytics de Stories'));
+    const stage = screen.getByTestId('popup-preview-stage');
+    // O card vive num wrapper de até 420px (GlobalPopupHost), não na coluna estreita de antes.
+    const card = stage.querySelector('[data-popup-page]') as HTMLElement;
+    expect(card.parentElement).toHaveStyle({ maxWidth: '420px' });
+    fireEvent.click(screen.getByRole('button', { name: 'Tela cheia' }));
+    const full = await screen.findByRole('dialog', { name: 'Analytics de Stories' });
+    expect(full).toHaveStyle({ maxWidth: '420px' });
+    expect(full).toHaveClass('w-[calc(100%-32px)]');
+    fireEvent.click(screen.getByRole('button', { name: 'Sair da prévia' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Analytics de Stories' })).toBeNull(),
+    );
+  });
+
   it('preview sanitiza links do markdown como o CRM: //host vira #, caminho interno passa', async () => {
     renderPage();
     await screen.findByText('Analytics de Stories');

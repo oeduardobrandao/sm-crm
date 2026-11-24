@@ -133,7 +133,7 @@ export default function PopupsPage() {
         formId={FORM_ID}
         submitLabel={editor.model.isEditing ? 'Atualizar' : 'Criar'}
         submitting={editor.submitting}
-        width="xl"
+        width="2xl"
       >
         {/* noValidate: a validação é toda nossa (validateForm). Sem isso o min/max do campo de dias
             faz o browser bloquear o submit com a bolha nativa em vez de mostrar o erro inline. */}

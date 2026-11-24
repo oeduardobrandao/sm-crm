@@ -1638,7 +1638,11 @@ html[data-standalone] {
    keep the width-only query. The shell copy below also reaches touch tablets, which render the
    phone shell at any width. */
 @media (max-width: 900px) {
-  .crisp-client {
+  /* Only while the chat panel reports closed: the transform makes .crisp-client the containing
+     block of Crisp's position: fixed panel, and on phones Crisp opens it full screen after
+     collapsing html/body to 0x0, so a lifted root leaves a blank page with no way out. Matching
+     the closed state (not "not open") means a Crisp markup change drops the lift, never the chat. */
+  .crisp-client:has([data-chat-status][data-visible='false']) {
     transform: translateY(-5.5rem);
   }
 
@@ -2546,7 +2550,7 @@ html[data-consent-stored] #root[data-ssr] .cookie-banner {
 /* The Crisp bubble clears the tab bar too. The width-only .crisp-client lift above also serves
    public pages; this copy reaches touch tablets, and only the CRM shell renders the tab bar. */
 @media (max-width: 900px), (hover: none) and (pointer: coarse) {
-  body:has(.mobile-nav-glass) .crisp-client {
+  body:has(.mobile-nav-glass) .crisp-client:has([data-chat-status][data-visible='false']) {
     transform: translateY(-5.5rem);
   }
 }

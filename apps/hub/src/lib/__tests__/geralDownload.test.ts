@@ -15,6 +15,7 @@ vi.mock('jszip', () => ({
 
 import {
   canDownloadGeral,
+  downloadCaption,
   downloadGeralContent,
   geralFileName,
   geralZipName,
@@ -82,6 +83,29 @@ describe('canDownloadGeral', () => {
   });
 });
 
+describe('downloadCaption', () => {
+  it('uses the Geral caption on a post with a Geral destination', () => {
+    expect(
+      downloadCaption(
+        post({ targets: ['instagram', 'geral'], ig_caption: 'IG', geral_caption: 'G' }),
+      ),
+    ).toBe('G');
+  });
+
+  it('uses the first platform caption with text on a social post', () => {
+    expect(downloadCaption(post({ targets: ['instagram'], ig_caption: ' IG ' }))).toBe('IG');
+    expect(
+      downloadCaption(
+        post({ targets: ['instagram', 'tiktok'], ig_caption: ' ', tiktok_caption: 'TT' }),
+      ),
+    ).toBe('TT');
+  });
+
+  it('is empty when there is no caption', () => {
+    expect(downloadCaption(post({ targets: ['instagram'], ig_caption: null }))).toBe('');
+  });
+});
+
 describe('file names', () => {
   it('numbers files in order with the extension of their type', () => {
     expect(geralFileName(media(), 0)).toBe('01.jpg');
@@ -118,7 +142,7 @@ describe('downloadGeralContent', () => {
   });
 
   it('saves a single file directly, without a zip', async () => {
-    await downloadGeralContent(post());
+    await expect(downloadGeralContent(post())).resolves.toBe('saved');
     expect(fetchMock).toHaveBeenCalledWith('https://cdn/a.jpg', { cache: 'no-store' });
     expect(downloads).toEqual(['01.jpg']);
     expect(zipFiles.size).toBe(0);
@@ -139,6 +163,18 @@ describe('downloadGeralContent', () => {
     expect(downloads).toEqual(['video-institucional-versao-final.zip']);
   });
 
+  it('puts the Instagram caption in legenda.txt for an Instagram post', async () => {
+    await downloadGeralContent(
+      post({
+        targets: ['instagram'],
+        status: 'enviado_cliente',
+        ig_caption: 'Legenda IG',
+        media: [media({ id: 1 }), media({ id: 2 })],
+      }),
+    );
+    expect(zipFiles.get('legenda.txt')).toBe('Legenda IG');
+  });
+
   it('leaves legenda.txt out when the Geral caption is empty', async () => {
     await downloadGeralContent(
       post({ geral_caption: '  ', media: [media({ id: 1 }), media({ id: 2 })] }),
@@ -150,5 +186,122 @@ describe('downloadGeralContent', () => {
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 403 }));
     await expect(downloadGeralContent(post())).rejects.toThrow('HTTP 403');
     expect(downloads).toEqual([]);
+  });
+});
+
+describe('downloadGeralContent on an iPhone', () => {
+  const fetchMock = vi.fn(
+    async (url: string) => new Response(new Blob([url], { type: 'video/mp4' })),
+  );
+  const share = vi.fn<(data: ShareData) => Promise<void>>();
+  const canShare = vi.fn<(data: ShareData) => boolean>();
+  let downloads: string[];
+
+  const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15';
+  const IPAD = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15';
+  const ANDROID = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/130 Mobile';
+
+  function device(userAgent: string, maxTouchPoints = 5) {
+    Object.defineProperty(navigator, 'userAgent', { value: userAgent, configurable: true });
+    Object.defineProperty(navigator, 'maxTouchPoints', {
+      value: maxTouchPoints,
+      configurable: true,
+    });
+  }
+
+  beforeEach(() => {
+    zipFiles.clear();
+    downloads = [];
+    share.mockReset().mockResolvedValue(undefined);
+    canShare.mockReset().mockReturnValue(true);
+    vi.stubGlobal('fetch', fetchMock);
+    Object.assign(navigator, { share, canShare });
+    device(IPHONE);
+    URL.createObjectURL = vi.fn(() => 'blob:x');
+    URL.revokeObjectURL = vi.fn();
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      downloads.push(this.download);
+    });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    fetchMock.mockClear();
+    Reflect.deleteProperty(navigator, 'share');
+    Reflect.deleteProperty(navigator, 'canShare');
+    // Drop the own properties so the prototype's getters come back.
+    Reflect.deleteProperty(navigator, 'userAgent');
+    Reflect.deleteProperty(navigator, 'maxTouchPoints');
+  });
+
+  const video = media({ kind: 'video', mime_type: 'video/mp4', url: 'https://cdn/v.mp4' });
+
+  it('opens the share sheet with each file, named in order, instead of a zip', async () => {
+    const result = await downloadGeralContent(
+      post({ media: [media({ id: 1 }), { ...video, id: 2 }] }),
+    );
+    expect(result).toBe('shared');
+    const files = share.mock.calls[0][0].files!;
+    expect(files.map((f) => f.name)).toEqual(['01.jpg', '02.mp4']);
+    expect(files[1].type).toBe('video/mp4');
+    expect(downloads).toEqual([]);
+    expect(zipFiles.size).toBe(0);
+  });
+
+  it('reports a closed share sheet as cancelled, not a failure', async () => {
+    share.mockRejectedValueOnce(Object.assign(new Error('x'), { name: 'AbortError' }));
+    const p = post({ media: [video] });
+    await expect(downloadGeralContent(p)).resolves.toBe('cancelled');
+    // Trying again reuses the files.
+    await expect(downloadGeralContent(p)).resolves.toBe('shared');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the files when the tap expired and shares them on the next tap without refetching', async () => {
+    share.mockRejectedValueOnce(Object.assign(new Error('x'), { name: 'NotAllowedError' }));
+    const p = post({ media: [video] });
+    await expect(downloadGeralContent(p)).resolves.toBe('pending');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await expect(downloadGeralContent(p)).resolves.toBe('shared');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(share).toHaveBeenCalledTimes(2);
+  });
+
+  it('falls back to the regular download when the files cannot be shared', async () => {
+    canShare.mockReturnValue(false);
+    await expect(downloadGeralContent(post({ media: [video] }))).resolves.toBe('saved');
+    expect(share).not.toHaveBeenCalled();
+    expect(downloads).toEqual(['01.mp4']);
+  });
+
+  it('also shares on an iPad, which reports a Mac user agent', async () => {
+    device(IPAD, 5);
+    await expect(downloadGeralContent(post({ media: [video] }))).resolves.toBe('shared');
+  });
+
+  it.each([
+    ['Android, whose download already reaches the gallery', ANDROID, 5],
+    ['a desktop Mac', IPAD, 0],
+  ])('keeps the regular download on %s', async (_label, ua, touchPoints) => {
+    device(ua, touchPoints);
+    await expect(downloadGeralContent(post({ media: [video] }))).resolves.toBe('saved');
+    expect(share).not.toHaveBeenCalled();
+    expect(downloads).toEqual(['01.mp4']);
+  });
+
+  it('keeps the pending files across a refetch that signs new URLs', async () => {
+    share.mockRejectedValueOnce(Object.assign(new Error('x'), { name: 'NotAllowedError' }));
+    await downloadGeralContent(post({ media: [video] }));
+    await expect(
+      downloadGeralContent(post({ media: [{ ...video, url: 'https://cdn/v.mp4?sig=new' }] })),
+    ).resolves.toBe('shared');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails on another share error', async () => {
+    share.mockRejectedValueOnce(Object.assign(new Error('x'), { name: 'DataError' }));
+    await expect(downloadGeralContent(post({ media: [video] }))).rejects.toThrow();
   });
 });

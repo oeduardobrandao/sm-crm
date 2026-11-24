@@ -823,16 +823,20 @@ describe('PostDetailDialog', () => {
       ).toBeInTheDocument();
     });
 
-    it('is not offered before approval', () => {
+    // Before approval, or without a Geral destination, the footer button and the caption copy
+    // stay out; the header "Baixar" covers those posts (see "PostDetailDialog download").
+    it('keeps the labeled footer button out before approval', () => {
       renderDialog(1, { posts: geral({ status: 'enviado_cliente' }) });
-      expect(screen.queryByRole('button', { name: /Baixar/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Baixar arquivo/ })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Baixar mídia da postagem' })).toBeInTheDocument();
     });
 
-    it('is not offered without a Geral destination', () => {
+    it('keeps the labeled footer button out without a Geral destination', () => {
       renderDialog(1, {
         posts: [post({ id: 1, status: 'aprovado_cliente', targets: ['instagram'] })],
       });
-      expect(screen.queryByRole('button', { name: /Baixar/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Baixar arquivo/ })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Baixar mídia da postagem' })).toBeInTheDocument();
     });
   });
 
@@ -1483,5 +1487,37 @@ describe('PostDetailDialog', () => {
       expect(screen.getByText('Só IG')).toBeInTheDocument();
       expect(screen.queryByText(/Mesma legenda/)).not.toBeInTheDocument();
     });
+  });
+});
+
+describe('PostDetailDialog download', () => {
+  afterEach(cleanup);
+
+  it('offers Baixar in the header on a pending Instagram post', () => {
+    renderDialog(1);
+    expect(screen.getByRole('button', { name: 'Baixar mídia da postagem' })).toBeInTheDocument();
+  });
+
+  it('offers Baixar on an approved Instagram post too', () => {
+    renderDialog(2);
+    expect(screen.getByRole('button', { name: 'Baixar mídia da postagem' })).toBeInTheDocument();
+  });
+
+  it('has no Baixar on a post without media', () => {
+    renderDialog(3);
+    expect(screen.queryByRole('button', { name: 'Baixar mídia da postagem' })).toBeNull();
+  });
+
+  it('leaves the approved Geral post to its labeled footer button', () => {
+    renderDialog(4, {
+      posts: [post({ id: 4, status: 'aprovado_cliente', targets: ['geral'] })],
+    });
+    expect(screen.queryByRole('button', { name: 'Baixar mídia da postagem' })).toBeNull();
+    expect(screen.getByRole('button', { name: /baixar arquivo/i })).toBeInTheDocument();
+  });
+
+  it('offers Baixar in the header on a Geral post still waiting for approval', () => {
+    renderDialog(5, { posts: [post({ id: 5, targets: ['geral'] })] });
+    expect(screen.getByRole('button', { name: 'Baixar mídia da postagem' })).toBeInTheDocument();
   });
 });

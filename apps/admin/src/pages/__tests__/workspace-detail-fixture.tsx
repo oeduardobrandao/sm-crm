@@ -3,7 +3,7 @@ import { render } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, RouterProvider, createBrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { vi } from 'vitest';
-import type { Plan, WorkspaceDetail } from '../../lib/api';
+import type { Plan, WorkspaceDetail, WorkspaceNote } from '../../lib/api';
 import * as api from '../../lib/api';
 import WorkspaceDetailPage from '../WorkspaceDetailPage';
 
@@ -86,6 +86,31 @@ export const MCP_KEY = {
   created_at: '2026-10-01T00:00:00Z',
 };
 
+/** Notes from two admins plus the note migrated from the old single text field. */
+export const NOTES: WorkspaceNote[] = [
+  {
+    id: 'n2',
+    body: 'Pediu desconto no anual',
+    created_at: '2026-11-22T14:30:00Z',
+    author_email: 'outra@mesaas.com.br',
+    is_mine: false,
+  },
+  {
+    id: 'n1',
+    body: 'Ligar dia 16',
+    created_at: '2026-11-20T09:00:00Z',
+    author_email: 'eu@mesaas.com.br',
+    is_mine: true,
+  },
+  {
+    id: 'n0',
+    body: 'Cliente antigo',
+    created_at: '2026-06-01T09:00:00Z',
+    author_email: null,
+    is_mine: false,
+  },
+];
+
 /** Points every API call the page and its two cards make at a resolved mock. */
 export function primeApi() {
   vi.mocked(api.getWorkspace).mockResolvedValue(WORKSPACE);
@@ -97,6 +122,9 @@ export function primeApi() {
   vi.mocked(api.setWorkspaceOverrides).mockResolvedValue({ message: 'ok' });
   vi.mocked(api.setWorkspacePlan).mockResolvedValue({ message: 'ok' } as never);
   vi.mocked(api.revokeMcpKey).mockResolvedValue({ message: 'ok' });
+  vi.mocked(api.listWorkspaceNotes).mockResolvedValue({ notes: NOTES });
+  vi.mocked(api.addWorkspaceNote).mockResolvedValue({ note: NOTES[1] });
+  vi.mocked(api.deleteWorkspaceNote).mockResolvedValue({ message: 'ok' });
 }
 
 export function renderPage() {

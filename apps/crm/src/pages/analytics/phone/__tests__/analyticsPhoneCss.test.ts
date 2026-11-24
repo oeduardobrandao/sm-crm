@@ -90,3 +90,43 @@ describe('analytics phone views on a phone', () => {
     expect(stack).toMatchObject({ display: 'flex', 'flex-direction': 'column' });
   });
 });
+
+/** Declarations of a top-level rule (outside any at-rule). */
+function topLevelDecls(selector: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  postcss.parse(css).walkRules((rule) => {
+    if (rule.parent?.type !== 'root') return;
+    if (!rule.selectors.map((s) => s.trim()).includes(selector)) return;
+    rule.walkDecls((d) => {
+      out[d.prop] = d.value;
+    });
+  });
+  return out;
+}
+
+describe('post metrics on phones', () => {
+  // Three equal segments leave ~102px of text at 390px; "Comentários · 142" measures 116px at 600.
+  it('sizes the post sheet tabs to their labels so "Comentários · N" fits at 390px', () => {
+    expect(
+      topLevelDecls('.phone-an-sheet .post-metrics__segmented .phone-segmented__item'),
+    ).toMatchObject({ flex: '1 1 auto', padding: '0 6px' });
+  });
+
+  it('lets a selectable strip card keep its slot in the strip, with the chip beside it', () => {
+    expect(topLevelDecls('.phone-an-post-card-wrap')).toMatchObject({
+      position: 'relative',
+      flex: '0 0 112px',
+      'scroll-snap-align': 'start',
+    });
+    expect(topLevelDecls('.phone-an-post-card__ig').position).toBe('absolute');
+  });
+
+  // As a flex item, min-width:auto takes the nowrap caption's min-content, so each wrap stretched
+  // to ~1147px in a real browser (jsdom cannot measure it).
+  it('keeps the strip card wrap at 112px instead of its caption min-content', () => {
+    expect(topLevelDecls('.phone-an-post-card-wrap')).toMatchObject({
+      'min-width': '0',
+      width: '112px',
+    });
+  });
+});

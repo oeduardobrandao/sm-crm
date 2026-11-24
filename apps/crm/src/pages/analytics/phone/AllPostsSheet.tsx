@@ -5,6 +5,7 @@ import { CheckList } from '@/components/mobile/CheckList';
 import { Cell, GroupedList } from '@/components/mobile/GroupedList';
 import { FormRow } from '@/components/mobile/FormRow';
 import { SegmentedControl } from '@/components/mobile/SegmentedControl';
+import { InstagramLinkButton, hasInstagramLink } from '@/components/instagram/InstagramLinkButton';
 import { sanitizeUrl } from '../../../utils/security';
 import { PostThumb } from './shared';
 
@@ -19,6 +20,11 @@ export interface AllPostsRow {
   meta: string;
   /** The numbers line (views, engagement, likes...). */
   metrics: ReactNode;
+  /**
+   * Opens the post in the page: the row becomes a button and `href` moves to an Instagram chip
+   * at its end. Without it the whole row links to `href`.
+   */
+  onSelect?: () => void;
 }
 
 interface Option {
@@ -125,14 +131,9 @@ export function AllPostsSheet({
             <p className="phone-an-empty">{emptyText}</p>
           ) : (
             <GroupedList aria-label={title}>
-              {rows.map((row, i) => (
-                <li key={row.key} className="phone-cell">
-                  <a
-                    href={sanitizeUrl(row.href)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="phone-cell__main"
-                  >
+              {rows.map((row, i) => {
+                const content = (
+                  <>
                     <span className="phone-an-rank" aria-hidden="true">
                       {i + 1}
                     </span>
@@ -144,9 +145,39 @@ export function AllPostsSheet({
                         <span className="phone-an-metrics">{row.metrics}</span>
                       </span>
                     </span>
-                  </a>
-                </li>
-              ))}
+                  </>
+                );
+                if (row.onSelect) {
+                  return (
+                    <li
+                      key={row.key}
+                      className={`phone-cell phone-an-post-row${hasInstagramLink(row.href || null) ? ' phone-an-post-row--ig' : ''}`}
+                    >
+                      <button type="button" className="phone-cell__main" onClick={row.onSelect}>
+                        {content}
+                      </button>
+                      <InstagramLinkButton
+                        permalink={row.href || null}
+                        size={36}
+                        shape="square"
+                        className="phone-an-post-row__ig"
+                      />
+                    </li>
+                  );
+                }
+                return (
+                  <li key={row.key} className="phone-cell">
+                    <a
+                      href={sanitizeUrl(row.href)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="phone-cell__main"
+                    >
+                      {content}
+                    </a>
+                  </li>
+                );
+              })}
             </GroupedList>
           )}
         </div>

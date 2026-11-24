@@ -344,6 +344,13 @@
     "downloadAll": "Baixar conteúdo ({{count}} arquivos)",
     "copyCaption": "Copiar legenda",
     "copied": "Copiada!",
-    "downloadFailed": "Não foi possível baixar agora. Tente de novo."
+    "downloadFailed": "Não foi possível baixar agora. Tente de novo.",
+    "readyToSave": "Pronto. Toque de novo para salvar no celular."
+  },
+  "download": {
+    "label": "Baixar",
+    "ariaLabel": "Baixar mídia da postagem",
+    "readyToSave": "Pronto. Toque em Baixar de novo para salvar no celular.",
+    "failed": "Não foi possível baixar agora. Tente de novo."
   }
 }

@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { InstagramLinkButton } from '@/components/instagram/InstagramLinkButton';
 import { sanitizeUrl } from '../../../utils/security';
 import { SectionHead, fmtNumber, mediaTypeLabel } from './shared';
 
@@ -8,7 +9,7 @@ import { SectionHead, fmtNumber, mediaTypeLabel } from './shared';
 export interface RankedPostLike {
   id: string | number;
   /** Empty when the platform gave no link: the card then shows its numbers without one. */
-  permalink: string;
+  permalink: string | null;
   thumbnail_url?: string | null;
   media_type: string;
   /** Null where the platform has no date: the card leaves it out. */
@@ -22,15 +23,20 @@ export interface RankedPostLike {
 const formatEng = (v: number | null) => (v === null ? '—' : `${v.toFixed(1).replace('.', ',')}%`);
 const formatViews = (v: number | null) => (v === null ? '—' : fmtNumber(v));
 
-/** One post of a "Melhores posts" / "Precisam de atenção" strip (FAnalytics mockup). */
-export function RankedPostCard({
+/**
+ * One post of a "Melhores posts" / "Precisam de atenção" strip (FAnalytics mockup). With
+ * `onSelect` the card is a button and the Instagram link a chip next to it; without it, the
+ * whole card links out.
+ */
+export function RankedPostCard<P extends RankedPostLike>({
   post,
   title,
   tone,
   typeLabel,
   openLabel = 'abrir no Instagram',
+  onSelect,
 }: {
-  post: RankedPostLike;
+  post: P;
   /** First line: the client (portfolio) or the caption (one account). */
   title: string;
   tone: 'best' | 'worst';
@@ -38,6 +44,8 @@ export function RankedPostCard({
   typeLabel?: string;
   /** Tail of the link's accessible name. */
   openLabel?: string;
+  /** Opens the post in the page instead of linking out. */
+  onSelect?: (post: P) => void;
 }) {
   const [failed, setFailed] = useState(false);
   const type = typeLabel ?? mediaTypeLabel(post.media_type);
@@ -71,6 +79,26 @@ export function RankedPostCard({
       </span>
     </>
   );
+  const label = `${type} de ${title}, ${formatViews(post.views)} visualizações`;
+  if (onSelect) {
+    return (
+      <div className="phone-an-post-card-wrap">
+        <button
+          type="button"
+          className="phone-an-post-card"
+          aria-label={label}
+          onClick={() => onSelect(post)}
+        >
+          {body}
+        </button>
+        <InstagramLinkButton
+          permalink={post.permalink}
+          size={32}
+          className="phone-an-post-card__ig"
+        />
+      </div>
+    );
+  }
   if (!post.permalink) return <div className="phone-an-post-card">{body}</div>;
   return (
     <a
@@ -78,7 +106,7 @@ export function RankedPostCard({
       target="_blank"
       rel="noopener noreferrer"
       className="phone-an-post-card"
-      aria-label={`${type} de ${title}, ${formatViews(post.views)} visualizações, ${openLabel}`}
+      aria-label={`${label}, ${openLabel}`}
     >
       {body}
     </a>
@@ -99,6 +127,7 @@ export function RankedPostStrip<P extends RankedPostLike>({
   seeMoreLabel = 'Ver mais',
   typeLabel,
   openLabel,
+  onSelect,
 }: {
   title: string;
   help: string;
@@ -110,6 +139,8 @@ export function RankedPostStrip<P extends RankedPostLike>({
   seeMoreLabel?: string;
   typeLabel?: string;
   openLabel?: string;
+  /** Opens a post in the page; without it each card links to the platform. */
+  onSelect?: (post: P) => void;
 }) {
   const headingId = useId();
   if (posts.length === 0) return null;
@@ -136,6 +167,7 @@ export function RankedPostStrip<P extends RankedPostLike>({
             tone={tone}
             typeLabel={typeLabel}
             openLabel={openLabel}
+            onSelect={onSelect}
           />
         ))}
       </div>

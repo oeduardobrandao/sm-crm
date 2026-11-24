@@ -429,7 +429,9 @@ export function PopupEditorDesktop({ m }: { m: PopupEditorModel }) {
         </div>
       </div>
 
-      <div className="sticky top-0 w-[300px] shrink-0">
+      {/* 444px = o card na largura real do CRM (420px) + o respiro do palco. Abaixo disso a
+          coluna desce para baixo do formulário (flex-wrap) em vez de estreitar o card. */}
+      <div className="sticky top-0 w-[444px] max-w-full shrink-0">
         <PopupPreview m={m} />
       </div>
     </div>

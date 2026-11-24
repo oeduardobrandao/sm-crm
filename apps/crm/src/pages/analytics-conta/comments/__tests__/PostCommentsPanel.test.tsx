@@ -99,7 +99,7 @@ import { PostCommentsPanel } from '../PostCommentsPanel';
 
 function post(overrides: Partial<PostAnalytics> = {}): PostAnalytics {
   return {
-    id: 1,
+    id: 'post-1',
     instagram_post_id: 'ig-1',
     caption: 'Rotina de skincare',
     media_type: 'VIDEO',
@@ -112,6 +112,7 @@ function post(overrides: Partial<PostAnalytics> = {}): PostAnalytics {
     saved: 4,
     shares: 1,
     views: 900,
+    reposts: null,
     profile_visits: 3,
     follows: 2,
     bio_link_clicks: null,
@@ -123,6 +124,7 @@ function post(overrides: Partial<PostAnalytics> = {}): PostAnalytics {
     engagement_rate: 3.2,
     saves_rate: 0.8,
     tags: [],
+    synced_at: null,
     ...overrides,
   } as PostAnalytics;
 }
@@ -476,38 +478,115 @@ describe('PostCommentsPanel: moderação', () => {
     expect(screen.queryByRole('button', { name: 'Ações do comentário' })).not.toBeInTheDocument();
   });
 
-  it('respostas aparecem recuadas sob o pai e o rodapé conta itens únicos', async () => {
+  const texts = (list: HTMLElement) =>
+    Array.from(list.querySelectorAll('.igc-comment__text')).map((e) => e.textContent);
+
+  it('respostas ficam recolhidas atrás de Ver N respostas e abrem recuadas', async () => {
     getPostCommentsMock.mockResolvedValue(response({ comments: THREAD }));
     renderPanel();
     const list = await screen.findByRole('list', { name: 'Comentários' });
-    const items = within(list).getAllByRole('listitem');
-    expect(items.map((li) => li.querySelector('.igc-comment__text')?.textContent)).toEqual([
-      'Comentário pai',
-      'Primeira resposta',
-      'Segunda resposta',
-      'Outro comentário',
-    ]);
-    expect(items[0]).not.toHaveClass('igc-comment--reply');
-    expect(items[1]).toHaveClass('igc-comment--reply');
-    expect(items[2]).toHaveClass('igc-comment--reply');
-    expect(items[3]).not.toHaveClass('igc-comment--reply');
-    // Respostas também têm o menu.
-    expect(within(items[1]).getByRole('button', { name: 'Ações do comentário' })).toBeEnabled();
+    expect(texts(list)).toEqual(['Comentário pai', 'Outro comentário']);
+    const toggle = screen.getByRole('button', { name: 'Ver 2 respostas' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(rowOf('Comentário pai').querySelector('.igc-comment__meta')?.textContent).not.toContain(
+      '2 respostas',
+    );
+    fireEvent.click(toggle);
+    const hide = screen.getByRole('button', { name: 'Ocultar respostas' });
+    expect(hide).toHaveAttribute('aria-expanded', 'true');
+    const replies = document.getElementById(hide.getAttribute('aria-controls') as string)!;
+    expect(replies.tagName).toBe('UL');
+    expect(within(replies).getByText('Primeira resposta')).toBeInTheDocument();
+    expect(within(replies).getByText('Segunda resposta')).toBeInTheDocument();
+    expect(rowOf('Primeira resposta')).toHaveClass('igc-comment--reply');
+    expect(rowOf('Segunda resposta')).toHaveClass('igc-comment--reply');
+    expect(
+      within(rowOf('Primeira resposta')).getByRole('button', { name: 'Ações do comentário' }),
+    ).toBeEnabled();
+    expect(screen.getByText(/Mostrando 4 comentários/)).toBeInTheDocument();
+    fireEvent.click(hide);
+    expect(screen.queryByText('Primeira resposta')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ver 2 respostas' })).toBeInTheDocument();
     expect(screen.getByText(/Mostrando 4 comentários/)).toBeInTheDocument();
   });
 
-  it('Ver mais pagina por comentários de topo e cada grupo vem com as respostas', async () => {
+  function pagedComments() {
     const tops = manyComments(21);
     const replies = Array.from({ length: 3 }, (_, i) =>
       comment({ id: `r${i}`, text: `Resposta ${i}`, parent_id: 'c0' }),
     );
-    getPostCommentsMock.mockResolvedValue(response({ comments: [...tops, ...replies] }));
+    return response({ comments: [...tops, ...replies] });
+  }
+
+  it('Ver mais pagina por comentários de topo e as respostas só contam abertas', async () => {
+    getPostCommentsMock.mockResolvedValue(pagedComments());
     renderPanel();
     const list = await screen.findByRole('list', { name: 'Comentários' });
-    // 20 grupos de topo; o primeiro traz as 3 respostas.
-    expect(within(list).getAllByRole('listitem')).toHaveLength(23);
+    expect(list.querySelectorAll('.igc-comment')).toHaveLength(20);
+    expect(screen.getByRole('button', { name: 'Ver 3 respostas' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Ver mais comentários (1)' }));
-    expect(within(list).getAllByRole('listitem')).toHaveLength(24);
+    expect(list.querySelectorAll('.igc-comment')).toHaveLength(21);
+  });
+
+  it('conversa aberta continua aberta depois de Ver mais', async () => {
+    getPostCommentsMock.mockResolvedValue(pagedComments());
+    renderPanel();
+    await screen.findByRole('list', { name: 'Comentários' });
+    fireEvent.click(screen.getByRole('button', { name: 'Ver 3 respostas' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ver mais comentários (1)' }));
+    expect(screen.getByText('Resposta 0')).toBeInTheDocument();
+    expect(screen.getByText('Resposta 2')).toBeInTheDocument();
+  });
+
+  it('mais respostas no Instagram: link só quando a lista não tem todas', async () => {
+    getPostCommentsMock.mockResolvedValue(
+      response({
+        comments: [
+          comment({ id: 'a', text: 'Pai A', replies_count: 5 }),
+          comment({ id: 'a1', text: 'Resp A1', parent_id: 'a' }),
+          comment({ id: 'a2', text: 'Resp A2', parent_id: 'a' }),
+          comment({ id: 'b', text: 'Pai B', replies_count: 2, replies_more: true }),
+          comment({ id: 'b1', text: 'Resp B1', parent_id: 'b' }),
+          comment({ id: 'c', text: 'Pai C', replies_count: 2 }),
+          comment({ id: 'c1', text: 'Resp C1', parent_id: 'c' }),
+          comment({ id: 'c2', text: 'Resp C2', parent_id: 'c' }),
+        ],
+      }),
+    );
+    renderPanel();
+    await screen.findByText('Pai A');
+    expect(screen.queryByRole('link', { name: /ver no Instagram/ })).not.toBeInTheDocument();
+    const toggles = screen.getAllByRole('button', { name: /^Ver \d respostas?$/ });
+    toggles.forEach((b) => fireEvent.click(b));
+    const more = screen.getByRole('link', { name: 'Mais 3 respostas · ver no Instagram' });
+    expect(more).toHaveAttribute('href', post().permalink);
+    expect(more).toHaveAttribute('target', '_blank');
+    expect(screen.getByRole('link', { name: 'Mais respostas · ver no Instagram' })).toBeVisible();
+    expect(screen.getAllByRole('link', { name: /ver no Instagram/ })).toHaveLength(2);
+  });
+
+  it('post sem permalink seguro: nenhum link para o Instagram nas respostas nem no rodapé', async () => {
+    for (const permalink of [null, '', 'javascript:alert(1)']) {
+      getPostCommentsMock.mockResolvedValue(
+        response({
+          comments: [
+            comment({ id: 'a', text: 'Pai A', replies_count: 5 }),
+            comment({ id: 'a1', text: 'Resp A1', parent_id: 'a' }),
+            comment({ id: 'b', text: 'Pai B', replies_count: 2, replies_more: true }),
+            comment({ id: 'b1', text: 'Resp B1', parent_id: 'b' }),
+          ],
+        }),
+      );
+      const { unmount } = renderPanel(post({ permalink }));
+      await screen.findByText('Pai A');
+      screen
+        .getAllByRole('button', { name: /^Ver \d respostas?$/ })
+        .forEach((b) => fireEvent.click(b));
+      expect(screen.getByText('Resp A1')).toBeInTheDocument();
+      expect(screen.queryByText(/ver no Instagram/)).not.toBeInTheDocument();
+      expect(screen.queryAllByRole('link')).toHaveLength(0);
+      unmount();
+    }
   });
 
   it('comentário oculto mostra o selo Oculto e o menu oferece Mostrar comentário', async () => {
@@ -666,6 +745,26 @@ describe('PostCommentsPanel: moderação', () => {
     expect(screen.getByText('Outro comentário')).toBeInTheDocument();
     expect(screen.getByText(/Mostrando 1 comentário/)).toBeInTheDocument();
     expect(toastMock).toHaveBeenCalledWith('Comentário excluído');
+  });
+
+  it('excluir uma resposta aberta atualiza a contagem do pai: sem "ver no Instagram" e sem "1 resposta" velha', async () => {
+    getPostCommentsMock.mockResolvedValue(response({ comments: THREAD }));
+    deleteMock.mockResolvedValueOnce({ id: 'r1', deleted: true });
+    renderPanel();
+    await screen.findByText('Comentário pai');
+    fireEvent.click(screen.getByRole('button', { name: 'Ver 2 respostas' }));
+    await deleteVia('Primeira resposta');
+    expect(screen.queryByText('Primeira resposta')).not.toBeInTheDocument();
+    expect(screen.getByText('Segunda resposta')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /ver no Instagram/ })).not.toBeInTheDocument();
+
+    deleteMock.mockResolvedValueOnce({ id: 'r2', deleted: true });
+    await deleteVia('Segunda resposta');
+    expect(screen.queryByText('Segunda resposta')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Ver \d+ respostas?$/ })).not.toBeInTheDocument();
+    expect(rowOf('Comentário pai').querySelector('.igc-comment__meta')?.textContent).not.toMatch(
+      /resposta/,
+    );
   });
 
   it('citação do diálogo trunca em 140 caracteres com …', async () => {
@@ -848,5 +947,352 @@ describe('PostCommentsPanel: moderação', () => {
     expect(await screen.findByText('Comentário novo')).toBeInTheDocument();
     expect(rowOf('Outro comentário')).toHaveClass('igc-comment--hidden');
     expect(screen.getByText(/Mostrando 2 comentários/)).toBeInTheDocument();
+  });
+});
+
+describe('PostCommentsPanel: filtro por tipo', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    savedIdsMock.mockResolvedValue(new Set());
+    canModerateRef.current = true;
+  });
+
+  // ANALYSIS.analyzed_at is 2 days ago: OLD is before the reading, NEW after it.
+  const OLD = new Date(Date.now() - 3 * 86400 * 1000).toISOString();
+  const NEW = new Date(Date.now() - 3600 * 1000).toISOString();
+
+  function typed(parentOfSpam = 'a1'): IgComment[] {
+    return [
+      comment({
+        id: 'a1',
+        text: 'Amei o vídeo',
+        username: 'ana',
+        replies_count: 1,
+        timestamp: OLD,
+      }),
+      comment({ id: 'a2', text: 'Que lindo', username: 'bia', replies_count: 0, timestamp: OLD }),
+      comment({ id: 'k1', text: 'Achei caro', username: 'caio', replies_count: 0, timestamp: OLD }),
+      comment({
+        id: 's1',
+        text: 'Sigam meu perfil',
+        username: 'spammer',
+        replies_count: 0,
+        parent_id: parentOfSpam,
+        timestamp: OLD,
+      }),
+      comment({
+        id: 'o1',
+        text: 'Obrigado pelo carinho',
+        username: 'loja',
+        replies_count: 0,
+        from_owner: true,
+        timestamp: OLD,
+      }),
+      comment({
+        id: 'u1',
+        text: 'Sem tipo aqui',
+        username: 'duda',
+        replies_count: 0,
+        timestamp: OLD,
+      }),
+    ];
+  }
+
+  function typedAnalysis(
+    tipos: Record<string, 'apoio' | 'duvida' | 'critica' | 'discussao' | 'spam' | null> = {
+      a1: 'apoio',
+      a2: 'apoio',
+      k1: 'critica',
+      s1: 'spam',
+    },
+  ): StoredAnalysis {
+    return {
+      ...ANALYSIS,
+      comments_count_at_analysis: 6,
+      result: { ...ANALYSIS.result, tipos, tipos_status: 'ok' },
+    };
+  }
+
+  const FILTER = { name: 'Filtrar comentários por tipo' };
+  const texts = (list: HTMLElement) =>
+    Array.from(list.querySelectorAll('.igc-comment__text')).map((e) => e.textContent);
+  const TOPS = [
+    'Amei o vídeo',
+    'Que lindo',
+    'Achei caro',
+    'Obrigado pelo carinho',
+    'Sem tipo aqui',
+  ];
+
+  it('linha mostra o tipo na meta', async () => {
+    getPostCommentsMock.mockResolvedValue(
+      response({ comments: typed(), cached_analysis: typedAnalysis() }),
+    );
+    renderPanel(post({ comments: 6 }));
+    await screen.findByText('Achei caro');
+    const critica = rowOf('Achei caro');
+    expect(within(critica).getByText('Crítica')).toBeInTheDocument();
+    expect(critica.querySelector('.igc-cat--critica')).not.toBeNull();
+    expect(rowOf('Obrigado pelo carinho').querySelector('.igc-tipo')).toBeNull();
+    expect(rowOf('Sem tipo aqui').querySelector('.igc-tipo')).toBeNull();
+  });
+
+  it('chips em ordem, com contagem, e zero oculto', async () => {
+    getPostCommentsMock.mockResolvedValue(
+      response({ comments: typed(), cached_analysis: typedAnalysis() }),
+    );
+    renderPanel(post({ comments: 6 }));
+    const group = await screen.findByRole('group', FILTER);
+    const chips = within(group).getAllByRole('button');
+    expect(chips.map((b) => b.textContent)).toEqual(['Todos 6', 'Apoio 2', 'Crítica 1', 'Spam 1']);
+    expect(within(group).queryByRole('button', { name: /Dúvida/ })).not.toBeInTheDocument();
+    expect(within(group).queryByRole('button', { name: /Discussão/ })).not.toBeInTheDocument();
+    expect(within(group).getByRole('button', { name: 'Todos 6' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(within(group).getByRole('button', { name: 'Spam 1' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+  });
+
+  it('escolher um tipo mostra lista plana', async () => {
+    getPostCommentsMock.mockResolvedValue(
+      response({ comments: typed(), cached_analysis: typedAnalysis() }),
+    );
+    renderPanel(post({ comments: 6 }));
+    const group = await screen.findByRole('group', FILTER);
+    const list = screen.getByRole('list', { name: 'Comentários' });
+    expect(texts(list)).toEqual(TOPS);
+
+    fireEvent.click(within(group).getByRole('button', { name: 'Spam 1' }));
+    expect(within(group).getByRole('button', { name: 'Spam 1' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(within(group).getByRole('button', { name: 'Todos 6' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    expect(texts(list)).toEqual(['Sigam meu perfil']);
+    expect(within(rowOf('Sigam meu perfil')).getByText('Em resposta a @ana')).toBeInTheDocument();
+    expect(rowOf('Sigam meu perfil')).not.toHaveClass('igc-comment--reply');
+    expect(screen.queryByRole('button', { name: /^Ver \d+ respostas?$/ })).not.toBeInTheDocument();
+
+    fireEvent.click(within(group).getByRole('button', { name: 'Todos 6' }));
+    expect(texts(list)).toEqual(TOPS);
+    expect(screen.getByRole('button', { name: 'Ver 1 resposta' })).toBeInTheDocument();
+  });
+
+  it('conversa aberta não mostra Em resposta a', async () => {
+    getPostCommentsMock.mockResolvedValue(
+      response({ comments: typed(), cached_analysis: typedAnalysis() }),
+    );
+    renderPanel(post({ comments: 6 }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver 1 resposta' }));
+    expect(screen.getByText('Sigam meu perfil')).toBeInTheDocument();
+    expect(screen.queryByText(/Em resposta a/)).not.toBeInTheDocument();
+  });
+
+  it('resposta sem o pai na lista não mostra Em resposta a', async () => {
+    getPostCommentsMock.mockResolvedValue(
+      response({ comments: typed('sumido'), cached_analysis: typedAnalysis() }),
+    );
+    renderPanel(post({ comments: 6 }));
+    const group = await screen.findByRole('group', FILTER);
+    fireEvent.click(within(group).getByRole('button', { name: 'Spam 1' }));
+    expect(screen.getByText('Sigam meu perfil')).toBeInTheDocument();
+    expect(screen.queryByText(/Em resposta a/)).not.toBeInTheDocument();
+  });
+
+  it('aviso de sem tipo só com filtro ativo', async () => {
+    const comments = [
+      ...typed(),
+      comment({
+        id: 'l1',
+        text: 'Cheguei agora',
+        username: 'eva',
+        replies_count: 0,
+        timestamp: NEW,
+      }),
+      comment({
+        id: 'n1',
+        text: 'Sem classificação',
+        username: 'fabi',
+        replies_count: 0,
+        timestamp: OLD,
+      }),
+    ];
+    getPostCommentsMock.mockResolvedValue(
+      response({
+        comments,
+        cached_analysis: typedAnalysis({
+          a1: 'apoio',
+          a2: 'apoio',
+          k1: 'critica',
+          s1: 'spam',
+          n1: null,
+        }),
+      }),
+    );
+    renderPanel(post({ comments: 8 }));
+    const group = await screen.findByRole('group', FILTER);
+    expect(screen.queryByText(/depois da leitura/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/não foram classificados/)).not.toBeInTheDocument();
+
+    fireEvent.click(within(group).getByRole('button', { name: 'Apoio 2' }));
+    expect(
+      screen.getByText(
+        '1 comentário chegou depois da leitura e ainda não tem tipo. Refaça a leitura para incluí-lo.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText('2 comentários não foram classificados.')).toBeInTheDocument();
+  });
+
+  it('excluir o último do tipo ativo volta para Todos', async () => {
+    getPostCommentsMock.mockResolvedValue(
+      response({ comments: typed(), cached_analysis: typedAnalysis() }),
+    );
+    deleteMock.mockResolvedValue({ id: 's1', deleted: true });
+    renderPanel(post({ comments: 6 }));
+    const group = await screen.findByRole('group', FILTER);
+    fireEvent.click(within(group).getByRole('button', { name: 'Spam 1' }));
+    await deleteVia('Sigam meu perfil');
+    expect(deleteMock).toHaveBeenCalledWith(42, 'ig-1', 's1');
+    await waitFor(() =>
+      expect(within(group).queryByRole('button', { name: /^Spam/ })).not.toBeInTheDocument(),
+    );
+    expect(within(group).getByRole('button', { name: 'Todos 5' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    const list = screen.getByRole('list', { name: 'Comentários' });
+    expect(texts(list)).toEqual(TOPS);
+  });
+
+  it('leitura antiga mostra o aviso e Refazer leitura', async () => {
+    getPostCommentsMock.mockResolvedValue(
+      response({
+        comments: typed(),
+        cached_analysis: { ...ANALYSIS, comments_count_at_analysis: 6 },
+      }),
+    );
+    const call = deferred<StoredAnalysis>();
+    analyzeMock.mockReturnValueOnce(call.promise);
+    renderPanel(post({ comments: 6 }));
+    expect(await screen.findByText('Filtre os comentários por tipo')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Esta leitura é anterior ao filtro. Refaça a leitura para classificar cada comentário.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('group', FILTER)).not.toBeInTheDocument();
+
+    const redo = screen.getByRole('button', { name: 'Refazer leitura' });
+    fireEvent.click(redo);
+    expect(analyzeMock).toHaveBeenCalledWith(42, 'ig-1');
+    await waitFor(() => expect(redo).toBeDisabled());
+    expect(redo).toHaveTextContent('Refazendo...');
+
+    await act(async () => call.resolve(typedAnalysis()));
+    expect(await screen.findByRole('group', FILTER)).toBeInTheDocument();
+    expect(screen.queryByText('Filtre os comentários por tipo')).not.toBeInTheDocument();
+  });
+
+  it('classificação falhou mostra o aviso de falha', async () => {
+    getPostCommentsMock.mockResolvedValue(
+      response({
+        comments: typed(),
+        cached_analysis: {
+          ...ANALYSIS,
+          comments_count_at_analysis: 6,
+          result: { ...ANALYSIS.result, tipos_status: 'failed' },
+        },
+      }),
+    );
+    renderPanel(post({ comments: 6 }));
+    expect(
+      await screen.findByText(
+        'Não deu para classificar os comentários nesta leitura. Refaça a leitura para tentar de novo.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Refazer leitura' })).toBeEnabled();
+    expect(screen.queryByText(/anterior ao filtro/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', FILTER)).not.toBeInTheDocument();
+  });
+
+  it('sem leitura não mostra chips nem aviso', async () => {
+    getPostCommentsMock.mockResolvedValue(response({ comments: typed(), cached_analysis: null }));
+    renderPanel(post({ comments: 6 }));
+    await screen.findByText('Achei caro');
+    expect(screen.queryByRole('group', FILTER)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Refazer leitura' })).not.toBeInTheDocument();
+    expect(document.querySelector('.igc-tipo')).toBeNull();
+  });
+
+  it('refazer com filtro ativo e voltar failed', async () => {
+    getPostCommentsMock.mockResolvedValue(
+      response({ comments: typed(), cached_analysis: typedAnalysis() }),
+    );
+    analyzeMock
+      .mockResolvedValueOnce({
+        ...ANALYSIS,
+        comments_count_at_analysis: 6,
+        result: { ...ANALYSIS.result, tipos_status: 'failed' },
+      })
+      .mockResolvedValueOnce(typedAnalysis());
+    // 20 on Instagram against 6 at the reading: the reading card offers Refazer análise.
+    renderPanel(post({ comments: 20 }));
+    const group = await screen.findByRole('group', FILTER);
+    fireEvent.click(within(group).getByRole('button', { name: 'Apoio 2' }));
+    const list = screen.getByRole('list', { name: 'Comentários' });
+    expect(texts(list)).toEqual(['Amei o vídeo', 'Que lindo']);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refazer análise' }));
+    expect(
+      await screen.findByText(
+        'Não deu para classificar os comentários nesta leitura. Refaça a leitura para tentar de novo.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('group', FILTER)).not.toBeInTheDocument();
+    expect(texts(list)).toEqual(TOPS);
+    expect(screen.getByRole('button', { name: 'Ver 1 resposta' })).toBeInTheDocument();
+
+    // A later redo that classifies again does not bring Apoio back on its own.
+    fireEvent.click(screen.getByRole('button', { name: 'Refazer leitura' }));
+    const again = await screen.findByRole('group', FILTER);
+    expect(within(again).getByRole('button', { name: 'Todos 6' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(within(again).getByRole('button', { name: 'Apoio 2' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    expect(texts(list)).toEqual(TOPS);
+  });
+
+  it('filtro paginado de 20', async () => {
+    const comments = manyComments(25).map((c) => ({ ...c, replies_count: 0, timestamp: OLD }));
+    const tipos = Object.fromEntries(comments.map((c) => [c.id, 'apoio' as const]));
+    getPostCommentsMock.mockResolvedValue(
+      response({
+        comments,
+        cached_analysis: { ...typedAnalysis(tipos), comments_count_at_analysis: 25 },
+      }),
+    );
+    renderPanel(post({ comments: 25 }));
+    const group = await screen.findByRole('group', FILTER);
+    const list = screen.getByRole('list', { name: 'Comentários' });
+    // Paged conversations first; picking a type starts the flat list at 20 again.
+    fireEvent.click(screen.getByRole('button', { name: 'Ver mais comentários (5)' }));
+    expect(list.querySelectorAll('.igc-comment')).toHaveLength(25);
+
+    fireEvent.click(within(group).getByRole('button', { name: 'Apoio 25' }));
+    expect(list.querySelectorAll('.igc-comment')).toHaveLength(20);
+    fireEvent.click(screen.getByRole('button', { name: 'Ver mais comentários (5)' }));
+    expect(list.querySelectorAll('.igc-comment')).toHaveLength(25);
+    expect(screen.queryByRole('button', { name: /Ver mais comentários/ })).not.toBeInTheDocument();
   });
 });

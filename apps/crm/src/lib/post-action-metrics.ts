@@ -41,6 +41,9 @@ export function compareNullableNumber(
   return dir === 'asc' ? a - b : b - a;
 }
 
+/** Why a metric reads "—": the last sync asked Instagram and got nothing back. */
+export const NOT_RETURNED_TITLE = 'O Instagram não retornou este dado na última sincronização';
+
 /**
  * Tooltip for a "—": a Reel (Instagram never provides these), did the last sync
  * ask and get nothing, or was it never fetched? `VIDEO` stands in for Reels:
@@ -52,7 +55,5 @@ export function missingActionMetricTitle(
   mediaType?: string | null,
 ): string {
   if (mediaType === 'VIDEO') return 'O Instagram não fornece este dado para Reels';
-  return unavailable?.includes(metric)
-    ? 'O Instagram não retornou este dado na última sincronização'
-    : 'Sem dado para este post';
+  return unavailable?.includes(metric) ? NOT_RETURNED_TITLE : 'Sem dado para este post';
 }

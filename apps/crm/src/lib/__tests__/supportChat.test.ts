@@ -24,10 +24,29 @@ describe('supportChat', () => {
     seedConsent({ support: true });
     const { openSupportChat } = await import('../supportChat');
     expect(openSupportChat()).toBe(true);
-    expect(window.$crisp).toEqual([
+    expect(window.$crisp.filter((c) => c[0] === 'do')).toEqual([
       ['do', 'chat:show'],
       ['do', 'chat:open'],
     ]);
+  });
+
+  it('hides the bubble again when the chat closes, also where the desktop top bar never mounts', async () => {
+    seedConsent({ support: true });
+    const { openSupportChat } = await import('../supportChat');
+    openSupportChat();
+    const onClosed = window.$crisp.find((c) => c[0] === 'on' && c[1] === 'chat:closed');
+    expect(onClosed).toBeDefined();
+    window.$crisp = [];
+    (onClosed![2] as () => void)();
+    expect(window.$crisp).toEqual([['do', 'chat:hide']]);
+  });
+
+  it('registers the Crisp listeners once across repeated opens (Crisp keeps one callback per event)', async () => {
+    seedConsent({ support: true });
+    const { openSupportChat } = await import('../supportChat');
+    openSupportChat();
+    openSupportChat();
+    expect(window.$crisp.filter((c) => c[0] === 'on' && c[1] === 'chat:closed')).toHaveLength(1);
   });
 
   it('opens the chat once consent arrives after a blocked click, but not after the dialog was dismissed', async () => {

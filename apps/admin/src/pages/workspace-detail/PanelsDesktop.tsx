@@ -25,6 +25,7 @@ import {
   roleLabel,
   subscriptionRows,
 } from './shared';
+import { NotesList, NOTE_PLACEHOLDER } from './NotesThread';
 import type { ConnectionsModel, WorkspaceDetailViewProps } from './types';
 
 /** Label/value row inside a panel (iOS settings style, 44px). */
@@ -192,31 +193,35 @@ export function OverridesPanel(props: WorkspaceDetailViewProps) {
 }
 
 export function NotesPanel(props: WorkspaceDetailViewProps) {
-  const { notes, onNotesChange, onSaveNotes, saveNotesPending, plan } = props;
+  const { notes } = props;
+  const canAdd = notes.draft.trim() !== '' && !notes.addPending;
   return (
-    <GlassPanel
-      title="Notas"
-      titleId="wd-notes"
-      actions={
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={onSaveNotes}
-          disabled={saveNotesPending || !plan}
-          title={!plan ? 'Atribua um plano ao workspace para salvar notas' : undefined}
-        >
-          {saveNotesPending ? 'Salvando…' : 'Salvar'}
-        </Button>
-      }
-    >
-      <Textarea
-        value={notes}
-        onChange={(e) => onNotesChange(e.target.value)}
-        placeholder="Notas do admin…"
-        aria-label="Notas do admin"
-        rows={3}
-        className="min-h-0 resize-none"
-      />
+    <GlassPanel title="Notas" titleId="wd-notes">
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-2">
+          <Textarea
+            value={notes.draft}
+            onChange={(e) => notes.onDraftChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && canAdd) {
+                e.preventDefault();
+                notes.onAdd();
+              }
+            }}
+            placeholder={NOTE_PLACEHOLDER}
+            aria-label="Nova nota"
+            rows={3}
+            maxLength={5000}
+            className="min-h-0 resize-none"
+          />
+          <div className="flex justify-end">
+            <Button variant="secondary" size="sm" onClick={notes.onAdd} disabled={!canAdd}>
+              {notes.addPending ? 'Adicionando…' : 'Adicionar nota'}
+            </Button>
+          </div>
+        </div>
+        <NotesList notes={notes} />
+      </div>
     </GlassPanel>
   );
 }

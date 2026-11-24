@@ -473,6 +473,47 @@
 .phone-an-post-card__nums span {
   font-weight: 600;
 }
+/* A card that opens the post in the page (onSelect): the wrapper takes the card's place in the
+   strip, and the Instagram chip sits over the cover's top right, next to the button, not in it. */
+.phone-an-post-card-wrap {
+  position: relative;
+  display: flex;
+  flex: 0 0 112px;
+  /* A flex item's min-width:auto is the nowrap caption's min-content: pin the width. */
+  min-width: 0;
+  width: 112px;
+  scroll-snap-align: start;
+}
+.phone-an-post-card-wrap > .phone-an-post-card {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.phone-an-post-card__ig {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+}
+/* A "Ver mais" row that opens the post: the chip overlays the row's trailing padding, so the
+   separator still runs to the edge and the chip stays a sibling of the row's button. */
+.phone-an-post-row {
+  position: relative;
+}
+/* Room for the chip only when the row has one (no safe permalink, no chip). */
+.phone-an-post-row--ig .phone-cell__body {
+  padding-right: 64px;
+}
+.phone-an-post-row__ig {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  transform: translateY(-50%);
+}
 .phone-an-footnote {
   margin: 0 16px 20px;
   color: var(--phone-label-secondary);
@@ -558,51 +599,15 @@
   font-size: var(--phone-text-footnote);
 }
 
-/* ---- Inline value tiles (post detail: views, reach, engagement) ---- */
-.phone-an-tiles {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin: 0 0 20px;
-}
-.phone-an-tiles--4 {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-.phone-an-tile {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-  padding: 10px 10px 9px;
-  border-radius: 14px;
-  background: var(--phone-cell);
-}
-.phone-an-tile__value {
-  overflow: hidden;
-  font-size: 19px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.phone-an-tile__value--empty {
-  color: var(--phone-label-secondary);
-  font-size: var(--phone-text-subhead);
-  font-weight: 600;
-  letter-spacing: 0;
-}
-.phone-an-tile__label {
-  overflow: hidden;
-  color: var(--phone-label-secondary);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* ---- Sheets: body padding, filter rows ---- */
 .phone-an-sheet__body {
   padding: 4px 16px 24px;
+}
+/* Post metrics sheet: at 390px three equal segments leave ~102px of text each, too little for
+   "Comentários · 142" (116px at 600). Segments start at their label's width and share the rest. */
+.phone-an-sheet .post-metrics__segmented .phone-segmented__item {
+  flex: 1 1 auto;
+  padding: 0 6px;
 }
 .phone-an-sheet__summary {
   margin: 0 0 12px 4px;

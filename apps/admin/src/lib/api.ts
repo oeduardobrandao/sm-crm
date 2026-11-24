@@ -676,6 +676,28 @@ export function setWorkspaceOverrides(params: {
   return adminApi<{ message: string }>('set-workspace-overrides', params);
 }
 
+/** Nota do admin sobre um workspace. Todo admin vê todas; só o autor apaga (`is_mine`). */
+export interface WorkspaceNote {
+  id: string;
+  body: string;
+  created_at: string;
+  /** null na nota migrada do campo de texto antigo (autor desconhecido). */
+  author_email: string | null;
+  is_mine: boolean;
+}
+
+export function listWorkspaceNotes(workspace_id: string) {
+  return adminApi<{ notes: WorkspaceNote[] }>('list-workspace-notes', { workspace_id });
+}
+
+export function addWorkspaceNote(workspace_id: string, body: string) {
+  return adminApi<{ note: WorkspaceNote }>('add-workspace-note', { workspace_id, body });
+}
+
+export function deleteWorkspaceNote(note_id: string) {
+  return adminApi<{ message: string }>('delete-workspace-note', { note_id });
+}
+
 export function clearWorkspaceOverrides(workspace_id: string) {
   return adminApi<{ message: string }>('clear-workspace-overrides', { workspace_id });
 }

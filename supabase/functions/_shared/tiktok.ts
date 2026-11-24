@@ -115,6 +115,9 @@ export class TikTokApiError extends Error {
  *  - `access_token_invalid` -> code "TOKEN_INVALID"
  *  - scope errors (`scope_*`) -> code "REVOKED"
  *  - HTTP 429 -> retryable code "RATE_LIMITED"
+ *  - `internal_error` or any HTTP 5xx -> TikTok's own error code (or "REQUEST_FAILED" when the
+ *    body is not JSON), retryable: TikTok's generic "Something went wrong. Please try again
+ *    later." blips clear on the next attempt, so callers must not treat them as hard failures
  *  - anything else -> TikTok's own error code, non-retryable
  * Returns the envelope's `data` field on success.
  */
@@ -135,6 +138,8 @@ export async function tiktokFetch(
     throw new TikTokApiError("TikTok API rate limit exceeded", "RATE_LIMITED", true);
   }
 
+  const serverError = response.status >= 500;
+
   let body: TikTokEnvelope;
   try {
     body = await response.json();
@@ -142,7 +147,7 @@ export async function tiktokFetch(
     throw new TikTokApiError(
       `Failed to parse TikTok API response (status ${response.status})`,
       "REQUEST_FAILED",
-      false,
+      serverError,
     );
   }
 
@@ -155,7 +160,7 @@ export async function tiktokFetch(
     if (errorCode === "scope_not_authorized") {
       throw new TikTokApiError(message, "REVOKED", false);
     }
-    throw new TikTokApiError(message, errorCode, false);
+    throw new TikTokApiError(message, errorCode, serverError || errorCode === "internal_error");
   }
 
   return body?.data ?? body;

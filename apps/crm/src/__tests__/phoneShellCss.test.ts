@@ -133,7 +133,6 @@ const HUB_REVIEWED_SELECTORS: Record<string, string> = {
   '#posts-table tbody': CRM_SHELL,
   '#posts-table tbody::-webkit-scrollbar': CRM_SHELL,
   '#posts-table tbody tr': CRM_SHELL,
-  '#posts-table tbody tr.post-detail-row': CRM_SHELL,
   'body:has(.mobile-nav-glass)': CRM_SHELL,
   "body:has(.app-container[data-phone-tab-bar='hidden'])": CRM_SHELL,
   'body:has(.app-container) [data-tooltip]::before': CRM_SHELL,
@@ -356,7 +355,9 @@ describe('CRM stylesheets follow the phone-shell queries', () => {
   it('banner, Crisp bubble and toasts clear the tab bar on tablets', () => {
     const holding = (selector: string) => blocks.filter((b) => b.selectors.includes(selector));
     const banner = holding('body:has(.mobile-nav-glass) .cookie-banner');
-    const crisp = holding('body:has(.mobile-nav-glass) .crisp-client');
+    const crisp = holding(
+      "body:has(.mobile-nav-glass) .crisp-client:has([data-chat-status][data-visible='false'])",
+    );
     const toast = blocks.filter((b) => b.rules.some((r) => declares(r, '--phone-toast-offset')));
     expect(banner.length).toBeGreaterThan(0);
     expect(crisp.length).toBeGreaterThan(0);

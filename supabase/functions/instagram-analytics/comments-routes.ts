@@ -22,7 +22,9 @@ import {
   AiBadOutputError,
   AiTimeoutError,
   buildAccountPrompt,
+  buildClassifyPrompts,
   buildPostPrompt,
+  type Categoria,
   type AiConfig,
   type AnalysisPrompts,
   type AnalysisLang,
@@ -33,7 +35,9 @@ import {
   fitTexts,
   PROMPT_COMMENT_CHARS,
   redactIdentities,
+  TIPOS_MAX_OUTPUT_TOKENS,
   validateAnalysis,
+  validateTipos,
 } from "./comments-ai.ts";
 
 export interface CommentsRouteDeps {
@@ -319,6 +323,53 @@ async function analyze(
   return { ...red, resumo, ideias };
 }
 
+/**
+ * Rotula cada comentário do público com um tipo, em lotes paralelos. Nunca
+ * rejeita: lote que falha deixa os ids dele com null. Log sem texto nem username.
+ */
+async function classifyComments(
+  deps: CommentsRouteDeps,
+  comments: IgComment[],
+  deadlineAt: number,
+): Promise<{ tipos: Record<string, Categoria | null>; tipos_status: "ok" | "failed" }> {
+  const config = deps.ai;
+  if (!config) return { tipos: {}, tipos_status: "failed" };
+  const started = deps.now();
+  const batches = buildClassifyPrompts(comments);
+  if (!batches.length) return { tipos: {}, tipos_status: "ok" };
+  const settled = await Promise.allSettled(
+    batches.map((b) =>
+      deps.callAi({ now: deps.now }, { config, prompt: b.prompt, deadlineAt, maxTokens: TIPOS_MAX_OUTPUT_TOKENS })
+    ),
+  );
+  const tipos: Record<string, Categoria | null> = {};
+  let okBatches = 0;
+  settled.forEach((s, i) => {
+    const ids = batches[i].ids;
+    let valid: Record<string, Categoria> | null = null;
+    if (s.status === "rejected") {
+      const e = s.reason;
+      const why = e instanceof AiTimeoutError
+        ? "timeout"
+        : e instanceof AiBadOutputError
+        ? `bad_output:${e.message}`
+        : e instanceof Error
+        ? e.message
+        : "unknown";
+      console.error(`[comments-routes] comments-analysis tipos failed: ${why}`);
+    } else {
+      valid = validateTipos(s.value, ids);
+      if (!valid) console.error("[comments-routes] comments-analysis tipos failed: validation");
+    }
+    if (valid) okBatches++;
+    for (const id of ids) tipos[id] = valid?.[id] ?? null;
+  });
+  console.log(
+    `[comments-routes] comments-analysis tipos ms=${deps.now() - started} batches=${batches.length} ok=${okBatches}`,
+  );
+  return { tipos, tipos_status: okBatches > 0 ? "ok" : "failed" };
+}
+
 async function save(
   deps: CommentsRouteDeps,
   account: Account,
@@ -419,13 +470,16 @@ async function analyzePostRoute(
     texts,
     lang: deps.lang,
   });
-  const result = await analyze(
-    deps,
-    "comments-analysis",
-    prompt,
-    start + REQUEST_BUDGET_MS,
-    comments.map((c) => c.username),
-  );
+  const [result, tipos] = await Promise.all([
+    analyze(
+      deps,
+      "comments-analysis",
+      prompt,
+      start + REQUEST_BUDGET_MS,
+      comments.map((c) => c.username),
+    ),
+    classifyComments(deps, comments, start + REQUEST_BUDGET_MS),
+  ]);
   if ("status" in result) return result;
 
   const analysis = await save(deps, account, {
@@ -436,7 +490,7 @@ async function analyzePostRoute(
     posts_analyzed: 1,
     period_start: null,
     period_end: null,
-    result,
+    result: { ...result, ...tipos },
   });
   return { status: 200, body: { analysis } };
 }

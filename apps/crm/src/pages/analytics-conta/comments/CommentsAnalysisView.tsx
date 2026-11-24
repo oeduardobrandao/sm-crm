@@ -13,12 +13,9 @@ import type {
 } from '../../../services/instagramComments';
 import { sanitizeUrl } from '../../../utils/security';
 import { SuggestionIdeaButton } from './SuggestionIdeaButton';
+import { CATEGORIAS } from './commentTipos';
 
 export const SENTIMENTO_KEYS: Sentimento[] = ['positivo', 'misto', 'negativo', 'polemico'];
-
-type Categoria = keyof CommentAnalysis['distribuicao'];
-
-const CATEGORIAS: Categoria[] = ['apoio', 'duvida', 'critica', 'discussao', 'spam'];
 
 /** "1 comentário" / "612 comentários": `key` is a plural group under `count.` (comment,
  *  commentNew, post, ...). Numbers use the active display locale. */
