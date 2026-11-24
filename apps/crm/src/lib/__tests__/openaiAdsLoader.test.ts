@@ -7,6 +7,12 @@ function pixelScripts() {
   return document.head.querySelectorAll('script[src="https://bzrcdn.openai.com/sdk/oaiq.min.js"]');
 }
 
+function stubPixelConfig(config: unknown, ok = true) {
+  const fetchMock = vi.fn(async () => ({ ok, json: async () => config }));
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
 /** Each queued oaiq call, as the stub stored it. */
 function queuedCalls(): unknown[][] {
   return (window.oaiq?.q ?? []) as unknown[][];
@@ -20,17 +26,26 @@ describe('openaiAdsLoader', () => {
     localStorage.clear();
     document.head.querySelectorAll('script').forEach((s) => s.remove());
     delete window.oaiq;
+    stubPixelConfig({ automatic_advanced_matching_enabled: false });
   });
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
   });
 
   it('injects the SDK once and queues init (no debug), consent and the first page_viewed only', async () => {
+    seedConsent({ marketing: true });
+    const fetchMock = stubPixelConfig({ automatic_advanced_matching_enabled: false });
     const { loadOpenAiAds } = await import('../openaiAdsLoader');
     loadOpenAiAds();
     loadOpenAiAds();
-    expect(pixelScripts()).toHaveLength(1);
+    await vi.waitFor(() => expect(pixelScripts()).toHaveLength(1));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]).toEqual([
+      `https://bzrcdn.openai.com/pixel-config/v1/${PIXEL_ID}.json`,
+      { credentials: 'omit' },
+    ]);
     expect(queuedCalls()).toEqual([
       ['init', { pixelId: PIXEL_ID, debug: false }],
       ['consent', true],
@@ -73,6 +88,7 @@ describe('openaiAdsLoader', () => {
     seedConsent({ marketing: true });
     const { loadOpenAiAds } = await import('../openaiAdsLoader');
     loadOpenAiAds();
+    await vi.waitFor(() => expect(pixelScripts()).toHaveLength(1));
     seedConsent({ marketing: false });
     document.cookie = '__oppref=abc; path=/';
     document.cookie = '__obref=def; path=/';
@@ -99,11 +115,41 @@ describe('openaiAdsLoader', () => {
       name: 'subscription_created',
       data: { type: 'plan_enrollment', amount: 9700, currency: 'BRL' },
     });
-    expect(pixelScripts()).toHaveLength(1);
+    await vi.waitFor(() => expect(pixelScripts()).toHaveLength(1));
     expect(queuedCalls().at(-1)).toEqual([
       'measure',
       'subscription_created',
       { type: 'plan_enrollment', amount: 9700, currency: 'BRL' },
     ]);
+  });
+
+  // Automatic advanced matching hashes emails/phones anywhere on the page, including the
+  // agency's clients in the signed-in CRM: the SDK must never run with it on.
+  it.each([
+    ['on', { automatic_advanced_matching_enabled: true }, true],
+    ['missing', {}, true],
+    ['unreachable', null, false],
+  ])('never injects the SDK when auto-matching is %s', async (_label, config, ok) => {
+    seedConsent({ marketing: true });
+    const fetchMock = stubPixelConfig(config, ok);
+    const { loadOpenAiAds, trackOpenAiAdsEvent } = await import('../openaiAdsLoader');
+    loadOpenAiAds();
+    await vi.waitFor(() => expect(window.oaiq).toBeUndefined());
+    trackOpenAiAdsEvent({ name: 'registration_completed', data: { type: 'customer_action' } });
+    expect(pixelScripts()).toHaveLength(0);
+    expect(window.oaiq).toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-enables the SDK when marketing is granted again after a revoke', async () => {
+    seedConsent({ marketing: true });
+    const { loadOpenAiAds, disableOpenAiAds } = await import('../openaiAdsLoader');
+    loadOpenAiAds();
+    await vi.waitFor(() => expect(pixelScripts()).toHaveLength(1));
+    disableOpenAiAds();
+    expect(queuedCalls().at(-1)).toEqual(['consent', false]);
+    loadOpenAiAds();
+    expect(queuedCalls().at(-1)).toEqual(['consent', true]);
+    expect(pixelScripts()).toHaveLength(1);
   });
 });

@@ -25,10 +25,19 @@ describe('googleAdsLoader', () => {
     delete window.fbq;
     delete window._fbq;
     delete window.oaiq;
+    // Pixel config read by the ChatGPT ads loader: never hit the network from a test.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ automatic_advanced_matching_enabled: false }),
+      })),
+    );
   });
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
   });
 
   it('injects gtag.js once, for the configured ID', async () => {
