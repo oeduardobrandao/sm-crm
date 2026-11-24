@@ -43,6 +43,43 @@ describe('signupErrorKey', () => {
     );
   });
 
+  it('maps a failed confirmation email to the undeliverable copy', () => {
+    expect(
+      signupErrorKey({
+        status: 500,
+        code: 'unexpected_failure',
+        message: 'Error sending confirmation email',
+      }),
+    ).toBe('emailUndeliverable');
+    // Older API versions send no code.
+    expect(signupErrorKey({ status: 500, message: 'Error sending confirmation mail' })).toBe(
+      'emailUndeliverable',
+    );
+  });
+
+  it('keeps unrelated 500s and look-alike messages generic', () => {
+    expect(signupErrorKey({ status: 500, message: 'Database error saving new user' })).toBe(
+      'generic',
+    );
+    expect(
+      signupErrorKey({
+        status: 500,
+        code: 'unexpected_failure',
+        message: 'Error sending magic link',
+      }),
+    ).toBe('generic');
+    expect(signupErrorKey({ status: 400, message: 'Error sending confirmation email' })).toBe(
+      'generic',
+    );
+    expect(
+      signupErrorKey({
+        status: 500,
+        code: 'hook_timeout',
+        message: 'Error sending confirmation email',
+      }),
+    ).toBe('generic');
+  });
+
   it('falls back to the generic copy', () => {
     expect(signupErrorKey({ message: 'boom' })).toBe('generic');
     expect(signupErrorKey({ code: 'validation_failed', message: 'bad payload' })).toBe('generic');

@@ -425,6 +425,57 @@ describe('LoginPage', () => {
     expect(screen.queryByText(/Database error/)).not.toBeInTheDocument();
   });
 
+  it('puts an undeliverable-address error under the email field and clears it on edit', async () => {
+    mockedSignUp.mockResolvedValue({
+      error: {
+        status: 500,
+        code: 'unexpected_failure',
+        message: 'Error sending confirmation email',
+      },
+    } as never);
+    const { container } = renderRegister('/login?tab=register');
+    fillRegisterForm(container, { email: 'ana@gmail.com.br' });
+    submitRegister(container);
+
+    const copy =
+      'Não conseguimos enviar o e-mail de confirmação para esse endereço. Confira se ele está certo e tente de novo.';
+    expect(await screen.findByText(copy)).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    const email = screen.getByLabelText('E-mail');
+    expect(email).toHaveAttribute('aria-invalid', 'true');
+    expect(email).toHaveFocus();
+    // The typo hint stays next to the error: together they are the fix.
+    expect(screen.getByText('Você quis dizer ana@gmail.com?')).toBeInTheDocument();
+    expect(email.getAttribute('aria-describedby')).toBe('reg-email-error reg-email-suggestion');
+
+    fireEvent.change(email, { target: { value: 'ana@gmail.com' } });
+    expect(screen.queryByText(copy)).not.toBeInTheDocument();
+  });
+
+  it('suggests a fix for a mistyped email domain after blur, and the fix rewrites the field', () => {
+    renderRegister('/login?tab=register');
+    const email = screen.getByLabelText('E-mail');
+    fireEvent.change(email, { target: { value: 'ana@hotmal.com' } });
+    // Not while typing.
+    expect(screen.queryByText(/Você quis dizer/)).not.toBeInTheDocument();
+    fireEvent.blur(email);
+    expect(screen.getByText('Você quis dizer ana@hotmail.com?')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Corrigir' }));
+    expect(email).toHaveValue('ana@hotmail.com');
+    expect(screen.queryByText(/Você quis dizer/)).not.toBeInTheDocument();
+    expect(mockedSignUp).not.toHaveBeenCalled();
+  });
+
+  it('does not block submission on the typo hint', async () => {
+    mockedSignUp.mockResolvedValue({ data: { session: null }, error: null } as never);
+    const { container } = renderRegister('/login?tab=register');
+    fillRegisterForm(container, { email: 'ana@gmial.com' });
+    submitRegister(container);
+    await waitFor(() => expect(mockedSignUp).toHaveBeenCalled());
+    expect(mockedSignUp.mock.calls[0][0]).toBe('ana@gmial.com');
+  });
+
   it('submits once on a double click', async () => {
     let resolveSignUp: (value: unknown) => void = () => {};
     mockedSignUp.mockImplementation(

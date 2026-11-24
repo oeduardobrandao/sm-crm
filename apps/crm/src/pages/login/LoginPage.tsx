@@ -14,6 +14,7 @@ import { captureEvent, identifySignup } from '@/lib/analytics';
 import { trackMetaEvent } from '@/lib/metaPixelLoader';
 import { trackOpenAiAdsEvent } from '@/lib/openaiAdsLoader';
 import { markSignupStarted } from './signupStarted';
+import { suggestEmailFix } from './emailSuggestion';
 import {
   SIGNUP_FIELDS,
   signupErrorKey,
@@ -98,6 +99,9 @@ export default function LoginPage() {
   // Field errors show after the first submit attempt, then follow every keystroke.
   const [regErrors, setRegErrors] = useState<Partial<Record<SignupField, SignupFieldError>>>({});
   const [regAttempted, setRegAttempted] = useState(false);
+  // The typo hint waits for a blur (or a submit) so it never flashes at "gmail.co" mid-typing,
+  // and hides again while the address is being edited.
+  const [regEmailChecked, setRegEmailChecked] = useState(false);
   // Server-side failure, mapped to our own copy (never the raw Supabase message).
   const [regFormError, setRegFormError] = useState<SignupErrorKey | null>(null);
   // `disabled={loading}` only lands after a re-render; this closes the gap for a double tap.
@@ -194,9 +198,20 @@ export default function LoginPage() {
   const updateRegField = (field: SignupField, value: string) => {
     const next = { nome: regNome, email: regEmail, password: regPassword, [field]: value };
     if (field === 'nome') setRegNome(value);
-    else if (field === 'email') setRegEmail(value);
-    else setRegPassword(value);
+    else if (field === 'email') {
+      setRegEmail(value);
+      setRegEmailChecked(false);
+    } else setRegPassword(value);
     if (regAttempted) setRegErrors(validateSignup(next));
+  };
+
+  const regEmailSuggestion = regEmailChecked ? suggestEmailFix(regEmail) : null;
+
+  const applyEmailSuggestion = () => {
+    if (!regEmailSuggestion) return;
+    updateRegField('email', regEmailSuggestion);
+    // Server errors are about the old address; the new one has not been tried yet.
+    setRegFormError(null);
   };
 
   const regErrorText = (field: SignupField) => {
@@ -204,6 +219,7 @@ export default function LoginPage() {
     if (key === 'nameRequired') return t('register.errors.nameRequired');
     if (key === 'emailInvalid') return t('register.errors.emailInvalid');
     if (key === 'passwordShort') return t('register.errors.passwordShort');
+    if (key === 'emailUndeliverable') return t('register.errors.emailUndeliverable');
     return null;
   };
 
@@ -218,6 +234,7 @@ export default function LoginPage() {
     e.preventDefault();
     if (regSubmitting.current) return;
     setRegAttempted(true);
+    setRegEmailChecked(true);
     setRegFormError(null);
     const errors = validateSignup({ nome: regNome, email: regEmail, password: regPassword });
     setRegErrors(errors);
@@ -253,7 +270,15 @@ export default function LoginPage() {
     setLoading(false);
     const { data, error } = result;
     if (error) {
-      setRegFormError(signupErrorKey(error));
+      const key = signupErrorKey(error);
+      if (key === 'emailUndeliverable') {
+        // About the address, so it goes under the email field (next to any typo hint), and the
+        // next keystroke there re-validates it away.
+        setRegErrors({ email: 'emailUndeliverable' });
+        regInputs.email.current?.focus();
+        return;
+      }
+      setRegFormError(key);
       return;
     }
     // Existing account: the uuid is fake and no email goes out, so identifying it would mint an
@@ -542,12 +567,41 @@ export default function LoginPage() {
                         autoComplete="email"
                         value={regEmail}
                         onChange={(e) => updateRegField('email', e.target.value)}
+                        onBlur={() => setRegEmailChecked(true)}
                         aria-invalid={regErrors.email ? true : undefined}
-                        aria-describedby={regErrors.email ? 'reg-email-error' : undefined}
+                        aria-describedby={
+                          [
+                            regErrors.email && 'reg-email-error',
+                            regEmailSuggestion && 'reg-email-suggestion',
+                          ]
+                            .filter(Boolean)
+                            .join(' ') || undefined
+                        }
                       />
                       {regErrors.email && (
                         <FieldError id="reg-email-error">{regErrorText('email')!}</FieldError>
                       )}
+                      <div aria-live="polite">
+                        {regEmailSuggestion && (
+                          <p
+                            id="reg-email-suggestion"
+                            className="flex flex-wrap items-center gap-x-2 gap-y-1 leading-snug"
+                            style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}
+                          >
+                            <span>
+                              {t('register.emailSuggestion', { email: regEmailSuggestion })}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={applyEmailSuggestion}
+                              className="font-semibold underline underline-offset-2"
+                              style={{ color: 'var(--text-main)' }}
+                            >
+                              {t('register.emailSuggestionFix')}
+                            </button>
+                          </p>
+                        )}
+                      </div>
                     </div>
                     <div className="auth-field">
                       <Label htmlFor="reg-password">{t('register.password')}</Label>
