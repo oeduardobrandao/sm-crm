@@ -1,6 +1,10 @@
 import { assert, assertEquals, readJson } from "./assert.ts";
-import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
+import { createSupabaseQueryMock as createBaseQueryMock } from "../../../test/shared/supabaseMock.ts";
+import { withHubAccess } from "./hub-access-mock.ts";
 import { createHubPostReferencesHandler } from "../hub-post-references/handler.ts";
+
+// Hub functions now resolve access through hub_access_context (client login).
+const createSupabaseQueryMock = () => withHubAccess(createBaseQueryMock());
 
 type Db = ReturnType<typeof createSupabaseQueryMock>;
 type Head = { contentLength: number; contentType: string | null } | null;

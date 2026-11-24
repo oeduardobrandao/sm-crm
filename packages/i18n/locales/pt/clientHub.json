@@ -67,6 +67,38 @@
     "deactivateConfirm": {
       "title": "Desativar o acesso?",
       "message": "O link para de funcionar até você ativar de novo. O cliente perde o acesso ao portal enquanto isso."
+    },
+    "people": {
+      "title": "Quem pode entrar",
+      "requireLabel": "Exigir login",
+      "requireHelp": "Com o login ligado, o link abre uma tela de entrada. Só as pessoas da lista entram, com um código enviado por e-mail.",
+      "requireOffHelp": "Com o login desligado, qualquer pessoa com o link abre o portal.",
+      "empty": "Ninguém na lista ainda. Adicione a primeira pessoa para poder exigir login.",
+      "neverLoggedIn": "Nunca entrou",
+      "lastLogin": "Último acesso em {{date}}",
+      "nameLabel": "Nome",
+      "emailLabel": "E-mail",
+      "add": "Adicionar pessoa",
+      "remove": "Remover {{name}}",
+      "removeTitle": "Remover {{name}}?",
+      "removeBody": "Essa pessoa perde o acesso ao portal na hora.",
+      "removeConfirm": "Remover",
+      "toast": {
+        "added": "Pessoa adicionada.",
+        "removed": "Pessoa removida.",
+        "requireOn": "Login exigido para este cliente.",
+        "requireOff": "Login não é mais exigido."
+      },
+      "errors": {
+        "duplicate": "Este e-mail já está na lista.",
+        "limit": "O limite é de 20 pessoas por cliente.",
+        "no_people": "Adicione ao menos uma pessoa antes de exigir login.",
+        "last_person": "Desligue \"Exigir login\" antes de remover a última pessoa.",
+        "invalid": "Confira o nome e o e-mail.",
+        "forbidden": "Você não tem permissão para alterar o acesso.",
+        "not_found": "Cliente não encontrado.",
+        "generic": "Não foi possível salvar. Tente de novo."
+      }
     }
   },
   "ideias": {

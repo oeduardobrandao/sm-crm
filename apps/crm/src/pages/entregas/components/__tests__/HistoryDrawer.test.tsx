@@ -208,3 +208,56 @@ describe('HistoryDrawer: discussão da equipe (somente leitura)', () => {
     expect(within(discussao).queryByText('Membro')).not.toBeInTheDocument();
   });
 });
+
+describe('HistoryDrawer: quem respondeu pelo cliente no Hub', () => {
+  const post = { id: 7, titulo: 'Post com aprovação', tipo: 'feed', status: 'aprovado_cliente' };
+
+  function approval(over: Record<string, unknown> = {}) {
+    return {
+      id: 1,
+      post_id: 7,
+      token: 't',
+      action: 'aprovado',
+      comentario: 'Ficou ótimo',
+      is_workspace_user: false,
+      author_user_id: null,
+      media_note_ids: [],
+      created_at: '2026-06-01T10:00:00Z',
+      ...over,
+    };
+  }
+
+  async function open(approvals: unknown[]) {
+    const store = await import('@/store');
+    (store.getWorkflowEtapas as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
+    (store.getWorkflowPostsWithProperties as ReturnType<typeof vi.fn>)
+      .mockReset()
+      .mockResolvedValue([post]);
+    (store.getMembros as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
+    (store.getPostApprovals as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue(approvals);
+    (store.getPostCommentThreads as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
+    (store.getPostStatusDefinitions as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
+    (store.getWorkflowEvents as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
+    (store.getWorkspaceUsers as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
+    render(<HistoryDrawer workflow={workflow} onClose={() => {}} />);
+    fireEvent.click(await screen.findByText('Post com aprovação'));
+    await screen.findByText('Ficou ótimo');
+  }
+
+  it('shows the person name beside the approval label', async () => {
+    await open([approval({ hub_person_nome: 'Marina Costa' })]);
+    expect(screen.getByText('Marina Costa')).toBeInTheDocument();
+    expect(screen.getAllByText('Aprovado').length).toBeGreaterThan(0);
+  });
+
+  it('keeps today label when the approval has no person name', async () => {
+    await open([approval()]);
+    expect(screen.queryByText('Marina Costa')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Aprovado').length).toBeGreaterThan(0);
+  });
+
+  it('never shows a person name on a team row', async () => {
+    await open([approval({ is_workspace_user: true, hub_person_nome: 'Marina Costa' })]);
+    expect(screen.queryByText('Marina Costa')).not.toBeInTheDocument();
+  });
+});

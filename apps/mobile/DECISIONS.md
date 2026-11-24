@@ -9,6 +9,7 @@ What we chose, what we considered and rejected, and why. Newest at the bottom.
   App Store 4.2.6/4.3 template-app rejection pattern, and Hub clients have no Supabase login, so
   they are not in `notifications`. Token links already work in Safari.
 - **Why:** the drivers are push notifications for staff and customer (agency) demand.
+- **Update 2026-11-23:** Hub clients now have an identity (people per client, email-code login, `x-hub-session`; spec `docs/superpowers/specs/2026-11-23-hub-client-login-design.md`). A Hub client app is phase 2, built on it; this decision stands for the current app.
 
 ## D2. Platform: iOS first, Android-ready
 

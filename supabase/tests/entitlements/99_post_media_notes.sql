@@ -1020,7 +1020,7 @@ begin
   foreach v_fn in array array[
     'public.hub_create_media_note(uuid, bigint, text, bigint, bigint, numeric, real, real, text)',
     'public.hub_add_media_note_reply(uuid, bigint, text, bigint, text)',
-    'public.record_client_approval_with_notes(bigint, uuid, bigint, text, text, text, text, text)'
+    'public.record_client_approval_with_notes(bigint, uuid, bigint, text, text, text, text, text, uuid, text)'
   ] loop
     assert has_function_privilege('service_role', v_fn, 'EXECUTE'), format('service_role executa %s', v_fn);
     assert not has_function_privilege('authenticated', v_fn, 'EXECUTE'), format('authenticated nao executa %s', v_fn);

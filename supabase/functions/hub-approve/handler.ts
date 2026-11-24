@@ -1,7 +1,6 @@
 import { createJsonResponder } from "../_shared/http.ts";
 import { validateForScheduling } from "../_shared/instagram-publish-utils.ts";
-import { resolveHubToken } from "../_shared/hub-token.ts";
-import { getClientIP } from "../_shared/rate-limit.ts";
+import { hubAccessDenied, resolveHubAccess } from "../_shared/hub-token.ts";
 import { MAX_REFERENCES_PER_POST } from "../_shared/post-references.ts";
 
 type DbClient = {
@@ -180,12 +179,9 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
 
     const db = deps.createDb();
 
-    const hubToken = await resolveHubToken(db as any, token, deps.now());
-    if (!hubToken) {
-      const okBadToken = await deps.rateLimit(db, `hub-badtoken:${getClientIP(req)}`, 30, 600);
-      if (!okBadToken) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
-      return json({ error: "Link inválido." }, 404);
-    }
+    const access = await resolveHubAccess(db as any, req, token, deps.now());
+    if (!access.ok) return hubAccessDenied(access.reason, { db, req, json, rateLimit: deps.rateLimit });
+    const hubToken = access.token;
 
     const okRead = await deps.rateLimit(
       db, `hub-read:${hubToken.conta_id}:${hubToken.cliente_id}`, 300, 300,
@@ -224,6 +220,9 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
         action,
         comentario: mensagemText,
         is_workspace_user: false,
+        // Who acted, when the client logged in (client login). Never the email.
+        hub_person_id: access.person?.id ?? null,
+        hub_person_nome: access.person?.nome ?? null,
       });
       if (insertError) {
         console.error("[hub-approve] mensagem insert failed:", insertError);
@@ -245,6 +244,8 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
         p_comentario: approvalComentario,
         p_new_status: newStatus,
         p_motivo: action === "correcao" ? (motivo ?? null) : null,
+        p_hub_person_id: access.person?.id ?? null,
+        p_hub_person_nome: access.person?.nome ?? null,
       });
       if (approvalErr) {
         // record_client_approval (called inside the _with_notes wrapper) refuses a client

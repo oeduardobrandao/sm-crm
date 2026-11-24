@@ -136,6 +136,14 @@ vi.mock('@/hooks/useEntitlements', () => ({
 vi.mock('@/context/AuthContext', () => ({ useAuth: vi.fn() }));
 
 vi.mock('@/store/hub');
+// Keep the pure helpers (query key, limit, error mapping) real; only the RPC calls are mocked.
+vi.mock('@/store/hubPeople', async () => ({
+  ...(await vi.importActual<typeof import('@/store/hubPeople')>('@/store/hubPeople')),
+  getHubPeople: vi.fn(),
+  addHubPerson: vi.fn(),
+  removeHubPerson: vi.fn(),
+  setHubRequireLogin: vi.fn(),
+}));
 
 // The "O que o cliente vê" panel tests drive usePortalFill's return value directly
 // (data/isLoading/isError), the same way the rest of this suite drives hubStore's
@@ -149,6 +157,7 @@ import { useAuth } from '@/context/AuthContext';
 import { makeCan, fakeMembership } from '@/test/makeCan';
 import AcessoPage from '../AcessoPage';
 import * as hubStore from '@/store/hub';
+import * as hubPeople from '@/store/hubPeople';
 import { usePortalFill } from '../usePortalFill';
 import type { PortalFill } from '@/store';
 
@@ -233,6 +242,7 @@ describe('AcessoPage', () => {
     mockEntitlements = { hasFeature: () => true };
     setAuth('owner');
     vi.mocked(hubStore.getWorkspaceSlug).mockResolvedValue('dk-marketing-medico');
+    vi.mocked(hubPeople.getHubPeople).mockResolvedValue({ require_login: false, people: [] });
     mockedUsePortalFill.mockReturnValue({
       data: ZERO_FILL,
       isLoading: false,
@@ -439,7 +449,7 @@ describe('AcessoPage', () => {
     expect(screen.getByRole('button', { name: /Desativar/ })).toBeInTheDocument();
   });
 
-  it('fires only the hub-token and workspace-slug queries — nothing from Marca/Páginas/Briefing', async () => {
+  it('fires only the hub-token, workspace-slug and hub-people queries — nothing from Marca/Páginas/Briefing', async () => {
     vi.mocked(hubStore.getHubToken).mockResolvedValue(token(360));
     const { queryClient } = renderPage();
     await waitFor(() => screen.getByText(/Expira em/));
@@ -448,7 +458,7 @@ describe('AcessoPage', () => {
       .getQueryCache()
       .getAll()
       .map((q) => q.queryKey[0]);
-    expect(new Set(keys)).toEqual(new Set(['hub-token', 'workspace-slug']));
+    expect(new Set(keys)).toEqual(new Set(['hub-token', 'workspace-slug', 'hub-people']));
   });
 
   // Regression guard: before the split, HubClienteTab returned RoleRestrictionNotice
@@ -547,6 +557,55 @@ describe('AcessoPage', () => {
       await waitFor(() => screen.getByText(/Expira em/));
 
       expect(screen.getByTestId('fill-paginas').querySelector('a')).toBeNull();
+    });
+  });
+
+  describe('Quem pode entrar', () => {
+    it('shows the people section when a link exists', async () => {
+      vi.mocked(hubStore.getHubToken).mockResolvedValue(token(360));
+      renderPage();
+      expect(await screen.findByRole('heading', { name: 'Quem pode entrar' })).toBeInTheDocument();
+      await waitFor(() => expect(hubPeople.getHubPeople).toHaveBeenCalledWith(15));
+      expect(screen.getByRole('switch', { name: 'Exigir login' })).toBeInTheDocument();
+    });
+
+    it('pre-fills the add row with the client name and e-mail', async () => {
+      vi.mocked(hubStore.getHubToken).mockResolvedValue(token(360));
+      renderPage();
+      const nome = (await screen.findByRole('textbox', { name: 'Nome' })) as HTMLInputElement;
+      await waitFor(() => expect(nome.value).toBe('Aurora Estética'));
+      expect((screen.getByRole('textbox', { name: 'E-mail' }) as HTMLInputElement).value).toBe(
+        'contato@aurora.com.br',
+      );
+    });
+
+    it('is absent when there is no link', async () => {
+      vi.mocked(hubStore.getHubToken).mockResolvedValue(null);
+      renderPage();
+      await screen.findByText('Nenhum link gerado ainda.');
+      expect(screen.queryByText('Quem pode entrar')).not.toBeInTheDocument();
+      expect(hubPeople.getHubPeople).not.toHaveBeenCalled();
+    });
+
+    it('is absent for an agent, and getHubPeople is never called', async () => {
+      setAuth('agent');
+      vi.mocked(hubStore.getHubToken).mockResolvedValue(token(360));
+      renderPage();
+      await new Promise((r) => setTimeout(r, 20));
+      expect(screen.queryByText('Quem pode entrar')).not.toBeInTheDocument();
+      expect(hubPeople.getHubPeople).not.toHaveBeenCalled();
+    });
+
+    it('shows the section on the phone too', async () => {
+      desktop.value = false;
+      try {
+        vi.mocked(hubStore.getHubToken).mockResolvedValue(token(360));
+        renderPage();
+        expect(await screen.findByRole('switch', { name: 'Exigir login' })).toBeInTheDocument();
+        expect(screen.getByText('Quem pode entrar')).toBeInTheDocument();
+      } finally {
+        desktop.value = true;
+      }
     });
   });
 

@@ -1,7 +1,9 @@
+import type React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PostHistoryPanel } from '../PostHistoryPanel';
 import { TextDiff } from '../TextDiff';
+import { HubContext } from '../../HubContext';
 import { fetchPostHistory, submitApproval } from '../../api';
 import type { HubPost, PostApproval, PostHistoryResponse } from '../../types';
 
@@ -533,5 +535,107 @@ describe('PostHistoryPanel media notes', () => {
       }),
     );
     expect(screen.queryByText(/na mídia em aberto/)).toBeNull();
+  });
+});
+
+describe('PostHistoryPanel: who wrote it (client login)', () => {
+  beforeEach(() => {
+    mockedFetch.mockReset();
+  });
+
+  function history(extra: Partial<PostHistoryResponse['approvals'][number]>) {
+    const base: PostHistoryResponse = {
+      events: [],
+      approvals: [
+        {
+          id: 30,
+          action: 'mensagem',
+          comentario: 'olá do cliente',
+          motivo: null,
+          is_workspace_user: false,
+          created_at: '2026-09-03T13:00:00.000Z',
+          ...extra,
+        },
+      ],
+    };
+    return base;
+  }
+
+  function open(viewer: { nome: string; email: string } | null) {
+    render(
+      <HubContext.Provider
+        value={
+          {
+            bootstrap: {},
+            token: 'tok',
+            workspace: 'ws',
+            theme: 'light',
+            toggleTheme: vi.fn(),
+            person: viewer,
+            signOut: vi.fn(),
+          } as unknown as React.ContextType<typeof HubContext>
+        }
+      >
+        <PostHistoryPanel post={makePost()} token="tok" approvals={[]} embedded />
+      </HubContext.Provider>,
+    );
+    fireEvent.click(screen.getByRole('tab', { name: 'Comentários' }));
+  }
+
+  it('shows another person name on a client comment', async () => {
+    mockedFetch.mockResolvedValue(history({ hub_person_nome: 'Marina Costa', is_mine: false }));
+    open({ nome: 'Paulo Reis', email: 'p@x.com' });
+    expect(await screen.findByText('Marina Costa')).toBeInTheDocument();
+    expect(screen.queryByText('Você')).not.toBeInTheDocument();
+  });
+
+  it('shows the name of another person who has the viewer exact name (is_mine false)', async () => {
+    mockedFetch.mockResolvedValue(history({ hub_person_nome: 'Paulo Reis', is_mine: false }));
+    open({ nome: 'Paulo Reis', email: 'p@x.com' });
+    expect(await screen.findByText('Paulo Reis')).toBeInTheDocument();
+    expect(screen.queryByText('Você')).not.toBeInTheDocument();
+  });
+
+  it('shows the name on a named row for a viewer with no session', async () => {
+    mockedFetch.mockResolvedValue(history({ hub_person_nome: 'Marina Costa' }));
+    open(null);
+    expect(await screen.findByText('Marina Costa')).toBeInTheDocument();
+  });
+
+  it('keeps "Você" for the viewer own comment', async () => {
+    mockedFetch.mockResolvedValue(history({ hub_person_nome: 'Paulo Reis', is_mine: true }));
+    open({ nome: 'Paulo Reis', email: 'p@x.com' });
+    expect(await screen.findByText('Você')).toBeInTheDocument();
+    expect(screen.queryByText('Paulo Reis')).not.toBeInTheDocument();
+  });
+
+  it('keeps "Você" when the row has no person name', async () => {
+    mockedFetch.mockResolvedValue(history({}));
+    open(null);
+    expect(await screen.findByText('Você')).toBeInTheDocument();
+  });
+
+  it('shows the person name on a history decision by someone else', async () => {
+    mockedFetch.mockResolvedValue(
+      history({
+        id: 31,
+        action: 'aprovado',
+        comentario: null,
+        hub_person_nome: 'Marina Costa',
+        is_mine: false,
+      }),
+    );
+    render(
+      <HubContext.Provider
+        value={
+          {
+            person: { nome: 'Paulo Reis', email: 'p@x.com' },
+          } as unknown as React.ContextType<typeof HubContext>
+        }
+      >
+        <PostHistoryPanel post={makePost()} token="tok" approvals={[]} embedded />
+      </HubContext.Provider>,
+    );
+    expect(await screen.findByText('Marina Costa')).toBeInTheDocument();
   });
 });

@@ -15,6 +15,8 @@ export interface MensagemFeedItem {
   author_user_id: string | null;
   author_name: string | null;
   author_avatar_url: string | null;
+  /** Nome de quem entrou no Hub e escreveu (login do cliente); null/ausente = cliente anônimo. */
+  client_person_name?: string | null;
   created_at: string;
 }
 

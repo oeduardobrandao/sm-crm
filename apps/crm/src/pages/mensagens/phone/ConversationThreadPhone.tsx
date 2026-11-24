@@ -138,6 +138,9 @@ export function ConversationThreadPhone({
                       {m.author_name ?? t('conversationThread.teamAuthor')}
                     </div>
                   )}
+                  {!daEquipe && m.client_person_name && (
+                    <div className="phone-msg-bubble__author">{m.client_person_name}</div>
+                  )}
                   {notaLabel && <div className="phone-msg-bubble__action">{notaLabel}</div>}
                   {m.action === 'correcao' && (
                     <div className="phone-msg-bubble__action">

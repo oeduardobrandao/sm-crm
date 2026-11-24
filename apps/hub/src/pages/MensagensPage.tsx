@@ -192,8 +192,16 @@ export function MensagensPage() {
                 </div>
               );
             }
+            // Another logged-in person on the same client: show who wrote it. The viewer's own rows stay unlabeled.
+            const otherPerson =
+              mine && m.client_person_name && m.is_mine !== true ? m.client_person_name : null;
             return (
               <div key={itemKey(m)} className={`max-w-[78%] ${mine ? 'self-end' : 'self-start'}`}>
+                {otherPerson && (
+                  <div className="mb-0.5 text-right text-[12px] font-semibold hub-tx3">
+                    {otherPerson}
+                  </div>
+                )}
                 {!mine && (
                   <div className="mb-0.5 flex items-center gap-1.5 text-[12px] font-semibold hub-tx3">
                     {/* Team photos never reach the Hub: initials only, whatever the payload carries. */}

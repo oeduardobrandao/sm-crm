@@ -36,6 +36,10 @@ export type HistoryEntry =
       comentario: string | null;
       motivo: CorrectionReason | null;
       byTeam: boolean;
+      /** Client login: who answered. Null for team rows and anonymous clients. */
+      personName: string | null;
+      /** Client login: the session person wrote it (server decides). Then the label stays "Você". */
+      isMine: boolean;
       /** Client-visible media notes still open when this decision was sent. */
       openNoteCount: number;
     }
@@ -153,6 +157,8 @@ export function buildHistoryEntries(
       comentario: approval.comentario,
       motivo: approval.motivo,
       byTeam: approval.is_workspace_user,
+      personName: approval.is_workspace_user ? null : (approval.hub_person_nome ?? null),
+      isMine: approval.is_mine === true,
       openNoteCount: approval.open_note_count ?? 0,
       id: approval.id,
     });

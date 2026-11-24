@@ -37,6 +37,7 @@ export const EMAIL_TYPES: Record<string, EmailCategory> = {
   client_event: "notificacoes",
   agenda_lembrete: "notificacoes",
   agenda_cliente: "notificacoes",
+  hub_login_code: "notificacoes",
   welcome: "ciclo_de_vida",
   thank_you: "ciclo_de_vida",
   trial_reminder: "ciclo_de_vida",

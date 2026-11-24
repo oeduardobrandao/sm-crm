@@ -141,8 +141,16 @@ export function PostHistoryPanel({
     });
   }
 
-  function actorLabel(source: 'client' | 'team' | 'system' | boolean): string {
-    if (source === 'client' || source === false) return t('history.actor.you', 'Você');
+  function actorLabel(
+    source: 'client' | 'team' | 'system' | boolean,
+    personName?: string | null,
+    isMine?: boolean,
+  ): string {
+    if (source === 'client' || source === false) {
+      // A named person who is not the viewer (the function decides is_mine): their name.
+      if (personName && isMine !== true) return personName;
+      return t('history.actor.you', 'Você');
+    }
     if (source === 'system') return t('history.actor.system', 'Sistema');
     return t('history.actor.team', 'Equipe');
   }
@@ -234,7 +242,9 @@ export function PostHistoryPanel({
             </span>
             <span className="text-[12px] hub-tx3">{when}</span>
           </div>
-          <span className="text-[12px] hub-tx3">{actorLabel(entry.byTeam)}</span>
+          <span className="text-[12px] hub-tx3">
+            {actorLabel(entry.byTeam, entry.personName, entry.isMine)}
+          </span>
           {entry.motivo && (
             <p className="text-[12px] hub-tx2">
               {t('history.motivoLabel', 'Motivo')}:{' '}
@@ -390,7 +400,7 @@ export function PostHistoryPanel({
                     <li key={c.id} className="space-y-0.5">
                       <div className="flex items-baseline justify-between gap-2">
                         <span className="text-[12px] font-semibold hub-tx3">
-                          {actorLabel(c.is_workspace_user)}
+                          {actorLabel(c.is_workspace_user, c.hub_person_nome, c.is_mine)}
                         </span>
                         <span className="text-[12px] hub-tx3">
                           {formatDate(c.created_at, dateLang)}

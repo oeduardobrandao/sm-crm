@@ -1,7 +1,6 @@
 import { createJsonResponder } from "../_shared/http.ts";
-import { resolveHubToken } from "../_shared/hub-token.ts";
+import { hubAccessDenied, resolveHubAccess } from "../_shared/hub-token.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
-import { getClientIP } from "../_shared/rate-limit.ts";
 
 type DbClient = {
   from: (table: string) => any;
@@ -42,12 +41,9 @@ export function createHubMensagensHandler(deps: HubMensagensHandlerDeps) {
       url.searchParams.get("token") ?? (await req.clone().json().catch(() => ({}))).token;
     if (!token) return json({ error: "token required" }, 400);
 
-    const hubToken = await resolveHubToken(db as any, token, deps.now());
-    if (!hubToken) {
-      const okBadToken = await deps.rateLimit(db, `hub-badtoken:${getClientIP(req)}`, 30, 600);
-      if (!okBadToken) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
-      return json({ error: "Link inválido." }, 404);
-    }
+    const access = await resolveHubAccess(db as any, req, token, deps.now());
+    if (!access.ok) return hubAccessDenied(access.reason, { db, req, json, rateLimit: deps.rateLimit });
+    const hubToken = access.token;
 
     const okRead = await deps.rateLimit(
       db, `hub-read:${hubToken.conta_id}:${hubToken.cliente_id}`, 300, 300,
@@ -92,9 +88,43 @@ export function createHubMensagensHandler(deps: HubMensagensHandlerDeps) {
       }
       // The CRM reads team photos from the same RPC; the Hub never shows them.
       const rows = Array.isArray(items) ? (items as Record<string, unknown>[]) : [];
+      // is_mine: the feed does not carry the person id, so look it up for the rows that
+      // name a client person. Skipped without a session person. The id never leaves here.
+      const mineKeys = new Set<string>();
+      const sessionPersonId = access.person?.id ?? null;
+      if (sessionPersonId) {
+        const named = rows.filter((r) =>
+          r.is_workspace_user !== true &&
+          typeof r.client_person_name === "string" && r.client_person_name !== "" &&
+          typeof r.item_id === "number"
+        );
+        const lookups: [string, string, number[]][] = [
+          ["mensagem", "mensagens", []],
+          ["post_feedback", "post_approvals", []],
+        ];
+        for (const r of named) {
+          const l = lookups.find(([source]) => source === r.source);
+          if (l) l[2].push(r.item_id as number);
+        }
+        for (const [source, table, ids] of lookups) {
+          if (ids.length === 0) continue;
+          try {
+            let q = db.from(table).select("id, hub_person_id").in("id", ids);
+            if (table === "mensagens") q = q.eq("conta_id", contaId).eq("cliente_id", clienteId);
+            const { data: owners, error: ownersError } = await q;
+            if (ownersError) throw ownersError;
+            for (const o of (owners ?? []) as { id: number; hub_person_id: string | null }[]) {
+              if (o.hub_person_id === sessionPersonId) mineKeys.add(`${source}:${o.id}`);
+            }
+          } catch (err) {
+            console.error("[hub-mensagens] is_mine lookup failed:", err);
+          }
+        }
+      }
       const hubItems = rows.map((item) => ({
         ...item,
         author_avatar_url: null,
+        is_mine: mineKeys.has(`${String(item.source)}:${String(item.item_id)}`),
       }));
       return json({ items: hubItems, unread });
     }
@@ -129,6 +159,9 @@ export function createHubMensagensHandler(deps: HubMensagensHandlerDeps) {
           cliente_id: clienteId,
           content,
           is_workspace_user: false,
+          // Who wrote it, when the client logged in (client login). Never the email.
+          hub_person_id: access.person?.id ?? null,
+          hub_person_nome: access.person?.nome ?? null,
         })
         .select("id")
         .single();

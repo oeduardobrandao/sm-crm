@@ -526,3 +526,33 @@ describe('PhoneComments notes pinned to the media', () => {
     expect(screen.queryByText('Interna')).not.toBeInTheDocument();
   });
 });
+
+describe('PhoneComments Hub person names', () => {
+  const clientApproval = (over: Partial<PostApproval> = {}): PostApproval => ({
+    ...approval(1, false, at(10, 0)),
+    ...over,
+  });
+
+  it('labels a client message with the person name when known', () => {
+    setup({ approvals: [clientApproval({ hub_person_nome: 'Marina Costa' })] });
+    fireEvent.click(clientePill());
+    expect(screen.getByText(/Marina Costa/)).toBeInTheDocument();
+  });
+
+  it('falls back to the client name without a person name', () => {
+    setup({ approvals: [clientApproval()] });
+    fireEvent.click(clientePill());
+    expect(screen.getByText(/Padaria Sol/)).toBeInTheDocument();
+    expect(screen.queryByText(/Marina Costa/)).not.toBeInTheDocument();
+  });
+
+  it('names the person on a commentless approval event', () => {
+    setup({
+      approvals: [
+        clientApproval({ action: 'aprovado', comentario: null, hub_person_nome: 'Marina Costa' }),
+      ],
+    });
+    fireEvent.click(clientePill());
+    expect(screen.getByText(/Marina Costa/)).toBeInTheDocument();
+  });
+});
