@@ -325,7 +325,7 @@ export function PhoneComments({
                     <span className="phone-comments__meta">{formatWhen(a.created_at)}</span>
                     <span className="phone-comments__event-label">
                       <CheckCircle2 aria-hidden="true" />{' '}
-                      {t('phoneComments.clientApproved', { client })}
+                      {t('phoneComments.clientApproved', { client: a.hub_person_nome || client })}
                     </span>
                     {a.comentario && (
                       <p className="phone-bubble phone-bubble--client">{a.comentario}</p>
@@ -337,7 +337,7 @@ export function PhoneComments({
               return (
                 <div className={`phone-comments__row${team ? ' phone-comments__row--team' : ''}`}>
                   <span className="phone-comments__meta">
-                    {team ? t('phoneComments.team') : client}
+                    {team ? t('phoneComments.team') : a.hub_person_nome || client}
                     {a.action === 'correcao' && !team && (
                       <span className="phone-comments__tag">
                         <RotateCcw aria-hidden="true" />{' '}

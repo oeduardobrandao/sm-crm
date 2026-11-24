@@ -275,6 +275,8 @@ export interface PostHistoryApproval {
   /** Client-visible media notes that were open when this decision was sent. Absent on
    * stale cached payloads and before the function deploy: treat as 0. */
   open_note_count?: number;
+  /** Name of the logged-in client person who acted (client login); absent on an older function. */
+  hub_person_nome?: string | null;
 }
 
 export interface PostHistoryResponse {

@@ -205,6 +205,21 @@ function renderBody(over: Partial<PostEditorBodyProps> = {}, phoneLayout = false
   return props;
 }
 
+function clientApproval(over: Record<string, unknown> = {}) {
+  return {
+    id: 1,
+    post_id: 42,
+    token: 't',
+    action: 'aprovado' as const,
+    comentario: 'Pode publicar',
+    is_workspace_user: false,
+    author_user_id: null,
+    media_note_ids: [],
+    created_at: '2026-10-22T12:00:00Z',
+    ...over,
+  };
+}
+
 describe('PostEditorBody media notes wiring', () => {
   it('desktop: client notes show the client name, not the literal Cliente', () => {
     renderBody({ mediaNotes: binding() });
@@ -245,5 +260,15 @@ describe('PostEditorBody media notes wiring', () => {
       ],
     });
     expect(screen.getAllByText('Aprovado com 1 comentário em aberto').length).toBeGreaterThan(0);
+  });
+  it('desktop: a client approval shows the Hub person name', () => {
+    renderBody({ approvals: [clientApproval({ hub_person_nome: 'Marina Costa' })] });
+    expect(screen.getByText('Marina Costa')).toBeInTheDocument();
+  });
+
+  it('desktop: a client approval without a person name shows none', () => {
+    renderBody({ approvals: [clientApproval()] });
+    expect(screen.getByText('Pode publicar')).toBeInTheDocument();
+    expect(screen.queryByText('Marina Costa')).not.toBeInTheDocument();
   });
 });

@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown } from 'lucide-react';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { pinNumbers } from '@mesaas/ui/mediaPins/geometry';
 import { fetchPostHistory, submitApproval } from '../api';
+import { HubContext } from '../HubContext';
 import {
   buildHistoryEntries,
   computePostKpis,
@@ -56,6 +57,7 @@ export function PostHistoryPanel({
   onOpenReference,
 }: PostHistoryPanelProps) {
   const { t, i18n } = useTranslation('hubPosts');
+  const viewerName = useContext(HubContext)?.person?.nome ?? null;
   const dateLang = i18n.language === 'en' ? 'en-US' : 'pt-BR';
   const [expanded, setExpanded] = useState(false);
   const open = !!embedded || expanded;
@@ -141,8 +143,15 @@ export function PostHistoryPanel({
     });
   }
 
-  function actorLabel(source: 'client' | 'team' | 'system' | boolean): string {
-    if (source === 'client' || source === false) return t('history.actor.you', 'Você');
+  function actorLabel(
+    source: 'client' | 'team' | 'system' | boolean,
+    personName?: string | null,
+  ): string {
+    if (source === 'client' || source === false) {
+      // Another logged-in person on the same client: their name. The viewer's own rows stay "Você".
+      if (personName && personName !== viewerName) return personName;
+      return t('history.actor.you', 'Você');
+    }
     if (source === 'system') return t('history.actor.system', 'Sistema');
     return t('history.actor.team', 'Equipe');
   }
@@ -234,7 +243,7 @@ export function PostHistoryPanel({
             </span>
             <span className="text-[12px] hub-tx3">{when}</span>
           </div>
-          <span className="text-[12px] hub-tx3">{actorLabel(entry.byTeam)}</span>
+          <span className="text-[12px] hub-tx3">{actorLabel(entry.byTeam, entry.personName)}</span>
           {entry.motivo && (
             <p className="text-[12px] hub-tx2">
               {t('history.motivoLabel', 'Motivo')}:{' '}
@@ -390,7 +399,7 @@ export function PostHistoryPanel({
                     <li key={c.id} className="space-y-0.5">
                       <div className="flex items-baseline justify-between gap-2">
                         <span className="text-[12px] font-semibold hub-tx3">
-                          {actorLabel(c.is_workspace_user)}
+                          {actorLabel(c.is_workspace_user, c.hub_person_nome)}
                         </span>
                         <span className="text-[12px] hub-tx3">
                           {formatDate(c.created_at, dateLang)}

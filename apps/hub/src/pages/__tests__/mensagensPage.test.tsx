@@ -83,7 +83,10 @@ const ITEMS = [
   },
 ];
 
-function renderPage(bootstrapOverrides: Partial<HubBootstrap> = {}) {
+function renderPage(
+  bootstrapOverrides: Partial<HubBootstrap> = {},
+  person: { nome: string; email: string } | null = null,
+) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const bootstrap: HubBootstrap = { ...BOOTSTRAP, ...bootstrapOverrides };
   return render(
@@ -95,6 +98,8 @@ function renderPage(bootstrapOverrides: Partial<HubBootstrap> = {}) {
           workspace: 'ws',
           theme: 'light',
           toggleTheme: vi.fn(),
+          person,
+          signOut: vi.fn(),
         }}
       >
         <MemoryRouter initialEntries={['/ws/hub/tok/mensagens']}>
@@ -142,6 +147,32 @@ describe('MensagensPage', () => {
       expect(screen.getByText('Ana')).toBeInTheDocument();
       const chips = screen.getAllByRole('link', { name: /Post de julho/ });
       expect(chips[0]).toHaveAttribute('href', expect.stringContaining('/postagens/7'));
+    });
+
+    it('labels a client message written by another person on the same client', async () => {
+      mockFetchMensagens.mockResolvedValue({
+        items: [{ ...ITEMS[2], client_person_name: 'Marina Costa' }],
+        unread: 0,
+      });
+      renderPage({ feature_mensagens: true }, { nome: 'Paulo Reis', email: 'p@x.com' });
+      expect(await screen.findByText('Obrigado!')).toBeInTheDocument();
+      expect(screen.getByText('Marina Costa')).toBeInTheDocument();
+    });
+
+    it('does not label the viewer own message', async () => {
+      mockFetchMensagens.mockResolvedValue({
+        items: [{ ...ITEMS[2], client_person_name: 'Paulo Reis' }],
+        unread: 0,
+      });
+      renderPage({ feature_mensagens: true }, { nome: 'Paulo Reis', email: 'p@x.com' });
+      expect(await screen.findByText('Obrigado!')).toBeInTheDocument();
+      expect(screen.queryByText('Paulo Reis')).not.toBeInTheDocument();
+    });
+
+    it('does not label a client message without a person name', async () => {
+      renderPage({ feature_mensagens: true }, { nome: 'Paulo Reis', email: 'p@x.com' });
+      expect(await screen.findByText('Obrigado!')).toBeInTheDocument();
+      expect(screen.queryByText('Marina Costa')).not.toBeInTheDocument();
     });
 
     it('shows team initials even with author_avatar_url', async () => {

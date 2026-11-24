@@ -173,6 +173,11 @@ export function ConversationThread({
                       {m.author_name ?? t('shared.team')}
                     </div>
                   )}
+                  {!daEquipe && m.client_person_name && (
+                    <div className="vidro-bubble__meta mb-0.5 text-[11px] font-semibold text-[var(--text-muted)]">
+                      {m.client_person_name}
+                    </div>
+                  )}
                   {notaLabel && (
                     <div className="vidro-bubble__meta mb-0.5 text-[11px] font-semibold text-[var(--text-muted)]">
                       {notaLabel}

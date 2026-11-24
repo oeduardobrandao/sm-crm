@@ -550,6 +550,8 @@ export interface PostApproval {
   is_workspace_user: boolean;
   /** Autor da mensagem da equipe; null para respostas do cliente (via Hub). */
   author_user_id: string | null;
+  /** Nome de quem entrou no Hub e respondeu (login do cliente); null/ausente = cliente anônimo. */
+  hub_person_nome?: string | null;
   /** Notas de mídia (post_media_notes) enviadas junto com esta resposta. */
   media_note_ids: number[];
   created_at: string;

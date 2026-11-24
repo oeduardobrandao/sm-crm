@@ -430,6 +430,11 @@ function ApprovalBubble({ approval }: { approval: PostApproval }) {
     >
       <div className="approval-bubble-meta">
         <span className="approval-bubble-author">{actionLabel}</span>
+        {!isTeam && approval.hub_person_nome && (
+          <span className="approval-bubble-person text-[var(--text-muted)]">
+            {approval.hub_person_nome}
+          </span>
+        )}
         <span className="approval-bubble-date">
           {new Date(approval.created_at).toLocaleDateString(getIntlLocale(), {
             day: '2-digit',

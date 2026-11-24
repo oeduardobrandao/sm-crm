@@ -152,6 +152,31 @@ describe('ConversationThread', () => {
     expect(screen.getByPlaceholderText('Responder sobre o post…')).toBeInTheDocument();
   });
 
+  it('labels a client message with the Hub person who wrote it, when known', () => {
+    const named: MensagemFeedItem = { ...ITEMS[1], client_person_name: 'Marina Costa' };
+    renderThread({ feed: makeFeed({ data: { pages: [[named]] } }) });
+    expect(screen.getByText('Marina Costa')).toBeInTheDocument();
+    expect(screen.getByText('Obrigado!')).toBeInTheDocument();
+  });
+
+  it('shows no author label on a client message without a person name', () => {
+    renderThread({ feed: makeFeed({ data: { pages: [[ITEMS[1]]] } }) });
+    expect(screen.queryByText('Marina Costa')).not.toBeInTheDocument();
+    expect(screen.queryByText('Equipe')).not.toBeInTheDocument();
+  });
+
+  it('keeps the team author_name on a team row even if a person name rides along', () => {
+    const team: MensagemFeedItem = {
+      ...ITEMS[1],
+      is_workspace_user: true,
+      author_name: 'Ana',
+      client_person_name: 'Marina Costa',
+    };
+    renderThread({ feed: makeFeed({ data: { pages: [[team]] } }) });
+    expect(screen.getByText('Ana')).toBeInTheDocument();
+    expect(screen.queryByText('Marina Costa')).not.toBeInTheDocument();
+  });
+
   it('shows a back button only when onBack is provided', () => {
     renderThread();
     expect(

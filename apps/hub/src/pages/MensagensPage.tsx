@@ -50,7 +50,7 @@ function eventLabel(m: MensagemFeedItem, t: (key: string, defaultValue: string) 
 }
 
 export function MensagensPage() {
-  const { bootstrap, token, workspace } = useHub();
+  const { bootstrap, token, workspace, person } = useHub();
   const { t, i18n } = useTranslation('hubMessages');
   const base = `/${workspace}/hub/${compactHubToken(token)}`;
   const qc = useQueryClient();
@@ -192,8 +192,18 @@ export function MensagensPage() {
                 </div>
               );
             }
+            // Another logged-in person on the same client: show who wrote it. The viewer's own rows stay unlabeled.
+            const otherPerson =
+              mine && m.client_person_name && m.client_person_name !== person?.nome
+                ? m.client_person_name
+                : null;
             return (
               <div key={itemKey(m)} className={`max-w-[78%] ${mine ? 'self-end' : 'self-start'}`}>
+                {otherPerson && (
+                  <div className="mb-0.5 text-right text-[12px] font-semibold hub-tx3">
+                    {otherPerson}
+                  </div>
+                )}
                 {!mine && (
                   <div className="mb-0.5 flex items-center gap-1.5 text-[12px] font-semibold hub-tx3">
                     {/* Team photos never reach the Hub: initials only, whatever the payload carries. */}
