@@ -3,6 +3,7 @@ import { getConsent, subscribe } from './consent';
 import { loadCrisp, loadCrispWhenIdle } from './crispLoader';
 import { disableGoogleAds, loadGoogleAds, loadGoogleAdsWhenIdle } from './googleAdsLoader';
 import { disableMetaPixel, loadMetaPixel, loadMetaPixelWhenIdle } from './metaPixelLoader';
+import { disableOpenAiAds, loadOpenAiAds, loadOpenAiAdsWhenIdle } from './openaiAdsLoader';
 import { purgeAnalyticsStorage, purgeMarketingStorage, purgeSupportStorage } from './legacyStorage';
 import { resumePendingSupportChat } from './supportChat';
 
@@ -65,15 +66,18 @@ export function installConsentEffects(): void {
       if (booted) {
         loadGoogleAds();
         loadMetaPixel();
+        loadOpenAiAds();
       } else {
         loadGoogleAdsWhenIdle();
         loadMetaPixelWhenIdle();
+        loadOpenAiAdsWhenIdle();
       }
     }
     if (!marketing) {
       if (marketingOn) {
         disableGoogleAds();
         disableMetaPixel();
+        disableOpenAiAds();
       } else if (!booted) purgeMarketingStorage();
     }
 

@@ -2,6 +2,7 @@ import { isNativeApp } from '../native/platform';
 import { getConsent } from './consent';
 import { purgeMarketingStorage } from './legacyStorage';
 import { trackMetaEvent } from './metaPixelLoader';
+import { trackOpenAiAdsEvent } from './openaiAdsLoader';
 
 declare global {
   interface Window {
@@ -142,7 +143,7 @@ export function rememberCheckoutValue(cents: number | null | undefined): void {
 
 /**
  * Reports a successful checkout return, with the remembered price: the Google Ads "Compra"
- * conversion and the Meta Pixel `Purchase` event.
+ * conversion, the Meta Pixel `Purchase` event and the ChatGPT ads `subscription_created` event.
  */
 export function reportPurchaseConversion(): void {
   let cents: number | null = null;
@@ -154,4 +155,10 @@ export function reportPurchaseConversion(): void {
   }
   trackGoogleAdsConversion(PURCHASE_CONVERSION_LABEL, cents ? { amount: cents / 100 } : undefined);
   trackMetaEvent('Purchase', cents ? { value: cents / 100, currency: 'BRL' } : undefined);
+  trackOpenAiAdsEvent({
+    name: 'subscription_created',
+    data: cents
+      ? { type: 'plan_enrollment', amount: Math.round(cents), currency: 'BRL' }
+      : { type: 'plan_enrollment' },
+  });
 }

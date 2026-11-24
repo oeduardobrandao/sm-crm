@@ -72,8 +72,8 @@ social media,agência,crm,instagram,tiktok,calendário editorial,aprovação,pos
 
 ## App Privacy (data collection)
 
-Tracking: **No**. The app loads no ad tags (Meta Pixel and Google Ads are off inside the app,
-see `googleAdsLoader.ts` / `metaPixelLoader.ts`), and no data is shared with data brokers.
+Tracking: **No**. The app loads no ad tags (Meta Pixel, Google Ads and the ChatGPT ads pixel are off inside
+the app, see `googleAdsLoader.ts` / `metaPixelLoader.ts` / `openaiAdsLoader.ts`), and no data is shared with data brokers.
 
 The app shows no cookie banner. Nothing optional runs until the user turns it on: PostHog only
 after enabling "Análise" in Perfil > Preferências de cookies, and Crisp only after granting

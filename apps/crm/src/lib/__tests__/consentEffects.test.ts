@@ -16,6 +16,9 @@ const m = vi.hoisted(() => ({
   loadMetaPixel: vi.fn(),
   loadMetaPixelWhenIdle: vi.fn(),
   disableMetaPixel: vi.fn(),
+  loadOpenAiAds: vi.fn(),
+  loadOpenAiAdsWhenIdle: vi.fn(),
+  disableOpenAiAds: vi.fn(),
 }));
 vi.mock('../analytics', () => ({
   initAnalytics: m.initAnalytics,
@@ -34,6 +37,11 @@ vi.mock('../metaPixelLoader', () => ({
   loadMetaPixel: m.loadMetaPixel,
   loadMetaPixelWhenIdle: m.loadMetaPixelWhenIdle,
   disableMetaPixel: m.disableMetaPixel,
+}));
+vi.mock('../openaiAdsLoader', () => ({
+  loadOpenAiAds: m.loadOpenAiAds,
+  loadOpenAiAdsWhenIdle: m.loadOpenAiAdsWhenIdle,
+  disableOpenAiAds: m.disableOpenAiAds,
 }));
 vi.mock('../legacyStorage', () => ({
   purgeAnalyticsStorage: m.purgeAnalyticsStorage,
@@ -135,6 +143,7 @@ describe('installConsentEffects', () => {
     expect(m.loadGoogleAds).not.toHaveBeenCalled();
     expect(m.loadGoogleAdsWhenIdle).not.toHaveBeenCalled();
     expect(m.loadMetaPixelWhenIdle).not.toHaveBeenCalled();
+    expect(m.loadOpenAiAdsWhenIdle).not.toHaveBeenCalled();
     expect(m.purgeMarketingStorage).toHaveBeenCalledTimes(1);
   });
 
@@ -143,8 +152,10 @@ describe('installConsentEffects', () => {
     await boot();
     expect(m.loadGoogleAdsWhenIdle).toHaveBeenCalledTimes(1);
     expect(m.loadMetaPixelWhenIdle).toHaveBeenCalledTimes(1);
+    expect(m.loadOpenAiAdsWhenIdle).toHaveBeenCalledTimes(1);
     expect(m.loadGoogleAds).not.toHaveBeenCalled();
     expect(m.loadMetaPixel).not.toHaveBeenCalled();
+    expect(m.loadOpenAiAds).not.toHaveBeenCalled();
     expect(m.purgeMarketingStorage).not.toHaveBeenCalled();
   });
 
@@ -153,9 +164,11 @@ describe('installConsentEffects', () => {
     setConsent({ analytics: false, support: false, marketing: true });
     expect(m.loadGoogleAds).toHaveBeenCalledTimes(1);
     expect(m.loadMetaPixel).toHaveBeenCalledTimes(1);
+    expect(m.loadOpenAiAds).toHaveBeenCalledTimes(1);
     setConsent({ analytics: false, support: false, marketing: false });
     expect(m.disableGoogleAds).toHaveBeenCalledTimes(1);
     expect(m.disableMetaPixel).toHaveBeenCalledTimes(1);
+    expect(m.disableOpenAiAds).toHaveBeenCalledTimes(1);
   });
 
   it('does not touch Google Ads on an unrelated change', async () => {

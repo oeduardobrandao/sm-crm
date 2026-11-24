@@ -12,6 +12,7 @@ import { signIn, signUp, resetPassword, resendSignupConfirmation } from '../../l
 import { clearStoredReferral, getStoredReferral } from '../../lib/referral';
 import { captureEvent, identifySignup } from '@/lib/analytics';
 import { trackMetaEvent } from '@/lib/metaPixelLoader';
+import { trackOpenAiAdsEvent } from '@/lib/openaiAdsLoader';
 import { markSignupStarted } from './signupStarted';
 import {
   SIGNUP_FIELDS,
@@ -272,6 +273,7 @@ export default function LoginPage() {
     if (refCode) clearStoredReferral();
     captureEvent('signup_completed');
     trackMetaEvent('CompleteRegistration');
+    trackOpenAiAdsEvent({ name: 'registration_completed', data: { type: 'customer_action' } });
     // With email confirmation disabled signUp returns a live session, so the
     // user goes straight to the trial step. When it is enabled there is no
     // session yet and the check-your-email screen still applies.
