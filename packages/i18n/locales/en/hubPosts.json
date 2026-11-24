@@ -346,5 +346,11 @@
     "copied": "Copied!",
     "downloadFailed": "Couldn't download right now. Try again.",
     "readyToSave": "Ready. Tap again to save it to your phone."
+  },
+  "download": {
+    "label": "Download",
+    "ariaLabel": "Download post media",
+    "readyToSave": "Ready. Tap Download again to save it to your phone.",
+    "failed": "Couldn't download right now. Try again."
   }
 }

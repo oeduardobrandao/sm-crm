@@ -15,6 +15,7 @@ vi.mock('jszip', () => ({
 
 import {
   canDownloadGeral,
+  downloadCaption,
   downloadGeralContent,
   geralFileName,
   geralZipName,
@@ -82,6 +83,29 @@ describe('canDownloadGeral', () => {
   });
 });
 
+describe('downloadCaption', () => {
+  it('uses the Geral caption on a post with a Geral destination', () => {
+    expect(
+      downloadCaption(
+        post({ targets: ['instagram', 'geral'], ig_caption: 'IG', geral_caption: 'G' }),
+      ),
+    ).toBe('G');
+  });
+
+  it('uses the first platform caption with text on a social post', () => {
+    expect(downloadCaption(post({ targets: ['instagram'], ig_caption: ' IG ' }))).toBe('IG');
+    expect(
+      downloadCaption(
+        post({ targets: ['instagram', 'tiktok'], ig_caption: ' ', tiktok_caption: 'TT' }),
+      ),
+    ).toBe('TT');
+  });
+
+  it('is empty when there is no caption', () => {
+    expect(downloadCaption(post({ targets: ['instagram'], ig_caption: null }))).toBe('');
+  });
+});
+
 describe('file names', () => {
   it('numbers files in order with the extension of their type', () => {
     expect(geralFileName(media(), 0)).toBe('01.jpg');
@@ -137,6 +161,18 @@ describe('downloadGeralContent', () => {
     expect([...zipFiles.keys()]).toEqual(['01.jpg', '02.mp4', 'legenda.txt']);
     expect(zipFiles.get('legenda.txt')).toBe('Legenda geral');
     expect(downloads).toEqual(['video-institucional-versao-final.zip']);
+  });
+
+  it('puts the Instagram caption in legenda.txt for an Instagram post', async () => {
+    await downloadGeralContent(
+      post({
+        targets: ['instagram'],
+        status: 'enviado_cliente',
+        ig_caption: 'Legenda IG',
+        media: [media({ id: 1 }), media({ id: 2 })],
+      }),
+    );
+    expect(zipFiles.get('legenda.txt')).toBe('Legenda IG');
   });
 
   it('leaves legenda.txt out when the Geral caption is empty', async () => {
