@@ -212,16 +212,33 @@ Deno.test("scanAndReport alerts on a job startup timeout with no success since o
   assertEquals(reported, ["tiktok-sync-cron"]);
 });
 
-Deno.test("scanAndReport alerts on three job startup timeouts in the window even after recovery", async () => {
-  const { reported } = await scanTransient(
+Deno.test("scanAndReport drops three separate stalls the every-minute job recovered from", async () => {
+  // The 2026-11-24 19:00 UTC batch: pg_cron stalled at 17:35, 17:36 and 18:52 and
+  // every job ran again on the next tick. Three blips out of ~130 runs is noise.
+  const { reported, suppressed } = await scanTransient(
     [
-      row("instagram-publish-cron", "job startup timeout", "2026-09-23T12:22:00Z"),
-      row("instagram-publish-cron", "connection failed", "2026-09-23T12:21:00Z"),
-      row("instagram-publish-cron", "job startup timeout", "2026-09-23T12:20:00Z"),
+      row("instagram-publish-cron", "job startup timeout", "2026-09-23T12:52:00Z"),
+      row("instagram-publish-cron", "connection failed", "2026-09-23T11:36:00Z"),
+      row("instagram-publish-cron", "job startup timeout", "2026-09-23T11:35:00Z"),
     ],
     { "instagram-publish-cron": "2026-09-23T12:59:00Z" },
   );
-  assertEquals(reported, ["instagram-publish-cron"]);
+  assertEquals(reported, []);
+  assertEquals(suppressed, ["instagram-publish-cron"]);
+});
+
+Deno.test("scanAndReport alerts at once on three transient failures with no recovery since", async () => {
+  // Fresh enough that the settle rules alone would still wait.
+  const { reported, reports } = await scanTransient(
+    [
+      row("report-worker-tick", "job startup timeout", "2026-09-23T12:58:00Z"),
+      row("report-worker-tick", "job startup timeout", "2026-09-23T12:57:00Z"),
+      row("report-worker-tick", "connection failed", "2026-09-23T12:56:00Z"),
+    ],
+    { "report-worker-tick": "2026-09-23T12:55:00Z" },
+  );
+  assertEquals(reported, ["report-worker-tick"]);
+  assertEquals(reports[0].start, "2026-09-23T12:58:00Z");
 });
 
 Deno.test("scanAndReport alerts when a transient failure was never followed by a success", async () => {
@@ -264,8 +281,8 @@ Deno.test("scanAndReport defers a fresh transient failure with no success yet", 
   assertEquals(suppressed, ["instagram-publish-cron"]);
 });
 
-Deno.test("scanAndReport alerts on repeated transient failures even after recovery", async () => {
-  const { reported, reports } = await scanTransient(
+Deno.test("scanAndReport drops repeated transient failures once the job recovered", async () => {
+  const { reported, suppressed } = await scanTransient(
     [
       row("report-worker-tick", "connection failed", "2026-09-23T12:22:00Z"),
       row("report-worker-tick", "connection failed", "2026-09-23T12:21:00Z"),
@@ -273,8 +290,8 @@ Deno.test("scanAndReport alerts on repeated transient failures even after recove
     ],
     { "report-worker-tick": "2026-09-23T12:59:00Z" },
   );
-  assertEquals(reported, ["report-worker-tick"]);
-  assertEquals(reports[0].start, "2026-09-23T12:22:00Z");
+  assertEquals(reported, []);
+  assertEquals(suppressed, ["report-worker-tick"]);
 });
 
 Deno.test("scanAndReport reports a real error even when a newer transient one exists", async () => {
