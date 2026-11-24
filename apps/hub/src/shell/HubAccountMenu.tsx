@@ -7,7 +7,10 @@ export interface HubAccountMenuProps {
   onSignOut: () => void;
   /** Where the panel opens: below and right-aligned (top bar) or above and left-aligned (sidebar footer). */
   placement?: 'below-end' | 'above-start';
-  /** Trigger diameter in px. 44 meets the touch target; the desktop sidebar uses a denser 32. */
+  /**
+   * Trigger diameter in px. Below 44 (the dense desktop sidebar uses 32) an invisible
+   * overlay keeps the tap area at 44.
+   */
   size?: number;
 }
 
@@ -66,11 +69,19 @@ export function HubAccountMenu({
         aria-controls={open ? panelId : undefined}
         onClick={() => setOpen((v) => !v)}
         style={{ width: size, height: size }}
-        className={`flex items-center justify-center border hub-border hub-bg-card hub-txt text-[13px] font-semibold ${
+        className={`relative flex items-center justify-center border hub-border hub-bg-card hub-txt text-[13px] font-semibold ${
           pauta ? 'rounded-[var(--hub-r-ctl)]' : 'rounded-full'
         }`}
       >
         {initialsOf(person.nome, person.email)}
+        {size < 44 && (
+          <span
+            aria-hidden="true"
+            data-hit-area=""
+            className="absolute"
+            style={{ inset: (size - 44) / 2 }}
+          />
+        )}
       </button>
       {open && (
         <div

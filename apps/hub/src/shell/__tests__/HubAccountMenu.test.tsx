@@ -35,4 +35,20 @@ describe('HubAccountMenu', () => {
     render(<HubAccountMenu person={{ nome: '', email: 'ze@x.com' }} onSignOut={vi.fn()} />);
     expect(screen.getByRole('button', { name: /Conta de/ })).toHaveTextContent('Z');
   });
+
+  it('keeps a 44px tap area around a smaller trigger', () => {
+    const { unmount } = render(<HubAccountMenu person={PERSON} onSignOut={vi.fn()} size={32} />);
+    const hit = screen
+      .getByRole('button', { name: 'Conta de Marina Costa' })
+      .querySelector<HTMLElement>('[data-hit-area]');
+    expect(hit).not.toBeNull();
+    expect(hit!.style.inset).toBe('-6px');
+    unmount();
+    render(<HubAccountMenu person={PERSON} onSignOut={vi.fn()} />);
+    expect(
+      screen
+        .getByRole('button', { name: 'Conta de Marina Costa' })
+        .querySelector('[data-hit-area]'),
+    ).toBeNull();
+  });
 });

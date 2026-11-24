@@ -135,7 +135,7 @@ export function HubSidebar() {
         >
           {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
         </button>
-        {person && signOut && (
+        {person && (
           <HubAccountMenu person={person} onSignOut={signOut} placement="above-start" size={32} />
         )}
       </div>

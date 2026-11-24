@@ -8,9 +8,9 @@ interface HubContextValue {
   theme: 'light' | 'dark';
   toggleTheme: () => void;
   /** The logged-in client person, when the Hub has client login; null when anonymous. */
-  person?: { nome: string; email: string } | null;
+  person: { nome: string; email: string } | null;
   /** Ends the client's login session. Provided by HubShell next to `person`. */
-  signOut?: () => void;
+  signOut: () => void;
 }
 
 export const HubContext = createContext<HubContextValue | null>(null);

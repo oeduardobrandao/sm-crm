@@ -142,13 +142,16 @@ export function HubMobileNav() {
             )}
           </span>
           <div className="flex items-center gap-2">
-            {/* The account button takes this slot's width on a phone; the client name is still in the drawer. */}
-            {!(person && signOut) && (
-              <span className="text-[12px] hub-tx3 truncate max-w-[100px]">
-                {bootstrap.cliente_nome}
-              </span>
-            )}
-            {person && signOut && <HubAccountMenu person={person} onSignOut={signOut} />}
+            {/* Next to the account button the name only fits from 360px up; below that it is
+                still in the drawer. */}
+            <span
+              className={`text-[12px] hub-tx3 truncate max-w-[100px] ${
+                person ? 'max-[359px]:hidden' : ''
+              }`}
+            >
+              {bootstrap.cliente_nome}
+            </span>
+            {person && <HubAccountMenu person={person} onSignOut={signOut} />}
             <button
               type="button"
               ref={triggerRef}

@@ -63,7 +63,7 @@ function renderCard(requireLogin: boolean) {
 }
 
 async function openMenu() {
-  fireEvent.click(screen.getByRole('button', { name: /mais opções|opções|menu/i }));
+  fireEvent.click(screen.getByRole('button', { name: 'Mais opções' }));
   return screen.findByText('Baixar .ics');
 }
 

@@ -217,6 +217,29 @@ describe('HubLogin', () => {
     expect(screen.getByText('Reenviar código em 1:00')).toBeInTheDocument();
   });
 
+  it('blocks "Usar outro e-mail" while a resend is in flight', async () => {
+    vi.useFakeTimers();
+    setup();
+    fireEvent.change(screen.getByLabelText('E-mail'), { target: { value: 'a@b.co' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Enviar código' }));
+    });
+    for (let i = 0; i < 60; i++) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+    }
+    let finish: (v: { ok: true }) => void = () => {};
+    mockedRequest.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+    fireEvent.click(screen.getByRole('button', { name: 'Reenviar código' }));
+    const other = screen.getByRole('button', { name: 'Usar outro e-mail' });
+    expect(other).toBeDisabled();
+    await act(async () => {
+      finish({ ok: true });
+    });
+    expect(other).toBeEnabled();
+  });
+
   it('returns to an empty email step through "Usar outro e-mail"', async () => {
     setup();
     await goToCodeStep();

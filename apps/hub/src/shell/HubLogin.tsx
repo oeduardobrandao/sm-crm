@@ -30,7 +30,8 @@ const FIELD_CLASS =
   'w-full box-border hub-bg-card hub-txt border hub-border rounded-xl px-3.5 outline-none focus:border-[var(--hub-acc)]';
 const PRIMARY_CLASS =
   'w-full min-h-[48px] rounded-xl px-4 text-[15px] font-semibold hub-btn-primary disabled:opacity-50 disabled:cursor-not-allowed';
-const LINK_CLASS = 'min-h-[44px] px-3 font-medium underline hub-txt';
+const LINK_CLASS =
+  'min-h-[44px] px-3 font-medium underline hub-txt disabled:opacity-50 disabled:cursor-not-allowed';
 
 function Brand({ login }: { login: HubLoginPayload }) {
   const { name, logo_url: logoUrl } = login.workspace;
@@ -257,7 +258,13 @@ export function HubLogin({ workspace, token, login, onLoggedIn }: HubLoginProps)
                 {t('hub.login.resend')}
               </button>
             )}
-            <button type="button" onClick={restartWithOtherEmail} className={LINK_CLASS}>
+            {/* Disabled while a request is in flight: its late answer would land on the next step. */}
+            <button
+              type="button"
+              onClick={restartWithOtherEmail}
+              disabled={busy}
+              className={LINK_CLASS}
+            >
               {t('hub.login.otherEmail')}
             </button>
           </div>
