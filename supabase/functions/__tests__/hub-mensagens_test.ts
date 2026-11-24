@@ -345,3 +345,55 @@ Deno.test("hub-mensagens: POST /seen marks the cliente marker", async () => {
   }));
   assertEquals(res.status, 200);
 });
+
+const ME = { id: "8d1b7c2e-0000-4000-8000-000000000001", nome: "Marina Souza", email: "m@cliente.test" };
+
+function personFeed() {
+  return [
+    { ...FEED_ROW, source: "mensagem", item_id: 10, is_workspace_user: false, client_person_name: "Marina Souza" },
+    { ...FEED_ROW, source: "mensagem", item_id: 11, is_workspace_user: false, client_person_name: "Marina Souza" },
+    { ...FEED_ROW, source: "post_feedback", item_id: 20, is_workspace_user: false, client_person_name: "Marina Souza" },
+    { ...FEED_ROW, source: "post_feedback", item_id: 21, is_workspace_user: false, client_person_name: "Marina Souza" },
+    { ...FEED_ROW, source: "mensagem", item_id: 12, is_workspace_user: true, client_person_name: null },
+  ];
+}
+
+Deno.test("hub-mensagens: GET sets is_mine from the session person and never returns hub_person_id", async () => {
+  const db = createSupabaseQueryMock();
+  db.queueRpc("hub_access_context", { data: { require_login: true, person: ME }, error: null });
+  setupToken(db);
+  db.queueRpc("get_mensagens_feed", { data: personFeed(), error: null });
+  db.queueRpc("get_mensagens_unread", { data: [], error: null });
+  db.queue("mensagens", "select", { data: [{ id: 10, hub_person_id: ME.id }, { id: 11, hub_person_id: "p-other" }], error: null });
+  db.queue("post_approvals", "select", { data: [{ id: 20, hub_person_id: ME.id }, { id: 21, hub_person_id: "p-other" }], error: null });
+  const res = await makeHandler(db)(new Request("https://x.test/hub-mensagens?token=t"));
+  const body = await readJson(res);
+  assertEquals(res.status, 200);
+  assertEquals(body.items.map((i: { is_mine: boolean }) => i.is_mine), [true, false, true, false, false]);
+  assertEquals(JSON.stringify(body).includes("hub_person_id"), false);
+});
+
+Deno.test("hub-mensagens: GET without a session person has is_mine false and skips the lookups", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  db.queueRpc("get_mensagens_feed", { data: personFeed(), error: null });
+  db.queueRpc("get_mensagens_unread", { data: [], error: null });
+  const res = await makeHandler(db)(new Request("https://x.test/hub-mensagens?token=t"));
+  const body = await readJson(res);
+  assertEquals(body.items.every((i: { is_mine: boolean }) => i.is_mine === false), true);
+  assertEquals(db.calls.some((c) => c.table === "mensagens" || c.table === "post_approvals"), false);
+});
+
+Deno.test("hub-mensagens: a failed is_mine lookup falls back to false without failing the feed", async () => {
+  const db = createSupabaseQueryMock();
+  db.queueRpc("hub_access_context", { data: { require_login: true, person: ME }, error: null });
+  setupToken(db);
+  db.queueRpc("get_mensagens_feed", { data: personFeed(), error: null });
+  db.queueRpc("get_mensagens_unread", { data: [], error: null });
+  db.queue("mensagens", "select", { data: null, error: { message: "boom" } });
+  db.queue("post_approvals", "select", { data: [{ id: 20, hub_person_id: ME.id }], error: null });
+  const res = await makeHandler(db)(new Request("https://x.test/hub-mensagens?token=t"));
+  const body = await readJson(res);
+  assertEquals(res.status, 200);
+  assertEquals(body.items.map((i: { is_mine: boolean }) => i.is_mine), [false, false, true, false, false]);
+});

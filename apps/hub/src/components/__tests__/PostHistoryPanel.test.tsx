@@ -583,14 +583,27 @@ describe('PostHistoryPanel: who wrote it (client login)', () => {
   }
 
   it('shows another person name on a client comment', async () => {
-    mockedFetch.mockResolvedValue(history({ hub_person_nome: 'Marina Costa' }));
+    mockedFetch.mockResolvedValue(history({ hub_person_nome: 'Marina Costa', is_mine: false }));
     open({ nome: 'Paulo Reis', email: 'p@x.com' });
     expect(await screen.findByText('Marina Costa')).toBeInTheDocument();
     expect(screen.queryByText('Você')).not.toBeInTheDocument();
   });
 
+  it('shows the name of another person who has the viewer exact name (is_mine false)', async () => {
+    mockedFetch.mockResolvedValue(history({ hub_person_nome: 'Paulo Reis', is_mine: false }));
+    open({ nome: 'Paulo Reis', email: 'p@x.com' });
+    expect(await screen.findByText('Paulo Reis')).toBeInTheDocument();
+    expect(screen.queryByText('Você')).not.toBeInTheDocument();
+  });
+
+  it('shows the name on a named row for a viewer with no session', async () => {
+    mockedFetch.mockResolvedValue(history({ hub_person_nome: 'Marina Costa' }));
+    open(null);
+    expect(await screen.findByText('Marina Costa')).toBeInTheDocument();
+  });
+
   it('keeps "Você" for the viewer own comment', async () => {
-    mockedFetch.mockResolvedValue(history({ hub_person_nome: 'Paulo Reis' }));
+    mockedFetch.mockResolvedValue(history({ hub_person_nome: 'Paulo Reis', is_mine: true }));
     open({ nome: 'Paulo Reis', email: 'p@x.com' });
     expect(await screen.findByText('Você')).toBeInTheDocument();
     expect(screen.queryByText('Paulo Reis')).not.toBeInTheDocument();
@@ -604,7 +617,13 @@ describe('PostHistoryPanel: who wrote it (client login)', () => {
 
   it('shows the person name on a history decision by someone else', async () => {
     mockedFetch.mockResolvedValue(
-      history({ id: 31, action: 'aprovado', comentario: null, hub_person_nome: 'Marina Costa' }),
+      history({
+        id: 31,
+        action: 'aprovado',
+        comentario: null,
+        hub_person_nome: 'Marina Costa',
+        is_mine: false,
+      }),
     );
     render(
       <HubContext.Provider

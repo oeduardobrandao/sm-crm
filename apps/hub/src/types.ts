@@ -244,6 +244,8 @@ export interface PostApproval {
   motivo?: CorrectionReason | null;
   /** Name of the logged-in client person who acted (client login); absent on an older function. */
   hub_person_nome?: string | null;
+  /** True when the logged-in session person wrote this row (decided by the function); absent on an older function. */
+  is_mine?: boolean;
 }
 
 export type CorrectionReason = 'midia' | 'texto' | 'legenda' | 'outro';
@@ -277,6 +279,8 @@ export interface PostHistoryApproval {
   open_note_count?: number;
   /** Name of the logged-in client person who acted (client login); absent on an older function. */
   hub_person_nome?: string | null;
+  /** True when the logged-in session person wrote this row (decided by the function); absent on an older function. */
+  is_mine?: boolean;
 }
 
 export interface PostHistoryResponse {
@@ -571,6 +575,8 @@ export interface MensagemFeedItem {
   author_avatar_url: string | null;
   /** Name of the logged-in client person who wrote it (client login); absent on an older function. */
   client_person_name?: string | null;
+  /** True when the logged-in session person wrote this row (decided by the function); absent on an older function. */
+  is_mine?: boolean;
   created_at: string;
 }
 

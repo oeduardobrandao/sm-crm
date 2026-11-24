@@ -53,6 +53,8 @@ export interface HubHistoryApproval {
   is_workspace_user: boolean;
   /** Name of the logged-in client person who acted (client login); null otherwise. Never the id. */
   hub_person_nome: string | null;
+  /** True when the logged-in session person wrote this row. Decided here; the id never leaves. */
+  is_mine: boolean;
   created_at: string;
   /** Notes snapshotted when the client sent this approval (post_approval_media_notes). */
   open_note_count: number;
@@ -65,6 +67,7 @@ export interface RawApprovalRow {
   motivo: string | null;
   is_workspace_user: boolean | null;
   hub_person_nome?: string | null;
+  hub_person_id?: string | null;
   created_at: string;
   [extra: string]: unknown;
 }
@@ -113,6 +116,7 @@ export function sanitizeHistoryEvents(rows: RawStatusEventRow[]): HubHistoryEven
 export function sanitizeHistoryApprovals(
   rows: RawApprovalRow[],
   openNoteCounts: Map<number, number> = new Map(),
+  sessionPersonId: string | null = null,
 ): HubHistoryApproval[] {
   return [...rows]
     .sort(compareByCreatedAtThenId)
@@ -124,6 +128,7 @@ export function sanitizeHistoryApprovals(
       motivo: r.motivo ?? null,
       is_workspace_user: r.is_workspace_user === true,
       hub_person_nome: typeof r.hub_person_nome === "string" ? r.hub_person_nome : null,
+      is_mine: sessionPersonId != null && r.is_workspace_user !== true && r.hub_person_id === sessionPersonId,
       created_at: r.created_at,
       open_note_count: openNoteCounts.get(r.id) ?? 0,
     }));
@@ -188,7 +193,7 @@ export function createHubPostHistoryHandler(deps: HubPostHistoryHandlerDeps) {
 
     const { data: approvals, error: approvalsError } = await db
       .from("post_approvals")
-      .select("id, action, comentario, motivo, is_workspace_user, hub_person_nome, created_at")
+      .select("id, action, comentario, motivo, is_workspace_user, hub_person_id, hub_person_nome, created_at")
       .eq("post_id", postId)
       .order("created_at", { ascending: true })
       .order("id", { ascending: true });
@@ -247,7 +252,7 @@ export function createHubPostHistoryHandler(deps: HubPostHistoryHandlerDeps) {
 
     return json({
       events: historyEvents,
-      approvals: sanitizeHistoryApprovals(approvalRows, openNoteCounts),
+      approvals: sanitizeHistoryApprovals(approvalRows, openNoteCounts, access.person?.id ?? null),
       media_notes: mediaNotes,
     });
   };

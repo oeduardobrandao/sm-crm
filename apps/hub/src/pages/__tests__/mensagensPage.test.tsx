@@ -151,7 +151,7 @@ describe('MensagensPage', () => {
 
     it('labels a client message written by another person on the same client', async () => {
       mockFetchMensagens.mockResolvedValue({
-        items: [{ ...ITEMS[2], client_person_name: 'Marina Costa' }],
+        items: [{ ...ITEMS[2], client_person_name: 'Marina Costa', is_mine: false }],
         unread: 0,
       });
       renderPage({ feature_mensagens: true }, { nome: 'Paulo Reis', email: 'p@x.com' });
@@ -159,9 +159,19 @@ describe('MensagensPage', () => {
       expect(screen.getByText('Marina Costa')).toBeInTheDocument();
     });
 
+    it('labels another person who has the viewer exact name (is_mine false)', async () => {
+      mockFetchMensagens.mockResolvedValue({
+        items: [{ ...ITEMS[2], client_person_name: 'Paulo Reis', is_mine: false }],
+        unread: 0,
+      });
+      renderPage({ feature_mensagens: true }, { nome: 'Paulo Reis', email: 'p@x.com' });
+      expect(await screen.findByText('Obrigado!')).toBeInTheDocument();
+      expect(screen.getByText('Paulo Reis')).toBeInTheDocument();
+    });
+
     it('does not label the viewer own message', async () => {
       mockFetchMensagens.mockResolvedValue({
-        items: [{ ...ITEMS[2], client_person_name: 'Paulo Reis' }],
+        items: [{ ...ITEMS[2], client_person_name: 'Paulo Reis', is_mine: true }],
         unread: 0,
       });
       renderPage({ feature_mensagens: true }, { nome: 'Paulo Reis', email: 'p@x.com' });

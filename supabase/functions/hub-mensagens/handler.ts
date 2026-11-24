@@ -88,9 +88,43 @@ export function createHubMensagensHandler(deps: HubMensagensHandlerDeps) {
       }
       // The CRM reads team photos from the same RPC; the Hub never shows them.
       const rows = Array.isArray(items) ? (items as Record<string, unknown>[]) : [];
+      // is_mine: the feed does not carry the person id, so look it up for the rows that
+      // name a client person. Skipped without a session person. The id never leaves here.
+      const mineKeys = new Set<string>();
+      const sessionPersonId = access.person?.id ?? null;
+      if (sessionPersonId) {
+        const named = rows.filter((r) =>
+          r.is_workspace_user !== true &&
+          typeof r.client_person_name === "string" && r.client_person_name !== "" &&
+          typeof r.item_id === "number"
+        );
+        const lookups: [string, string, number[]][] = [
+          ["mensagem", "mensagens", []],
+          ["post_feedback", "post_approvals", []],
+        ];
+        for (const r of named) {
+          const l = lookups.find(([source]) => source === r.source);
+          if (l) l[2].push(r.item_id as number);
+        }
+        for (const [source, table, ids] of lookups) {
+          if (ids.length === 0) continue;
+          try {
+            let q = db.from(table).select("id, hub_person_id").in("id", ids);
+            if (table === "mensagens") q = q.eq("conta_id", contaId).eq("cliente_id", clienteId);
+            const { data: owners, error: ownersError } = await q;
+            if (ownersError) throw ownersError;
+            for (const o of (owners ?? []) as { id: number; hub_person_id: string | null }[]) {
+              if (o.hub_person_id === sessionPersonId) mineKeys.add(`${source}:${o.id}`);
+            }
+          } catch (err) {
+            console.error("[hub-mensagens] is_mine lookup failed:", err);
+          }
+        }
+      }
       const hubItems = rows.map((item) => ({
         ...item,
         author_avatar_url: null,
+        is_mine: mineKeys.has(`${String(item.source)}:${String(item.item_id)}`),
       }));
       return json({ items: hubItems, unread });
     }

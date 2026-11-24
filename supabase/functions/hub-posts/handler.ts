@@ -380,7 +380,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
         ? pagedRows("post_approvals", (from, to) =>
             db
               .from("post_approvals")
-              .select("id, post_id, action, comentario, is_workspace_user, hub_person_nome, created_at")
+              .select("id, post_id, action, comentario, is_workspace_user, hub_person_id, hub_person_nome, created_at")
               .in("post_id", postIds)
               .order("created_at", { ascending: true })
               .order("id", { ascending: true })
@@ -477,10 +477,16 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
         post_id: number;
         action: string;
         is_workspace_user: boolean | null;
+        hub_person_id?: string | null;
       }[]
     )
       .filter((a) => visibleIds.has(a.post_id))
-      .filter(isClientVisibleApproval);
+      .filter(isClientVisibleApproval)
+      // Never the person id: only whether the row is the session person's.
+      .map(({ hub_person_id, ...rest }) => ({
+        ...rest,
+        is_mine: access.person != null && hub_person_id != null && hub_person_id === access.person.id,
+      }));
 
     const suggestionByPost: Record<number, any> = {};
     for (const s of (pendingSuggestions ?? [])) {
