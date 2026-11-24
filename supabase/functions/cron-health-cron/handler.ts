@@ -42,7 +42,13 @@ export function isTransientStartFailure(firstLine: string): boolean {
   return TRANSIENT_START_FAILURES.has(firstLine.trim().toLowerCase());
 }
 
-/** Transient failures of one job within the window at which we alert anyway. */
+/**
+ * Transient failures of one job in the window, with no success after the
+ * newest, at which we alert without waiting for the settle time. A job that ran
+ * successfully after its newest transient failure never alerts, however many it
+ * had: pg_cron stalls hit every job scheduled that minute (six every-minute
+ * jobs at once) and the next tick runs them, so counting stalls was pure noise.
+ */
 export const TRANSIENT_ALERT_COUNT = 3;
 /**
  * A single transient failure with no success after it is left for the next
@@ -91,9 +97,10 @@ export interface ScanDeps {
  * minute publish cron could otherwise produce dozens of rows per window) and
  * report each. A real error (anything not a transient start failure) always
  * alerts, newest one first. A job whose failures are ALL transient alerts only
- * when it failed TRANSIENT_ALERT_COUNT+ times in the window, or when it has not
- * succeeded since its newest failure once that failure has settled (a daily
- * job that missed its only run, or a job that keeps failing).
+ * when it has not succeeded since its newest failure: at once with
+ * TRANSIENT_ALERT_COUNT+ failures in the window, otherwise once that failure
+ * has settled (a daily job that missed its only run, or a job that keeps
+ * failing). A success after the newest failure always suppresses.
  * Pure except for the injected deps, so it is unit-testable without a DB.
  */
 export async function scanAndReport(
@@ -134,13 +141,16 @@ export async function scanAndReport(
     if (!row) {
       const newest = jobRows[0];
       const successes = await loadLastSuccess();
-      if (successes && jobRows.length < TRANSIENT_ALERT_COUNT) {
+      if (successes) {
         const succeededAt = successes.get(jobname);
         const newestMs = Date.parse(newest.start_time);
         if (succeededAt && Date.parse(succeededAt) > newestMs) {
-          suppressed.push(jobname); // recovered on a later tick
+          suppressed.push(jobname); // recovered on a later tick, however many stalls
           continue;
         }
+      }
+      if (successes && jobRows.length < TRANSIENT_ALERT_COUNT) {
+        const newestMs = Date.parse(newest.start_time);
         const settleMs = jobRows.length > 1 ? TRANSIENT_REPEAT_SETTLE_MS : TRANSIENT_SETTLE_MS;
         if (now() - newestMs < settleMs) {
           suppressed.push(jobname); // too early to tell; a later tick decides
