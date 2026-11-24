@@ -21,10 +21,15 @@ vi.mock('../../lib/api', async (importOriginal) => ({
   adminResendInvite: vi.fn(),
   adminCreateInvite: vi.fn(),
   listWorkspaceEvents: vi.fn(),
+  listWorkspaceNotes: vi.fn(),
+  addWorkspaceNote: vi.fn(),
+  deleteWorkspaceNote: vi.fn(),
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 import {
+  addWorkspaceNote,
+  deleteWorkspaceNote,
   getWorkspace,
   resendDemoAccess,
   revokeMcpKey,
@@ -127,10 +132,11 @@ describe('WorkspaceDetailPage (desktop)', () => {
           workspace_id: 'ws1',
           resource_overrides: { max_clients: 15 },
           feature_overrides: {},
-          notes: 'Ligar dia 16',
         }),
       ),
     );
+    // Notes live in their own thread now: an override save never re-sends them.
+    expect(vi.mocked(setWorkspaceOverrides).mock.calls[0][0]).not.toHaveProperty('notes');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
@@ -182,7 +188,7 @@ describe('WorkspaceDetailPage (desktop)', () => {
 
   it('keeps the Notes textarea in the DOM while another tab is active', async () => {
     renderPage();
-    const notes = (await screen.findByLabelText('Notas do admin')) as HTMLTextAreaElement;
+    const notes = (await screen.findByLabelText('Nova nota')) as HTMLTextAreaElement;
     fireEvent.change(notes, { target: { value: 'Rascunho' } });
     fireEvent.click(screen.getByRole('tab', { name: 'Limites' }));
     expect(notes.isConnected).toBe(true);
@@ -263,5 +269,43 @@ describe('WorkspaceDetailPage demo account (desktop)', () => {
     renderPage();
     await screen.findByRole('button', { name: 'Encerrar demo' });
     expect(screen.getByText('Demo')).toBeInTheDocument();
+  });
+  it("lists every admin's notes, newest first, with author and date", async () => {
+    renderPage();
+    const list = await screen.findByRole('list', { name: 'Notas dos admins' });
+    const items = within(list).getAllByRole('listitem');
+    expect(items.map((li) => li.textContent)).toEqual([
+      expect.stringContaining('outra@mesaas.com.br'),
+      expect.stringContaining('eu@mesaas.com.br (você)'),
+      expect.stringContaining('Nota anterior (autor desconhecido)'),
+    ]);
+    expect(items[0]).toHaveTextContent('Pediu desconto no anual');
+    expect(items[0]).toHaveTextContent('22/11/2026');
+  });
+
+  it('only the author gets a delete button, and deleting asks first', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderPage();
+    const list = await screen.findByRole('list', { name: 'Notas dos admins' });
+    const buttons = within(list).getAllByRole('button', { name: /Excluir nota/ });
+    expect(buttons).toHaveLength(1);
+    fireEvent.click(buttons[0]);
+    expect(confirm).toHaveBeenCalled();
+    await waitFor(() => expect(deleteWorkspaceNote).toHaveBeenCalledWith('n1'));
+  });
+
+  it('adds a trimmed note and clears the composer, even without a plan', async () => {
+    vi.mocked(getWorkspace).mockResolvedValue({ ...WORKSPACE, plan: null });
+    renderPage();
+    const box = (await screen.findByLabelText('Nova nota')) as HTMLTextAreaElement;
+    const add = screen.getByRole('button', { name: 'Adicionar nota' });
+    expect(add).toBeDisabled();
+    fireEvent.change(box, { target: { value: '  Renovou por mais um ano  ' } });
+    fireEvent.click(add);
+    await waitFor(() =>
+      expect(addWorkspaceNote).toHaveBeenCalledWith('ws1', 'Renovou por mais um ano'),
+    );
+    await waitFor(() => expect(box.value).toBe(''));
+    expect(setWorkspaceOverrides).not.toHaveBeenCalled();
   });
 });

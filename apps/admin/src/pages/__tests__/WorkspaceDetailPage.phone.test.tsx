@@ -22,10 +22,14 @@ vi.mock('../../lib/api', async (importOriginal) => ({
   adminResendInvite: vi.fn(),
   adminCreateInvite: vi.fn(),
   listWorkspaceEvents: vi.fn(),
+  listWorkspaceNotes: vi.fn(),
+  addWorkspaceNote: vi.fn(),
+  deleteWorkspaceNote: vi.fn(),
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 import {
+  addWorkspaceNote,
   resendDemoAccess,
   unsetWorkspacePlan,
   adminCreateInvite,
@@ -349,5 +353,14 @@ describe('WorkspaceDetailPage demo account (phone)', () => {
       'href',
       '/admin/afiliados/a1',
     );
+  });
+  it("Notas: shows every admin's notes and Adicionar posts a new one", async () => {
+    renderPage();
+    const list = await screen.findByRole('list', { name: 'Notas dos admins' });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(3);
+    expect(within(list).getByText('outra@mesaas.com.br')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Nova nota'), { target: { value: 'Pagou boleto' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Adicionar' }));
+    await waitFor(() => expect(addWorkspaceNote).toHaveBeenCalledWith('ws1', 'Pagou boleto'));
   });
 });
