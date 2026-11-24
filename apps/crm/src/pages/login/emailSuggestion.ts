@@ -14,6 +14,9 @@ const KNOWN_VALID = new Set([
   'outlook.com',
   'outlook.com.br',
   'outlook.com.ar',
+  'outlook.com.tr',
+  'hotmail.com.tr',
+  'yahoo.com.tr',
   'live.com',
   'msn.com',
   'yahoo.com',
@@ -98,11 +101,14 @@ export function editDistance(a: string, b: string): number {
   return d[rows - 1][cols - 1];
 }
 
+const hasOwn = (obj: object, key: string) => Object.prototype.hasOwnProperty.call(obj, key);
+
 function fixDomain(domain: string): string | null {
   if (KNOWN_VALID.has(domain)) return null;
-  if (KNOWN_TYPOS[domain]) return KNOWN_TYPOS[domain];
+  // Own keys only: the domain is user input, and "constructor" or "__proto__" would hit the prototype.
+  if (hasOwn(KNOWN_TYPOS, domain)) return KNOWN_TYPOS[domain];
   if (!domain.includes('.')) {
-    if (PROVIDER_BY_LABEL[domain]) return PROVIDER_BY_LABEL[domain];
+    if (hasOwn(PROVIDER_BY_LABEL, domain)) return PROVIDER_BY_LABEL[domain];
     const label = Object.keys(PROVIDER_BY_LABEL).find((p) => editDistance(domain, p) === 1);
     if (label) return PROVIDER_BY_LABEL[label];
     // Falls through for a dropped dot ("gmailcom").

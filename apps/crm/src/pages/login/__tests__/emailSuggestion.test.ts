@@ -56,6 +56,8 @@ describe('suggestEmailFix', () => {
     'ana@agencia.com',
     'ana@agencia.com.br',
     'ana@hotmail.fr',
+    'ana@hotmail.com.tr',
+    'ana@yahoo.com.tr',
   ])('leaves %s alone', (input) => {
     expect(suggestEmailFix(input)).toBeNull();
   });
@@ -66,5 +68,8 @@ describe('suggestEmailFix', () => {
     expect(suggestEmailFix('@gmail.co')).toBeNull();
     expect(suggestEmailFix('ana@')).toBeNull();
     expect(suggestEmailFix('a@b@gmail.co')).toBeNull();
+    expect(suggestEmailFix('ana@constructor')).toBeNull();
+    expect(suggestEmailFix('ana@__proto__')).toBeNull();
+    expect(suggestEmailFix('ana@toString')).toBeNull();
   });
 });

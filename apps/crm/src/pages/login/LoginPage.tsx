@@ -202,7 +202,14 @@ export default function LoginPage() {
       setRegEmail(value);
       setRegEmailChecked(false);
     } else setRegPassword(value);
-    if (regAttempted) setRegErrors(validateSignup(next));
+    if (regAttempted) {
+      const errors = validateSignup(next);
+      // The server's verdict on the address holds until the address itself changes.
+      if (field !== 'email' && !errors.email && regErrors.email === 'emailUndeliverable') {
+        errors.email = 'emailUndeliverable';
+      }
+      setRegErrors(errors);
+    }
   };
 
   const regEmailSuggestion = regEmailChecked ? suggestEmailFix(regEmail) : null;
@@ -581,27 +588,26 @@ export default function LoginPage() {
                       {regErrors.email && (
                         <FieldError id="reg-email-error">{regErrorText('email')!}</FieldError>
                       )}
-                      <div aria-live="polite">
-                        {regEmailSuggestion && (
-                          <p
-                            id="reg-email-suggestion"
-                            className="flex flex-wrap items-center gap-x-2 gap-y-1 leading-snug"
-                            style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}
+                      {regEmailSuggestion && (
+                        <p
+                          id="reg-email-suggestion"
+                          role="status"
+                          className="flex flex-wrap items-center gap-x-2 gap-y-1 leading-snug"
+                          style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}
+                        >
+                          <span>
+                            {t('register.emailSuggestion', { email: regEmailSuggestion })}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={applyEmailSuggestion}
+                            className="font-semibold underline underline-offset-2"
+                            style={{ color: 'var(--text-main)' }}
                           >
-                            <span>
-                              {t('register.emailSuggestion', { email: regEmailSuggestion })}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={applyEmailSuggestion}
-                              className="font-semibold underline underline-offset-2"
-                              style={{ color: 'var(--text-main)' }}
-                            >
-                              {t('register.emailSuggestionFix')}
-                            </button>
-                          </p>
-                        )}
-                      </div>
+                            {t('register.emailSuggestionFix')}
+                          </button>
+                        </p>
+                      )}
                     </div>
                     <div className="auth-field">
                       <Label htmlFor="reg-password">{t('register.password')}</Label>
