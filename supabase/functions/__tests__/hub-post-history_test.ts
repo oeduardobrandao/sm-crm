@@ -1,7 +1,11 @@
 import { assert, assertEquals, readJson } from "./assert.ts";
-import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
+import { createSupabaseQueryMock as createBaseQueryMock } from "../../../test/shared/supabaseMock.ts";
+import { withHubAccess } from "./hub-access-mock.ts";
 import { unknownMediaNoteColumns } from "./media-notes-columns.ts";
 import { createHubPostHistoryHandler, sanitizeHistoryApprovals, sanitizeHistoryEvents } from "../hub-post-history/handler.ts";
+
+// Hub functions now resolve access through hub_access_context (client login).
+const createSupabaseQueryMock = () => withHubAccess(createBaseQueryMock());
 
 const now = () => "2026-09-17T12:00:00.000Z";
 const buildCorsHeaders = () => ({ "Access-Control-Allow-Origin": "https://hub.mesaas.com" });
@@ -70,7 +74,8 @@ const rawApprovals = [
   // team reply via replyToPostApproval: internal, never shown to the client
   { id: 502, action: "mensagem", comentario: "Cliente reclamou de novo, alguém olha?", motivo: null, is_workspace_user: true, token: null, author_user_id: "u-2", created_at: "2026-09-05T11:00:00.000Z" },
   // client comment from the new composer: kept
-  { id: 503, action: "mensagem", comentario: "Ficou ótimo", motivo: null, is_workspace_user: false, token: "hub-123", author_user_id: null, created_at: "2026-09-05T12:00:00.000Z" },
+  // written by a logged-in client person: the name reaches the Hub, the id never does
+  { id: 503, action: "mensagem", comentario: "Ficou ótimo", motivo: null, is_workspace_user: false, token: "hub-123", author_user_id: null, hub_person_id: "8d1b7c2e-0000-4000-8000-000000000001", hub_person_nome: "Marina Souza", created_at: "2026-09-05T12:00:00.000Z" },
 ];
 
 Deno.test("sanitizeHistoryApprovals drops team-authored mensagem rows, keeps client rows regardless of date, and hides token/author", () => {
@@ -82,12 +87,15 @@ Deno.test("sanitizeHistoryApprovals drops team-authored mensagem rows, keeps cli
     comentario: "Ficou ótimo",
     motivo: null,
     is_workspace_user: false,
+    hub_person_nome: "Marina Souza",
     created_at: "2026-09-05T12:00:00.000Z",
     open_note_count: 0,
   });
+  assertEquals(approvals[0].hub_person_nome, null, "a row with no person carries hub_person_nome: null");
   for (const a of approvals) {
     assert(!("token" in a), "token must not leak");
     assert(!("author_user_id" in a), "author_user_id must not leak");
+    assert(!("hub_person_id" in a), "hub_person_id must not leak");
   }
 });
 
@@ -118,7 +126,7 @@ Deno.test("hub-post-history returns sanitized events and approvals for an owned 
   assertEquals(eventsQuery.modifiers.find((m) => m.method === "eq")?.args, ["post_id", 99]);
   const approvalsQuery = db.calls.find((c) => c.table === "post_approvals");
   assert(approvalsQuery);
-  assertEquals(approvalsQuery.selectArgs[0], ["id, action, comentario, motivo, is_workspace_user, created_at"]);
+  assertEquals(approvalsQuery.selectArgs[0], ["id, action, comentario, motivo, is_workspace_user, hub_person_nome, created_at"]);
 });
 
 Deno.test("hub-post-history returns 403 for a post owned by another client and reads no history", async () => {

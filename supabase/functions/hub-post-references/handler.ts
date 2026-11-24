@@ -1,8 +1,7 @@
 // Referências do cliente no post, lado Hub (token). Spec:
 // docs/superpowers/specs/2026-10-08-client-post-references-design.md
 import { createJsonResponder } from "../_shared/http.ts";
-import { resolveHubToken } from "../_shared/hub-token.ts";
-import { getClientIP } from "../_shared/rate-limit.ts";
+import { hubAccessDenied, resolveHubAccess } from "../_shared/hub-token.ts";
 import { computeEmProducaoByPost, isHubVisiblePost, type StatusEventRow } from "../hub-posts/em-producao.ts";
 import { loadOpenRequestsForClient, type MaterialRequestDTO } from "../_shared/material-requests.ts";
 
@@ -121,12 +120,9 @@ export function createHubPostReferencesHandler(deps: HubPostReferencesHandlerDep
 
     const db = deps.createDb();
     // deno-lint-ignore no-explicit-any
-    const hubToken = await resolveHubToken(db as any, token, deps.now());
-    if (!hubToken) {
-      const okBadToken = await deps.rateLimit(db, `hub-badtoken:${getClientIP(req)}`, 30, 600);
-      if (!okBadToken) return send(referenceError("rate_limited"));
-      return json({ error: "Link inválido." }, 404);
-    }
+    const access = await resolveHubAccess(db as any, req, token, deps.now());
+    if (!access.ok) return hubAccessDenied(access.reason, { db, req, json, rateLimit: deps.rateLimit });
+    const hubToken = access.token;
     const contaId = hubToken.conta_id;
     const clienteId = hubToken.cliente_id;
 

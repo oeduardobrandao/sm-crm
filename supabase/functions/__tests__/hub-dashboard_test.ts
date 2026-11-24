@@ -1,7 +1,11 @@
 import { assertEquals } from "./assert.ts";
-import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
+import { createSupabaseQueryMock as createBaseQueryMock } from "../../../test/shared/supabaseMock.ts";
+import { withHubAccess } from "./hub-access-mock.ts";
 import { encryptText } from "../_shared/crypto.ts";
 import { createHubDashboardHandler } from "../hub-dashboard/handler.ts";
+
+// Hub functions now resolve access through hub_access_context (client login).
+const createSupabaseQueryMock = () => withHubAccess(createBaseQueryMock());
 
 const now = () => "2026-04-17T12:00:00.000Z";
 const buildCorsHeaders = () => ({ "Access-Control-Allow-Origin": "https://hub.mesaas.com" });

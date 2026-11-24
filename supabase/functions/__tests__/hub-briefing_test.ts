@@ -1,6 +1,10 @@
 import { assertEquals, readJson } from "./assert.ts";
-import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
+import { createSupabaseQueryMock as createBaseQueryMock } from "../../../test/shared/supabaseMock.ts";
+import { withHubAccess } from "./hub-access-mock.ts";
 import { createHubBriefingHandler } from "../hub-briefing/handler.ts";
+
+// Hub functions now resolve access through hub_access_context (client login).
+const createSupabaseQueryMock = () => withHubAccess(createBaseQueryMock());
 
 const buildCorsHeaders = () => ({ "Access-Control-Allow-Origin": "https://app.mesaas.com" });
 

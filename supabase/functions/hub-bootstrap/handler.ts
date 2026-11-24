@@ -1,7 +1,6 @@
 import { createJsonResponder } from "../_shared/http.ts";
-import { resolveHubToken } from "../_shared/hub-token.ts";
+import { HUB_SESSION_HEADER, hubAccessDenied, resolveHubAccess, sha256Hex } from "../_shared/hub-token.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
-import { getClientIP } from "../_shared/rate-limit.ts";
 
 type DbClient = {
   from: (table: string) => any;
@@ -15,7 +14,51 @@ interface HubBootstrapHandlerDeps {
   /** Sliding-window renewal. MUST NOT throw — a renewal failure must never
    *  break the client's portal. See index.ts for the timeout + catch wrapper. */
   touchToken: (token: string) => Promise<void>;
+  /** Client-login session renewal. Same contract as touchToken: MUST NOT throw. */
+  touchSession: (sessionHash: string) => Promise<void>;
   rateLimit: (db: DbClient, key: string, max: number, windowSeconds: number) => Promise<boolean>;
+}
+
+const NEUTRAL_HUB_THEME = {
+  customized: false,
+  surface: "neutral",
+  font_display: "fraunces",
+  font_body: "instrument-sans",
+  radius: "soft",
+  card_style: "filled",
+  logo_style: "round",
+  logo_dark_url: null,
+  hide_branding: false,
+  default_appearance: "light",
+};
+
+type ThemeWorkspace = {
+  hub_surface_theme?: string | null; hub_font_display?: string | null;
+  hub_font_body?: string | null; hub_radius?: string | null;
+  hub_card_style?: string | null; hub_logo_style?: string | null;
+  hub_logo_dark_url?: string | null; hub_hide_branding?: boolean | null;
+  hub_default_appearance?: string | null;
+};
+
+// When the plan lacks the feature, stored hub_* columns are IGNORED and neutral
+// defaults are served instead — hide_branding: true must never reach a client
+// whose workspace isn't entitled, and a plan downgrade reverts the portal's look
+// instantly without any destructive write to the stored columns.
+function buildHubTheme(conta: ThemeWorkspace, brandCustomization: boolean) {
+  return brandCustomization
+    ? {
+        customized: true,
+        surface: conta.hub_surface_theme ?? "neutral",
+        font_display: conta.hub_font_display ?? "fraunces",
+        font_body: conta.hub_font_body ?? "instrument-sans",
+        radius: conta.hub_radius ?? "soft",
+        card_style: conta.hub_card_style ?? "filled",
+        logo_style: conta.hub_logo_style ?? "round",
+        logo_dark_url: conta.hub_logo_dark_url ?? null,
+        hide_branding: conta.hub_hide_branding ?? false,
+        default_appearance: conta.hub_default_appearance ?? "light",
+      }
+    : NEUTRAL_HUB_THEME;
 }
 
 export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
@@ -47,14 +90,42 @@ export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
     if (!conta) return json({ error: "Workspace não encontrado." }, 404);
     if (!conta.hub_enabled) return json({ error: "Hub desativado." }, 403);
 
+    // Fail closed: an entitlements RPC hiccup must never break the client's portal —
+    // same defence-in-depth principle as touchToken below. A failed lookup reads as
+    // "not entitled": it hides the Mensagens nav item, the briefing's audio recorder,
+    // or serves the neutral theme, never an error.
+    const feature = async (key: string): Promise<boolean> => {
+      try {
+        return await effectivePlanFeature(db as any, conta.id, key);
+      } catch {
+        return false;
+      }
+    };
+
     // Pass conta.id as expectedContaId to preserve the slug<->token binding:
     // a token from workspace A must never be served under workspace B's slug.
-    const hubToken = await resolveHubToken(db as any, token, deps.now(), conta.id);
-    if (!hubToken) {
-      const okBadToken = await deps.rateLimit(db, `hub-badtoken:${getClientIP(req)}`, 30, 600);
-      if (!okBadToken) return json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
-      return json({ error: "Link inválido." }, 404);
+    const access = await resolveHubAccess(db as any, req, token, deps.now(), conta.id);
+    if (!access.ok) {
+      if (access.reason === "login_required") {
+        // Workspace data only (the login screen's look): nothing about the
+        // client, and `clientes` is not queried before access is granted.
+        const brand = await feature("feature_brand_customization");
+        return json({
+          error: "Login necessário.",
+          code: "login_required",
+          login: {
+            workspace: {
+              name: conta.name,
+              logo_url: conta.logo_url,
+              brand_color: conta.brand_color ?? "#1a1a2e",
+            },
+            hub_theme: buildHubTheme(conta, brand),
+          },
+        }, 401);
+      }
+      return await hubAccessDenied(access.reason, { db, req, json, rateLimit: deps.rateLimit });
     }
+    const hubToken = access.token;
 
     const okRead = await deps.rateLimit(
       db, `hub-read:${hubToken.conta_id}:${hubToken.cliente_id}`, 300, 300,
@@ -71,6 +142,18 @@ export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
     const touch = async () => {
       try {
         await deps.touchToken(token);
+      } catch {
+        // intentionally ignored
+      }
+    };
+
+    // Client-login session renewal; only when the request carried a live session.
+    // The hash is the same value resolveHubAccess looked up (never logged).
+    const touchSess = async () => {
+      if (!access.person) return;
+      try {
+        const raw = req.headers.get(HUB_SESSION_HEADER);
+        if (raw) await deps.touchSession(await sha256Hex(raw));
       } catch {
         // intentionally ignored
       }
@@ -95,19 +178,8 @@ export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
       }
     };
 
-    // Fail closed: an entitlements RPC hiccup must never break the client's portal —
-    // same defence-in-depth principle as touchToken above. A failed lookup reads as
-    // "not entitled": it hides the Mensagens nav item, the briefing's audio recorder,
-    // or serves the neutral theme, never an error.
-    const feature = async (key: string): Promise<boolean> => {
-      try {
-        return await effectivePlanFeature(db as any, conta.id, key);
-      } catch {
-        return false;
-      }
-    };
-
     const [
+      ,
       ,
       { data: cliente },
       igFotoUrl,
@@ -119,6 +191,7 @@ export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
       featureLinhaEditorial,
     ] = await Promise.all([
         touch(),
+        touchSess(),
         db
           .from("clientes")
           .select("nome, foto_url")
@@ -133,23 +206,6 @@ export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
         feature("feature_linha_editorial"),
       ]);
     const clienteFotoUrl = cliente?.foto_url || igFotoUrl || null;
-
-    // When the plan lacks the feature, stored hub_* columns are IGNORED and neutral
-    // defaults are served instead — hide_branding: true must never reach a client
-    // whose workspace isn't entitled, and a plan downgrade reverts the portal's look
-    // instantly without any destructive write to the stored columns.
-    const NEUTRAL_HUB_THEME = {
-      customized: false,
-      surface: "neutral",
-      font_display: "fraunces",
-      font_body: "instrument-sans",
-      radius: "soft",
-      card_style: "filled",
-      logo_style: "round",
-      logo_dark_url: null,
-      hide_branding: false,
-      default_appearance: "light",
-    };
 
     return json({
       workspace: {
@@ -172,20 +228,10 @@ export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
       feature_hub_pauta: featureHubPauta,
       // Linha editorial (aba do Hub). Optional on the wire: an older Hub bundle ignores it.
       feature_linha_editorial: featureLinhaEditorial,
-      hub_theme: brandCustomization
-        ? {
-            customized: true,
-            surface: conta.hub_surface_theme ?? "neutral",
-            font_display: conta.hub_font_display ?? "fraunces",
-            font_body: conta.hub_font_body ?? "instrument-sans",
-            radius: conta.hub_radius ?? "soft",
-            card_style: conta.hub_card_style ?? "filled",
-            logo_style: conta.hub_logo_style ?? "round",
-            logo_dark_url: conta.hub_logo_dark_url ?? null,
-            hide_branding: conta.hub_hide_branding ?? false,
-            default_appearance: conta.hub_default_appearance ?? "light",
-          }
-        : NEUTRAL_HUB_THEME,
+      hub_theme: buildHubTheme(conta, brandCustomization),
+      // The wire person never carries the internal id.
+      person: access.person ? { nome: access.person.nome, email: access.person.email } : null,
+      require_login: access.requireLogin,
     });
   };
 }
