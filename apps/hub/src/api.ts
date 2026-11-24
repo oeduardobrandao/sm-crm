@@ -34,9 +34,20 @@ import type {
   HubLinhaAcaoBody,
   HubLinhasResponse,
 } from './types';
+import { getHubSession } from './lib/hubSession';
 
 const BASE = import.meta.env.VITE_SUPABASE_URL as string;
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
+/**
+ * Headers every Hub call carries: the public anon key, plus the client's login session when
+ * one is stored (hub-* functions read it from `x-hub-session`). Read on every call, so a login
+ * or logout takes effect on the next request without rebuilding anything.
+ */
+export function hubHeaders(base: Record<string, string> = {}): Record<string, string> {
+  const session = getHubSession();
+  return { apikey: ANON, ...base, ...(session ? { 'x-hub-session': session } : {}) };
+}
 
 function edgeUrl(fn: string, params: Record<string, string>) {
   const url = new URL(`${BASE}/functions/v1/${fn}`);
@@ -73,12 +84,39 @@ function sleep(ms: number, signal?: AbortSignal) {
 export class HubApiError extends Error {
   readonly status: number;
   readonly code?: string;
-  constructor(message: string, status: number, code?: string) {
+  /** The parsed error JSON (e.g. the `login` payload of a 401 `login_required`). */
+  readonly body?: Record<string, unknown>;
+  constructor(message: string, status: number, code?: string, body?: Record<string, unknown>) {
     super(message);
     this.name = 'HubApiError';
     this.status = status;
     this.code = code;
+    this.body = body;
   }
+}
+
+/** The answer a client without a valid login session gets from a hub-* function. */
+// Twin of queries.ts `isLoginRequiredError` (structural, also matches PostReferenceError); keep in step.
+export function isLoginRequired(error: unknown): boolean {
+  return error instanceof HubApiError && error.code === 'login_required';
+}
+
+let loginRequiredListener: ((error: unknown) => void) | null = null;
+
+/**
+ * Called when a hub-* call is about to fail with `login_required`, wherever it was awaited
+ * (TanStack or a plain await in a component). The query client registers the handler that
+ * drops the stale session and refetches bootstrap. The hub-auth calls never notify it: their
+ * 401s are answers for the login form.
+ */
+export function setLoginRequiredListener(fn: ((error: unknown) => void) | null) {
+  loginRequiredListener = fn;
+}
+
+/** Tells the listener, then hands the error back for the caller to throw. */
+export function notifyLoginRequired<E>(error: E): E {
+  loginRequiredListener?.(error);
+  return error;
 }
 
 function throwIfAborted(signal?: AbortSignal) {
@@ -91,37 +129,70 @@ function throwIfAborted(signal?: AbortSignal) {
 // the same resource has gone out (autosave: the older text would overwrite
 // the newer one). Callers that autosave pass one AbortController per resource
 // and abort the previous one on every new edit.
-async function request<T>(input: string, init: RequestInit, signal?: AbortSignal): Promise<T> {
+interface RequestOptions {
+  signal?: AbortSignal;
+  /** Default true. Login calls turn it off: a 429 there is an answer for the person, not a blip. */
+  retry429?: boolean;
+  /** How a successful body is read. Default 'json'. */
+  parse?: 'json' | 'text' | 'blob';
+  /** Default true. The hub-auth calls turn it off: their 401 never means "session expired". */
+  notifyLogin?: boolean;
+}
+
+async function request<T>(
+  input: string,
+  init: RequestInit,
+  { signal, retry429 = true, parse = 'json', notifyLogin = true }: RequestOptions = {},
+): Promise<T> {
   for (let attempt = 0; ; attempt++) {
     throwIfAborted(signal);
     const res = await fetch(input, init);
-    if (res.ok) return res.json() as Promise<T>;
-    if (res.status === 429 && attempt < RETRY_AFTER_429_MS.length) {
+    if (res.ok) {
+      return (
+        parse === 'text' ? res.text() : parse === 'blob' ? res.blob() : res.json()
+      ) as Promise<T>;
+    }
+    if (retry429 && res.status === 429 && attempt < RETRY_AFTER_429_MS.length) {
       await sleep(RETRY_AFTER_429_MS[attempt], signal);
       continue;
     }
-    const body = (await res.json().catch(() => ({}))) as { error?: string; code?: unknown };
-    throw new HubApiError(
-      body.error ?? `HTTP ${res.status}`,
+    const raw = await res.json().catch(() => null);
+    const body = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+    const error = new HubApiError(
+      typeof body.error === 'string' ? body.error : `HTTP ${res.status}`,
       res.status,
       typeof body.code === 'string' ? body.code : undefined,
+      body,
     );
+    throw notifyLogin && isLoginRequired(error) ? notifyLoginRequired(error) : error;
   }
 }
 
+// Only hub-* functions know the session header. agenda-convite is the guest invite page and
+// keeps sending exactly the headers it always did.
+const sendsSession = (fn: string) => fn.startsWith('hub-');
+
 function get<T>(fn: string, params: Record<string, string>): Promise<T> {
-  return request<T>(edgeUrl(fn, params), { headers: { apikey: ANON } });
+  return request<T>(edgeUrl(fn, params), {
+    headers: sendsSession(fn) ? hubHeaders() : { apikey: ANON },
+  });
 }
 
 export function post<T>(fn: string, body: unknown, signal?: AbortSignal): Promise<T> {
+  return postWith<T>(fn, body, { signal });
+}
+
+function postWith<T>(fn: string, body: unknown, options: RequestOptions): Promise<T> {
   return request<T>(
     `${BASE}/functions/v1/${fn}`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: ANON },
+      headers: sendsSession(fn)
+        ? hubHeaders({ 'Content-Type': 'application/json' })
+        : { 'Content-Type': 'application/json', apikey: ANON },
       body: JSON.stringify(body),
     },
-    signal,
+    options,
   );
 }
 
@@ -170,20 +241,15 @@ export function fetchPostHistory(token: string, post_id: number) {
   return get<PostHistoryResponse>('hub-post-history', { token, post_id: String(post_id) });
 }
 
-export async function reorderPostSchedules(
+export function reorderPostSchedules(
   token: string,
   updates: { post_id: number; scheduled_at: string | null }[],
 ) {
-  const res = await fetch(`${BASE}/functions/v1/hub-posts`, {
+  return request<{ ok: boolean; updated: number }>(`${BASE}/functions/v1/hub-posts`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', apikey: ANON },
+    headers: hubHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ token, updates }),
   });
-  if (!res.ok) {
-    const b = await res.json().catch(() => ({}));
-    throw new Error((b as { error?: string }).error ?? `HTTP ${res.status}`);
-  }
-  return res.json() as Promise<{ ok: boolean; updated: number }>;
 }
 
 /** What one edit-suggestion save sends. Untouched fields still carry their draft value; the
@@ -290,7 +356,7 @@ function patch<T>(fn: string, id: string, token: string, body: unknown): Promise
   url.searchParams.set('token', token);
   return request<T>(url.toString(), {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', apikey: ANON },
+    headers: hubHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(body),
   });
 }
@@ -298,7 +364,7 @@ function patch<T>(fn: string, id: string, token: string, body: unknown): Promise
 function del<T>(fn: string, id: string, token: string): Promise<T> {
   const url = new URL(`${BASE}/functions/v1/${fn}/${id}`);
   url.searchParams.set('token', token);
-  return request<T>(url.toString(), { method: 'DELETE', headers: { apikey: ANON } });
+  return request<T>(url.toString(), { method: 'DELETE', headers: hubHeaders() });
 }
 
 export function fetchIdeias(token: string) {
@@ -373,16 +439,11 @@ export function finalizeIdeiaImage(
   return post<IdeiaImage>(`hub-ideias/${ideiaId}/files`, { token, ...payload });
 }
 
-export async function deleteIdeiaImage(token: string, ideiaId: string, fileId: number) {
-  const res = await fetch(
+export function deleteIdeiaImage(token: string, ideiaId: string, fileId: number) {
+  return request<{ ok: boolean }>(
     `${BASE}/functions/v1/hub-ideias/${ideiaId}/files/${fileId}?token=${encodeURIComponent(token)}`,
-    { method: 'DELETE', headers: { apikey: ANON } },
+    { method: 'DELETE', headers: hubHeaders() },
   );
-  if (!res.ok) {
-    const b = await res.json().catch(() => ({}));
-    throw new Error((b as { error?: string }).error ?? `HTTP ${res.status}`);
-  }
-  return res.json() as Promise<{ ok: boolean }>;
 }
 
 export function presignIdeiaAudio(
@@ -432,11 +493,12 @@ export function fetchReports(token: string) {
   return get<{ reports: HubReport[] }>('hub-reports/list', { token });
 }
 
-export async function fetchReportHtml(token: string, month: string): Promise<string> {
-  const url = edgeUrl('hub-reports/html/' + month, { token });
-  const res = await fetch(url, { headers: { apikey: ANON } });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.text();
+export function fetchReportHtml(token: string, month: string): Promise<string> {
+  return request<string>(
+    edgeUrl('hub-reports/html/' + month, { token }),
+    { headers: hubHeaders() },
+    { parse: 'text' },
+  );
 }
 
 export function fetchReportPdfUrl(token: string, month: string) {
@@ -564,14 +626,39 @@ export function cancelarRemarcacao(token: string, remarcacaoId: number) {
 }
 
 /**
- * Direct download link for one occurrence's .ics. A plain GET with no headers, like the
- * agenda-feed subscription and the client-email-unsub link: hub-agenda runs with
- * verify_jwt = false and authenticates by the token in the query.
+ * Plain download link for one occurrence's .ics, for a Hub with no client login: hub-agenda
+ * runs with verify_jwt = false and authenticates by the token in the query. With login
+ * required a link cannot carry the session header, so `downloadAgendaIcs` is used instead.
  */
 export function agendaIcsUrl(token: string, ocorrenciaId: number) {
   const url = new URL(`${BASE}/functions/v1/hub-agenda/ocorrencia/${ocorrenciaId}.ics`);
   url.searchParams.set('token', token);
   return url.toString();
+}
+
+/**
+ * Downloads one occurrence's .ics. A plain link cannot carry the session header, so this
+ * fetches it (with the Hub headers) and saves the blob from a temporary anchor. The agenda
+ * feed subscription and the guest invite keep their plain links (they authenticate by the
+ * token in the query alone).
+ */
+export async function downloadAgendaIcs(token: string, ocorrenciaId: number): Promise<void> {
+  const url = new URL(`${BASE}/functions/v1/hub-agenda/ocorrencia/${ocorrenciaId}.ics`);
+  url.searchParams.set('token', token);
+  const blob = await request<Blob>(
+    url.toString(),
+    { headers: hubHeaders() },
+    { parse: 'blob', retry429: false },
+  );
+  const blobUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = blobUrl;
+  a.download = `evento-${ocorrenciaId}.ics`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Revoked later: some browsers cancel the download if the URL dies in the click's own tick.
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
 }
 
 // ── Guest invite (agenda-convite) ───────────────────────────────────────────
@@ -631,4 +718,31 @@ export function submitLinhaAcao(token: string, body: HubLinhaAcaoBody) {
     ajustes?: number;
     pendentes?: number;
   }>('hub-linha-editorial', { token, ...body });
+}
+
+// ── Client login (e-mail + 6-digit code) ────────────────────────────────────
+
+// Login calls never replay a 429: the person is told to wait, and a replay loop would keep
+// the form busy for ~23 s while burning the attempts that caused the limit.
+const LOGIN_REQUEST: RequestOptions = { retry429: false, notifyLogin: false };
+
+export function requestLoginCode(workspace: string, token: string, email: string) {
+  return postWith<{ ok: true }>(
+    'hub-auth',
+    { action: 'request_code', workspace, token, email },
+    LOGIN_REQUEST,
+  );
+}
+
+export function verifyLoginCode(workspace: string, token: string, email: string, code: string) {
+  return postWith<{ session_token: string }>(
+    'hub-auth',
+    { action: 'verify_code', workspace, token, email, code },
+    LOGIN_REQUEST,
+  );
+}
+
+/** Ends the session on the server; the caller clears the local copy either way. */
+export function logoutHub() {
+  return postWith<{ ok: true }>('hub-auth', { action: 'logout' }, LOGIN_REQUEST);
 }

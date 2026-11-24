@@ -5,6 +5,12 @@ export interface WorkspaceInfo {
   brand_color: string;
 }
 
+/** Body of the 401 `login_required` answer: what the login screen needs to brand itself. */
+export type HubLoginPayload = {
+  workspace: { name: string; logo_url: string | null; brand_color: string };
+  hub_theme: HubBootstrap['hub_theme'];
+};
+
 export interface HubThemeInfo {
   customized: boolean;
   surface: string;
@@ -48,6 +54,10 @@ export interface HubBootstrap {
   feature_linha_editorial?: boolean;
   /** Absent on a stale/pre-migration bootstrap response — treat as neutral (no customization). */
   hub_theme?: HubThemeInfo;
+  /** Who is logged in (client login); null when anonymous. Absent on an older function. */
+  person?: { nome: string; email: string } | null;
+  /** The workspace asks its clients to log in. Absent on an older function = off. */
+  require_login?: boolean;
 }
 
 export interface HubPostMedia {
@@ -232,6 +242,8 @@ export interface PostApproval {
   is_workspace_user: boolean;
   created_at: string;
   motivo?: CorrectionReason | null;
+  /** Name of the logged-in client person who acted (client login); absent on an older function. */
+  hub_person_nome?: string | null;
 }
 
 export type CorrectionReason = 'midia' | 'texto' | 'legenda' | 'outro';
@@ -555,6 +567,8 @@ export interface MensagemFeedItem {
   author_user_id: string | null;
   author_name: string | null;
   author_avatar_url: string | null;
+  /** Name of the logged-in client person who wrote it (client login); absent on an older function. */
+  client_person_name?: string | null;
   created_at: string;
 }
 

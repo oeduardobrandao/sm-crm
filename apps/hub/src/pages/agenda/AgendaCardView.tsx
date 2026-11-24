@@ -110,6 +110,11 @@ export interface AgendaCardViewProps {
   /** Absent: the pending request has no "Cancelar pedido". */
   onCancelarRemarcacao?: (remarcacaoId: number) => Promise<void>;
   icsUrl: string;
+  /**
+   * Present when a plain link cannot authenticate (the Hub with client login): the .ics
+   * control becomes a button that runs this instead of following `icsUrl`.
+   */
+  onBaixarIcs?: () => Promise<void>;
   desabilitado?: boolean;
 }
 
@@ -128,6 +133,7 @@ export function AgendaCardView({
   onRemarcar,
   onCancelarRemarcacao,
   icsUrl,
+  onBaixarIcs,
   desabilitado = false,
 }: AgendaCardViewProps) {
   const { t, i18n } = useTranslation('hubAgenda');
@@ -252,15 +258,32 @@ export function AgendaCardView({
                     <ExternalLink size={15} className="hub-tx3 shrink-0" aria-hidden="true" />
                     {t('menu.google', 'Adicionar ao Google Agenda')}
                   </a>
-                  <a
-                    className={MENU_ITEM}
-                    href={icsUrl}
-                    download
-                    onClick={() => setMenuAberto(false)}
-                  >
-                    <Download size={15} className="hub-tx3 shrink-0" aria-hidden="true" />
-                    {t('menu.ics', 'Baixar .ics')}
-                  </a>
+                  {onBaixarIcs ? (
+                    <button
+                      type="button"
+                      className={MENU_ITEM}
+                      onClick={() => {
+                        setMenuAberto(false);
+                        setErro(null);
+                        onBaixarIcs().catch(() =>
+                          setErro(t('erros.generico', 'Não foi possível salvar. Tente novamente.')),
+                        );
+                      }}
+                    >
+                      <Download size={15} className="hub-tx3 shrink-0" aria-hidden="true" />
+                      {t('menu.ics', 'Baixar .ics')}
+                    </button>
+                  ) : (
+                    <a
+                      className={MENU_ITEM}
+                      href={icsUrl}
+                      download
+                      onClick={() => setMenuAberto(false)}
+                    >
+                      <Download size={15} className="hub-tx3 shrink-0" aria-hidden="true" />
+                      {t('menu.ics', 'Baixar .ics')}
+                    </a>
+                  )}
                 </div>
               </Popover.Content>
             </Popover.Portal>

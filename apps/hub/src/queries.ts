@@ -1,4 +1,6 @@
 import {
+  MutationCache,
+  QueryCache,
   QueryClient,
   infiniteQueryOptions,
   keepPreviousData,
@@ -6,6 +8,7 @@ import {
 } from '@tanstack/react-query';
 import { matchPath } from 'react-router-dom';
 import { canonicalHubToken } from './lib/hubLinks';
+import { clearHubSession, getHubSession } from './lib/hubSession';
 import {
   fetchAgenda,
   fetchAgendaItem,
@@ -17,6 +20,7 @@ import {
   fetchPost,
   fetchPosts,
   fetchPostsInRange,
+  setLoginRequiredListener,
   CONVITE_INDISPONIVEL,
 } from './api';
 import { fetchMaterialRequests } from './services/materialRequests';
@@ -25,7 +29,10 @@ import type { DashboardPlatform, HubAgendaCursor, HubAgendaItem, HubAgendaRespon
 // Fetched once per visit, like the effect it replaced: a refetch on window
 // focus would spend the shared hub-read budget for data that never changes
 // mid-session. No retry (on mount either), so an invalid link shows its error
-// right away and costs one bad-token hit, not two.
+// right away and costs one bad-token hit, not two. An errored query with no data counts as
+// stale even with staleTime Infinity, so focus/reconnect refetches are off too: coming back
+// from the mail app (where the login code is) must not refetch bootstrap and remount the
+// login screen the person is typing in.
 export const hubBootstrapQuery = (workspace: string, token: string) =>
   queryOptions({
     queryKey: ['hub-bootstrap', workspace, token],
@@ -33,6 +40,8 @@ export const hubBootstrapQuery = (workspace: string, token: string) =>
     staleTime: Infinity,
     retry: false,
     retryOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
 export type DashboardPlatformKey = DashboardPlatform | 'default';
@@ -56,12 +65,33 @@ export const hubPostsQuery = (token: string) =>
   queryOptions({ queryKey: [HUB_POSTS_KEY, token], queryFn: () => fetchPosts(token) });
 
 /**
+ * `login_required` as the Hub's services report it: a HubApiError (api.ts) or the
+ * PostReferenceError the references service maps the same 401 to. Both carry `code`, so this
+ * reads it structurally (same test as `isLoginRequired`, wider than HubApiError) and the
+ * query layer stays independent of those modules.
+ */
+// Twin of api.ts `isLoginRequired`: that one is HubApiError-only (the public contract); this one
+// is structural so it also covers PostReferenceError and survives tests that mock `./api`.
+export function isLoginRequiredError(error: unknown) {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { code?: unknown }).code === 'login_required'
+  );
+}
+
+/** One quick retry, except for `login_required`: retrying cannot fix a missing login. */
+function retryOnce(failures: number, error: Error) {
+  return !isLoginRequiredError(error) && failures < 1;
+}
+
+/**
  * History and range fail fast: one retry, shown in about a second instead of ~7s.
  * Published rows don't change mid-session, so they never refetch on focus or go stale;
  * a reload refreshes them (or a remount after `invalidateHubPosts` marked them invalidated).
  */
 export const HISTORY_OPTS = {
-  retry: 1,
+  retry: retryOnce,
   retryDelay: 300,
   staleTime: Infinity,
   refetchOnWindowFocus: false,
@@ -163,7 +193,7 @@ export const hubAgendaPeriodoQuery = (token: string, de: string, ate: string) =>
     staleTime: 30_000,
     placeholderData: keepPreviousData,
     // Fail fast like the posts range: the calendar keeps working, the panel offers a retry.
-    retry: 1,
+    retry: retryOnce,
     retryDelay: 300,
   });
 
@@ -210,12 +240,39 @@ export const conviteQuery = (token: string) =>
     staleTime: 30_000,
   });
 
+/**
+ * A hub-* call answered `login_required`. If the browser held a session, it is no longer
+ * valid: drop it and refetch bootstrap, which answers 401 again and shows the login screen.
+ * With no stored session there is nothing to clear and bootstrap already knows, so it does
+ * nothing (otherwise a logged-out visitor would clear-and-invalidate in a loop).
+ */
+export function handleLoginRequired(queryClient: QueryClient, error: unknown) {
+  if (!isLoginRequiredError(error) || getHubSession() === null) return;
+  clearHubSession();
+  void queryClient.invalidateQueries({ queryKey: ['hub-bootstrap'] });
+}
+
 export function createHubQueryClient() {
-  const queryClient = new QueryClient();
+  const queryClient: QueryClient = new QueryClient({
+    queryCache: new QueryCache({ onError: (error) => handleLoginRequired(queryClient, error) }),
+    mutationCache: new MutationCache({
+      onError: (error) => handleLoginRequired(queryClient, error),
+    }),
+    defaultOptions: {
+      queries: {
+        // A missing login is an answer, not a blip; everything else keeps TanStack's default
+        // of up to 3 retries. Queries that set their own `retry` keep it.
+        retry: (failures, error) => !isLoginRequiredError(error) && failures < 3,
+      },
+    },
+  });
   // prefetchHubShell lands the posts before any reader mounts; with the default
   // staleTime of 0 each reader's mount would refetch them straight away.
   // Mutations still invalidate, so this only drops redundant background refetches.
   queryClient.setQueryDefaults([HUB_POSTS_KEY], { staleTime: 30_000 });
+  // Writes awaited straight from components never pass through the caches above; the
+  // transport reports their login_required here (a no-op once the session is cleared).
+  setLoginRequiredListener((error) => handleLoginRequired(queryClient, error));
   return queryClient;
 }
 

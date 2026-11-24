@@ -25,7 +25,10 @@ const BOOTSTRAP: HubBootstrap = {
   feature_mensagens: true,
 };
 
-function renderMobileNav(bootstrap: HubBootstrap = BOOTSTRAP) {
+function renderMobileNav(
+  bootstrap: HubBootstrap = BOOTSTRAP,
+  person: { nome: string; email: string } | null = null,
+) {
   const qc = new QueryClient();
   return render(
     <QueryClientProvider client={qc}>
@@ -37,6 +40,8 @@ function renderMobileNav(bootstrap: HubBootstrap = BOOTSTRAP) {
             workspace: 'ws',
             theme: 'light',
             toggleTheme: vi.fn(),
+            person,
+            signOut: vi.fn(),
           }}
         >
           <Routes>
@@ -167,5 +172,20 @@ describe('HubMobileNav', () => {
     const btn = screen.getByRole('button', { name: 'Abrir menu' });
     expect(btn).toHaveAccessibleName('Abrir menu');
     expect(within(btn).queryByText(/^\d+$/)).not.toBeInTheDocument();
+  });
+
+  it('keeps the client name in the top bar next to the account button', () => {
+    renderMobileNav(BOOTSTRAP, { nome: 'Marina Costa', email: 'marina@clinicavida.com.br' });
+    const bar = screen.getByRole('banner');
+    expect(within(bar).getByRole('button', { name: 'Conta de Marina Costa' })).toBeInTheDocument();
+    // Hidden only under 360px, where the two no longer fit side by side.
+    expect(within(bar).getByText('Débora Lima')).toHaveClass('max-[359px]:hidden');
+  });
+
+  it('shows the client name at every width when nobody is logged in', () => {
+    renderMobileNav();
+    expect(within(screen.getByRole('banner')).getByText('Débora Lima')).not.toHaveClass(
+      'max-[359px]:hidden',
+    );
   });
 });

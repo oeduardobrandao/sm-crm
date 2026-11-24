@@ -24,6 +24,7 @@ import {
   deleteIdeiaAudio,
   retryIdeiaTranscription,
 } from '../api';
+import { isLoginRequiredError } from '../queries';
 import { uploadIdeiaImage } from '../services/ideiaMedia';
 import { uploadIdeiaAudio } from '../services/ideiaAudio';
 import { AudioPlayer } from '@mesaas/ui/AudioPlayer';
@@ -240,6 +241,7 @@ export function IdeiasPage() {
     queryKey: ['hub-ideias', token],
     queryFn: () => fetchIdeias(token),
     retry: (failureCount, err) => {
+      if (isLoginRequiredError(err)) return false;
       // Don't retry 4xx errors — they won't self-heal
       if (err instanceof Error && /HTTP 4\d{2}/.test(err.message)) return false;
       return failureCount < 2;

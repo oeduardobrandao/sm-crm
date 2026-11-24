@@ -106,6 +106,8 @@ export function referenceErrorMessage(
         'references.errors.invalidItem',
         'Um dos itens do pedido não é válido. Avise a equipe.',
       );
+    // The global handler swaps in the login screen; this is only what shows meanwhile.
+    case 'login_required':
     default:
       return t('references.errors.generic', 'Algo deu errado. Tente novamente.');
   }

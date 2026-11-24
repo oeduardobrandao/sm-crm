@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { agendaIcsUrl, cancelarRemarcacao, responderAgenda } from '../../api';
+import { agendaIcsUrl, cancelarRemarcacao, downloadAgendaIcs, responderAgenda } from '../../api';
+import { useHub } from '../../HubContext';
 import { hubAgendaPeriodoPrefix, invalidateHubAgenda, setHubAgendaItem } from '../../queries';
 import type { HubAgendaItem } from '../../types';
 import { AgendaCardView } from './AgendaCardView';
@@ -19,6 +20,7 @@ interface AgendaCardProps {
 /** The Hub's card: `AgendaCardView` wired to hub-agenda and the Hub's query cache. */
 export function AgendaCard({ item, token, agora, highlighted = false }: AgendaCardProps) {
   const qc = useQueryClient();
+  const { bootstrap } = useHub();
   const [remarcarAberto, setRemarcarAberto] = useState(false);
 
   // Moved, ended or already resolved: the view shows the message; reload what the client sees.
@@ -44,6 +46,11 @@ export function AgendaCard({ item, token, agora, highlighted = false }: AgendaCa
     onError: falha,
   });
 
+  // useMutation so a login_required answer reaches the cache-level handler.
+  const baixarIcs = useMutation({
+    mutationFn: () => downloadAgendaIcs(token, item.ocorrencia_id),
+  });
+
   return (
     <>
       <AgendaCardView
@@ -51,6 +58,8 @@ export function AgendaCard({ item, token, agora, highlighted = false }: AgendaCa
         agora={agora}
         highlighted={highlighted}
         icsUrl={agendaIcsUrl(token, item.ocorrencia_id)}
+        // With client login a plain link carries no session header: fetch it instead.
+        onBaixarIcs={bootstrap.require_login ? () => baixarIcs.mutateAsync() : undefined}
         onResponder={async (resposta, inicioVisto) => {
           await responder.mutateAsync({ resposta, inicioVisto });
         }}
