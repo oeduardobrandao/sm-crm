@@ -25,7 +25,7 @@ Monorepo com npm workspaces (`apps/*`, `packages/*`) — **três aplicações Re
 |---|---|
 | `packages/ui`, `packages/i18n` | Primitivos e traduções compartilhados |
 | `apps/mcp-widgets` | Cards do conector MCP (React + Vite, arquivo único) exibidos no Claude e no ChatGPT; `npm run build:mcp-widgets` gera `supabase/functions/mcp/ui/generated/cards.ts`. Rollout: `docs/mcp-apps-rollout.md` |
-| `supabase/functions/` | 89 edge functions em **Deno** (+ `_shared/` e `__tests__/`) |
+| `supabase/functions/` | 108 edge functions em **Deno** (+ `_shared/` e `__tests__/`) |
 | `supabase/migrations/` | Migrations SQL |
 | `workers/media-proxy/`, `workers/transcribe/` | Cloudflare Workers (deploy manual com `wrangler deploy` dentro da pasta; testes com `npm test` lá) |
 | `e2e/` | Playwright |
