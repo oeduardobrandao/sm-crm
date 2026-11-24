@@ -17,16 +17,27 @@ describe('googleAdsLoader', () => {
     vi.resetModules();
     vi.stubEnv('VITE_GOOGLE_ADS_ID', AW_ID);
     vi.stubEnv('VITE_META_PIXEL_ID', 'PIXEL');
+    vi.stubEnv('VITE_OPENAI_PIXEL_ID', 'OAI_PIXEL');
     localStorage.clear();
     document.head.querySelectorAll('script').forEach((s) => s.remove());
     delete window.dataLayer;
     delete window.gtag;
     delete window.fbq;
     delete window._fbq;
+    delete window.oaiq;
+    // Pixel config read by the ChatGPT ads loader: never hit the network from a test.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ automatic_advanced_matching_enabled: false }),
+      })),
+    );
   });
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
   });
 
   it('injects gtag.js once, for the configured ID', async () => {
@@ -152,6 +163,11 @@ describe('googleAdsLoader', () => {
       'track',
       'Purchase',
       { value: 99.9, currency: 'BRL' },
+    ]);
+    expect(window.oaiq?.q.at(-1)).toEqual([
+      'measure',
+      'subscription_created',
+      { type: 'plan_enrollment', amount: 9990, currency: 'BRL' },
     ]);
     expect(sessionStorage.length).toBe(0);
     reportPurchaseConversion();

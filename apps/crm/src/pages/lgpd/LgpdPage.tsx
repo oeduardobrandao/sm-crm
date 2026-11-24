@@ -426,6 +426,24 @@ export default function LgpdPage() {
                         ],
                         [
                           <>
+                            <strong>Pixel de anúncios do ChatGPT (OpenAI)</strong> (Estados Unidos).
+                            Categoria: publicidade. Depende do seu consentimento. Política:{' '}
+                            <a
+                              href="https://openai.com/policies/privacy-policy/"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: 'var(--primary-color)', textDecoration: 'underline' }}
+                            >
+                              openai.com/policies/privacy-policy
+                            </a>
+                            .
+                          </>,
+                          'Saber quais anúncios no ChatGPT trouxeram visitantes e cadastros ao Mesaas.',
+                          'A primeira página visitada, o clique no anúncio que trouxe você (identificador oppref), cadastros e assinaturas feitos depois dele, e identificadores guardados no navegador (cookies __oppref, __obref e __oaiq_consent, por até 30 dias). Não enviamos conteúdo de clientes, mídias ou dados de pagamento.',
+                          'Consentimento (art. 7º, I).',
+                        ],
+                        [
+                          <>
                             <strong>Sentry</strong> (Estados Unidos). Categoria: sempre ativa
                             (legítimo interesse, art. 7º, IX). Política:{' '}
                             <a

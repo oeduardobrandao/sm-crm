@@ -63,10 +63,12 @@ export function purgeAnalyticsStorage(): void {
 
 /**
  * Ad tag storage. Google Ads: `_gcl_au` (conversion linker) and `_gcl_aw` / `_gac_*` when the
- * visit came from an ad click. Meta Pixel: `_fbp` (browser id) and `_fbc` (ad click).
+ * visit came from an ad click. Meta Pixel: `_fbp` (browser id) and `_fbc` (ad click). ChatGPT ads
+ * (OpenAI oaiq): cookies `__oppref` (ad click), `__obref` (browser id), `__oaiq_consent`, plus
+ * localStorage/sessionStorage `oppref`, `oaiq_consent` and `oaiq_test_*`.
  */
 export function purgeMarketingStorage(): void {
-  purge(['_gcl_', '_gac_', '_fbp', '_fbc']);
+  purge(['_gcl_', '_gac_', '_fbp', '_fbc', '__oppref', '__obref', '__oaiq', 'oppref', 'oaiq_']);
 }
 
 /**
