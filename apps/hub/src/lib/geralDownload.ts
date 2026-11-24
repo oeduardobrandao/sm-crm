@@ -18,6 +18,27 @@ export function canDownloadGeral(post: HubPost): boolean {
   return APPROVED.has(post.status) && postDestinations(post).includes('geral');
 }
 
+/**
+ * The caption that goes in the zip as `legenda.txt`: the Geral one for a post with a Geral
+ * destination, else the first platform caption that has text, in destination order.
+ */
+export function downloadCaption(post: HubPost): string {
+  const byDestination = {
+    geral: post.geral_caption,
+    instagram: post.ig_caption,
+    tiktok: post.tiktok_caption,
+  } as const;
+  const destinations = postDestinations(post);
+  const ordered = destinations.includes('geral')
+    ? (['geral'] as const)
+    : destinations.filter((d): d is 'instagram' | 'tiktok' => d !== 'geral');
+  for (const d of ordered) {
+    const text = byDestination[d]?.trim();
+    if (text) return text;
+  }
+  return '';
+}
+
 /** The media that can still be downloaded, in post order. */
 export function downloadableMedia(post: HubPost): HubPostMedia[] {
   return (post.media ?? []).filter((m) => !m.media_lost_at && !!m.url);
@@ -180,7 +201,9 @@ async function shareGeralFiles(
  * Saves the Geral content. On a touch device that can share files it goes to the share sheet
  * (see shareGeralFiles). Otherwise through a blob, because `<a download>` is ignored on the
  * cross-origin media URL: one file goes out as is (the caption has its own copy button);
- * several go in a zip, in order, with `legenda.txt` when the Geral caption is not empty.
+ * several go in a zip, in order, with `legenda.txt` when the post has a caption
+ * (downloadCaption). Any post can be downloaded this way (PostDownloadButton); the approved Geral
+ * footer (GeralDownload) is the same call.
  */
 export async function downloadGeralContent(post: HubPost): Promise<GeralDownloadOutcome> {
   const media = downloadableMedia(post);
@@ -199,7 +222,7 @@ export async function downloadGeralContent(post: HubPost): Promise<GeralDownload
   ]);
   const zip = new JSZip();
   media.forEach((m, i) => zip.file(geralFileName(m, i), blobs[i]));
-  const caption = post.geral_caption?.trim();
+  const caption = downloadCaption(post);
   if (caption) zip.file('legenda.txt', caption);
   saveBlob(await zip.generateAsync({ type: 'blob' }), geralZipName(post));
   return 'saved';

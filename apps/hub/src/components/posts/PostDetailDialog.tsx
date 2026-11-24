@@ -61,6 +61,7 @@ import {
 } from '../../lib/postView';
 import { canDownloadGeral } from '../../lib/geralDownload';
 import { GeralDownload } from './GeralDownload';
+import { PostDownloadButton } from './PostDownloadButton';
 import { sanitizeExternalUrl } from '../../lib/security';
 import { HubDialog } from '../ui/HubDialog';
 import { HubConfirmDialog } from '../ui/HubConfirmDialog';
@@ -1037,6 +1038,8 @@ function PostDetailContent({
                 )}
               </div>
               <div className="flex items-center gap-2 shrink-0">
+                {/* The approved Geral footer already has the labeled download button. */}
+                {!geralDownload && <PostDownloadButton post={post} />}
                 <SharePostButton postId={post.id} />
                 <button
                   type="button"
