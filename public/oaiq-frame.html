@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Mesaas</title>
+  </head>
+  <!--
+    Empty on purpose. The ChatGPT ads pixel (OpenAI oaiq) runs here, inside a hidden same-origin
+    iframe, never on the app's own page: its "automatic advanced matching" scans the document it
+    runs in for emails, phones and names, and this document has none. The parent app sends the
+    pixel calls with postMessage (apps/crm/src/lib/openaiAdsLoader.ts). Keep this page free of
+    content and of any other script.
+  -->
+  <body>
+    <script src="/oaiq-frame.js"></script>
+  </body>
+</html>
