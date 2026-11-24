@@ -128,6 +128,63 @@ Deno.test("tiktok-shared: tiktokFetch maps HTTP 429 to retryable code RATE_LIMIT
   }
 });
 
+Deno.test("tiktok-shared: tiktokFetch keeps internal_error's code and marks it retryable", async () => {
+  const { restore } = stubFetch(() =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify({
+          data: {},
+          error: { code: "internal_error", message: "Something went wrong. Please try again later.", log_id: "6" },
+        }),
+        { status: 200 },
+      ),
+    )
+  );
+  try {
+    const err = await assertRejects(() => tiktokFetch("/video/list/", { accessToken: "tok" }), TikTokApiError);
+    assertEquals((err as TikTokApiError).code, "internal_error");
+    assertEquals((err as TikTokApiError).retryable, true);
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("tiktok-shared: tiktokFetch marks any HTTP 5xx retryable, JSON body or not", async () => {
+  let call = 0;
+  const { restore } = stubFetch(() => {
+    call++;
+    return Promise.resolve(
+      call === 1
+        ? new Response(JSON.stringify({ error: { code: "some_code", message: "boom" } }), { status: 503 })
+        : new Response("<html>bad gateway</html>", { status: 502 }),
+    );
+  });
+  try {
+    const first = await assertRejects(() => tiktokFetch("/video/query/", { accessToken: "tok" }), TikTokApiError);
+    assertEquals((first as TikTokApiError).code, "some_code");
+    assertEquals((first as TikTokApiError).retryable, true);
+    const second = await assertRejects(() => tiktokFetch("/video/query/", { accessToken: "tok" }), TikTokApiError);
+    assertEquals((second as TikTokApiError).code, "REQUEST_FAILED");
+    assertEquals((second as TikTokApiError).retryable, true);
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("tiktok-shared: tiktokFetch keeps 4xx envelope errors non-retryable", async () => {
+  const { restore } = stubFetch(() =>
+    Promise.resolve(
+      new Response(JSON.stringify({ error: { code: "invalid_params", message: "bad field" } }), { status: 400 }),
+    )
+  );
+  try {
+    const err = await assertRejects(() => tiktokFetch("/video/query/", { accessToken: "tok" }), TikTokApiError);
+    assertEquals((err as TikTokApiError).retryable, false);
+  } finally {
+    restore();
+  }
+});
+
 Deno.test("tiktok-shared: tiktokFetch returns the data envelope on code ok", async () => {
   const { restore } = stubFetch(() =>
     Promise.resolve(

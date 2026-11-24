@@ -399,7 +399,125 @@ Deno.test("tiktok-sync-cron: profile stats are read through the `user` envelope 
   assertEquals(payload.following_count, 20);
   assertEquals(payload.likes_count, 9000);
   assertEquals(payload.video_count, 42);
-  assert(typeof payload.last_synced_at === "string", "last_synced_at must be updated");
+  assertEquals(payload.last_synced_at, undefined, "last_synced_at is stamped last, not with the stats");
+
+  const accountUpdates = db.calls.filter((c) => c.table === "tiktok_accounts" && c.operation === "update");
+  const lastPayload = accountUpdates[accountUpdates.length - 1].payload as Record<string, unknown>;
+  assertEquals(Object.keys(lastPayload), ["last_synced_at"], "the final account write stamps last_synced_at only");
+});
+
+// ── (d2) last_synced_at is stamped only after the import and metric refresh succeed ─
+
+Deno.test("tiktok-sync-cron: a failure in the video import leaves last_synced_at untouched", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("tiktok_accounts", "select", { data: [accountRow("acct-1")] });
+  queueClaim(db, ["acct-1"]);
+  queueDefaultWebhookPurge(db);
+
+  const response = await runTikTokSyncCron(happyPathDeps(db, {
+    importTikTokVideos: async () => {
+      throw new TikTokApiError("bad field", "invalid_params", false);
+    },
+  }));
+  assertEquals(response.status, 200);
+  const stamped = db.calls.filter(
+    (c) => c.table === "tiktok_accounts" && c.operation === "update" && "last_synced_at" in (c.payload as object),
+  );
+  assertEquals(stamped.length, 0);
+});
+
+// ── (f2) transient TikTok errors alert only when they repeat ─────────────────────
+
+function accountRow(id: string, extra: Record<string, unknown> = {}) {
+  return {
+    id,
+    client_id: 101,
+    follower_count: 1,
+    following_count: 1,
+    likes_count: 1,
+    video_count: 1,
+    clientes: { conta_id: "ws-1" },
+    ...extra,
+  };
+}
+
+const TRANSIENT = () => new TikTokApiError("Something went wrong. Please try again later.", "internal_error", true);
+
+async function runWithTransientImportFailure(row: Record<string, unknown>) {
+  const db = createSupabaseQueryMock();
+  db.queue("tiktok_accounts", "select", { data: [row] });
+  queueClaim(db, [row.id as string]);
+  queueDefaultWebhookPurge(db);
+  const { fn: reportCronFailure, calls } = fakeReportCronFailure();
+  const response = await runTikTokSyncCron(happyPathDeps(db, {
+    reportCronFailure,
+    importTikTokVideos: async () => {
+      throw TRANSIENT();
+    },
+  }));
+  return { response, body: await response.json(), calls };
+}
+
+Deno.test("tiktok-sync-cron: a transient error after a successful previous attempt is not reported", async () => {
+  const { response, body, calls } = await runWithTransientImportFailure(
+    accountRow("acct-1", { last_synced_at: isoHoursAgo(7), last_sync_attempt_at: isoHoursAgo(7.01) }),
+  );
+  assertEquals(response.status, 200);
+  assertEquals(body.failed, 0);
+  assertEquals(body.transient, 1);
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("tiktok-sync-cron: a transient error on a never-attempted account is not reported", async () => {
+  const { body, calls } = await runWithTransientImportFailure(accountRow("acct-1"));
+  assertEquals(body.transient, 1);
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("tiktok-sync-cron: a transient error right after a failed attempt is reported with its code", async () => {
+  const { body, calls } = await runWithTransientImportFailure(
+    accountRow("acct-1", { last_synced_at: isoHoursAgo(13), last_sync_attempt_at: isoHoursAgo(7) }),
+  );
+  assertEquals(body.failed, 1);
+  assertEquals(body.transient, 0);
+  assertEquals(calls.length, 1);
+  assertEquals(calls[0].detail.errors, [
+    { accountId: "acct-1", error: "internal_error: Something went wrong. Please try again later." },
+  ]);
+});
+
+Deno.test("tiktok-sync-cron: an attempted-but-never-synced account reports a transient error", async () => {
+  const { calls } = await runWithTransientImportFailure(
+    accountRow("acct-1", { last_synced_at: null, last_sync_attempt_at: isoHoursAgo(7) }),
+  );
+  assertEquals(calls.length, 1);
+});
+
+Deno.test("tiktok-sync-cron: a non-retryable error is reported even after a successful previous attempt", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("tiktok_accounts", "select", {
+    data: [accountRow("acct-1", { last_synced_at: isoHoursAgo(7), last_sync_attempt_at: isoHoursAgo(7.01) })],
+  });
+  queueClaim(db, ["acct-1"]);
+  queueDefaultWebhookPurge(db);
+  const { fn: reportCronFailure, calls } = fakeReportCronFailure();
+  await runTikTokSyncCron(happyPathDeps(db, {
+    reportCronFailure,
+    getFreshTikTokToken: async () => {
+      throw new TikTokApiError("The access token is invalid or not found in the request.", "TOKEN_INVALID", false);
+    },
+  }));
+  assertEquals(calls.length, 1);
+  assertEquals(calls[0].detail.errors[0].error, "TOKEN_INVALID: The access token is invalid or not found in the request.");
+});
+
+Deno.test("tiktok-sync-cron: the candidate select reads last_synced_at for the repeat check", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("tiktok_accounts", "select", { data: [] });
+  queueDefaultWebhookPurge(db);
+  await runTikTokSyncCron(baseDeps(db));
+  const select = db.calls.find((c) => c.table === "tiktok_accounts" && c.operation === "select");
+  assert(String(JSON.stringify(select)).includes("last_synced_at, last_sync_attempt_at"));
 });
 
 Deno.test("tiktok-sync-cron: writes the daily snapshot row exactly once with the fresh profile fields", async () => {

@@ -38,6 +38,16 @@
 // overwritten by the cron, the same rule instagram-sync-cron enforces for
 // instagram_follower_history.
 //
+// Transient TikTok errors (tiktokFetch marks HTTP 5xx, `internal_error` and 429 `retryable`)
+// alert only when they repeat: an account whose previous attempt succeeded logs the error and
+// is retried on its next 6h turn without a report. "Previous attempt failed" is read off the
+// row as it was BEFORE this run's claim: `last_sync_attempt_at` is newer than `last_synced_at`
+// (or there is an attempt and never a success). That only works because `last_synced_at` is
+// stamped LAST in processAccount, after the video import and metric refresh, so a run that
+// dies partway leaves it older than the attempt. Never-attempted accounts get the same pass on
+// their first transient error. Hard errors (token, scope, invalid params, our own DB writes)
+// always alert.
+//
 // Webhook-event purge (tiktok_webhook_events, 30-day retention) runs unconditionally on every
 // invocation, independent of whether there were any accounts to sync — it is NOT gated by
 // feature_auto_sync_cron (that flag only gates account-level TikTok API calls). Only PROCESSED
@@ -81,6 +91,7 @@ interface TikTokAccountRow {
   following_count: number | null;
   likes_count: number | null;
   video_count: number | null;
+  last_synced_at?: string | null;
   last_sync_attempt_at?: string | null;
   clientes: { conta_id: string } | { conta_id: string }[];
 }
@@ -164,7 +175,6 @@ async function processAccount(deps: TikTokSyncCronDeps, account: TikTokAccountRo
     following_count: followingCount,
     likes_count: likesCount,
     video_count: videoCount,
-    last_synced_at: now.toISOString(),
   }).eq("id", account.id);
   if (accountUpdateErr) {
     throw new Error(`Falha ao atualizar estatísticas da conta TikTok: ${errorMessage(accountUpdateErr)}`);
@@ -201,6 +211,36 @@ async function processAccount(deps: TikTokSyncCronDeps, account: TikTokAccountRo
     maxVideos: SYNC_IMPORT_MAX_VIDEOS,
   });
   await refreshMetrics({ svc }, account.id, accessToken);
+
+  // Stamped last, only once every step above succeeded: the transient-alert rule (module
+  // comment) reads "previous attempt failed" as last_sync_attempt_at > last_synced_at.
+  const { error: syncedErr } = await svc.from("tiktok_accounts").update({
+    last_synced_at: now.toISOString(),
+  }).eq("id", account.id);
+  if (syncedErr) {
+    throw new Error(`Falha ao marcar a conta TikTok como sincronizada: ${errorMessage(syncedErr)}`);
+  }
+}
+
+/** TikTokApiError's `retryable` flag (duck-typed so this module keeps taking tiktokFetch by
+ * injection instead of importing _shared/tiktok.ts). */
+function isTransientTikTokError(err: unknown): boolean {
+  return !!err && typeof err === "object" && (err as { retryable?: unknown }).retryable === true;
+}
+
+/** The alert text carries TikTok's error code when there is one, so a generic message like
+ * "Something went wrong. Please try again later." still says which error it was. */
+function describeError(err: unknown): string {
+  const message = errorMessage(err);
+  const code = err && typeof err === "object" ? (err as { code?: unknown }).code : undefined;
+  return typeof code === "string" && code && !message.startsWith(code) ? `${code}: ${message}` : message;
+}
+
+/** True when the account's attempt before this run did not end in a full sync. */
+function previousAttemptFailed(account: TikTokAccountRow): boolean {
+  if (!account.last_sync_attempt_at) return false;
+  if (!account.last_synced_at) return true;
+  return Date.parse(account.last_sync_attempt_at) > Date.parse(account.last_synced_at);
 }
 
 /** Deletes tiktok_webhook_events rows older than 30 days that have ALREADY been processed.
@@ -243,7 +283,7 @@ export async function runTikTokSyncCron(deps: TikTokSyncCronDeps): Promise<Respo
           const { data, error } = await svc
             .from("tiktok_accounts")
             .select(
-              "id, client_id, follower_count, following_count, likes_count, video_count, last_sync_attempt_at, clientes!inner(conta_id)",
+              "id, client_id, follower_count, following_count, likes_count, video_count, last_synced_at, last_sync_attempt_at, clientes!inner(conta_id)",
             )
             .eq("authorization_status", "active")
             .eq("auto_sync_enabled", true)
@@ -284,6 +324,7 @@ export async function runTikTokSyncCron(deps: TikTokSyncCronDeps): Promise<Respo
 
     let syncedCount = 0;
     let failedCount = 0;
+    let transientCount = 0;
     const errors: Array<{ accountId: string; error: string }> = [];
     let claimedCount = 0;
 
@@ -319,8 +360,13 @@ export async function runTikTokSyncCron(deps: TikTokSyncCronDeps): Promise<Respo
           syncedCount++;
           console.log(`[${CRON_NAME}] Synced account ${account.id}`);
         } catch (err) {
+          const message = describeError(err);
+          if (isTransientTikTokError(err) && !previousAttemptFailed(account)) {
+            transientCount++;
+            console.warn(`[${CRON_NAME}] account ${account.id} transient failure, retrying next turn:`, message);
+            return;
+          }
           failedCount++;
-          const message = errorMessage(err);
           errors.push({ accountId: account.id, error: message });
           console.error(`[${CRON_NAME}] account ${account.id} failed:`, message);
         }
@@ -333,13 +379,16 @@ export async function runTikTokSyncCron(deps: TikTokSyncCronDeps): Promise<Respo
       errors.push({ accountId: "webhook-purge", error: purgeResult.error });
     }
 
-    console.log(`[${CRON_NAME}] Done. Synced: ${syncedCount}, Failed: ${failedCount}`);
+    console.log(`[${CRON_NAME}] Done. Synced: ${syncedCount}, Failed: ${failedCount}, Transient: ${transientCount}`);
 
     if (failedCount > 0) {
       await reportCronFailure(svc, CRON_NAME, { total: claimedCount, failed: failedCount, errors });
     }
 
-    return json({ success: true, synced: syncedCount, failed: failedCount, total: claimedCount, deferred }, 200);
+    return json(
+      { success: true, synced: syncedCount, failed: failedCount, transient: transientCount, total: claimedCount, deferred },
+      200,
+    );
   } catch (err) {
     const message = errorMessage(err);
     console.error(`[${CRON_NAME}] failed:`, message);

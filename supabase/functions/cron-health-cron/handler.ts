@@ -27,12 +27,16 @@ export function buildFailureDetail(jobname: string, firstLine: string, row: Cron
 }
 
 /**
- * pg_cron start failures: the scheduler could not open the libpq connection it
- * runs each job on (typically the instance at max_connections), so the job's
- * SQL never ran. The next tick usually succeeds, so one of these on its own is
- * noise; see isTransientStartFailure() below for when it still alerts.
+ * pg_cron start failures: the job's SQL never ran because the scheduler could
+ * not start it. "connection failed" is pg_cron failing to open the libpq
+ * connection it runs each job on (typically the instance at max_connections);
+ * "job startup timeout" is pg_cron giving up on a background worker that never
+ * started (cron.job_run_details logged 167 of them across 11 jobs in the 30
+ * days before 2026-11-24, every one followed by a successful next tick). The
+ * next tick usually succeeds, so one of these on its own is noise; see
+ * isTransientStartFailure() below for when it still alerts.
  */
-const TRANSIENT_START_FAILURES = new Set(["connection failed"]);
+const TRANSIENT_START_FAILURES = new Set(["connection failed", "job startup timeout"]);
 
 export function isTransientStartFailure(firstLine: string): boolean {
   return TRANSIENT_START_FAILURES.has(firstLine.trim().toLowerCase());

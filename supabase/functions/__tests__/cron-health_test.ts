@@ -177,6 +177,9 @@ async function scanTransient(
 
 Deno.test("isTransientStartFailure matches pg_cron's start failures only", () => {
   assert(isTransientStartFailure("connection failed"));
+  assert(isTransientStartFailure("job startup timeout"));
+  assert(isTransientStartFailure("Job Startup Timeout "));
+  assert(!isTransientStartFailure("ERROR: job startup timeout in foo"));
   assert(!isTransientStartFailure("ERROR: connection failed to foo"));
   assert(!isTransientStartFailure("ERROR: canceling statement due to statement timeout"));
 });
@@ -189,6 +192,36 @@ Deno.test("scanAndReport drops a lone connection failure the job recovered from"
   assertEquals(reported, []);
   assertEquals(suppressed, ["instagram-publish-cron"]);
   assertEquals(reports, []);
+});
+
+Deno.test("scanAndReport drops a lone job startup timeout the hourly job recovered from", async () => {
+  // The 2026-11-18 tiktok-sync-cron case: the 20:30 run timed out, 21:30 succeeded.
+  const { reported, suppressed } = await scanTransient(
+    [row("tiktok-sync-cron", "job startup timeout", "2026-09-23T11:30:00Z")],
+    { "tiktok-sync-cron": "2026-09-23T12:30:00Z" },
+  );
+  assertEquals(reported, []);
+  assertEquals(suppressed, ["tiktok-sync-cron"]);
+});
+
+Deno.test("scanAndReport alerts on a job startup timeout with no success since once it settles", async () => {
+  const { reported } = await scanTransient(
+    [row("tiktok-sync-cron", "job startup timeout", "2026-09-23T11:30:00Z")],
+    { "tiktok-sync-cron": "2026-09-23T10:30:00Z" },
+  );
+  assertEquals(reported, ["tiktok-sync-cron"]);
+});
+
+Deno.test("scanAndReport alerts on three job startup timeouts in the window even after recovery", async () => {
+  const { reported } = await scanTransient(
+    [
+      row("instagram-publish-cron", "job startup timeout", "2026-09-23T12:22:00Z"),
+      row("instagram-publish-cron", "connection failed", "2026-09-23T12:21:00Z"),
+      row("instagram-publish-cron", "job startup timeout", "2026-09-23T12:20:00Z"),
+    ],
+    { "instagram-publish-cron": "2026-09-23T12:59:00Z" },
+  );
+  assertEquals(reported, ["instagram-publish-cron"]);
 });
 
 Deno.test("scanAndReport alerts when a transient failure was never followed by a success", async () => {
