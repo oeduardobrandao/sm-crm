@@ -78,6 +78,9 @@ function oaiq(...call: unknown[]): void {
  *
  * The frame gets the parent's origin as referrer, never the path: a signed-in boot must not send
  * `/clientes/123` to OpenAI.
+ *
+ * Residual risk: the frame is same-origin, so this rests on the SDK (unversioned, served by
+ * OpenAI) never reading `window.parent`. 0.1.105 does not. Re-check if OpenAI changes it.
  */
 export function loadOpenAiAds(): void {
   // Never inside the iOS app (App Store tracking / ATT), same as loadGoogleAds.
@@ -134,7 +137,10 @@ export function loadOpenAiAdsWhenIdle(): void {
 /**
  * Revoke. The frame stays (removing it would drop calls still in flight): `consent false` makes
  * the SDK stop sending and clear its click id, and the cookies it left on our origin are expired
- * too.
+ * too. Verified with the real SDK: the click id (`__oppref`) and browser id (`__obref`) are gone
+ * afterwards, and the SDK then writes back only its own opt-out flag (`__oaiq_consent=false`,
+ * localStorage `oaiq_consent=false`), which is a refusal record, not an identifier. Left on
+ * purpose: it keeps the SDK off on the next load.
  */
 export function disableOpenAiAds(): void {
   if (frame) {
