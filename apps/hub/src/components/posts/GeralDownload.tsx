@@ -12,6 +12,9 @@ export function GeralDownload({ post }: { post: HubPost }) {
   const { t } = useTranslation('hubPosts');
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  // The files are downloaded but the phone refused to open the share sheet (the tap was too
+  // long ago): the next tap on the same button opens it right away.
+  const [ready, setReady] = useState(false);
   const [copied, setCopied] = useState(false);
   const count = downloadableMedia(post).length;
   const caption = post.geral_caption?.trim() ?? '';
@@ -20,8 +23,9 @@ export function GeralDownload({ post }: { post: HubPost }) {
     setBusy(true);
     setFailed(false);
     try {
-      await downloadGeralContent(post);
+      setReady((await downloadGeralContent(post)) === 'pending');
     } catch {
+      setReady(false);
       setFailed(true);
     } finally {
       setBusy(false);
@@ -76,6 +80,11 @@ export function GeralDownload({ post }: { post: HubPost }) {
           </button>
         )}
       </div>
+      {ready && (
+        <p role="status" className="text-[12px] hub-tx2">
+          {t('geral.readyToSave', 'Pronto. Toque de novo para salvar no celular.')}
+        </p>
+      )}
       {failed && (
         <p role="alert" className="text-[12px] text-rose-700 dark:text-rose-300">
           {t('geral.downloadFailed', 'Não foi possível baixar agora. Tente de novo.')}

@@ -344,6 +344,7 @@
     "downloadAll": "Download content ({{count}} files)",
     "copyCaption": "Copy caption",
     "copied": "Copied!",
-    "downloadFailed": "Couldn't download right now. Try again."
+    "downloadFailed": "Couldn't download right now. Try again.",
+    "readyToSave": "Ready. Tap again to save it to your phone."
   }
 }
