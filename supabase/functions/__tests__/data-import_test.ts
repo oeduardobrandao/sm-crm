@@ -1913,7 +1913,7 @@ Deno.test("data-import: undo still deletes a template with no workflow and no pr
 // 2026-09-19 with the feature itself; it is a plain migration-backed table.
 //
 // hub_client_people / hub_client_settings / hub_login_codes come from the Hub
-// client login (20261128000001); hub_login_codes has no tenant column.
+// client login (20261129000001); hub_login_codes has no tenant column.
 const CLIENTE_CASCADE_CHILDREN: Array<{ table: string; column: string; scope: string | null }> = [
   { table: "workflows", column: "cliente_id", scope: "conta_id" },
   { table: "ideias", column: "cliente_id", scope: "workspace_id" },

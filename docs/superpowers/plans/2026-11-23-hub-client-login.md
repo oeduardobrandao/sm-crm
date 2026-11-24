@@ -18,7 +18,7 @@
 - Copy is pt-BR, **no em dashes**, through `packages/i18n` (`pt` and `en` files both; `packages/i18n/__tests__/locales.test.ts` checks parity).
 - Edge functions: `buildCorsHeaders(req)` only, generic error bodies, details to `console.error`. Codes and session tokens never go to logs or `audit_log`.
 - Values fixed by the spec: code = 6 digits, valid 10 minutes, 5 attempts; session = 32 random bytes base64url, SHA-256 hex stored, 90 days sliding, refreshed at most once a day; people cap = 20 per client; resend countdown = 60 s; rate limits `request_code` 5/email/hour and 20/IP/hour, `verify_code` 10/IP/10 min.
-- Migration file prefix must be above main's tail when the PR opens (tail today: `20261127000001`). This plan uses `20261128000001`; re-check with `ls supabase/migrations | tail -3` after `git fetch origin main` and renumber if taken.
+- Migration file prefix must be above main's tail when the PR opens (tail today: `20261127000001`). This plan uses `20261129000001`; re-check with `ls supabase/migrations | tail -3` after `git fetch origin main` and renumber if taken.
 - Never `useBlocker` in the apps. Icons: `lucide-react` in the Hub and on CRM pages.
 - Commit after each task. Run `npm run format` only on the paths the task touched.
 
@@ -49,7 +49,7 @@ Each line has its test in the task named.
 
 | File | Responsibility |
 |---|---|
-| `supabase/migrations/20261128000001_hub_client_login.sql` (create) | Tables, authorship columns, all RPCs, recreated RPCs, cleanup job |
+| `supabase/migrations/20261129000001_hub_client_login.sql` (create) | Tables, authorship columns, all RPCs, recreated RPCs, cleanup job |
 | `supabase/tests/entitlements/99_hub_client_login.sql` (create) | psql suite for RPCs and ACLs |
 | `supabase/tests/entitlements/99_acesso_por_cliente_drift.sql` (modify) | Three exemptions |
 | `supabase/functions/_shared/hub-token.ts` (modify) | `resolveHubAccess`, `hubAccessDenied`, `HUB_SESSION_HEADER` |
@@ -71,7 +71,7 @@ Each line has its test in the task named.
 ### Task 1: Migration, RPCs and psql suite
 
 **Files:**
-- Create: `supabase/migrations/20261128000001_hub_client_login.sql`
+- Create: `supabase/migrations/20261129000001_hub_client_login.sql`
 - Create: `supabase/tests/entitlements/99_hub_client_login.sql`
 - Modify: `supabase/tests/entitlements/99_acesso_por_cliente_drift.sql` (`v_exempt_no_policy`, ~line 75)
 
@@ -157,7 +157,7 @@ Expected: `99_hub_client_login` and `99_acesso_por_cliente_drift` pass, no other
 - [ ] **Step 6: Commit**
 
 ```bash
-git add supabase/migrations/20261128000001_hub_client_login.sql supabase/tests/entitlements/99_hub_client_login.sql supabase/tests/entitlements/99_acesso_por_cliente_drift.sql
+git add supabase/migrations/20261129000001_hub_client_login.sql supabase/tests/entitlements/99_hub_client_login.sql supabase/tests/entitlements/99_acesso_por_cliente_drift.sql
 git commit -m "feat(db): pessoas, sessões e códigos de login do cliente no Hub"
 ```
 
@@ -719,7 +719,7 @@ Expected: all pass. Also run `TZ=UTC npx vitest run apps/hub apps/crm/src/pages/
 - [ ] **Step 5: Re-check the migration prefix**
 
 Run: `git fetch origin main && git ls-tree --name-only origin/main supabase/migrations/ | tail -3`
-Expected: nothing at or above `20261128000001`. Otherwise rename the file and update the references in this plan's commit and in `CLAUDE.md`.
+Expected: nothing at or above `20261129000001`. Otherwise rename the file and update the references in this plan's commit and in `CLAUDE.md`.
 
 - [ ] **Step 6: Commit**
 

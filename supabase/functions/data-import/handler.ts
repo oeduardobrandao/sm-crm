@@ -525,9 +525,9 @@ async function guardReferencedTemplates(db: DbClient, conta_id: string, ids: str
  *   cliente_enderecos      cliente_id  conta_id      20260727000001_reconcile_adopt_client_tables.sql:40
  *   cliente_datas          cliente_id  conta_id      20260727000001_reconcile_adopt_client_tables.sql:68
  *   cliente_links          cliente_id  conta_id      20260925000016_cliente_links.sql:12
- *   hub_client_people      cliente_id  conta_id      20261128000001_hub_client_login.sql:24
- *   hub_client_settings    cliente_id  conta_id      20261128000001_hub_client_login.sql:34
- *   hub_login_codes        cliente_id  (none)        20261128000001_hub_client_login.sql:43
+ *   hub_client_people      cliente_id  conta_id      20261129000001_hub_client_login.sql:24
+ *   hub_client_settings    cliente_id  conta_id      20261129000001_hub_client_login.sql:34
+ *   hub_login_codes        cliente_id  (none)        20261129000001_hub_client_login.sql:43
  *
  * The last two are the exact failure this list's warning predicts, and they are
  * worth understanding rather than just patching. They back the live Endereços

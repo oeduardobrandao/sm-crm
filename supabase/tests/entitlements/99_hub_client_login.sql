@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Login do cliente no Hub (migration 20261128000001, spec 2026-11-23-hub-client-login-design).
+-- Login do cliente no Hub (migration 20261129000001, spec 2026-11-23-hub-client-login-design).
 -- RPCs do CRM (hub_people_*, hub_set_require_login): guarda de workspace, escopo e
 -- configuracoes:editar, invariantes e audit_log. RPCs de serviço (hub_login_*,
 -- hub_access_context, hub_session_*): código de uso único, teto de tentativas, código
