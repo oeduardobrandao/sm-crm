@@ -439,7 +439,7 @@ export default function LgpdPage() {
                             .
                           </>,
                           'Saber quais anúncios no ChatGPT trouxeram visitantes e cadastros ao Mesaas.',
-                          'A primeira página visitada, o clique no anúncio que trouxe você (identificador oppref), cadastros e assinaturas feitos depois dele, e identificadores guardados no navegador (cookies __oppref, __obref e __oaiq_consent, por até 30 dias). Não enviamos conteúdo de clientes, mídias ou dados de pagamento.',
+                          'A visita ao site (sem o endereço das páginas), o clique no anúncio que trouxe você (identificador oppref), cadastros e assinaturas feitos depois dele, e identificadores guardados no navegador (cookies __oppref, __obref e __oaiq_consent, por até 30 dias). Não enviamos conteúdo de clientes, mídias ou dados de pagamento.',
                           'Consentimento (art. 7º, I).',
                         ],
                         [

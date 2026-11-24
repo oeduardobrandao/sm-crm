@@ -17,6 +17,7 @@ const m = vi.hoisted(() => ({
   loadMetaPixelWhenIdle: vi.fn(),
   disableMetaPixel: vi.fn(),
   loadOpenAiAds: vi.fn(),
+  captureOpenAiClickId: vi.fn(),
   loadOpenAiAdsWhenIdle: vi.fn(),
   disableOpenAiAds: vi.fn(),
 }));
@@ -40,6 +41,7 @@ vi.mock('../metaPixelLoader', () => ({
 }));
 vi.mock('../openaiAdsLoader', () => ({
   loadOpenAiAds: m.loadOpenAiAds,
+  captureOpenAiClickId: m.captureOpenAiClickId,
   loadOpenAiAdsWhenIdle: m.loadOpenAiAdsWhenIdle,
   disableOpenAiAds: m.disableOpenAiAds,
 }));
