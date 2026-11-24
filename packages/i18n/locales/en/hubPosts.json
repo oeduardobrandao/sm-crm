@@ -345,7 +345,8 @@
     "copyCaption": "Copy caption",
     "copied": "Copied!",
     "downloadFailed": "Couldn't download right now. Try again.",
-    "readyToSave": "Ready. Tap again to save it to your phone."
+    "readyToSave": "Ready. Tap again to save it to your phone.",
+    "downloading": "Downloading {{percent}}%"
   },
   "download": {
     "label": "Download",

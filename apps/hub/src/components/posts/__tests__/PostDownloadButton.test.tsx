@@ -47,7 +47,7 @@ describe('PostDownloadButton', () => {
     download.mockResolvedValueOnce('saved');
     render(<PostDownloadButton post={withMedia} />);
     await click();
-    expect(download).toHaveBeenCalledWith(withMedia);
+    expect(download).toHaveBeenCalledWith(withMedia, expect.any(Function));
     expect(toastMock).not.toHaveBeenCalled();
     expect(toastMock.error).not.toHaveBeenCalled();
   });
@@ -64,5 +64,20 @@ describe('PostDownloadButton', () => {
     render(<PostDownloadButton post={withMedia} />);
     await click();
     expect(toastMock.error).toHaveBeenCalled();
+  });
+
+  it('shows the percentage while the size is known and the label again when done', async () => {
+    let finish!: (outcome: string) => void;
+    download.mockImplementationOnce((_post: HubPost, onProgress: (f: number | null) => void) => {
+      onProgress(null);
+      onProgress(0.42);
+      return new Promise((resolve) => (finish = resolve));
+    });
+    render(<PostDownloadButton post={withMedia} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Baixar mídia da postagem' }));
+    expect(await screen.findByText('42%')).toBeInTheDocument();
+    finish('saved');
+    await waitFor(() => expect(screen.getByText('Baixar')).toBeInTheDocument());
+    expect(screen.queryByText('42%')).not.toBeInTheDocument();
   });
 });

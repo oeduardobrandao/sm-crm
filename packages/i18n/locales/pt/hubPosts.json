@@ -345,7 +345,8 @@
     "copyCaption": "Copiar legenda",
     "copied": "Copiada!",
     "downloadFailed": "Não foi possível baixar agora. Tente de novo.",
-    "readyToSave": "Pronto. Toque de novo para salvar no celular."
+    "readyToSave": "Pronto. Toque de novo para salvar no celular.",
+    "downloading": "Baixando {{percent}}%"
   },
   "download": {
     "label": "Baixar",

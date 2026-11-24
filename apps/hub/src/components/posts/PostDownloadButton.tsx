@@ -9,23 +9,27 @@ import { downloadGeralContent, downloadableMedia } from '../../lib/geralDownload
  * "Baixar" in the post header, next to "Compartilhar": any post, any status or destination,
  * as long as it still has media. Same download as the approved Geral footer (share sheet on
  * iPhone/iPad, a file or a zip elsewhere); the feedback goes in a toast because the header has
- * no room for a line of text.
+ * no room for a line of text. While a download whose size is known runs, the label turns into
+ * its percentage, so a large video does not look stuck.
  */
 export function PostDownloadButton({ post, className }: { post: HubPost; className?: string }) {
   const { t } = useTranslation('hubPosts');
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<number | null>(null);
   const count = downloadableMedia(post).length;
 
   async function download() {
     setBusy(true);
+    setProgress(null);
     try {
-      if ((await downloadGeralContent(post)) === 'pending') {
+      if ((await downloadGeralContent(post, setProgress)) === 'pending') {
         toast(t('download.readyToSave', 'Pronto. Toque em Baixar de novo para salvar no celular.'));
       }
     } catch {
       toast.error(t('download.failed', 'Não foi possível baixar agora. Tente de novo.'));
     } finally {
       setBusy(false);
+      setProgress(null);
     }
   }
 
@@ -36,15 +40,16 @@ export function PostDownloadButton({ post, className }: { post: HubPost; classNa
       type="button"
       onClick={download}
       disabled={busy}
+      aria-busy={busy}
       aria-label={t('download.ariaLabel', 'Baixar mídia da postagem')}
-      className={`inline-flex items-center gap-1 text-[12px] hub-tx3 hub-link-muted transition-colors disabled:opacity-60 ${className ?? ''}`}
+      className={`inline-flex items-center gap-1 text-[12px] tabular-nums hub-tx3 hub-link-muted transition-colors disabled:opacity-60 ${className ?? ''}`}
     >
       {busy ? (
         <Loader2 size={13} className="animate-spin" aria-hidden="true" />
       ) : (
         <Download size={13} aria-hidden="true" />
       )}
-      {t('download.label', 'Baixar')}
+      {busy && progress !== null ? `${Math.round(progress * 100)}%` : t('download.label', 'Baixar')}
     </button>
   );
 }

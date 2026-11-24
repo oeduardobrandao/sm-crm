@@ -19,6 +19,7 @@ import {
   downloadGeralContent,
   geralFileName,
   geralZipName,
+  downloadFileName,
 } from '../geralDownload';
 
 function media(over: Partial<HubPostMedia> = {}): HubPostMedia {
@@ -117,6 +118,20 @@ describe('file names', () => {
     expect(geralZipName(post())).toBe('video-institucional-versao-final.zip');
     expect(geralZipName(post({ titulo: '!!!' }))).toBe('post-7.zip');
   });
+
+  it('names a lone file after the post and numbers several', () => {
+    const one = [media({ mime_type: 'video/mp4' })];
+    expect(downloadFileName(post({ titulo: '[CAPA] Dor pra amamentar' }), one, 0)).toBe(
+      'capa-dor-pra-amamentar.mp4',
+    );
+    expect(downloadFileName(post({ titulo: '' }), one, 0)).toBe('post-7.mp4');
+    const two = [media({ id: 1 }), media({ id: 2, mime_type: 'video/mp4' })];
+    expect(downloadFileName(post(), two, 1)).toBe('02.mp4');
+  });
+
+  it('never ends the slug with a dash when it is cut', () => {
+    expect(geralZipName(post({ titulo: `${'a'.repeat(59)} b` }))).toBe(`${'a'.repeat(59)}.zip`);
+  });
 });
 
 describe('downloadGeralContent', () => {
@@ -144,7 +159,7 @@ describe('downloadGeralContent', () => {
   it('saves a single file directly, without a zip', async () => {
     await expect(downloadGeralContent(post())).resolves.toBe('saved');
     expect(fetchMock).toHaveBeenCalledWith('https://cdn/a.jpg', { cache: 'no-store' });
-    expect(downloads).toEqual(['01.jpg']);
+    expect(downloads).toEqual(['video-institucional-versao-final.jpg']);
     expect(zipFiles.size).toBe(0);
   });
 
@@ -180,6 +195,46 @@ describe('downloadGeralContent', () => {
       post({ geral_caption: '  ', media: [media({ id: 1 }), media({ id: 2 })] }),
     );
     expect([...zipFiles.keys()]).toEqual(['01.jpg', '02.jpg']);
+  });
+
+  it('reports the progress across every file once all sizes are known', async () => {
+    const sized = (bytes: number, chunk: number) => {
+      const body = new ReadableStream<Uint8Array>({
+        start(c) {
+          for (let sent = 0; sent < bytes; sent += chunk) c.enqueue(new Uint8Array(chunk));
+          c.close();
+        },
+      });
+      return new Response(body, { headers: { 'Content-Length': String(bytes) } });
+    };
+    fetchMock.mockResolvedValueOnce(sized(100, 50)).mockResolvedValueOnce(sized(300, 100));
+    const seen: (number | null)[] = [];
+    await downloadGeralContent(
+      post({ media: [media({ id: 1 }), media({ id: 2, url: 'https://cdn/b.jpg' })] }),
+      (f) => seen.push(f),
+    );
+    expect(seen[seen.length - 1]).toBe(1);
+    expect(seen.filter((f) => f !== null)).toEqual(
+      [...seen.filter((f) => f !== null)].sort((a, b) => a! - b!),
+    );
+    expect(zipFiles.size).toBe(3);
+  });
+
+  it('reports no percentage when the size is unknown', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        new ReadableStream({
+          start(c) {
+            c.enqueue(new Uint8Array(10));
+            c.close();
+          },
+        }),
+      ),
+    );
+    const seen: (number | null)[] = [];
+    await downloadGeralContent(post(), (f) => seen.push(f));
+    expect(seen).toEqual([null]);
+    expect(downloads).toEqual(['video-institucional-versao-final.jpg']);
   });
 
   it('fails when a file cannot be fetched', async () => {
@@ -273,7 +328,7 @@ describe('downloadGeralContent on an iPhone', () => {
     canShare.mockReturnValue(false);
     await expect(downloadGeralContent(post({ media: [video] }))).resolves.toBe('saved');
     expect(share).not.toHaveBeenCalled();
-    expect(downloads).toEqual(['01.mp4']);
+    expect(downloads).toEqual(['video-institucional-versao-final.mp4']);
   });
 
   it('also shares on an iPad, which reports a Mac user agent', async () => {
@@ -288,7 +343,7 @@ describe('downloadGeralContent on an iPhone', () => {
     device(ua, touchPoints);
     await expect(downloadGeralContent(post({ media: [video] }))).resolves.toBe('saved');
     expect(share).not.toHaveBeenCalled();
-    expect(downloads).toEqual(['01.mp4']);
+    expect(downloads).toEqual(['video-institucional-versao-final.mp4']);
   });
 
   it('keeps the pending files across a refetch that signs new URLs', async () => {
