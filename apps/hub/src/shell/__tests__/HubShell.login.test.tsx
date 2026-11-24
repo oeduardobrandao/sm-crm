@@ -32,7 +32,7 @@ import {
 import { fetchMensagensUnread, fetchPosts } from '../../api';
 import { fetchMaterialRequests } from '../../services/materialRequests';
 import { clearHubSession } from '../../lib/hubSession';
-import { hubBootstrapQuery } from '../../queries';
+import { createHubQueryClient, hubBootstrapQuery } from '../../queries';
 import type { HubBootstrap, HubLoginPayload } from '../../types';
 import { HubShell } from '../HubShell';
 
@@ -151,6 +151,25 @@ describe('HubShell login', () => {
     mockedBootstrap.mockRejectedValue(loginRequired());
     await act(async () => {
       await qc.invalidateQueries({ queryKey: hubBootstrapQuery('aurora', 'tok').queryKey });
+    });
+    expect(await screen.findByText('Entre no seu portal')).toBeInTheDocument();
+  });
+
+  it('swaps an open anonymous portal to the login screen when a later call returns login_required', async () => {
+    const qc = createHubQueryClient();
+    mockedBootstrap.mockResolvedValue(BOOTSTRAP);
+    mount(qc);
+    await waitFor(() => expect(screen.getAllByText('Clínica Vida').length).toBeGreaterThan(0));
+    // The agency turns "Exigir login" on: bootstrap now answers 401 and so does the next call.
+    mockedBootstrap.mockRejectedValue(loginRequired());
+    await act(async () => {
+      await qc
+        .fetchQuery({
+          queryKey: ['hub-other'],
+          queryFn: () => Promise.reject(loginRequired()),
+          retry: false,
+        })
+        .catch(() => undefined);
     });
     expect(await screen.findByText('Entre no seu portal')).toBeInTheDocument();
   });

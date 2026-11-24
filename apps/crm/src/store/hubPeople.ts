@@ -75,6 +75,8 @@ const CODES = [
 
 /** The RPCs raise plain-text codes; raw Postgres text must never reach the user. */
 export function hubPeopleErrorCode(e: { message?: string }): HubPeopleErrorCode {
-  const m = e?.message ?? '';
-  return CODES.find((c) => m.includes(c)) ?? 'generic';
+  // Exact match: PostgREST delivers `RAISE EXCEPTION 'code'` as the bare message, while a
+  // Postgres text like "invalid input syntax" must never be mistaken for a code.
+  const m = (e?.message ?? '').trim();
+  return CODES.find((c) => m === c) ?? 'generic';
 }

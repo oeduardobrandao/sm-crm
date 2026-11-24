@@ -243,11 +243,22 @@ export const conviteQuery = (token: string) =>
 /**
  * A hub-* call answered `login_required`. If the browser held a session, it is no longer
  * valid: drop it and refetch bootstrap, which answers 401 again and shows the login screen.
- * With no stored session there is nothing to clear and bootstrap already knows, so it does
- * nothing (otherwise a logged-out visitor would clear-and-invalidate in a loop).
+ * With no stored session there is nothing to clear. Bootstrap is cached forever, so a visitor
+ * who opened the portal before the agency turned "Exigir login" on would be stranded: when
+ * bootstrap last succeeded (and is not already refetching), refetch it so the shell swaps to
+ * the login screen. When bootstrap itself failed with `login_required` it already knows, so
+ * nothing happens (otherwise a logged-out visitor would invalidate in a loop).
  */
 export function handleLoginRequired(queryClient: QueryClient, error: unknown) {
-  if (!isLoginRequiredError(error) || getHubSession() === null) return;
+  if (!isLoginRequiredError(error)) return;
+  if (getHubSession() === null) {
+    const bootstrapOk = queryClient
+      .getQueryCache()
+      .findAll({ queryKey: ['hub-bootstrap'] })
+      .some((q) => q.state.status === 'success' && q.state.fetchStatus === 'idle');
+    if (bootstrapOk) void queryClient.invalidateQueries({ queryKey: ['hub-bootstrap'] });
+    return;
+  }
   clearHubSession();
   void queryClient.invalidateQueries({ queryKey: ['hub-bootstrap'] });
 }

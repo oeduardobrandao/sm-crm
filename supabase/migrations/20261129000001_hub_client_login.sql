@@ -94,6 +94,13 @@ ALTER TABLE public.mensagens
   ADD COLUMN hub_person_id uuid REFERENCES public.hub_client_people(id) ON DELETE SET NULL,
   ADD COLUMN hub_person_nome text;
 
+-- A FK ON DELETE SET NULL varre a coluna ao remover uma pessoa: índice parcial (a maioria
+-- das linhas é de autoria da agência ou de link sem login e fica de fora).
+CREATE INDEX IF NOT EXISTS post_approvals_hub_person_id_idx
+  ON public.post_approvals (hub_person_id) WHERE hub_person_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS mensagens_hub_person_id_idx
+  ON public.mensagens (hub_person_id) WHERE hub_person_id IS NOT NULL;
+
 -- Só o service role (edges do Hub, auth.uid() nulo) grava a autoria. Usuário logado: no
 -- INSERT as duas colunas viram nulas; no UPDATE o nome fica o antigo e o id só pode ir para
 -- NULL (o ON DELETE SET NULL da FK chega como UPDATE com o usuário do CRM que removeu a

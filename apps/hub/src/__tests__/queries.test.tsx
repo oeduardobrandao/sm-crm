@@ -293,7 +293,7 @@ describe('login_required handling', () => {
       expect(invalidate).toHaveBeenCalledWith({ queryKey: ['hub-bootstrap'] });
     });
 
-    it('with no stored session, does nothing and bootstrap is fetched once', async () => {
+    it('with no stored session and a bootstrap that succeeded, refetches bootstrap once', async () => {
       mockedFetchBootstrap.mockResolvedValue({} as never);
       const qc = createHubQueryClient();
       const invalidate = vi.spyOn(qc, 'invalidateQueries');
@@ -304,10 +304,11 @@ describe('login_required handling', () => {
       await expect(submitApproval('tk', 1, 'aprovado')).rejects.toMatchObject({
         code: 'login_required',
       });
-      await new Promise((r) => setTimeout(r, 30));
 
-      expect(invalidate).not.toHaveBeenCalled();
-      expect(mockedFetchBootstrap).toHaveBeenCalledTimes(1);
+      expect(invalidate).toHaveBeenCalledTimes(1);
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['hub-bootstrap'] });
+      await waitFor(() => expect(mockedFetchBootstrap).toHaveBeenCalledTimes(2));
+      expect(window.localStorage.length).toBe(0);
     });
   });
 

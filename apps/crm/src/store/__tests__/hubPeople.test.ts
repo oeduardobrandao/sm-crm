@@ -105,11 +105,13 @@ describe('hubPeople store', () => {
     ]) {
       it(`maps ${code}`, () => {
         expect(hubPeopleErrorCode({ message: code })).toBe(code);
-        expect(hubPeopleErrorCode({ message: `ERROR: ${code} (P0001)` })).toBe(code);
+        expect(hubPeopleErrorCode({ message: `  ${code}\n` })).toBe(code);
       });
     }
 
     it('falls back to generic', () => {
+      expect(hubPeopleErrorCode({ message: 'invalid input syntax for type uuid' })).toBe('generic');
+      expect(hubPeopleErrorCode({ message: 'ERROR: limit (P0001)' })).toBe('generic');
       expect(hubPeopleErrorCode({ message: 'relation "x" does not exist' })).toBe('generic');
       expect(hubPeopleErrorCode({})).toBe('generic');
     });
