@@ -64,16 +64,36 @@ export function geralFileName(m: HubPostMedia, index: number): string {
   return `${pad2(index + 1)}.${extension(m)}`;
 }
 
-/** A file-system-safe name from the post title, for the zip. */
-export function geralZipName(post: Pick<HubPost, 'id' | 'titulo'>): string {
+/** A file-system-safe name from the post title, `post-<id>` when nothing is left of it. */
+function postSlug(post: Pick<HubPost, 'id' | 'titulo'>): string {
   const slug = post.titulo
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
-    .slice(0, 60);
-  return `${slug || `post-${post.id}`}.zip`;
+    .slice(0, 60)
+    .replace(/-+$/, '');
+  return slug || `post-${post.id}`;
+}
+
+/** The zip of a post with several files. */
+export function geralZipName(post: Pick<HubPost, 'id' | 'titulo'>): string {
+  return `${postSlug(post)}.zip`;
+}
+
+/**
+ * The name of each downloaded file: a lone file goes out under the post title
+ * ("dor-pra-amamentar.mp4"); several are numbered in post order ("01.jpg", "02.mp4"), inside the
+ * zip or as share-sheet items, since the Hub has no original file names.
+ */
+export function downloadFileName(
+  post: Pick<HubPost, 'id' | 'titulo'>,
+  media: HubPostMedia[],
+  index: number,
+): string {
+  const m = media[index];
+  return media.length === 1 ? `${postSlug(post)}.${extension(m)}` : geralFileName(m, index);
 }
 
 function saveBlob(blob: Blob, filename: string) {
@@ -91,10 +111,66 @@ function saveBlob(blob: Blob, filename: string) {
   }
 }
 
-async function fetchBlob(url: string): Promise<Blob> {
+/**
+ * Download progress across every file of the post, as a fraction from 0 to 1. Null while it
+ * cannot be known: a response without Content-Length, or a file whose headers have not arrived
+ * yet (the files download in parallel, so a total from the first ones alone would jump back).
+ */
+export type DownloadProgress = (fraction: number | null) => void;
+
+function progressTracker(fileCount: number, onProgress?: DownloadProgress) {
+  const totals: (number | null | undefined)[] = new Array(fileCount).fill(undefined);
+  const received: number[] = new Array(fileCount).fill(0);
+  let last: number | null | undefined;
+  function report() {
+    if (!onProgress) return;
+    let fraction: number | null = null;
+    if (totals.every((t) => typeof t === 'number' && t > 0)) {
+      const total = (totals as number[]).reduce((a, b) => a + b, 0);
+      const got = received.reduce((a, b) => a + b, 0);
+      // Whole percents only, so a 200 MB video does not re-render on every chunk.
+      fraction = Math.min(1, Math.floor((got / total) * 100) / 100);
+    }
+    if (fraction === last) return;
+    last = fraction;
+    onProgress(fraction);
+  }
+  return {
+    start(i: number, total: number | null) {
+      totals[i] = total;
+      report();
+    },
+    advance(i: number, bytes: number) {
+      received[i] = bytes;
+      report();
+    },
+  };
+}
+
+type Tracker = ReturnType<typeof progressTracker>;
+
+async function fetchBlob(url: string, tracker?: Tracker, index = 0): Promise<Blob> {
   const res = await fetch(url, { cache: 'no-store' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.blob();
+  const length = Number(res.headers.get('Content-Length'));
+  const total = Number.isFinite(length) && length > 0 ? length : null;
+  tracker?.start(index, total);
+  if (!tracker || !res.body) return res.blob();
+
+  // Counted on the way through and read back by the browser itself, so the result is a
+  // regular Blob with no extra copy of a large video in memory.
+  let bytes = 0;
+  const counted = res.body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        bytes += chunk.byteLength;
+        tracker.advance(index, bytes);
+        controller.enqueue(chunk);
+      },
+    }),
+  );
+  const type = res.headers.get('Content-Type');
+  return new Response(counted, type ? { headers: { 'Content-Type': type } } : undefined).blob();
 }
 
 /**
@@ -135,8 +211,8 @@ function canShareFiles(files: File[]): boolean {
  * comes from the post, not the response: iOS offers "Save Video" / "Save Image" only for a video
  * or image type, and a proxy or CDN may answer with a generic one.
  */
-async function toShareableFile(blob: Blob, m: HubPostMedia, index: number): Promise<File> {
-  return new File([await blob.arrayBuffer()], geralFileName(m, index), {
+async function toShareableFile(blob: Blob, m: HubPostMedia, name: string): Promise<File> {
+  return new File([await blob.arrayBuffer()], name, {
     type: m.mime_type || blob.type || 'application/octet-stream',
   });
 }
@@ -168,13 +244,20 @@ function shareKey(post: HubPost, media: HubPostMedia[]): string {
 async function shareGeralFiles(
   post: HubPost,
   media: HubPostMedia[],
+  tracker: Tracker,
 ): Promise<GeralDownloadOutcome | null> {
   const key = shareKey(post, media);
   const files =
     pendingShare?.key === key
       ? pendingShare.files
       : await Promise.all(
-          media.map(async (m, i) => toShareableFile(await fetchBlob(m.url!), m, i)),
+          media.map(async (m, i) =>
+            toShareableFile(
+              await fetchBlob(m.url!, tracker, i),
+              m,
+              downloadFileName(post, media, i),
+            ),
+          ),
         );
   pendingShare = null;
   if (!canShareFiles(files)) return null;
@@ -200,25 +283,30 @@ async function shareGeralFiles(
 /**
  * Saves the Geral content. On a touch device that can share files it goes to the share sheet
  * (see shareGeralFiles). Otherwise through a blob, because `<a download>` is ignored on the
- * cross-origin media URL: one file goes out as is (the caption has its own copy button);
+ * cross-origin media URL: one file goes out as is, named after the post (the caption has its own copy button);
  * several go in a zip, in order, with `legenda.txt` when the post has a caption
  * (downloadCaption). Any post can be downloaded this way (PostDownloadButton); the approved Geral
- * footer (GeralDownload) is the same call.
+ * footer (GeralDownload) is the same call. `onProgress` reports the download (see
+ * DownloadProgress); a share of files kept from an earlier tap downloads nothing and reports none.
  */
-export async function downloadGeralContent(post: HubPost): Promise<GeralDownloadOutcome> {
+export async function downloadGeralContent(
+  post: HubPost,
+  onProgress?: DownloadProgress,
+): Promise<GeralDownloadOutcome> {
   const media = downloadableMedia(post);
   if (media.length === 0) return 'saved';
+  const tracker = progressTracker(media.length, onProgress);
   if (prefersShareSheet()) {
-    const shared = await shareGeralFiles(post, media);
+    const shared = await shareGeralFiles(post, media, tracker);
     if (shared) return shared;
   }
   if (media.length === 1) {
-    saveBlob(await fetchBlob(media[0].url!), geralFileName(media[0], 0));
+    saveBlob(await fetchBlob(media[0].url!, tracker, 0), downloadFileName(post, media, 0));
     return 'saved';
   }
   const [{ default: JSZip }, blobs] = await Promise.all([
     import('jszip'),
-    Promise.all(media.map((m) => fetchBlob(m.url!))),
+    Promise.all(media.map((m, i) => fetchBlob(m.url!, tracker, i))),
   ]);
   const zip = new JSZip();
   media.forEach((m, i) => zip.file(geralFileName(m, i), blobs[i]));

@@ -11,6 +11,8 @@ import { downloadGeralContent, downloadableMedia } from '../../lib/geralDownload
 export function GeralDownload({ post }: { post: HubPost }) {
   const { t } = useTranslation('hubPosts');
   const [busy, setBusy] = useState(false);
+  // Fraction downloaded, null while unknown (see DownloadProgress).
+  const [progress, setProgress] = useState<number | null>(null);
   const [failed, setFailed] = useState(false);
   // The files are downloaded but the phone refused to open the share sheet (the tap was too
   // long ago): the next tap on the same button opens it right away.
@@ -21,14 +23,16 @@ export function GeralDownload({ post }: { post: HubPost }) {
 
   async function download() {
     setBusy(true);
+    setProgress(null);
     setFailed(false);
     try {
-      setReady((await downloadGeralContent(post)) === 'pending');
+      setReady((await downloadGeralContent(post, setProgress)) === 'pending');
     } catch {
       setReady(false);
       setFailed(true);
     } finally {
       setBusy(false);
+      setProgress(null);
     }
   }
 
@@ -52,7 +56,8 @@ export function GeralDownload({ post }: { post: HubPost }) {
             type="button"
             onClick={download}
             disabled={busy}
-            className="inline-flex min-h-[36px] items-center gap-1.5 rounded-full px-3 text-[12.5px] font-semibold disabled:opacity-60"
+            aria-busy={busy}
+            className="inline-flex min-h-[36px] items-center gap-1.5 rounded-full px-3 text-[12.5px] font-semibold tabular-nums disabled:opacity-60"
             style={{ background: 'var(--hub-acc)', color: 'var(--hub-acc-fg)' }}
           >
             {busy ? (
@@ -60,9 +65,13 @@ export function GeralDownload({ post }: { post: HubPost }) {
             ) : (
               <Download size={14} aria-hidden="true" />
             )}
-            {count > 1
-              ? t('geral.downloadAll', 'Baixar conteúdo ({{count}} arquivos)', { count })
-              : t('geral.download', 'Baixar arquivo')}
+            {busy && progress !== null
+              ? t('geral.downloading', 'Baixando {{percent}}%', {
+                  percent: Math.round(progress * 100),
+                })
+              : count > 1
+                ? t('geral.downloadAll', 'Baixar conteúdo ({{count}} arquivos)', { count })
+                : t('geral.download', 'Baixar arquivo')}
           </button>
         )}
         {caption && (
