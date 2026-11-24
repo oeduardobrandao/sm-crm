@@ -45,6 +45,7 @@ import { useEntitlements } from '@/hooks/useEntitlements';
 import { handleEntitlementMutationError } from '@/lib/entitlement-toast';
 import { HubRoleGate, useHubPortalDataEnabled } from './HubRoleGate';
 import { usePortalFill } from './usePortalFill';
+import { HubPeopleSection } from './HubPeopleSection';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { Cell, GroupedList } from '@/components/mobile/GroupedList';
 import { PhoneConfirmSheet } from '@/components/mobile/PhoneConfirmSheet';
@@ -301,6 +302,12 @@ export default function AcessoPage() {
                   onClick={() => setConfirm('rotate')}
                 />
               </GroupedList>
+              <HubPeopleSection
+                clienteId={clienteId}
+                clienteNome={cliente.nome}
+                clienteEmail={cliente.email ?? null}
+                variant="phone"
+              />
             </>
           ) : !hubPortalEnabled ? (
             // The portal upsell is a purchase prompt: hidden inside the iOS app
@@ -602,6 +609,15 @@ export default function AcessoPage() {
                 </div>
               )}
             </section>
+
+            {tokenData && (
+              <HubPeopleSection
+                clienteId={clienteId}
+                clienteNome={cliente.nome}
+                clienteEmail={cliente.email ?? null}
+                variant="desktop"
+              />
+            )}
 
             <NewIdeasRow query={fillQuery} />
           </div>
