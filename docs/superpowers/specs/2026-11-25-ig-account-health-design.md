@@ -263,3 +263,7 @@ veredito geral, posição no topo da visão geral, sem flag de plano, frase na P
   compartilhada. Antes de ligar a chave, o refresh tem de usar só dados escritos pelo sync (ex.: coluna
   ou trigger que marque escrita fora do service role e exclua a conta). Exposição: com n = 30, os 99
   cortes revelam os 30 valores ordenados; aceito (sem identificação, números públicos no Instagram).
+  Revisão de segurança automática (2026-11-25) marcou o mesmo ponto como MEDIUM. O PR que ligar a
+  chave reavalia junto com a guarda contra envenenamento: piso maior para publicar os extremos
+  (p1–p5, p95–p99) ou cortes de valores arredondados. Enquanto a chave estiver desligada, nenhum
+  corte vem de contas do Mesaas e não há exposição.
