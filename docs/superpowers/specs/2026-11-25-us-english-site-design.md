@@ -255,8 +255,9 @@ The user picked A.
   `/lgpd` otherwise.
 - `consentEffects.ts` needs no change: loaders already re-read the stored record.
 - Google Ads conversion currency: `lib/googleAdsLoader.ts` defaults to BRL; conversions from a
-  USD workspace pass `usd` (part 1 already passes the workspace currency on purchase; the
-  signup conversion must too, as USD has no value attached or uses the plan's USD price).
+  USD workspace pass `usd` (part 1 already passes the workspace currency on purchase). The
+  signup conversion carries no value today and keeps carrying none, so its currency does not
+  matter; no change there.
 
 ### 10. English legal pages
 
