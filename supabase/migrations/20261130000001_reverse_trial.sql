@@ -323,3 +323,291 @@ grant execute on function public.reverse_trial_offer() to authenticated, service
 
 revoke all on function public.start_reverse_trial(text) from public, anon;
 grant execute on function public.start_reverse_trial(text) to authenticated, service_role;
+
+-- =============================================================
+-- 6) Conversao, fim e pausa do Hub (service_role). Todas travam a linha do workspace
+--    (select ... for update) e comparam o estado sob o lock, entao o webhook e a varredura
+--    nunca se cruzam. "Assinatura paga em vigor" = status active/trialing com id do
+--    provedor; e lida sem lock (grant_pagarme_plan trava assinatura -> workspace, entao um
+--    FOR UPDATE na assinatura aqui poderia gerar deadlock).
+-- =============================================================
+create or replace function public._reverse_trial_default_plan()
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select id from plans where is_default limit 1
+$$;
+
+create or replace function public._workspace_paid_sub_in_force(p_workspace uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from workspace_subscriptions s
+     where s.workspace_id = p_workspace
+       and s.status in ('active', 'trialing')
+       and (s.stripe_subscription_id is not null or s.pagarme_subscription_id is not null)
+  )
+$$;
+
+-- convert_reverse_trial: assinatura paga vinculada (subscribed) num workspace em teste ou
+-- que acabou de cair do teste.
+--   'converted'      : estava em teste -> plano pago, outcome converted, card_added_at.
+--   'rewritten_late' : a varredura ja tinha derrubado o teste, mas o checkout foi aberto
+--                      durante ele (ultima tentativa de checkout ate ended_at, webhook em ate
+--                      2 dias: a sessao do Stripe expira em 24h) -> plano pago e outcome
+--                      reescrito para converted.
+--   'not_trial'      : nada foi gravado; o chamador faz a escrita normal (win-back depois
+--                      do teste, manual, workspace sem teste, plano invalido).
+create or replace function public.convert_reverse_trial(p_workspace uuid, p_plan text, p_source text)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  w record;
+  v_last_checkout timestamptz;
+begin
+  if p_source is null or p_source not in ('stripe', 'pagarme')
+     or p_plan is null or p_plan = _reverse_trial_default_plan()
+     or not exists (select 1 from plans where id = p_plan) then
+    return 'not_trial';
+  end if;
+
+  select * into w from workspaces where id = p_workspace for update;
+  if not found or w.plan_source = 'manual' then
+    return 'not_trial';
+  end if;
+
+  if w.plan_source = 'trial' then
+    update workspaces
+       set plan_id = p_plan,
+           plan_source = p_source,
+           reverse_trial_ended_at = now(),
+           reverse_trial_outcome = 'converted',
+           reverse_trial_card_added_at = coalesce(reverse_trial_card_added_at, now())
+     where id = p_workspace;
+    return 'converted';
+  end if;
+
+  if w.reverse_trial_outcome = 'downgraded' and w.reverse_trial_ended_at is not null
+     and now() < w.reverse_trial_ended_at + interval '2 days' then
+    select greatest(
+             (select max(ca.created_at) from checkout_attempts ca where ca.workspace_id = p_workspace),
+             (select max(pa.created_at) from pagarme_checkout_attempts pa where pa.workspace_id = p_workspace))
+      into v_last_checkout;
+    if v_last_checkout is not null
+       and v_last_checkout >= w.reverse_trial_started_at
+       and v_last_checkout <= w.reverse_trial_ended_at then
+      update workspaces
+         set plan_id = p_plan,
+             plan_source = p_source,
+             reverse_trial_outcome = 'converted',
+             reverse_trial_card_added_at = coalesce(reverse_trial_card_added_at, now())
+       where id = p_workspace;
+      return 'rewritten_late';
+    end if;
+  end if;
+
+  return 'not_trial';
+end;
+$$;
+
+-- end_reverse_trial: fim do teste em andamento. Nada acontece se nao for teste ou se uma
+-- assinatura paga estiver em vigor (a conversao e quem deve gravar).
+create or replace function public.end_reverse_trial(p_workspace uuid, p_outcome text default 'downgraded')
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  w record;
+begin
+  if p_outcome is null or p_outcome not in ('downgraded', 'ended_by_admin') then
+    return false;
+  end if;
+  select * into w from workspaces where id = p_workspace for update;
+  if not found or w.plan_source is distinct from 'trial' then
+    return false;
+  end if;
+  if _workspace_paid_sub_in_force(p_workspace) then
+    return false;
+  end if;
+  update workspaces
+     set plan_id = _reverse_trial_default_plan(),
+         plan_source = 'system',
+         reverse_trial_ended_at = now(),
+         reverse_trial_outcome = p_outcome
+   where id = p_workspace;
+  return true;
+end;
+$$;
+
+-- mark_reverse_trial_unpaid: assinatura vinculada no teste caiu (cancelada ou primeira
+-- cobranca falhou) sem nenhum pagamento, no dia do fim original ou depois: vira teste
+-- derrubado. O chamador ja gravou o plano padrao.
+create or replace function public.mark_reverse_trial_unpaid(p_workspace uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  w record;
+begin
+  select * into w from workspaces where id = p_workspace for update;
+  if not found
+     or w.reverse_trial_outcome is distinct from 'converted'
+     or w.reverse_trial_first_paid_at is not null
+     or w.reverse_trial_ends_at is null
+     or now() < w.reverse_trial_ends_at then
+    return false;
+  end if;
+  update workspaces
+     set reverse_trial_outcome = 'downgraded',
+         reverse_trial_ended_at = now()
+   where id = p_workspace;
+  return true;
+end;
+$$;
+
+-- revert_reverse_trial_conversion: a mesma queda, antes do fim original: volta ao teste ate
+-- a data original (cancelar nunca custa dias de teste). card_added_at fica.
+create or replace function public.revert_reverse_trial_conversion(p_workspace uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  w record;
+begin
+  select * into w from workspaces where id = p_workspace for update;
+  if not found
+     or w.plan_source = 'manual'
+     or w.reverse_trial_outcome is distinct from 'converted'
+     or w.reverse_trial_first_paid_at is not null
+     or w.reverse_trial_ends_at is null
+     or now() >= w.reverse_trial_ends_at then
+    return false;
+  end if;
+  update workspaces
+     set plan_id = coalesce(reverse_trial_plan_id, 'pro'),
+         plan_source = 'trial',
+         reverse_trial_ended_at = null,
+         reverse_trial_outcome = null
+   where id = p_workspace;
+  return true;
+end;
+$$;
+
+-- mark_reverse_trial_first_paid: primeiro pagamento da assinatura vinculada no teste. Uma vez.
+create or replace function public.mark_reverse_trial_first_paid(p_workspace uuid)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  update workspaces
+     set reverse_trial_first_paid_at = now()
+   where id = p_workspace
+     and reverse_trial_card_added_at is not null
+     and reverse_trial_first_paid_at is null
+$$;
+
+-- hub_workspace_paused: links do Hub pausados 7 dias depois da queda do teste, enquanto o
+-- workspace segue no Free (qualquer plano pago ou cortesia libera na hora).
+create or replace function public.hub_workspace_paused(p_conta uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce((
+    select w.reverse_trial_outcome = 'downgraded'
+       and w.reverse_trial_ended_at is not null
+       and now() >= w.reverse_trial_ended_at + interval '7 days'
+       and w.plan_source is distinct from 'manual'
+       and coalesce(w.plan_id, _reverse_trial_default_plan()) = _reverse_trial_default_plan()
+      from workspaces w
+     where w.id = p_conta
+  ), false)
+$$;
+
+-- grant_pagarme_plan (corpo de 20261030000001 + teste reverso): com a assinatura em vigor,
+-- workspace em teste ou recem-derrubado passa por convert_reverse_trial; um teste em
+-- andamento nunca e tocado por status fora de vigor (como a conta demo).
+create or replace function public.grant_pagarme_plan(
+  p_workspace uuid,
+  p_plan text,
+  p_sub text,
+  p_status text
+) returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_written integer;
+  v_ws record;
+begin
+  perform 1
+    from public.workspace_subscriptions s
+   where s.workspace_id = p_workspace
+     and s.provider = 'pagarme'
+     and s.pagarme_subscription_id = p_sub
+     and s.status = p_status
+   for update;
+  if not found then
+    return 0;
+  end if;
+
+  select w.plan_source, w.reverse_trial_outcome into v_ws
+    from public.workspaces w where w.id = p_workspace;
+  if (v_ws.plan_source = 'trial' or v_ws.reverse_trial_outcome = 'downgraded')
+     and p_status in ('active', 'trialing') then
+    if public.convert_reverse_trial(p_workspace, p_plan, 'pagarme') <> 'not_trial' then
+      return 1;
+    end if;
+  end if;
+
+  update public.workspaces w
+     set plan_id = p_plan,
+         plan_source = 'pagarme'
+   -- 'manual' (comp) nunca e sobrescrito. 'demo' e 'trial' so mudam por uma assinatura em
+   -- vigor (active/trialing); qualquer outro status deixa a conta como esta.
+   where w.id = p_workspace
+     and w.plan_source is distinct from 'manual'
+     and not (w.plan_source in ('demo', 'trial') and p_status not in ('active','trialing'));
+  get diagnostics v_written = row_count;
+  return v_written;
+end;
+$$;
+
+do $$
+declare fn text;
+begin
+  foreach fn in array array[
+    'public._reverse_trial_default_plan()',
+    'public._workspace_paid_sub_in_force(uuid)',
+    'public.convert_reverse_trial(uuid,text,text)',
+    'public.end_reverse_trial(uuid,text)',
+    'public.mark_reverse_trial_unpaid(uuid)',
+    'public.revert_reverse_trial_conversion(uuid)',
+    'public.mark_reverse_trial_first_paid(uuid)',
+    'public.hub_workspace_paused(uuid)',
+    'public.grant_pagarme_plan(uuid,text,text,text)'
+  ] loop
+    execute format('revoke all on function %s from public, anon, authenticated', fn);
+    execute format('grant execute on function %s to service_role', fn);
+  end loop;
+end $$;

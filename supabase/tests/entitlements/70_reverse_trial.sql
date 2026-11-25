@@ -10,6 +10,7 @@
 drop function if exists et_rt_owner();
 drop function if exists et_rt_switch_on(timestamptz);
 drop function if exists et_rt_as(uuid);
+drop function if exists et_rt_trial(interval, interval);
 
 -- Dono novo: o insert em auth.users dispara handle_new_user_workspace, que cria o
 -- workspace (plan_id null, plan_source system), o membro owner e o perfil com
@@ -357,8 +358,249 @@ begin;
   end $$;
 rollback;
 
--- @@TASK2@@
+-- ===================== Task 2: conversao, fim e pausa do Hub =====================
+-- Workspace em teste gravado direto (como postgres o guard nao bloqueia).
+create or replace function et_rt_trial(p_started_ago interval default '1 day', p_ends_in interval default '13 days')
+returns table (user_id uuid, workspace_id uuid) language plpgsql as $$
+declare f record;
+begin
+  select * into f from et_rt_owner();
+  update workspaces
+     set plan_id = 'pro', plan_source = 'trial', reverse_trial_plan_id = 'pro',
+         reverse_trial_started_at = now() - p_started_ago,
+         reverse_trial_ends_at = now() + p_ends_in
+   where id = f.workspace_id;
+  update profiles set reverse_trial_used_at = now() - p_started_ago where id = f.user_id;
+  return query select f.user_id, f.workspace_id;
+end $$;
+
+-- 2.1 convert_from_trial, first_paid_set_once
+begin;
+  do $$
+  declare f record; w record; v text;
+  begin
+    select * into f from et_rt_trial();
+    perform mark_reverse_trial_first_paid(f.workspace_id);
+    if (select reverse_trial_first_paid_at from workspaces where id = f.workspace_id) is not null then
+      raise exception 'first_paid: set without card_added_at';
+    end if;
+    v := convert_reverse_trial(f.workspace_id, 'max', 'stripe');
+    select * into w from workspaces where id = f.workspace_id;
+    if v <> 'converted' or w.plan_id <> 'max' or w.plan_source <> 'stripe'
+       or w.reverse_trial_outcome <> 'converted' or w.reverse_trial_ended_at <> now()
+       or w.reverse_trial_card_added_at <> now() then
+      raise exception 'convert_from_trial: % %', v, row_to_json(w);
+    end if;
+    perform mark_reverse_trial_first_paid(f.workspace_id);
+    update workspaces set reverse_trial_first_paid_at = reverse_trial_first_paid_at - interval '1 hour'
+     where id = f.workspace_id;
+    perform mark_reverse_trial_first_paid(f.workspace_id);
+    if (select reverse_trial_first_paid_at from workspaces where id = f.workspace_id) <> now() - interval '1 hour' then
+      raise exception 'first_paid_set_once: overwritten';
+    end if;
+    -- a second convert on a converted workspace writes nothing
+    if convert_reverse_trial(f.workspace_id, 'start', 'stripe') <> 'not_trial' then
+      raise exception 'convert: converted workspace converted again';
+    end if;
+    -- invalid inputs
+    if convert_reverse_trial(f.workspace_id, 'free', 'stripe') <> 'not_trial'
+       or convert_reverse_trial(f.workspace_id, 'pro', 'manual') <> 'not_trial' then
+      raise exception 'convert: invalid input accepted';
+    end if;
+  end $$;
+rollback;
+
+-- 2.2 late_convert_after_downgrade, winback_after_downgrade_keeps_outcome
+begin;
+  do $$
+  declare f record; w record; v text;
+  begin
+    select * into f from et_rt_trial('14 days', '-1 hour');
+    insert into checkout_attempts (workspace_id, stripe_session_id, plan_id, created_at)
+      values (f.workspace_id, 'cs_' || f.workspace_id, 'pro', now() - interval '2 hours');
+    if not end_reverse_trial(f.workspace_id) then raise exception 'late: end failed'; end if;
+    v := convert_reverse_trial(f.workspace_id, 'pro', 'stripe');
+    select * into w from workspaces where id = f.workspace_id;
+    if v <> 'rewritten_late' or w.plan_id <> 'pro' or w.plan_source <> 'stripe'
+       or w.reverse_trial_outcome <> 'converted' or w.reverse_trial_card_added_at is null then
+      raise exception 'late_convert_after_downgrade: % %', v, row_to_json(w);
+    end if;
+    if hub_workspace_paused(f.workspace_id) then raise exception 'late: hub paused'; end if;
+  end $$;
+rollback;
+
+begin;
+  do $$
+  declare f record; w record; v text;
+  begin
+    select * into f from et_rt_trial('14 days', '-1 hour');
+    perform end_reverse_trial(f.workspace_id);
+    -- checkout aberto depois do fim: win-back
+    insert into checkout_attempts (workspace_id, stripe_session_id, plan_id, created_at)
+      values (f.workspace_id, 'cs_' || f.workspace_id, 'pro', now() + interval '1 minute');
+    v := convert_reverse_trial(f.workspace_id, 'pro', 'stripe');
+    select * into w from workspaces where id = f.workspace_id;
+    if v <> 'not_trial' or w.reverse_trial_outcome <> 'downgraded' or w.plan_source <> 'system' then
+      raise exception 'winback_after_downgrade_keeps_outcome: % %', v, row_to_json(w);
+    end if;
+    -- the caller's normal write makes it paid; the pause never applies to a paid plan
+    update workspaces set plan_id = 'pro', plan_source = 'stripe',
+                          reverse_trial_ended_at = now() - interval '8 days'
+     where id = f.workspace_id;
+    if hub_workspace_paused(f.workspace_id) then raise exception 'winback: hub paused on paid plan'; end if;
+    -- no checkout at all: also not a late conversion
+    update workspaces set plan_id = 'free', plan_source = 'system', reverse_trial_ended_at = now()
+     where id = f.workspace_id;
+    delete from checkout_attempts where workspace_id = f.workspace_id;
+    if convert_reverse_trial(f.workspace_id, 'pro', 'stripe') <> 'not_trial' then
+      raise exception 'winback: rewritten without a checkout during the trial';
+    end if;
+  end $$;
+rollback;
+
+-- 2.3 revert_conversion_inside_window, unpaid_conversion_marked_downgraded
+begin;
+  do $$
+  declare f record; w record;
+  begin
+    select * into f from et_rt_trial();
+    perform convert_reverse_trial(f.workspace_id, 'pro', 'stripe');
+    if mark_reverse_trial_unpaid(f.workspace_id) then
+      raise exception 'unpaid: marked before the original end';
+    end if;
+    if not revert_reverse_trial_conversion(f.workspace_id) then raise exception 'revert failed'; end if;
+    select * into w from workspaces where id = f.workspace_id;
+    if w.plan_source <> 'trial' or w.plan_id <> 'pro' or w.reverse_trial_ended_at is not null
+       or w.reverse_trial_outcome is not null or w.reverse_trial_card_added_at is null
+       or w.reverse_trial_ends_at <> now() + interval '13 days' then
+      raise exception 'revert_conversion_inside_window: %', row_to_json(w);
+    end if;
+
+    -- after the original end
+    perform convert_reverse_trial(f.workspace_id, 'pro', 'stripe');
+    update workspaces set reverse_trial_ends_at = now() - interval '1 minute' where id = f.workspace_id;
+    if revert_reverse_trial_conversion(f.workspace_id) then raise exception 'revert after end accepted'; end if;
+    update workspaces set plan_id = 'free', plan_source = 'stripe' where id = f.workspace_id;
+    if not mark_reverse_trial_unpaid(f.workspace_id) then raise exception 'unpaid failed'; end if;
+    select * into w from workspaces where id = f.workspace_id;
+    if w.reverse_trial_outcome <> 'downgraded' or w.reverse_trial_ended_at <> now() then
+      raise exception 'unpaid_conversion_marked_downgraded: %', row_to_json(w);
+    end if;
+
+    -- paid once: neither applies
+    update workspaces set reverse_trial_outcome = 'converted', reverse_trial_first_paid_at = now()
+     where id = f.workspace_id;
+    if mark_reverse_trial_unpaid(f.workspace_id) or revert_reverse_trial_conversion(f.workspace_id) then
+      raise exception 'unpaid/revert applied to a paying customer';
+    end if;
+  end $$;
+rollback;
+
+-- 2.4 end_noop_when_paid_sub_active, end_sets_system_free_downgraded, end_by_admin_no_pause
+begin;
+  do $$
+  declare f record; g record; w record;
+  begin
+    select * into f from et_rt_trial('14 days', '-1 minute');
+    insert into workspace_subscriptions (workspace_id, status, stripe_subscription_id, provider)
+      values (f.workspace_id, 'trialing', 'sub_' || f.workspace_id, 'stripe');
+    if end_reverse_trial(f.workspace_id) then raise exception 'end_noop_when_paid_sub_active'; end if;
+    if (select plan_source from workspaces where id = f.workspace_id) <> 'trial' then
+      raise exception 'end_noop: workspace changed';
+    end if;
+    update workspace_subscriptions set status = 'canceled' where workspace_id = f.workspace_id;
+    if not end_reverse_trial(f.workspace_id) then raise exception 'end after cancel failed'; end if;
+    select * into w from workspaces where id = f.workspace_id;
+    if w.plan_id <> 'free' or w.plan_source <> 'system' or w.reverse_trial_outcome <> 'downgraded'
+       or w.reverse_trial_ended_at <> now() then
+      raise exception 'end_sets_system_free_downgraded: %', row_to_json(w);
+    end if;
+    if end_reverse_trial(f.workspace_id) then raise exception 'end: second call returned true'; end if;
+    if end_reverse_trial(f.workspace_id, 'converted') then raise exception 'end: bad outcome accepted'; end if;
+
+    select * into g from et_rt_trial();
+    if not end_reverse_trial(g.workspace_id, 'ended_by_admin') then raise exception 'end by admin failed'; end if;
+    update workspaces set reverse_trial_ended_at = now() - interval '30 days' where id = g.workspace_id;
+    if hub_workspace_paused(g.workspace_id) then raise exception 'end_by_admin_no_pause'; end if;
+  end $$;
+rollback;
+
+-- 2.5 pause_false_before_7_days, pause_true_after_7_days, pause_false_after_upgrade
+begin;
+  do $$
+  declare f record;
+  begin
+    select * into f from et_rt_trial('14 days', '-1 minute');
+    if hub_workspace_paused(f.workspace_id) then raise exception 'pause: running trial paused'; end if;
+    perform end_reverse_trial(f.workspace_id);
+    update workspaces set reverse_trial_ended_at = now() - interval '6 days 23 hours' where id = f.workspace_id;
+    if hub_workspace_paused(f.workspace_id) then raise exception 'pause_false_before_7_days'; end if;
+    update workspaces set reverse_trial_ended_at = now() - interval '7 days' where id = f.workspace_id;
+    if not hub_workspace_paused(f.workspace_id) then raise exception 'pause_true_after_7_days'; end if;
+    update workspaces set plan_id = null where id = f.workspace_id;
+    if not hub_workspace_paused(f.workspace_id) then raise exception 'pause: null plan_id not treated as Free'; end if;
+    update workspaces set plan_id = 'start', plan_source = 'stripe' where id = f.workspace_id;
+    if hub_workspace_paused(f.workspace_id) then raise exception 'pause_false_after_upgrade'; end if;
+    update workspaces set plan_id = 'free', plan_source = 'manual' where id = f.workspace_id;
+    if hub_workspace_paused(f.workspace_id) then raise exception 'pause: comp still paused'; end if;
+    if hub_workspace_paused(gen_random_uuid()) then raise exception 'pause: unknown workspace paused'; end if;
+  end $$;
+rollback;
+
+-- 2.6 grant_pagarme_converts_trial
+begin;
+  do $$
+  declare f record; w record; n int;
+  begin
+    select * into f from et_rt_trial();
+    insert into workspace_subscriptions (workspace_id, status, pagarme_subscription_id, provider)
+      values (f.workspace_id, 'pending', 'pg_' || f.workspace_id, 'pagarme');
+    n := grant_pagarme_plan(f.workspace_id, 'pro', 'pg_' || f.workspace_id, 'pending');
+    if n <> 0 or (select plan_source from workspaces where id = f.workspace_id) <> 'trial' then
+      raise exception 'grant_pagarme: trial touched by a status not in force';
+    end if;
+    update workspace_subscriptions set status = 'active' where workspace_id = f.workspace_id;
+    n := grant_pagarme_plan(f.workspace_id, 'pro', 'pg_' || f.workspace_id, 'active');
+    select * into w from workspaces where id = f.workspace_id;
+    if n <> 1 or w.plan_source <> 'pagarme' or w.reverse_trial_outcome <> 'converted'
+       or w.reverse_trial_card_added_at is null then
+      raise exception 'grant_pagarme_converts_trial: % %', n, row_to_json(w);
+    end if;
+    -- a normal Free workspace keeps the plain write
+    select * into f from et_rt_owner();
+    insert into workspace_subscriptions (workspace_id, status, pagarme_subscription_id, provider)
+      values (f.workspace_id, 'active', 'pg_' || f.workspace_id, 'pagarme');
+    n := grant_pagarme_plan(f.workspace_id, 'start', 'pg_' || f.workspace_id, 'active');
+    select * into w from workspaces where id = f.workspace_id;
+    if n <> 1 or w.plan_id <> 'start' or w.plan_source <> 'pagarme' or w.reverse_trial_outcome is not null then
+      raise exception 'grant_pagarme plain write: % %', n, row_to_json(w);
+    end if;
+  end $$;
+rollback;
+
+-- 2.7 grants
+begin;
+  do $$
+  declare fn text;
+  begin
+    foreach fn in array array[
+      'convert_reverse_trial(uuid,text,text)', 'end_reverse_trial(uuid,text)',
+      'mark_reverse_trial_unpaid(uuid)', 'revert_reverse_trial_conversion(uuid)',
+      'mark_reverse_trial_first_paid(uuid)', 'hub_workspace_paused(uuid)',
+      'grant_pagarme_plan(uuid,text,text,text)'
+    ] loop
+      if has_function_privilege('authenticated', 'public.' || fn, 'EXECUTE')
+         or has_function_privilege('anon', 'public.' || fn, 'EXECUTE')
+         or not has_function_privilege('service_role', 'public.' || fn, 'EXECUTE') then
+        raise exception 'grants: % has wrong EXECUTE grants', fn;
+      end if;
+    end loop;
+  end $$;
+rollback;
+
+-- @@TASK3@@
 
 drop function if exists et_rt_owner();
 drop function if exists et_rt_switch_on(timestamptz);
 drop function if exists et_rt_as(uuid);
+drop function if exists et_rt_trial(interval, interval);
