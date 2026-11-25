@@ -96,7 +96,8 @@ export function TrialPlanPicker({
       ? formatTrialDate(trialEndsAt)
       : format(estimateFirstCharge(now), "d 'de' MMMM", { locale: ptBR });
   const price = plan ? formatPlanPrice(planMonthlyCents(plan, currency) ?? 0, currency) : '';
-  const zeroToday = formatPlanPrice(0, currency);
+  // BRL keeps the literal copy; USD formats its zero ("$0").
+  const zeroToday = currency === 'brl' ? 'R$ 0' : formatPlanPrice(0, currency);
 
   return (
     <div className="comecar-picker">

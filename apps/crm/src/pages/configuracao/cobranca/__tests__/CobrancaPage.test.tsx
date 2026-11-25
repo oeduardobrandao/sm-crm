@@ -476,6 +476,38 @@ describe('CobrancaPage', () => {
       expect(screen.getByText('$40.83')).toBeInTheDocument();
     });
 
+    it('a paid plan with no USD price shows no price and no checkout button', async () => {
+      mockUsdWorkspace();
+      vi.mocked(listActivePlans).mockResolvedValue([
+        FREE_PLAN,
+        { ...PRO_PLAN, price_usd: null, price_usd_annual: null },
+      ]);
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(subscription({}));
+      renderPage();
+      await screen.findByText('Pro');
+      // Only the Free card reads "Grátis"; Pro shows the not-self-serve note instead.
+      expect(screen.getAllByText('Grátis')).toHaveLength(1);
+      expect(screen.getByText('Plano exclusivo')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /Começar teste|Fazer upgrade|Assinar/ }),
+      ).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Anual' }));
+      expect(
+        screen.queryByRole('button', { name: /Começar teste|Fazer upgrade|Assinar/ }),
+      ).toBeNull();
+    });
+
+    it("a BRL plan with no price keeps today's rendering", async () => {
+      vi.mocked(listActivePlans).mockResolvedValue([
+        { ...PRO_PLAN, price_brl: null, price_brl_annual: null },
+      ]);
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(subscription({}));
+      renderPage();
+      expect(await screen.findByText('Grátis')).toBeInTheDocument();
+      expect(screen.queryByText('Plano exclusivo')).toBeNull();
+      expect(screen.getByRole('button', { name: /Começar teste/ })).toBeInTheDocument();
+    });
+
     it('a year upgrade goes to Stripe and remembers the USD value', async () => {
       vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
       sessionStorage.clear();

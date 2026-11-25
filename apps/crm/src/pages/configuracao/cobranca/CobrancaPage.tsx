@@ -321,7 +321,7 @@ export default function CobrancaPage() {
   async function handleUpgrade(planId: string) {
     const plan = plans?.find((p) => p.id === planId);
     if (interval === 'year' && isPagarme12xEnabled(plan, currency)) {
-      rememberCheckoutValue(plan?.price_brl_annual);
+      rememberCheckoutValue(plan ? planAnnualCents(plan, currency) : null, currency);
       if (reverseCheckoutExtra) {
         captureCheckoutStarted(planId, 'year', 'billing', 'pagarme', reverseCheckoutExtra);
       } else {
@@ -373,6 +373,18 @@ export default function CobrancaPage() {
     }
   }
 
+  /**
+   * A USD workspace looking at a paid plan with no USD price for the selected interval (the
+   * Admin has not filled it yet): no price, no CTA, since checkout has no price to charge.
+   * BRL keeps today's rendering untouched.
+   */
+  function isUnpricedInCurrency(p: BillingPlan): boolean {
+    if (currency !== 'usd' || p.id === 'free' || isInternalPlan(p.id)) return false;
+    const cents =
+      interval === 'year' ? planAnnualCents(p, currency) : planMonthlyCents(p, currency);
+    return cents == null || cents <= 0;
+  }
+
   function renderCta(p: BillingPlan) {
     // Um assinante mensal ativo tem hasActiveSub true, então nenhum branch abaixo mostraria
     // CTA, inclusive o card do próprio plano atual, que sem este branch cairia direto em
@@ -409,6 +421,7 @@ export default function CobrancaPage() {
     if (p.id === currentPlanId && !isDemo && !reverseRunning) {
       return <span className="plan-cta__static">{t('shared.currentPlan')}</span>;
     }
+    if (isUnpricedInCurrency(p)) return null;
     const upgradable = canUpgradeTo(p.id, currentPlanId, hasActiveSub, planSource);
     // Suppress a CTA the backend would 409 on: this only fires for the past_due /
     // canceled-but-paid-through cases hasActiveSub doesn't cover — hasActiveSub already
@@ -518,6 +531,7 @@ export default function CobrancaPage() {
             const isCurrent = p.id === currentPlanId;
             const isReco = p.id === RECOMMENDED_ID && !isCurrent;
             const isInternal = isInternalPlan(p.id);
+            const unpriced = isUnpricedInCurrency(p);
             return (
               <div
                 key={p.id}
@@ -537,7 +551,7 @@ export default function CobrancaPage() {
                 </div>
 
                 <div>
-                  {!isInternal && isYear && monthly != null && monthly > 0 && (
+                  {!isInternal && !unpriced && isYear && monthly != null && monthly > 0 && (
                     <div className="plan-annual-lead">
                       {gated
                         ? t('cobrancaPage.annualLeadGated')
@@ -545,7 +559,7 @@ export default function CobrancaPage() {
                     </div>
                   )}
                   <div className="plan-price">
-                    {isInternal ? (
+                    {isInternal || unpriced ? (
                       <span className="plan-price__note">{t('cobrancaPage.exclusivePlan')}</span>
                     ) : monthly != null && monthly > 0 ? (
                       <>
@@ -558,10 +572,10 @@ export default function CobrancaPage() {
                       <span className="plan-price__free">{t('cobrancaPage.free')}</span>
                     )}
                   </div>
-                  {gated && p.price_brl_annual != null && p.price_brl_annual > 0 && (
+                  {gated && annual != null && annual > 0 && (
                     <div className="plan-price__secondary">
                       {t('cobrancaPage.orUpfront', {
-                        price: formatPrice(p.price_brl_annual, currency),
+                        price: formatPrice(annual, currency),
                       })}
                     </div>
                   )}
