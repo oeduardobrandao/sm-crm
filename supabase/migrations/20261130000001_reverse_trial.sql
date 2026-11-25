@@ -611,3 +611,60 @@ begin
     execute format('grant execute on function %s to service_role', fn);
   end loop;
 end $$;
+
+-- =============================================================
+-- 7) Financeiro e Contratos so leitura sem o plano (decisao do dono do produto).
+--    Os gatilhos enforce_plan_feature dessas tabelas disparam so no INSERT; aqui ganham um
+--    BEFORE UPDATE. Tabelas que as telas gravam (apps/crm/src/store/finance.ts, unico
+--    escritor das telas Financeiro v1 e Contratos):
+--      transacoes, transacoes_recorrentes  -> feature_financial
+--      contratos                           -> feature_contracts
+--    (Financeiro v2 escreve so por RPCs nas tabelas financeiro_*, fora deste escopo; o MCP
+--    usa service role.)
+--    Pulado quando auth.uid() e nulo (service role, crons, sync legado do Financeiro v2) e
+--    quando pg_trigger_depth() > 1 (escrita feita por outro gatilho, inclusive o SET NULL
+--    de cliente_id quando um cliente e apagado). Sem gatilho de DELETE: apagar cliente ou
+--    workspace cascateia nessas tabelas e um guard quebraria isso para todo Free.
+--    Mesma checagem de enforce_plan_feature (modo 'direct'); uma funcao de gatilho nao pode
+--    chamar outra, entao a regra e repetida aqui.
+-- =============================================================
+create or replace function public.enforce_plan_feature_on_update()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_feature_key text := TG_ARGV[0];
+  v_ws_col      text := TG_ARGV[1];
+  v_ws_id       uuid;
+begin
+  if auth.uid() is null or pg_trigger_depth() > 1 then
+    return NEW;
+  end if;
+  execute format('select (($1).%I)::uuid', v_ws_col) using NEW into v_ws_id;
+  if v_ws_id is null then
+    return NEW;
+  end if;
+  if not effective_plan_feature(v_ws_id, v_feature_key) then
+    raise exception 'feature_disabled:%', v_feature_key using errcode = 'P0001';
+  end if;
+  return NEW;
+end;
+$$;
+
+revoke all on function public.enforce_plan_feature_on_update() from public, anon, authenticated;
+
+drop trigger if exists trg_feature_financial_update on public.transacoes;
+create trigger trg_feature_financial_update
+  before update on public.transacoes
+  for each row execute function public.enforce_plan_feature_on_update('feature_financial', 'conta_id');
+
+drop trigger if exists trg_feature_financial_update on public.transacoes_recorrentes;
+create trigger trg_feature_financial_update
+  before update on public.transacoes_recorrentes
+  for each row execute function public.enforce_plan_feature_on_update('feature_financial', 'conta_id');
+
+drop trigger if exists trg_feature_contracts_update on public.contratos;
+create trigger trg_feature_contracts_update
+  before update on public.contratos
+  for each row execute function public.enforce_plan_feature_on_update('feature_contracts', 'conta_id');

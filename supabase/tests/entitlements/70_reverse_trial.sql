@@ -598,7 +598,103 @@ begin;
   end $$;
 rollback;
 
--- @@TASK3@@
+-- ===================== Task 3: Financeiro e Contratos so leitura =====================
+-- 3.1 free_workspace_cannot_update_contrato / transacao / recorrente,
+--     free_workspace_can_select_contratos, pro_workspace_can_update_contrato
+begin;
+  select et_grant_hosted_parity();
+  do $$
+  declare f record; v_cli bigint; v_con bigint; v_tr bigint; v_rec bigint; v_ok boolean; n int;
+  begin
+    select * into f from et_rt_owner();
+    update workspaces set plan_id = 'pro' where id = f.workspace_id;
+    insert into clientes (user_id, conta_id, nome, sigla, cor)
+      values (f.user_id, f.workspace_id, 'Cliente', 'C', '#000') returning id into v_cli;
+    insert into contratos (user_id, conta_id, cliente_id, titulo, data_inicio, data_fim, valor_total)
+      values (f.user_id, f.workspace_id, v_cli, 'Contrato', '2026-01-01', '2026-12-31', 1000)
+      returning id into v_con;
+    insert into transacoes (user_id, conta_id, data, tipo, valor)
+      values (f.user_id, f.workspace_id, '2026-11-01', 'entrada', 100) returning id into v_tr;
+    insert into transacoes_recorrentes (conta_id, user_id, tipo, descricao, valor, dia, inicio)
+      values (f.workspace_id, f.user_id, 'saida', 'Aluguel', 50, 5, '2026-11-01') returning id into v_rec;
+
+    -- Pro: edits work
+    perform et_rt_as(f.user_id);
+    execute 'set local role authenticated';
+    update contratos set titulo = 'Contrato Pro' where id = v_con;
+    get diagnostics n = row_count;
+    execute 'reset role';
+    if n <> 1 then raise exception 'pro_workspace_can_update_contrato: % rows', n; end if;
+
+    -- Free: read works, every edit refused
+    update workspaces set plan_id = null, plan_source = 'system',
+                          reverse_trial_outcome = 'downgraded', reverse_trial_ended_at = now()
+     where id = f.workspace_id;
+    perform et_rt_as(f.user_id);
+    execute 'set local role authenticated';
+    select count(*) into n from contratos where id = v_con;
+    if n <> 1 then raise exception 'free_workspace_can_select_contratos: % rows', n; end if;
+    select count(*) into n from transacoes where id = v_tr;
+    if n <> 1 then raise exception 'free_workspace_can_select_transacoes: % rows', n; end if;
+    begin
+      update contratos set titulo = 'x' where id = v_con; v_ok := true;
+    exception when raise_exception then v_ok := false;
+    end;
+    if v_ok then raise exception 'free_workspace_cannot_update_contrato'; end if;
+    begin
+      update transacoes set valor = 1 where id = v_tr; v_ok := true;
+    exception when raise_exception then v_ok := false;
+    end;
+    if v_ok then raise exception 'free_workspace_cannot_update_transacao'; end if;
+    begin
+      update transacoes_recorrentes set valor = 1 where id = v_rec; v_ok := true;
+    exception when raise_exception then v_ok := false;
+    end;
+    if v_ok then raise exception 'free_workspace_cannot_update_recorrente'; end if;
+    execute 'reset role';
+  end $$;
+rollback;
+
+-- 3.2 deleting_client_with_contratos_on_free_still_cascades, service_role_update_on_free_allowed
+begin;
+  select et_grant_hosted_parity();
+  do $$
+  declare f record; v_cli bigint; v_con bigint; v_tr bigint; n int;
+  begin
+    select * into f from et_rt_owner();
+    update workspaces set plan_id = 'pro' where id = f.workspace_id;
+    insert into clientes (user_id, conta_id, nome, sigla, cor)
+      values (f.user_id, f.workspace_id, 'Cliente', 'C', '#000') returning id into v_cli;
+    insert into contratos (user_id, conta_id, cliente_id, titulo, data_inicio, data_fim, valor_total)
+      values (f.user_id, f.workspace_id, v_cli, 'Contrato', '2026-01-01', '2026-12-31', 1000)
+      returning id into v_con;
+    insert into transacoes (user_id, conta_id, data, tipo, valor, cliente_id)
+      values (f.user_id, f.workspace_id, '2026-11-01', 'entrada', 100, v_cli) returning id into v_tr;
+    update workspaces set plan_id = null where id = f.workspace_id;
+
+    perform et_rt_as(f.user_id);
+    execute 'set local role authenticated';
+    delete from clientes where id = v_cli;
+    get diagnostics n = row_count;
+    execute 'reset role';
+    if n <> 1 then raise exception 'deleting_client: client not deleted (% rows)', n; end if;
+    if (select cliente_id from contratos where id = v_con) is not null
+       or (select cliente_id from transacoes where id = v_tr) is not null then
+      raise exception 'deleting_client: SET NULL did not cascade';
+    end if;
+
+    perform set_config('request.jwt.claims', '', true);
+    execute 'set local role service_role';
+    update contratos set titulo = 'service' where id = v_con;
+    update transacoes set valor = 2 where id = v_tr;
+    execute 'reset role';
+    if (select titulo from contratos where id = v_con) <> 'service' then
+      raise exception 'service_role_update_on_free_allowed';
+    end if;
+  end $$;
+rollback;
+
+-- @@TASK4@@
 
 drop function if exists et_rt_owner();
 drop function if exists et_rt_switch_on(timestamptz);
