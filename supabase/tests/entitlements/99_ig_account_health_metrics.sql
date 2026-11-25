@@ -128,6 +128,7 @@ rollback;
 -- ig_peer_benchmarks: constraints
 -- =====================================================================
 begin;
+delete from public.ig_peer_benchmarks;
 do $$
 declare v_cuts numeric[] := (select array_agg(g::numeric) from generate_series(1, 99) g);
 begin
@@ -325,6 +326,7 @@ rollback;
 -- ig_account_health: formato do JSON
 -- =====================================================================
 begin;
+delete from public.ig_peer_benchmarks;
 do $$
 declare
   s jsonb := pg_temp.ih_seed(10000); v_acc uuid := (s->>'acc')::uuid; v_c bigint := (s->>'client')::bigint;
@@ -394,6 +396,7 @@ rollback;
 -- RLS e acesso por cliente (como authenticated)
 -- =====================================================================
 begin;
+delete from public.ig_peer_benchmarks;
 select et_grant_hosted_parity(array['ig_peer_benchmarks']);
 update plans set feature_acesso_por_cliente = true;
 
