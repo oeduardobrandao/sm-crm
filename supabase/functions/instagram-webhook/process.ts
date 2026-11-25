@@ -486,6 +486,14 @@ export async function executeSend(ctx: SendContext, send: ClaimedSend): Promise<
     // fecha como 'sent_partial' (a resposta pública não sai), nunca como
     // 'skipped', que diria que nada foi enviado.
     const dmAlreadySent = send.dm_status === "sent";
+    // Mesmo critério do fechamento normal (`hadPlanned`, mais abaixo): sem resposta pública
+    // planejada, ou com ela já enviada, o send estava completo e fecha como 'sent'.
+    const publicReplyPending = send.public_reply_status !== "sent" && (
+      (send.public_reply_text ?? null) !== null ||
+      send.public_reply_status === "unknown" ||
+      send.public_reply_status === "failed" ||
+      parsePublicReplies(automation.public_replies, automation.public_reply).length > 0
+    );
     console.log(
       `[instagram-webhook] plano do workspace ${send.conta_id} sem automação; send ${send.send_id} ${
         dmAlreadySent ? "fechado sem a resposta pública" : "ignorado"
@@ -494,9 +502,11 @@ export async function executeSend(ctx: SendContext, send: ClaimedSend): Promise<
     const { error } = await ctx.svc
       .from("instagram_automation_sends")
       .update(
-        dmAlreadySent
+        !dmAlreadySent
+          ? { status: "skipped", skip_reason: "plan_feature_off" }
+          : publicReplyPending
           ? { status: "sent_partial", skip_reason: "plan_feature_off" }
-          : { status: "skipped", skip_reason: "plan_feature_off" },
+          : { status: "sent" },
       )
       .eq("id", send.send_id);
     if (error) throw new Error(`instagram_automation_sends (plan_feature_off): ${errMessage(error)}`);

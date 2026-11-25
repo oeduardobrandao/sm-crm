@@ -1957,6 +1957,23 @@ Deno.test("executeSend: retry com DM já enviada e plano sem automação -> fech
   assert(sendUpdates[0].modifiers.some((m) => m.method === "eq" && m.args[0] === "id" && m.args[1] === SEND_ID));
 });
 
+Deno.test("executeSend: retry com DM já enviada, sem resposta pública planejada e plano sem automação -> fecha sent", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: revalidatedAutomation({ public_reply: null, public_replies: [] }),
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queueRpc("effective_plan_feature", { data: false, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null });
+
+  await executeSend(baseSendCtx(db), baseClaimedSend({ dm_status: "sent", attempts: 1 }));
+
+  const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(sendUpdates.length, 1);
+  assertEquals(sendUpdates[0].payload, { status: "sent" });
+});
+
 Deno.test("executeSend: erro ao ler o plano -> lança (o webhook deixa para o sweep), nada é enviado", async () => {
   const db = createSupabaseQueryMock();
   db.queue("instagram_comment_automations", "select", { data: revalidatedAutomation(), error: null });

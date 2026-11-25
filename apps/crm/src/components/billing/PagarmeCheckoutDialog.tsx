@@ -47,6 +47,7 @@ import {
   type PagarmeCheckoutResult,
 } from '@/services/billing';
 import { ceilPeriodEndToUtcDate } from '@/pages/configuracao/cobranca/plan-display';
+import { formatTrialDate } from '@/lib/reverseTrial';
 import { useIsPhoneUi } from '@/lib/phoneShell';
 import { PagarmeLogo } from './PagarmeLogo';
 import './pagarmeCheckoutPhone.css';
@@ -722,7 +723,14 @@ export function PagarmeCheckoutDialog({
                   reverseTrialEnd
                     ? 'pagarmeCheckout.notes.reverseTrialOn'
                     : 'pagarmeCheckout.notes.trialOn',
-                  { date: formatUtcDateBR(trialEndPreview) },
+                  {
+                    // O gateway cobra à meia-noite UTC do start_at, que em São Paulo ainda é a
+                    // véspera (21h). O teste reverso mostra a data de SP desse instante, igual ao
+                    // banner e aos e-mails, para nunca prometer um dia depois da cobrança real.
+                    date: reverseTrialEnd
+                      ? formatTrialDate(trialEndPreview)
+                      : formatUtcDateBR(trialEndPreview),
+                  },
                 )
               : t('pagarmeCheckout.notes.trialNoDate')}
           </p>

@@ -145,6 +145,14 @@ describe('PagarmeCheckoutDialog', () => {
     ).toBeInTheDocument();
   });
 
+  it('reverse trial: shows the São Paulo date of the charge instant, never the UTC date a day later', () => {
+    // Fim do teste 08/12 23:50 em SP (09/12 02:50Z) -> start_at 2026-12-10, cobrado às 00:00Z,
+    // que em SP ainda é 09/12 21h. A nota tem que dizer 9 de dezembro, como o banner e os e-mails.
+    render(<PagarmeCheckoutDialog {...baseProps({ trialEndsAt: '2026-12-09T02:50:00.000Z' })} />);
+    expect(screen.getByText(/só é cobrada em 9 de dezembro/)).toBeInTheDocument();
+    expect(screen.queryByText(/10\/12\/2026|10 de dezembro/)).not.toBeInTheDocument();
+  });
+
   it('hides the trial note when trialEligible is false', () => {
     render(<PagarmeCheckoutDialog {...baseProps({ trialEligible: false })} />);
     expect(screen.getByText('12x de R$ 129,90')).toBeInTheDocument();
