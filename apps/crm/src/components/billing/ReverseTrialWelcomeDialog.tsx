@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Sparkles } from 'lucide-react';
 import {
   Dialog,
@@ -22,6 +23,7 @@ export function ReverseTrialWelcomeDialog({
   endsAt: string | null;
   onClose: () => void;
 }) {
+  const { t } = useTranslation('billing');
   const native = isNativeApp();
   const open = endsAt !== null;
   return (
@@ -29,18 +31,16 @@ export function ReverseTrialWelcomeDialog({
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
           <Sparkles size={22} aria-hidden="true" className="text-primary" />
-          <DialogTitle>Seu workspace está no Pro por 14 dias</DialogTitle>
+          <DialogTitle>{t('reverseTrial.welcome.title')}</DialogTitle>
           <DialogDescription>
-            {endsAt
-              ? `Até ${formatTrialDate(endsAt)}, use tudo do Pro: portal do cliente, relatórios, financeiro, contratos e a sua equipe.`
-              : null}
+            {endsAt ? t('reverseTrial.welcome.body', { date: formatTrialDate(endsAt) }) : null}
           </DialogDescription>
         </DialogHeader>
-        <p className="text-sm text-muted-foreground">
-          Sem cartão. No fim, você escolhe se continua.
-        </p>
+        <p className="text-sm text-muted-foreground">{t('reverseTrial.welcome.noCard')}</p>
         <DialogFooter>
-          <Button onClick={onClose}>{native ? 'Entendi' : 'Começar a usar'}</Button>
+          <Button onClick={onClose}>
+            {native ? t('reverseTrial.welcome.ok') : t('reverseTrial.welcome.start')}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
