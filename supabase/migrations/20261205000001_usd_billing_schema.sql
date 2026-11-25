@@ -1,5 +1,5 @@
 -- =====================================================================
--- 20261201000001_usd_billing_schema.sql
+-- 20261205000001_usd_billing_schema.sql
 --
 -- Cobrança em USD (lançamento nos EUA, parte 1). Spec:
 -- docs/superpowers/specs/2026-11-25-usd-billing-design.md

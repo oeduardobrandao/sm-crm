@@ -14,7 +14,7 @@
 
 - USD prices (cents): Start 2900 / 27900, Pro 4900 / 46900, Max 7900 / 75900 (monthly / annual).
 - Currency codes are lowercase `brl` / `usd` everywhere in the DB and edge code; `Intl` uses `BRL` / `USD`.
-- New migrations use fresh unique versions above main's tail (`20261130000002`): this plan uses `20261201000001` and `20261201000002`. Re-check main's tail right before opening the PR and renumber if needed.
+- New migrations use fresh unique versions above main's tail (`20261130000002`): this plan uses `20261205000001` and `20261205000002`. Re-check main's tail right before opening the PR and renumber if needed.
 - Never edit an applied migration. Redefine functions with `CREATE OR REPLACE` in the new files, copying the latest definition first.
 - Edge functions never return raw errors to clients; generic messages, details in logs.
 - `billing-checkout` with the pinned currency deploys to prod and staging before any Stripe `currency_options` exist.
@@ -35,7 +35,7 @@
 ### Task 1: Schema, guard and currency lock
 
 **Files:**
-- Create: `supabase/migrations/20261201000001_usd_billing_schema.sql`
+- Create: `supabase/migrations/20261205000001_usd_billing_schema.sql`
 - Create: `supabase/tests/entitlements/99_usd_billing_currency.sql`
 - Modify: `supabase/tests/entitlements/99_workspace_billing_column_guard.sql` (add the two new columns to its cases)
 
@@ -140,7 +140,7 @@
 ### Task 6: Snapshots and metrics history per currency
 
 **Files:**
-- Create: `supabase/migrations/20261201000002_usd_billing_rpcs.sql` (this task owns the snapshot RPC part; Task 9 adds to the same file)
+- Create: `supabase/migrations/20261205000002_usd_billing_rpcs.sql` (this task owns the snapshot RPC part; Task 9 adds to the same file)
 - Modify: `supabase/functions/_shared/metrics-snapshot.ts`, `supabase/functions/metrics-snapshot-cron/index.ts`, `supabase/functions/platform-admin/pricing.ts`, `supabase/functions/platform-admin/metrics-logic.ts`, `supabase/functions/platform-admin/metrics-history.ts`, `supabase/functions/platform-admin/metrics-backfill-logic.ts`
 - Test: `supabase/functions/__tests__/metrics-snapshot_test.ts`, `platform-admin-metrics-logic_test.ts`, `platform-admin-metrics-backfill-logic_test.ts` (existing names; extend)
 
@@ -192,7 +192,7 @@
 ### Task 9: Admin actions, plan USD prices and email candidates
 
 **Files:**
-- Modify: `supabase/migrations/20261201000002_usd_billing_rpcs.sql` (add redefinitions of `get_trial_reminder_candidates`, `get_reverse_trial_email_candidates`, `admin_list_workspaces` from `20261130000001`)
+- Modify: `supabase/migrations/20261205000002_usd_billing_rpcs.sql` (add redefinitions of `get_trial_reminder_candidates`, `get_reverse_trial_email_candidates`, `admin_list_workspaces` from `20261130000001`)
 - Modify: `supabase/functions/platform-admin/index.ts`, `plan-mutations.ts`, new `supabase/functions/platform-admin/workspace-currency.ts`
 - Modify: `supabase/functions/_shared/lifecycle-emails.ts`, `supabase/functions/lifecycle-email-cron/*`
 - Test: `platform-admin-plan-mutations_test.ts`, new `platform-admin-workspace-currency_test.ts`, `lifecycle-emails_test.ts` (existing names; extend)
