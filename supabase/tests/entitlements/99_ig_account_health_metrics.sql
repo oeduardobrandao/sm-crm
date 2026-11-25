@@ -492,3 +492,128 @@ begin
   raise notice 'PASS 99_ig_account_health_metrics rls';
 end $$;
 rollback;
+
+-- =====================================================================
+-- ig_account_health_metrics(uuid, timestamptz, int): ancorada numa data
+-- (20261201000004_ig_account_health_metrics_as_of.sql). Janelas de 30/90 d
+-- terminam em p_as_of (exclusivo); p_followers nulo = follower_count atual.
+-- =====================================================================
+
+-- Um post de feed numa data absoluta.
+create or replace function pg_temp.ih_post_at(p_acc uuid, p_at timestamptz, p_likes int, p_comments int default 0)
+returns uuid language plpgsql as $$
+declare v uuid;
+begin
+  insert into instagram_posts (instagram_account_id, instagram_post_id, posted_at, likes, comments,
+                               media_type, media_product_type, impressions, unavailable_metrics)
+    values (p_acc, 'p-' || gen_random_uuid(), p_at, p_likes, p_comments, 'IMAGE', 'FEED', 0, '{}')
+    returning id into v;
+  return v;
+end $$;
+
+create or replace function pg_temp.ih_m_at(p_acc uuid, p_as_of timestamptz, p_followers int default null)
+returns table(engagement_rate numeric, posts_30d int, reel_views numeric, reels_share numeric,
+              best_post_id uuid, best_post_ratio numeric)
+language sql as $$ select * from ig_account_health_metrics(p_acc, p_as_of, p_followers) $$;
+
+-- grants da sobrecarga
+begin;
+do $$
+begin
+  assert not has_function_privilege('anon', 'public.ig_account_health_metrics(uuid, timestamptz, int)', 'execute'),
+    'anon sem EXECUTE na de 3 argumentos';
+  assert has_function_privilege('authenticated', 'public.ig_account_health_metrics(uuid, timestamptz, int)', 'execute'),
+    'authenticated executa a de 3 argumentos';
+  assert has_function_privilege('service_role', 'public.ig_account_health_metrics(uuid, timestamptz, int)', 'execute'),
+    'service_role executa a de 3 argumentos';
+  assert not (select prosecdef from pg_proc
+               where oid = 'public.ig_account_health_metrics(uuid, timestamptz, int)'::regprocedure),
+    'de 3 argumentos é SECURITY INVOKER';
+  assert (select proconfig from pg_proc
+           where oid = 'public.ig_account_health_metrics(uuid, timestamptz, int)'::regprocedure)
+         @> array['search_path=public'], 'de 3 argumentos com search_path=public';
+  assert has_function_privilege('anon', 'public.ig_account_health_metrics(uuid)', 'execute') = false,
+    'anon continua sem EXECUTE na de 1 argumento';
+  raise notice 'PASS 99_ig_account_health_metrics as_of grants';
+end $$;
+rollback;
+
+-- janelas, melhor post e 1 argumento = now()
+begin;
+do $$
+declare
+  s jsonb := pg_temp.ih_seed(5000); v_acc uuid := (s->>'acc')::uuid;
+  v_sep5 uuid; v_sep20 uuid; v_oct10 uuid; v_jun15 uuid; m record; m1 record; m3 record;
+begin
+  v_sep5  := pg_temp.ih_post_at(v_acc, '2026-09-05 12:00+00', 50);
+  v_sep20 := pg_temp.ih_post_at(v_acc, '2026-09-20 12:00+00', 100);
+  v_oct10 := pg_temp.ih_post_at(v_acc, '2026-10-10 12:00+00', 1000);
+  v_jun15 := pg_temp.ih_post_at(v_acc, '2026-06-15 12:00+00', 10);
+
+  -- as_of 2026-10-01: set e 20/09 em 30 d; o de outubro ainda não existe; jun/15 fora dos 90 d
+  select * into m from pg_temp.ih_m_at(v_acc, '2026-10-01+00');
+  assert m.posts_30d = 2, 'posts_30d = 2 em as_of 2026-10-01, veio ' || coalesce(m.posts_30d::text, 'null');
+  -- melhor post respeita as_of: o de outubro não entra; mediana(50,100) = 75 → 100/75
+  assert m.best_post_id = v_sep20, 'melhor post de 2026-10-01 é o de 20/09';
+  assert round(m.best_post_ratio, 4) = 1.3333, 'best_post_ratio 1.3333, veio ' || coalesce(m.best_post_ratio::text, 'null');
+
+  -- post de junho: fora dos 90 d de 2026-10-01 (mediana 90 d = 75); dentro dos de 2026-09-10 (50,10 → 30)
+  select * into m from pg_temp.ih_m_at(v_acc, '2026-09-10+00');
+  assert m.posts_30d = 1, 'posts_30d = 1 em as_of 2026-09-10, veio ' || coalesce(m.posts_30d::text, 'null');
+  assert m.best_post_id is null, 'melhor post nulo com 1 post em 30 d de 2026-09-10';
+  perform pg_temp.ih_post_at(v_acc, '2026-09-08 12:00+00', 70);   -- agora 2 em 30 d: 70 e 50
+  select * into m from pg_temp.ih_m_at(v_acc, '2026-09-10+00');
+  -- mediana 90 d de 09/10 = mediana(10, 50, 70) = 50 → 70/50; sem o de junho seria mediana(50,70)=60
+  assert round(m.best_post_ratio, 4) = 1.4, 'jun/15 conta nos 90 d de 2026-09-10, ratio 1.4, veio '
+    || coalesce(m.best_post_ratio::text, 'null');
+
+  -- limite superior exclusivo: post exatamente em as_of não entra
+  select * into m from pg_temp.ih_m_at(v_acc, '2026-09-20 12:00+00');
+  assert m.posts_30d = 2, 'post em as_of não entra (posts_30d = 2: 05/09 e 08/09), veio '
+    || coalesce(m.posts_30d::text, 'null');
+
+  -- 1 argumento = 3 argumentos com now() e followers nulo
+  select * into m1 from pg_temp.ih_m(v_acc);
+  select * into m3 from pg_temp.ih_m_at(v_acc, now(), null);
+  assert m1 is not distinct from m3, '1 argumento = as_of now()';
+  raise notice 'PASS 99_ig_account_health_metrics as_of janelas';
+end $$;
+rollback;
+
+-- equivalência na fixture "existente" (posts relativos a now()) e posts futuros
+begin;
+do $$
+declare s jsonb := pg_temp.ih_seed(10000); v_acc uuid := (s->>'acc')::uuid; i int; m1 record; m3 record;
+begin
+  for i in 0..11 loop
+    perform pg_temp.ih_post(v_acc, 1 + (11 - i) * 2, 90 + i * 10, 10,
+      case when i < 4 then 'VIDEO' else 'IMAGE' end, case when i < 4 then 'REELS' else 'FEED' end, 1000 * (i + 1));
+  end loop;
+  select * into m1 from pg_temp.ih_m(v_acc);
+  select * into m3 from pg_temp.ih_m_at(v_acc, now(), null);
+  assert m1 is not distinct from m3, 'fixture: 1 argumento = as_of now()';
+  assert m1.engagement_rate = 0.0155, 'fixture: engagement_rate 0.0155';
+  -- post futuro (relativo a now) não entra nem na de 1 argumento
+  perform pg_temp.ih_post(v_acc, -2, 100000, 0);
+  select * into m1 from pg_temp.ih_m(v_acc);
+  assert m1.posts_30d = 12, 'post futuro fora das janelas, veio ' || coalesce(m1.posts_30d::text, 'null');
+  raise notice 'PASS 99_ig_account_health_metrics as_of equivalência';
+end $$;
+rollback;
+
+-- p_followers: denominador do engajamento
+begin;
+do $$
+declare s jsonb := pg_temp.ih_seed(10000); v_acc uuid := (s->>'acc')::uuid; i int; m record;
+begin
+  for i in 1..3 loop perform pg_temp.ih_post(v_acc, i * 2, 100, 0); end loop;   -- mediana 100
+  select * into m from pg_temp.ih_m_at(v_acc, now(), 5000);
+  assert m.engagement_rate = 0.02, 'p_followers 5000 → 0.02, veio ' || coalesce(m.engagement_rate::text, 'null');
+  select * into m from pg_temp.ih_m_at(v_acc, now(), null);
+  assert m.engagement_rate = 0.01, 'p_followers nulo → follower_count 10000 → 0.01, veio '
+    || coalesce(m.engagement_rate::text, 'null');
+  select * into m from pg_temp.ih_m_at(v_acc, now(), 0);
+  assert m.engagement_rate is null, 'p_followers 0 → nulo';
+  raise notice 'PASS 99_ig_account_health_metrics as_of followers';
+end $$;
+rollback;
