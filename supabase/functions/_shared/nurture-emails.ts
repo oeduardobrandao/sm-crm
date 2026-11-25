@@ -39,6 +39,8 @@ export interface NurtureEmailInput {
   appBaseUrl: string;
   unsubUrl: string;
   whatsappUrl: string | null;
+  /** Owner of a workspace whose 14-day reverse trial ended on Free: a3 becomes "Recupere o Pro". */
+  exReverseTrial?: boolean;
 }
 
 /** Day the 30-day trial launched; accounts created before it had no free trial. */
@@ -77,6 +79,15 @@ const trialGrid = () =>
     { title: "Clientes sem limite", text: "No Free são 2. No teste, quantos você precisar." },
   ]);
 
+// No plan numbers beyond Free's 2 clients: Pro limits are edited in the Admin.
+const proGrid = () =>
+  featureGrid([
+    { title: "Hub do cliente", text: "Aprovação de posts por link, sem login, com a sua marca." },
+    { title: "Equipe", text: "Convide seu time e divida as entregas." },
+    { title: "Instagram", text: "Agendamento, métricas e relatórios em PDF." },
+    { title: "Mais clientes", text: "No Free são 2. No Pro, cabe a carteira da sua agência." },
+  ]);
+
 const SHOT_ALT = {
   clientes: "Tela de clientes do Mesaas no celular, com seis clientes cadastrados.",
   aprovacoes: "Hub do cliente no celular: quatro posts aguardando aprovação.",
@@ -94,8 +105,11 @@ const trialFine = () =>
     "14px 0 0",
   );
 
+/** Subject of the a3 variant for ex-reverse-trial workspaces. Shared with the e-mail classifier. */
+export const NURTURE_A3_EX_TRIAL_SUBJECT = "Recupere o Pro no Mesaas";
+
 /** Subject line of a nurture step (sanitized). Shared with the e-mail classifier. */
-export function nurtureSubject(step: NurtureStep, p: { clientCount: number }): string {
+export function nurtureSubject(step: NurtureStep, p: { clientCount: number; exReverseTrial?: boolean }): string {
   let subject: string;
   switch (step) {
     case "a1":
@@ -105,7 +119,9 @@ export function nurtureSubject(step: NurtureStep, p: { clientCount: number }): s
       subject = "Como as agências aprovam posts sem WhatsApp";
       break;
     case "a3":
-      subject = "Teste tudo do Mesaas por 30 dias";
+      // The reverse trial counts as the trial: an ex-trial owner cannot start
+      // another one, so a3 offers the Pro back instead of a 30-day test.
+      subject = p.exReverseTrial ? NURTURE_A3_EX_TRIAL_SUBJECT : "Teste tudo do Mesaas por 30 dias";
       break;
     case "b1": {
       const n = Number.isFinite(p.clientCount) ? Math.max(0, Math.floor(p.clientCount)) : 0;
@@ -182,6 +198,27 @@ export function buildNurtureEmail(p: NurtureEmailInput): { subject: string; html
       ];
       break;
     case "a3": {
+      if (p.exReverseTrial) {
+        preheader = "Seus dados continuam lá. Com um cartão, o Pro volta na hora.";
+        eyebrow = "Recupere o Pro";
+        sections = [
+          heading(p.firstName ? `${p.firstName}, o Pro continua a um cartão de distância.` : "O Pro continua a um cartão de distância.") +
+          paragraph(
+            "Seu teste de 14 dias do Pro terminou e o workspace voltou para o plano Free. Nada foi apagado: clientes, posts e relatórios continuam lá.",
+          ) +
+          paragraph(
+            "Com o Pro de volta, você recupera o portal do cliente, a equipe e os relatórios, e os links do portal voltam a abrir.",
+          ) +
+          shot("hub") +
+          proGrid() + spacer(8) + button(u("/configuracao/cobranca"), "Recuperar o Pro"),
+          paragraphHtml(
+            "Ficou alguma dúvida sobre o plano? É só <strong>responder este e-mail</strong>.",
+            "body",
+            "0 0 18px",
+          ) + signature(),
+        ];
+        break;
+      }
       const trialFirst = p.workspaceCreatedAt.slice(0, 10) >= TRIAL_FIRST_LAUNCH;
       preheader = "Hub, equipe, Instagram e relatórios liberados por 30 dias.";
       eyebrow = "Teste grátis";

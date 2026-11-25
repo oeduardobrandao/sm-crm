@@ -7,8 +7,15 @@
 import { clientEventSubject } from "./client-event-email.ts";
 import { CONNECT_LINK_SUBJECT, CONNECTED_NOTICE_SUBJECT } from "./instagram-connect-email.ts";
 import { DEMO_ACCESS_SUBJECT } from "./invite-email.ts";
-import { THANKYOU_SUBJECT, trialReminderSubject, WELCOME_SUBJECT } from "./lifecycle-emails.ts";
-import { NURTURE_STEPS, nurtureSubject } from "./nurture-emails.ts";
+import {
+  REVERSE_TRIAL_ENDED_SUBJECT,
+  REVERSE_TRIAL_HUB_PAUSING_SUBJECT,
+  reverseTrialEndingSubject,
+  THANKYOU_SUBJECT,
+  trialReminderSubject,
+  WELCOME_SUBJECT,
+} from "./lifecycle-emails.ts";
+import { NURTURE_A3_EX_TRIAL_SUBJECT, NURTURE_STEPS, nurtureSubject } from "./nurture-emails.ts";
 import { REPORT_FROM_ADDRESS } from "./report-template/email.ts";
 
 export type EmailCategory =
@@ -41,10 +48,14 @@ export const EMAIL_TYPES: Record<string, EmailCategory> = {
   welcome: "ciclo_de_vida",
   thank_you: "ciclo_de_vida",
   trial_reminder: "ciclo_de_vida",
+  reverse_trial_ending: "ciclo_de_vida",
+  reverse_trial_ended: "ciclo_de_vida",
+  reverse_trial_hub_pausing: "ciclo_de_vida",
   nurture_a1: "ciclo_de_vida",
   nurture_a2: "ciclo_de_vida",
   nurture_a3: "ciclo_de_vida",
   nurture_a3_b1: "ciclo_de_vida",
+  nurture_a3_ex_trial: "ciclo_de_vida",
   nurture_a4: "ciclo_de_vida",
   nurture_b1: "ciclo_de_vida",
   nurture_b2: "ciclo_de_vida",
@@ -124,7 +135,11 @@ const FOUNDER_SUBJECTS: SubjectMatcher[] = [
   exact("welcome", WELCOME_SUBJECT),
   exact("thank_you", THANKYOU_SUBJECT),
   trialMatcher(),
+  sentinelMatcher("reverse_trial_ending", reverseTrialEndingSubject),
+  exact("reverse_trial_ended", REVERSE_TRIAL_ENDED_SUBJECT),
+  exact("reverse_trial_hub_pausing", REVERSE_TRIAL_HUB_PAUSING_SUBJECT),
   ...nurtureMatchers(),
+  exact("nurture_a3_ex_trial", NURTURE_A3_EX_TRIAL_SUBJECT),
   sentinelMatcher("instagram_connect", CONNECT_LINK_SUBJECT),
   exact("instagram_connected", CONNECTED_NOTICE_SUBJECT),
 ];

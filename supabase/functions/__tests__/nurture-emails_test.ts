@@ -152,3 +152,29 @@ Deno.test("feature screenshots: one per tip/trial email, none on the last-ask em
     if (file) assert(/alt="[^"]{10,}"/.test(html.slice(html.indexOf(file))), `${step}: alt text`);
   }
 });
+
+// ─── Teste reverso (Task 10) ────────────────────────────────────────────────
+
+Deno.test("nurture_a3_ex_trial_variant: ex-trial a3 offers the Pro back, not a 30-day trial", () => {
+  const { subject, html } = mk("a3", { exReverseTrial: true });
+  assert(subject === "Recupere o Pro no Mesaas", subject);
+  assert(html.includes("Recuperar o Pro"));
+  assert(html.includes("teste de 14 dias do Pro terminou"));
+  assert(html.includes("Nada foi apagado"));
+  assert(!html.includes("30 dias"), "no 30-day trial promise for an ex-trial owner");
+  assert(!html.includes("/comecar"), "no /comecar link: the reverse trial counts as used");
+  assert(!html.includes("O teste pede um cartão"), "no card-trial fine print");
+  assert(html.includes(`href="${BASE}/configuracao/cobranca?utm_source=email`), "add-card link");
+  assert(html.includes("Descadastrar</a>."));
+  assert(!subject.includes("—") && !html.includes("—"));
+});
+
+Deno.test("nurture: exReverseTrial changes only a3", () => {
+  for (const s of STEPS) {
+    if (s === "a3") continue;
+    const plain = mk(s);
+    const ex = mk(s, { exReverseTrial: true });
+    assert(plain.subject === ex.subject && plain.html === ex.html, s);
+  }
+  assert(mk("a3").subject === "Teste tudo do Mesaas por 30 dias");
+});

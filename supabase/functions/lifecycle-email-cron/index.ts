@@ -10,6 +10,7 @@ import {
   LIFECYCLE_FROM,
   sendFounderSignupNotice,
   sendFounderSubscriptionNotice,
+  sendReverseTrialEmail,
   sendThankYouEmail,
   sendTrialReminderEmail,
   sendViaResend,
@@ -92,6 +93,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       sendWelcome: sendWelcomeEmail,
       sendThanks: sendThankYouEmail,
       sendTrialReminder: sendTrialReminderEmail,
+      sendReverseTrial: sendReverseTrialEmail,
       sendFounderSignup: sendFounderSignupNotice,
       sendFounderSubscription: sendFounderSubscriptionNotice,
       // Read per run: flipping the secret needs no deploy. Anything but "on" is off.

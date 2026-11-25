@@ -9,7 +9,12 @@ import {
 import { clientEventSubject } from "../_shared/client-event-email.ts";
 import { CONNECT_LINK_SUBJECT, CONNECTED_NOTICE_SUBJECT } from "../_shared/instagram-connect-email.ts";
 import { DEMO_ACCESS_SUBJECT } from "../_shared/invite-email.ts";
-import { buildTrialReminderEmail, THANKYOU_SUBJECT, WELCOME_SUBJECT } from "../_shared/lifecycle-emails.ts";
+import {
+  buildReverseTrialEmail,
+  buildTrialReminderEmail,
+  THANKYOU_SUBJECT,
+  WELCOME_SUBJECT,
+} from "../_shared/lifecycle-emails.ts";
 import { buildNurtureEmail, NURTURE_SAMPLE, NURTURE_STEPS } from "../_shared/nurture-emails.ts";
 
 const EDUARDO = "Eduardo do Mesaas <eduardo@mesaas.com.br>";
@@ -137,4 +142,49 @@ Deno.test("PII_EVENTS e tagValue", () => {
   assertEquals([...PII_EVENTS].sort(), ["bounced", "complained", "failed", "suppressed"]);
   assertEquals(tagValue("nurture_a1"), "nurture_a1");
   assertEquals(tagValue("ação"), "a__o");
+});
+
+// ─── Teste reverso (Task 10) ────────────────────────────────────────────────
+
+Deno.test("teste reverso: tags novas classificam como ciclo de vida", () => {
+  for (const type of ["reverse_trial_ending", "reverse_trial_ended", "reverse_trial_hub_pausing", "nurture_a3_ex_trial"]) {
+    assertEquals(classifyEmail({ tags: { type }, from: EDUARDO, subject: "x" }), { category: "ciclo_de_vida", type });
+  }
+});
+
+Deno.test("teste reverso: assuntos dos builders casam sem tag (eduardo@)", () => {
+  const input = {
+    firstName: "Ana",
+    workspaceName: "WS",
+    planName: "Pro",
+    priceCents: 14900,
+    endsAt: "2026-12-08T15:00:00Z",
+    endedAt: "2026-12-08T15:00:00Z",
+    hubPauseAt: "2026-12-15T15:00:00Z",
+    appBaseUrl: "https://x.test",
+  };
+  for (const type of ["reverse_trial_ending", "reverse_trial_ended", "reverse_trial_hub_pausing"] as const) {
+    const { subject } = buildReverseTrialEmail({ ...input, type });
+    assertEquals(classifyEmail({ from: EDUARDO, subject }).type, type, type);
+  }
+  const { subject } = buildNurtureEmail({
+    ...NURTURE_SAMPLE,
+    step: "a3",
+    appBaseUrl: "https://x.test",
+    unsubUrl: "https://x.test/u",
+    whatsappUrl: null,
+    exReverseTrial: true,
+  });
+  assertEquals(classifyEmail({ from: EDUARDO, subject }).type, "nurture_a3_ex_trial");
+  // The card-trial reminder keeps its own type.
+  const reminder = buildTrialReminderEmail({
+    firstName: null,
+    workspaceName: "WS",
+    planName: "Pro",
+    firstCharge: null,
+    firstChargeDate: "8 de dezembro",
+    daysLeft: 7,
+    appBaseUrl: "https://x.test",
+  });
+  assertEquals(classifyEmail({ from: EDUARDO, subject: reminder.subject }).type, "trial_reminder");
 });

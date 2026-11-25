@@ -15,7 +15,9 @@ import {
  * marked stale via `markStale`.
  */
 function makeFakeDb(opts: {
-  welcomeCandidates?: Array<{ user_id: string; email: string; nome: string | null }>;
+  welcomeCandidates?: Array<
+    { user_id: string; email: string; nome: string | null; reverse_trial_offer?: boolean }
+  >;
   thankCandidates?: Array<{
     workspace_id: string;
     workspace_name: string;
@@ -37,8 +39,25 @@ function makeFakeDb(opts: {
     amount_interval?: string | null;
     billing_interval?: string | null;
     first_charge_at: string;
+    reverse_trial_conversion?: boolean;
   }>;
   trialRpcError?: string;
+  /** get_reverse_trial_email_candidates rows (eligibility already applied by the SQL). */
+  reverseCandidates?: Array<{
+    workspace_id: string;
+    email_type: string;
+    ref_at: string;
+    user_id?: string;
+    email?: string | null;
+    nome?: string | null;
+    workspace_name?: string;
+    ends_at?: string | null;
+    ended_at?: string | null;
+    hub_pause_at?: string | null;
+    plan_name?: string | null;
+    price_cents?: number | null;
+  }>;
+  reverseRpcError?: string;
   nurtureCandidates?: Array<{
     user_id: string;
     workspace_id: string;
@@ -51,6 +70,7 @@ function makeFakeDb(opts: {
     client_count?: number;
     first_client_name?: string | null;
     has_instagram?: boolean;
+    ex_reverse_trial?: boolean;
   }>;
   nurtureRpcError?: string;
   /** claim_nurture_email result keyed `${workspace_id}/${step}`; default attempts + 1. */
@@ -165,6 +185,35 @@ function makeFakeDb(opts: {
           error: null,
         });
       }
+      if (name === "get_reverse_trial_email_candidates") {
+        if (opts.reverseRpcError) {
+          return Promise.resolve({ data: null, error: { message: opts.reverseRpcError } });
+        }
+        // Ledger side of the SQL: a delivered row for the same ref_at is done;
+        // a row for another ref_at (date moved) re-arms.
+        const open = (c: { email_type: string; workspace_id: string; ref_at: string }) => {
+          const r = find(c.email_type, c.workspace_id);
+          return !r || r.ref_at !== c.ref_at || (!r.delivered && r.stale && r.attempts < 30);
+        };
+        return Promise.resolve({
+          data: (opts.reverseCandidates ?? []).filter(open).map((c) => ({
+            user_id: "u-rt",
+            email: "dona@rt.test",
+            nome: "Carla Dias",
+            workspace_name: "Agencia RT",
+            ends_at: null,
+            ended_at: null,
+            hub_pause_at: null,
+            plan_name: "Pro",
+            price_cents: 14900,
+            ...c,
+            attempts: find(c.email_type, c.workspace_id)?.ref_at === c.ref_at
+              ? attemptsOf(c.email_type, c.workspace_id)
+              : 0,
+          })),
+          error: null,
+        });
+      }
       throw new Error(`unexpected rpc ${name}`);
     },
     from(table: string) {
@@ -211,6 +260,8 @@ function makeFakeDb(opts: {
           const existing = find(row.email_type, keyOf(row));
           if (existing) {
             existing.stale = false;
+            // The claim resets delivered_at when it says so (re-armed ledger rows).
+            if (row.delivered_at === null) existing.delivered = false;
             existing.attempts = row.attempts;
             existing.ref_at = row.ref_at;
             existing.meta = row.meta;
@@ -240,7 +291,12 @@ function makeFakeDb(opts: {
 }
 
 function makeDeps(db: ReturnType<typeof makeFakeDb>, overrides?: Partial<LifecycleCronDeps>) {
-  const sent: Array<{ kind: string; to: string; firstName: string | null; key: string }> = [];
+  const sent: Array<
+    { kind: string; to: string; firstName: string | null; key: string; reverseTrialOffer?: boolean }
+  > = [];
+  const reverseSent: Array<
+    { to: string; subject: string; html: string; key: string; type: string }
+  > = [];
   const reminders: Array<{ to: string; subject: string; html: string; key: string }> = [];
   const founderSent: Array<{ kind: string; key: string; payload: Record<string, unknown> }> = [];
   const nurtureSent: Array<{
@@ -256,7 +312,17 @@ function makeDeps(db: ReturnType<typeof makeFakeDb>, overrides?: Partial<Lifecyc
     appBaseUrl: "https://x.test",
     now: () => new Date("2026-07-30T12:00:00Z"),
     sendWelcome: (p) => {
-      sent.push({ kind: "welcome", to: p.to, firstName: p.firstName, key: p.idempotencyKey });
+      sent.push({
+        kind: "welcome",
+        to: p.to,
+        firstName: p.firstName,
+        key: p.idempotencyKey,
+        reverseTrialOffer: p.reverseTrialOffer,
+      });
+      return Promise.resolve();
+    },
+    sendReverseTrial: (p) => {
+      reverseSent.push({ to: p.to, subject: p.subject, html: p.html, key: p.idempotencyKey, type: p.type });
       return Promise.resolve();
     },
     sendThanks: (p) => {
@@ -286,7 +352,7 @@ function makeDeps(db: ReturnType<typeof makeFakeDb>, overrides?: Partial<Lifecyc
     report: () => Promise.resolve(),
     ...overrides,
   };
-  return { deps, sent, founderSent, reminders, nurtureSent };
+  return { deps, sent, founderSent, reminders, nurtureSent, reverseSent };
 }
 
 Deno.test("welcome sweep claims, sends with first name + key, marks delivered", async () => {
@@ -869,4 +935,255 @@ Deno.test("nurture: claim rpc error is reported, no send", async () => {
   assert(err?.error?.includes("permission denied"));
   assertEquals(nurtureSent.length, 0);
   assertEquals(db.nurtureUpdates.length, 0);
+});
+
+// ─── Reverse trial (teste reverso, Task 10) ─────────────────────────────────
+
+const RT_ENDS = "2026-08-02T15:00:00Z";
+const RT_ENDED = "2026-07-30T11:50:00Z";
+const RT_PAUSE = "2026-08-06T11:50:00Z";
+
+Deno.test("reverse trial: ending is claimed with ref_at, sent with its key and tag, delivered", async () => {
+  const db = makeFakeDb({
+    reverseCandidates: [
+      { workspace_id: "w-rt", email_type: "reverse_trial_ending", ref_at: RT_ENDS, ends_at: RT_ENDS },
+    ],
+  });
+  const { deps, reverseSent } = makeDeps(db);
+  const result = await runLifecycleEmailCron(deps);
+  assertEquals(result.reverseTrialSent, 1);
+  assertEquals(result.failed, 0);
+
+  const call = db.rpcCalls.find((c) => c.name === "get_reverse_trial_email_candidates");
+  assertEquals(call?.args, { p_now: deps.now().toISOString() });
+
+  assertEquals(reverseSent.length, 1);
+  const m = reverseSent[0];
+  assertEquals(m.to, "dona@rt.test");
+  assertEquals(m.type, "reverse_trial_ending");
+  assertEquals(m.key, `reverse_trial/reverse_trial_ending/w-rt/${RT_ENDS}`);
+  assertEquals(m.subject, "Seu teste do Pro termina em 2 de agosto");
+  assert(m.html.includes("Oi, Carla,"));
+  assert(m.html.includes("R$ 149,00 por mês"));
+  assert(m.html.includes(`href="https://x.test/configuracao/cobranca"`));
+
+  const row = db.rows.find((r) => r.email_type === "reverse_trial_ending")!;
+  assert(row.workspace_id === "w-rt" && row.ref_at === RT_ENDS && row.delivered);
+  assertEquals(row.attempts, 1);
+  assertEquals(row.meta, {
+    to: "dona@rt.test",
+    user_id: "u-rt",
+    ends_at: RT_ENDS,
+    ended_at: null,
+    hub_pause_at: null,
+  });
+});
+
+Deno.test("reverse trial: delivered for the same ref_at is not re-sent; a moved date re-arms", async () => {
+  const cand = { workspace_id: "w-rt", email_type: "reverse_trial_ending", ref_at: RT_ENDS, ends_at: RT_ENDS };
+  const db = makeFakeDb({ reverseCandidates: [cand] });
+  const { deps, reverseSent } = makeDeps(db);
+  await runLifecycleEmailCron(deps);
+  await runLifecycleEmailCron(deps);
+  assertEquals(reverseSent.length, 1, "delivered email was re-sent");
+
+  // Admin extended the trial: new ends_at, new ref_at, new key.
+  const moved = "2026-08-09T15:00:00Z";
+  const db2 = makeFakeDb({ reverseCandidates: [{ ...cand, ref_at: moved, ends_at: moved }] });
+  db2.rows.push(...db.rows);
+  const run2 = makeDeps(db2);
+  await runLifecycleEmailCron(run2.deps);
+  assertEquals(run2.reverseSent.length, 1);
+  assertEquals(run2.reverseSent[0].key, `reverse_trial/reverse_trial_ending/w-rt/${moved}`);
+  const row = db2.rows.find((r) => r.email_type === "reverse_trial_ending")!;
+  assert(row.ref_at === moved && row.delivered);
+});
+
+Deno.test("ended_email_states_pause_date: ended email carries the Hub pause date and the add-card link", async () => {
+  const db = makeFakeDb({
+    reverseCandidates: [{
+      workspace_id: "w-rt",
+      email_type: "reverse_trial_ended",
+      ref_at: RT_ENDED,
+      ends_at: "2026-07-30T11:45:00Z",
+      ended_at: RT_ENDED,
+      hub_pause_at: RT_PAUSE,
+    }],
+  });
+  const { deps, reverseSent } = makeDeps(db);
+  await runLifecycleEmailCron(deps);
+  assertEquals(reverseSent.length, 1);
+  const m = reverseSent[0];
+  assertEquals(m.subject, "Seu workspace voltou para o plano Free");
+  assertEquals(m.key, `reverse_trial/reverse_trial_ended/w-rt/${RT_ENDED}`);
+  assert(m.html.includes("6 de agosto"), "pause date must be in the email");
+  assert(m.html.includes("Nada foi apagado"));
+  assert(m.html.includes(`href="https://x.test/configuracao/cobranca"`));
+});
+
+Deno.test("hub_pausing_only_with_tokens: the cron sends exactly the Hub-pausing rows the RPC returns", async () => {
+  // The active-Hub-token filter lives in get_reverse_trial_email_candidates:
+  // w-sem-hub has no row, so it never gets the email.
+  const db = makeFakeDb({
+    reverseCandidates: [{
+      workspace_id: "w-com-hub",
+      email_type: "reverse_trial_hub_pausing",
+      ref_at: RT_PAUSE,
+      ended_at: RT_ENDED,
+      hub_pause_at: RT_PAUSE,
+    }],
+  });
+  const { deps, reverseSent } = makeDeps(db);
+  await runLifecycleEmailCron(deps);
+  assertEquals(reverseSent.map((m) => m.key), [`reverse_trial/reverse_trial_hub_pausing/w-com-hub/${RT_PAUSE}`]);
+  assertEquals(reverseSent[0].subject, "Os links do portal dos seus clientes pausam amanhã");
+  assert(reverseSent[0].html.includes("6 de agosto"));
+  assert(!db.rows.some((r) => r.workspace_id === "w-sem-hub"));
+});
+
+Deno.test("skip_ended_email_after_late_convert: a converted workspace gets no ended or Hub-pausing email", async () => {
+  // After a late conversion the RPC stops returning the pending ended /
+  // hub_pausing rows; the cron must not send anything it was not handed.
+  const db = makeFakeDb({ reverseCandidates: [] });
+  const { deps, reverseSent } = makeDeps(db);
+  const result = await runLifecycleEmailCron(deps);
+  assertEquals(result.reverseTrialSent, 0);
+  assertEquals(reverseSent.length, 0);
+  assert(!db.rows.some((r) => r.email_type.startsWith("reverse_trial")), "no claim without a candidate");
+});
+
+Deno.test("reverse trial: a row missing its date is reported without a claim or send", async () => {
+  const db = makeFakeDb({
+    reverseCandidates: [
+      { workspace_id: "w-bad", email_type: "reverse_trial_hub_pausing", ref_at: RT_PAUSE, hub_pause_at: null },
+      { workspace_id: "w-ok", email_type: "reverse_trial_ending", ref_at: RT_ENDS, ends_at: RT_ENDS },
+    ],
+  });
+  const reports: CronReportDetail[] = [];
+  const { deps, reverseSent } = makeDeps(db, {
+    report: (d) => {
+      reports.push(d);
+      return Promise.resolve();
+    },
+  });
+  const result = await runLifecycleEmailCron(deps);
+  assertEquals(result.reverseTrialSent, 1);
+  assertEquals(result.failed, 1);
+  assertEquals(reverseSent.map((m) => m.type), ["reverse_trial_ending"]);
+  assert(!db.rows.some((r) => r.workspace_id === "w-bad"), "malformed row must not spend a claim");
+  assertEquals(reports[0].errors[0].accountId, "w-bad");
+});
+
+Deno.test("reverse trial: unknown email_type and empty email are reported, never claimed", async () => {
+  const db = makeFakeDb({
+    reverseCandidates: [
+      { workspace_id: "w-x", email_type: "reverse_trial_other", ref_at: RT_ENDS, ends_at: RT_ENDS },
+      { workspace_id: "w-y", email_type: "reverse_trial_ending", ref_at: RT_ENDS, ends_at: RT_ENDS, email: " " },
+    ],
+  });
+  const { deps, reverseSent } = makeDeps(db);
+  const result = await runLifecycleEmailCron(deps);
+  assertEquals(result.failed, 2);
+  assertEquals(reverseSent.length, 0);
+  assertEquals(db.rows.length, 0);
+});
+
+Deno.test("reverse trial: a send failure leaves the claim undelivered and the next row still goes", async () => {
+  const db = makeFakeDb({
+    reverseCandidates: [
+      { workspace_id: "w-1", email_type: "reverse_trial_ending", ref_at: RT_ENDS, ends_at: RT_ENDS },
+      { workspace_id: "w-2", email_type: "reverse_trial_ending", ref_at: RT_ENDS, ends_at: RT_ENDS },
+    ],
+  });
+  const ok: string[] = [];
+  const { deps } = makeDeps(db, {
+    sendReverseTrial: (p) => {
+      if (p.idempotencyKey.includes("/w-1/")) return Promise.reject(new Error("resend down"));
+      ok.push(p.idempotencyKey);
+      return Promise.resolve();
+    },
+  });
+  const result = await runLifecycleEmailCron(deps);
+  assertEquals(result.failed, 1);
+  assertEquals(ok, [`reverse_trial/reverse_trial_ending/w-2/${RT_ENDS}`]);
+  const r1 = db.rows.find((r) => r.workspace_id === "w-1")!;
+  assert(!r1.delivered && r1.attempts === 1);
+});
+
+Deno.test("reverse trial: an RPC error is reported and the other sweeps still run", async () => {
+  const db = makeFakeDb({
+    reverseRpcError: "boom",
+    welcomeCandidates: [{ user_id: "u1", email: "ana@x.test", nome: "Ana" }],
+    nurtureCandidates: [],
+  });
+  const reports: CronReportDetail[] = [];
+  const { deps, sent } = makeDeps(db, {
+    nurtureEnabled: true,
+    report: (d) => {
+      reports.push(d);
+      return Promise.resolve();
+    },
+  });
+  const result = await runLifecycleEmailCron(deps);
+  assertEquals(result.welcomeSent, 1);
+  assertEquals(sent.length, 1);
+  assertEquals(result.failed, 1);
+  assertEquals(reports[0].errors[0].error, "reverse trial candidates: boom");
+  assert(db.rpcCalls.some((c) => c.name === "get_nurture_candidates"), "nurture still runs");
+});
+
+Deno.test("welcome_offer_variant_before_trial_started: the cron passes reverse_trial_offer to the welcome sender", async () => {
+  const db = makeFakeDb({
+    welcomeCandidates: [
+      { user_id: "u-offer", email: "a@x.test", nome: "Ana", reverse_trial_offer: true },
+      { user_id: "u-plain", email: "b@x.test", nome: "Bia" },
+    ],
+  });
+  const { deps, sent } = makeDeps(db);
+  await runLifecycleEmailCron(deps);
+  assertEquals(sent.map((s) => [s.key, s.reverseTrialOffer]), [
+    ["welcome/u-offer", true],
+    ["welcome/u-plain", false],
+  ]);
+});
+
+Deno.test("trial reminder: a reverse-trial conversion under 7 days logs info, not the late warning", async () => {
+  const db = makeFakeDb({
+    trialCandidates: [
+      { workspace_id: "w-rt", first_charge_at: "2026-08-03T10:00:00Z", reverse_trial_conversion: true },
+      { workspace_id: "w-late", first_charge_at: "2026-08-03T10:00:00Z" },
+    ],
+  });
+  const { deps, reminders } = makeDeps(db);
+  const warns: string[] = [];
+  const infos: string[] = [];
+  const origWarn = console.warn;
+  const origInfo = console.info;
+  console.warn = (...a: unknown[]) => warns.push(a.join(" "));
+  console.info = (...a: unknown[]) => infos.push(a.join(" "));
+  try {
+    await runLifecycleEmailCron(deps);
+  } finally {
+    console.warn = origWarn;
+    console.info = origInfo;
+  }
+  assertEquals(reminders.length, 2, "both reminders still go out");
+  assert(infos.some((l) => l.includes("trial-reminder:reverse-trial workspace w-rt")));
+  assert(!warns.some((l) => l.includes("w-rt")), "reverse-trial conversion must not warn");
+  assert(warns.some((l) => l.includes("trial-reminder:late workspace w-late")));
+});
+
+Deno.test("nurture_a3_ex_trial_variant: ex-trial a3 goes out as Recupere o Pro with its own tag", async () => {
+  const db = makeFakeDb({
+    nurtureCandidates: [
+      { user_id: "u-a3", workspace_id: "ws-a3", email: "dona@x.test", step: "a3", ex_reverse_trial: true },
+    ],
+  });
+  const { deps, nurtureSent } = makeDeps(db, { nurtureEnabled: true });
+  await runLifecycleEmailCron(deps);
+  assertEquals(nurtureSent.length, 1);
+  assertEquals(nurtureSent[0].subject, "Recupere o Pro no Mesaas");
+  assertEquals(nurtureSent[0].tags, { type: "nurture_a3_ex_trial" });
+  assertEquals(nurtureSent[0].idempotencyKey, "nurture_a3/ws-a3");
+  assert(nurtureSent[0].html.includes("/configuracao/cobranca"));
 });
