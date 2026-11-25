@@ -1,6 +1,6 @@
 # Reverse trial: 14 days of Pro without a card
 
-Status: draft for approval · 2026-11-24
+Status: approved by the product owner · 2026-11-24
 For new signups, this replaces the card-first offer in `2026-10-27-trial-first-onboarding-design.md`
 (Part 1 routing and Part 2 screen). That spec's Part 3 (trial reminder) and Part 4 (plan claims
 audit) stay in force and are reused here.
