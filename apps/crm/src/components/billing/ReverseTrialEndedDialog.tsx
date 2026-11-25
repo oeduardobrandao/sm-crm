@@ -104,7 +104,7 @@ export function ReverseTrialEndedDialog({
         </ul>
         {showActions && !isNativeApp() ? (
           <>
-            <DialogFooter className="reverse-trial-dialog__actions">
+            <DialogFooter className="reverse-trial-dialog__actions sm:space-x-0">
               <Button asChild>
                 <Link
                   to={ADD_CARD_PATH}

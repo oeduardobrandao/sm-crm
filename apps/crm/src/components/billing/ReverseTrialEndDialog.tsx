@@ -90,7 +90,7 @@ export function ReverseTrialEndDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="reverse-trial-dialog sm:max-w-[560px]">
+      <DialogContent className="reverse-trial-dialog sm:max-w-[600px]">
         <DialogHeader>
           <Badge variant="warning" size="sm" className="self-start">
             {daysLeft === 0
@@ -140,7 +140,7 @@ export function ReverseTrialEndDialog({
           </p>
         ) : null}
 
-        <DialogFooter className="reverse-trial-dialog__actions">
+        <DialogFooter className="reverse-trial-dialog__actions sm:space-x-0">
           <Button asChild>
             <Link
               to={ADD_CARD_PATH}

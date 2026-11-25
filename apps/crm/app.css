@@ -636,10 +636,12 @@ html[data-standalone] .app-container {
 .reverse-trial-dialog__actions {
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .reverse-trial-dialog__later {
   background: none;
+  white-space: nowrap;
   border: none;
   color: var(--text-light);
   font-weight: 600;
