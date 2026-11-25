@@ -13,7 +13,12 @@
 --      moeda vigente e mantém o primeiro locked_at numa segunda chamada;
 --   4. authenticated e anon não executam as duas RPCs; service_role executa;
 --   5. moeda fora de ('brl','usd') levanta erro; lock de workspace inexistente
---      levanta workspace_not_found.
+--      levanta workspace_not_found;
+--   6. workspace que já chegou a um provedor (linha de workspace_subscriptions com
+--      stripe_customer_id, stripe_subscription_id, pagarme_customer_id ou
+--      pagarme_subscription_id) não troca de moeda mesmo com locked_at nulo (o
+--      backfill da migration trava os existentes pelo mesmo predicado); linha sem
+--      nenhum id de provedor não trava.
 
 begin;
 select et_grant_hosted_parity();
@@ -37,6 +42,8 @@ declare
   v_lock1  timestamptz;
   v_lock2  timestamptz;
   v_fn     text;
+  v_pcol   text;
+  v_pws    uuid;
 begin
   -- 1. guard.
   v_ws := et_make_workspace('max');
@@ -205,6 +212,39 @@ begin
   end;
   if v_msg is distinct from 'workspace_not_found' then
     raise exception 'lock of unknown workspace must raise workspace_not_found, got %', v_msg;
+  end if;
+
+  -- 6. linha de provedor trava a moeda, com ou sem locked_at.
+  foreach v_pcol in array array[
+    'stripe_customer_id', 'stripe_subscription_id', 'pagarme_customer_id', 'pagarme_subscription_id'
+  ] loop
+    v_pws := et_make_workspace('free');
+    execute format(
+      'insert into workspace_subscriptions (workspace_id, %I, status) values ($1, $2, ''active'')',
+      v_pcol
+    ) using v_pws, 'et_' || v_pcol || '_' || replace(v_pws::text, '-', '');
+    select billing_currency_locked_at into v_lock1 from workspaces where id = v_pws;
+    if v_lock1 is not null then
+      raise exception 'fixture: % workspace must start unlocked', v_pcol;
+    end if;
+    set local role service_role;
+    select billing_currency_set(v_pws, 'usd') into v_ok;
+    reset role;
+    select billing_currency into v_cur from workspaces where id = v_pws;
+    if v_ok is distinct from false or v_cur <> 'brl' then
+      raise exception 'set with a % row must return false and keep brl: % %', v_pcol, v_ok, v_cur;
+    end if;
+  end loop;
+
+  -- linha sem id de provedor (só status): não trava.
+  v_pws := et_make_workspace('free');
+  insert into workspace_subscriptions (workspace_id, status) values (v_pws, 'canceled');
+  set local role service_role;
+  select billing_currency_set(v_pws, 'usd') into v_ok;
+  reset role;
+  select billing_currency into v_cur from workspaces where id = v_pws;
+  if v_ok is distinct from true or v_cur <> 'usd' then
+    raise exception 'set with a provider-less row must return true and set usd: % %', v_ok, v_cur;
   end if;
 
   raise notice 'usd billing currency: ok';

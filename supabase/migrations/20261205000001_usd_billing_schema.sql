@@ -8,7 +8,11 @@
 --     cobrança do workspace. Nasce 'usd' no cadastro vindo da landing dos EUA
 --     (metadata market = 'us', trigger abaixo). billing_currency_locked_at
 --     marca o primeiro checkout: depois dele a moeda não muda mais, porque o
---     cliente Stripe do workspace já carrega uma moeda.
+--     cliente Stripe do workspace já carrega uma moeda. Backfill: todo workspace
+--     que já tem customer ou assinatura num provedor (linha de
+--     workspace_subscriptions com stripe_customer_id, stripe_subscription_id,
+--     pagarme_customer_id ou pagarme_subscription_id) nasce travado, e
+--     billing_currency_set recusa esse workspace mesmo com locked_at nulo.
 --     As duas colunas entram no guard workspaces_guard_billing_columns(): o
 --     cliente (dono/admin via PostgREST) não troca a moeda nem destrava a
 --     trava. Só RPCs DEFINER abaixo, edge functions com service role e SQL.
@@ -19,6 +23,8 @@
 -- (3) workspace_subscription_snapshots.currency: moeda do valor do snapshot.
 --
 -- (4) RPCs billing_currency_lock / billing_currency_set (só service_role).
+--     billing_currency_lock roda no billing-checkout (Stripe) e no
+--     pagarme-checkout, depois das recusas e antes de criar o customer.
 --     REVOKE nomeado de anon/authenticated: REVOKE FROM PUBLIC não os remove.
 --
 -- (5) Trigger on_auth_user_created_zz_billing_market (AFTER INSERT em
@@ -37,6 +43,21 @@ ALTER TABLE public.workspaces
 ALTER TABLE public.workspaces
   ADD CONSTRAINT workspaces_billing_currency_check
   CHECK (billing_currency IN ('brl', 'usd'));
+
+-- Backfill da trava: quem já chegou a um provedor (Stripe ou Pagar.me) tem a moeda fixada
+-- lá. Mesmo predicado de billing_currency_set abaixo. Idempotente (só linhas sem trava).
+UPDATE public.workspaces w
+   SET billing_currency_locked_at = now()
+ WHERE w.billing_currency_locked_at IS NULL
+   AND EXISTS (
+     SELECT 1
+       FROM public.workspace_subscriptions s
+      WHERE s.workspace_id = w.id
+        AND (s.stripe_customer_id IS NOT NULL
+          OR s.stripe_subscription_id IS NOT NULL
+          OR s.pagarme_customer_id IS NOT NULL
+          OR s.pagarme_subscription_id IS NOT NULL)
+   );
 
 ALTER TABLE public.plans
   ADD COLUMN IF NOT EXISTS price_usd integer NULL,
@@ -109,7 +130,9 @@ BEGIN
 END;
 $$;
 
--- Troca a moeda enquanto não houver trava. false = travada, nada mudou.
+-- Troca a moeda enquanto não houver trava NEM linha de provedor (customer ou assinatura
+-- Stripe/Pagar.me em workspace_subscriptions, mesmo predicado do backfill acima): a moeda de
+-- quem chegou a um provedor está fixada lá, com ou sem locked_at. false = nada mudou.
 CREATE OR REPLACE FUNCTION public.billing_currency_set(p_workspace_id uuid, p_currency text)
 RETURNS boolean
 LANGUAGE plpgsql
@@ -126,7 +149,16 @@ BEGIN
   UPDATE public.workspaces
      SET billing_currency = p_currency
    WHERE id = p_workspace_id
-     AND billing_currency_locked_at IS NULL;
+     AND billing_currency_locked_at IS NULL
+     AND NOT EXISTS (
+       SELECT 1
+         FROM public.workspace_subscriptions s
+        WHERE s.workspace_id = p_workspace_id
+          AND (s.stripe_customer_id IS NOT NULL
+            OR s.stripe_subscription_id IS NOT NULL
+            OR s.pagarme_customer_id IS NOT NULL
+            OR s.pagarme_subscription_id IS NOT NULL)
+     );
   GET DIAGNOSTICS v_rows = ROW_COUNT;
   RETURN v_rows > 0;
 END;

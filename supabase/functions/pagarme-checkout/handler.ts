@@ -376,6 +376,34 @@ export function createPagarmeCheckoutHandler(deps: {
       return { status: 500, body: GENERIC_500 };
     }
 
+    // (3b) Trava a moeda de cobranca (billing_currency_lock), como o billing-checkout faz antes
+    // do customer Stripe: depois de toda recusa e antes da primeira chamada Pagar.me, fora do
+    // try do gateway (uma falha aqui nao e erro de cartao). Sem isso o Admin conseguiria virar
+    // para USD um workspace que paga em reais. O (1b) ja recusou USD, entao o retorno e 'brl';
+    // outro valor = a moeda mudou no meio, para antes de criar qualquer coisa.
+    const { data: lockedCurrency, error: lockErr } = await db
+      .rpc("billing_currency_lock", { p_workspace_id: ctx.workspaceId })
+      .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
+    if (lockErr) {
+      console.error("[pagarme-checkout] billing currency lock failed:", lockErr.message);
+      await finishAttempt("failed");
+      return { status: 500, body: GENERIC_500 };
+    }
+    if (lockedCurrency !== "brl") {
+      console.error(
+        "[pagarme-checkout] billing currency changed before the lock:",
+        String(lockedCurrency),
+      );
+      await finishAttempt("failed");
+      return {
+        status: 409,
+        body: {
+          error: "O parcelamento em 12x não está disponível para este workspace.",
+          code: "currency_not_supported",
+        },
+      };
+    }
+
     let stage: "customer" | "card" | "subscription" = "customer";
     try {
       // (4) Trial (checkout comum) OU fronteira do switch. O switch NUNCA consulta

@@ -100,6 +100,9 @@ function makeDb(fx: {
    * flip-back CAS da perna Stripe do switch perde a corrida). O contador vive no closure de
    * makeDb (fora do from-factory) porque cada from() cria um chain novo. */
   secondSubUpdateZeroRows?: boolean;
+  /** Retorno de billing_currency_lock (padrao 'brl'). */
+  lockCurrency?: string | null;
+  lockError?: { message: string } | null;
   events: Ev[];
 }, seq: { n: number }): SupabaseClient {
   let subUpdates = 0;
@@ -198,8 +201,32 @@ function makeDb(fx: {
     ) => Promise.resolve(settle()).then(onFulfilled, onRejected);
     return chain;
   };
-  return { from } as unknown as SupabaseClient;
+  // rpc: registrado como evento op "rpc" (table = nome da funcao), com o seq compartilhado.
+  const rpc = (fn: string, args: Record<string, unknown>) => {
+    const settle = () => {
+      fx.events.push({ op: "rpc", table: fn, values: args, filters: [], seq: seq.n++ });
+      if (fn === "billing_currency_lock") {
+        return {
+          data: fx.lockError ? null : (fx.lockCurrency === undefined ? "brl" : fx.lockCurrency),
+          error: fx.lockError ?? null,
+        };
+      }
+      return { data: null, error: null };
+    };
+    // deno-lint-ignore no-explicit-any
+    const call: any = {};
+    call.abortSignal = () => call;
+    call.then = (
+      onFulfilled: (v: { data: unknown; error: unknown }) => unknown,
+      onRejected?: (e: unknown) => unknown,
+    ) => Promise.resolve(settle()).then(onFulfilled, onRejected);
+    return call;
+  };
+  return { from, rpc } as unknown as SupabaseClient;
 }
+
+const lockEvents = (events: Ev[]) =>
+  events.filter((e) => e.op === "rpc" && e.table === "billing_currency_lock");
 
 function makeGateway(fx: {
   calls: Array<{ method: string; args: unknown[]; seq: number }>;
@@ -1415,4 +1442,90 @@ Deno.test("teste reverso em andamento: start_at = data de fim do teste; teste us
   );
   await used.result;
   assertEquals((used.calls[2].args[0] as Record<string, unknown>).start_at, undefined);
+});
+
+// ─── Trava da moeda (billing_currency_lock) ─────────────────────────────────────────────
+
+Deno.test("currency lock: sucesso trava a moeda uma vez, depois da reserva e antes do upsertCustomer", async () => {
+  const { events, calls, result } = run(
+    { plan: PLAN, subRow: { provider: "stripe", status: "canceled", ever_subscribed_at: "2026-01-01T00:00:00Z" } },
+    { subStatus: "active" },
+  );
+  const r = await result;
+  assertEquals(r.status, 200);
+  const locks = lockEvents(events);
+  assertEquals(locks.length, 1);
+  assertEquals(locks[0].values, { p_workspace_id: WS });
+  const reserve = events.find((e) => e.table === "pagarme_checkout_attempts" && e.op === "insert");
+  assert(reserve && reserve.seq < locks[0].seq, "lock must run after the reservation");
+  const customer = calls.find((c) => c.method === "upsertCustomer");
+  assert(customer && locks[0].seq < customer.seq, "lock must run before upsertCustomer");
+});
+
+Deno.test("currency lock: switch happy path tambem trava antes do upsertCustomer", async () => {
+  const { events, calls, result } = run(
+    { plan: PLAN, subRow: STRIPE_ROW, workspaceRow: WS_ROW },
+    { subStatus: "future", subStartAt: "2026-09-16T00:00:00Z" },
+    {},
+    SWITCH_REQ,
+  );
+  const r = await result;
+  assertEquals(r.status, 200);
+  const locks = lockEvents(events);
+  assertEquals(locks.length, 1);
+  const customer = calls.find((c) => c.method === "upsertCustomer");
+  assert(customer && locks[0].seq < customer.seq, "lock must run before upsertCustomer");
+});
+
+Deno.test("currency lock: nenhuma recusa pre-gateway trava a moeda", async () => {
+  const cases: Array<[string, ReturnType<typeof run>]> = [
+    ["gate off", run({ plan: { ...PLAN, pagarme_12x_enabled: false } })],
+    ["plan_not_configured", run({ plan: { ...PLAN, pagarme_plan_id_annual: null } })],
+    ["usd", run({ plan: PLAN, workspaceRow: { plan_source: "system", billing_currency: "usd" } })],
+    ["blocked row", run({ plan: PLAN, subRow: { provider: "stripe", status: "active" } })],
+    ["quarantine", run({ plan: PLAN, quarantinedAttempt: true })],
+    ["23505", run({ plan: PLAN, reserveError: { code: "23505", message: "dup" } })],
+    [
+      "switch ineligible",
+      run({ plan: PLAN, subRow: { ...STRIPE_ROW, status: "past_due" }, workspaceRow: WS_ROW }, {}, {}, SWITCH_REQ),
+    ],
+    ["trial ws read error", run({ plan: PLAN, trialWsError: { message: "boom" } })],
+  ];
+  for (const [name, c] of cases) {
+    const r = await c.result;
+    assert(r.status >= 400, `${name}: expected a refusal, got ${r.status}`);
+    assertEquals(lockEvents(c.events).length, 0, `${name}: must not lock the currency`);
+    assertEquals(c.calls.length, 0, `${name}: zero gateway calls`);
+  }
+});
+
+Deno.test("currency lock: erro do RPC -> 500, attempt failed, zero chamadas ao gateway", async () => {
+  const { events, calls, result } = await withConsoleSpies(async () => {
+    const x = run({ plan: PLAN, lockError: { message: "boom" } });
+    await x.result;
+    return x;
+  }).then((o) => o.result);
+  const r = await result;
+  assertEquals(r.status, 500);
+  assertEquals(calls.length, 0);
+  assert(
+    events.some((e) => e.table === "pagarme_checkout_attempts" && e.op === "update" && e.values?.state === "failed"),
+    "attempt must be released as failed",
+  );
+});
+
+Deno.test("currency lock: moeda travada diferente de brl -> 409 currency_not_supported, attempt failed, zero gateway", async () => {
+  const { events, calls, result } = await withConsoleSpies(async () => {
+    const x = run({ plan: PLAN, lockCurrency: "usd" });
+    await x.result;
+    return x;
+  }).then((o) => o.result);
+  const r = await result;
+  assertEquals(r.status, 409);
+  assertEquals((r.body as { code?: string }).code, "currency_not_supported");
+  assertEquals(calls.length, 0);
+  assert(
+    events.some((e) => e.table === "pagarme_checkout_attempts" && e.op === "update" && e.values?.state === "failed"),
+    "attempt must be released as failed",
+  );
 });

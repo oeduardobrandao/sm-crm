@@ -666,7 +666,11 @@ export function deletePlan(plan_id: string) {
   return adminApi<{ message: string }>('delete-plan', { plan_id });
 }
 
-/** 409 `currency_locked` once the workspace has checked out or paid. */
+/**
+ * 409 `currency_locked` once the workspace reached a provider: currency locked at checkout
+ * (Stripe or Pagar.me, backfilled for existing subscribers) or a Stripe/Pagar.me customer or
+ * subscription id on its workspace_subscriptions row.
+ */
 export function setWorkspaceCurrency(workspace_id: string, currency: 'brl' | 'usd') {
   return adminApi<{ ok: true }>('set-workspace-currency', { workspace_id, currency });
 }

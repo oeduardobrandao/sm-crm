@@ -11,8 +11,14 @@ Spec: `docs/superpowers/specs/2026-11-25-usd-billing-design.md`. Este runbook é
   checkout (`billing_currency_locked_at`). O `billing-checkout` sempre manda `currency` e
   `locale` (`pt-BR` para BRL, `en` para USD); a Idempotency-Key leva a moeda.
 - A trava (`billing_currency_lock`) roda logo antes de criar ou reaproveitar o customer
-  Stripe, depois de todas as recusas. Travada, a ação `set-workspace-currency` do
-  `platform-admin` responde 409 `currency_locked`.
+  Stripe (`billing-checkout`) e logo antes do customer Pagar.me (`pagarme-checkout`), depois
+  de todas as recusas. A migration trava na hora todo workspace que já tem linha em
+  `workspace_subscriptions` com `stripe_customer_id`, `stripe_subscription_id`,
+  `pagarme_customer_id` ou `pagarme_subscription_id`.
+- A ação `set-workspace-currency` do `platform-admin` só funciona para workspace que nunca
+  chegou a um provedor. Responde 409 `currency_locked` quando há trava OU quando existe essa
+  linha de provedor, mesmo com `billing_currency_locked_at` nulo (a regra está dentro do
+  `billing_currency_set`).
 - Cadastro nos EUA grava `market = 'us'` e o trigger `on_auth_user_created_zz_billing_market`
   põe USD. Ninguém manda esse mercado até o signup `/en` (parte 2). O trigger engole erros
   (WARNING no log do Postgres), então um cadastro dos EUA pode cair em BRL sem aviso: o Admin
@@ -135,10 +141,21 @@ quebra a troca de uma assinatura em dólar.
 update public.workspaces set billing_currency_locked_at = null where id = '<workspace_id>';
 ```
 
-Só é seguro quando o workspace NÃO tem customer Stripe e NÃO tem linha em
-`workspace_subscriptions` com `provider`. Com customer, a moeda dele na Stripe já está fixa e
-trocar `billing_currency` desalinha a cobrança. Depois de destravar, troque a moeda pela ação
-do Admin (`set-workspace-currency`).
+Só é seguro quando o workspace nunca chegou a um provedor. Confira antes que esta consulta
+volta vazia:
+
+```sql
+select workspace_id from public.workspace_subscriptions
+ where workspace_id = '<workspace_id>'
+   and (stripe_customer_id is not null or stripe_subscription_id is not null
+     or pagarme_customer_id is not null or pagarme_subscription_id is not null);
+```
+
+Com uma linha dessas, a moeda já está fixada no provedor (o customer Stripe carrega uma moeda;
+Pagar.me é só BRL) e trocar `billing_currency` desalinha a cobrança. Por isso o
+`billing_currency_set` recusa esse workspace mesmo destravado: destravar não basta e não
+contorne com `update` direto em `billing_currency`. Sem linha de provedor, depois de destravar,
+troque a moeda pela ação do Admin (`set-workspace-currency`).
 
 ## Rollback
 

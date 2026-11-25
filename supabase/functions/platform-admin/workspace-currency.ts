@@ -1,6 +1,10 @@
 // Billing currency of a workspace, edited by the Admin (spec 2026-11-25-usd-billing-design).
-// Only the billing_currency_set RPC writes the column: it refuses once the currency is locked
-// (first checkout / paid subscription), which surfaces here as 409 `currency_locked`.
+// Only the billing_currency_set RPC writes the column. It refuses (409 `currency_locked` here)
+// when billing_currency_locked_at is set (stamped by billing-checkout and pagarme-checkout
+// right before the provider customer, and backfilled by the migration for existing
+// subscribers) OR when workspace_subscriptions already holds a Stripe/Pagar.me customer or
+// subscription id, with or without the lock. So it only ever flips workspaces that never
+// reached a provider.
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { insertAuditLog } from "../_shared/audit.ts";
 
