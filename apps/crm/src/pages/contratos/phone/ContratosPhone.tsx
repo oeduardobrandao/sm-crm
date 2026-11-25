@@ -48,6 +48,8 @@ export interface ContratosPhoneProps {
   onEdit: (c: Contrato) => void;
   onDelete: (id: number) => void;
   onOpenCliente: (clienteId: number) => void;
+  /** Ex-reverse-trial workspace on Free: list only, no create, edit, import or delete. */
+  readOnly?: boolean;
 }
 
 /**
@@ -68,11 +70,29 @@ export function ContratosPhone({
   onEdit,
   onDelete,
   onOpenCliente,
+  readOnly = false,
 }: ContratosPhoneProps) {
   const [moreOpen, setMoreOpen] = useState(false);
   const searchToggle = usePhoneSearch(search, onSearchChange);
 
   const actionsFor = (c: Contrato): { swipe: SwipeAction[]; menu: ContextMenuAction[][] } => {
+    if (readOnly) {
+      const clienteId = c.cliente_id;
+      return {
+        swipe: [],
+        menu: clienteId
+          ? [
+              [
+                {
+                  label: 'Abrir cliente',
+                  icon: <UserRound aria-hidden="true" />,
+                  onSelect: () => onOpenCliente(clienteId),
+                },
+              ],
+            ]
+          : [],
+      };
+    }
     const swipe: SwipeAction[] = [
       { label: 'Editar', icon: <Edit2 aria-hidden="true" />, onAction: () => onEdit(c) },
     ];
@@ -115,16 +135,20 @@ export function ContratosPhone({
         actions={
           <>
             {searchToggle.button}
-            <PhoneIconButton
-              label="Mais ações: Importar CSV"
-              aria-haspopup="dialog"
-              onClick={() => setMoreOpen(true)}
-            >
-              <MoreHorizontal aria-hidden="true" />
-            </PhoneIconButton>
-            <PhoneIconButton label="Novo Contrato" variant="ink" onClick={onAdd}>
-              <Plus aria-hidden="true" />
-            </PhoneIconButton>
+            {!readOnly && (
+              <>
+                <PhoneIconButton
+                  label="Mais ações: Importar CSV"
+                  aria-haspopup="dialog"
+                  onClick={() => setMoreOpen(true)}
+                >
+                  <MoreHorizontal aria-hidden="true" />
+                </PhoneIconButton>
+                <PhoneIconButton label="Novo Contrato" variant="ink" onClick={onAdd}>
+                  <Plus aria-hidden="true" />
+                </PhoneIconButton>
+              </>
+            )}
           </>
         }
       >
@@ -173,8 +197,14 @@ export function ContratosPhone({
                     {status && <PhoneStatusPill tone={status.tone}>{status.label}</PhoneStatusPill>}
                   </>
                 }
-                chevron
-                onOpen={() => onEdit(c)}
+                chevron={!readOnly || Boolean(c.cliente_id)}
+                onOpen={
+                  readOnly
+                    ? c.cliente_id
+                      ? () => onOpenCliente(c.cliente_id!)
+                      : undefined
+                    : () => onEdit(c)
+                }
                 swipeActions={swipe}
                 menuLabel={`Ações de ${c.titulo}`}
                 menuSections={menu}

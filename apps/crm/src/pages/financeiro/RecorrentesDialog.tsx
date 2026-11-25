@@ -43,6 +43,8 @@ interface RecorrentesDialogProps {
   access: FinancialAccess;
   /** Refetch after a change. */
   onChanged: () => void;
+  /** Ex-reverse-trial workspace on Free: list only, no edit or stop. */
+  readOnly?: boolean;
 }
 
 interface Edicao {
@@ -65,6 +67,7 @@ export function RecorrentesDialog({
   categorias,
   access,
   onChanged,
+  readOnly = false,
 }: RecorrentesDialogProps) {
   const { t } = useTranslation('finance');
   const [edicao, setEdicao] = useState<Edicao | null>(null);
@@ -243,25 +246,29 @@ export function RecorrentesDialog({
                     {r.tipo === 'entrada' ? '+' : '-'}
                     {formatFinancialBRL(r.valor, access)}
                   </span>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    aria-label={t('recorrentes.edit', { descricao: r.descricao })}
-                    onClick={() =>
-                      setEdicao({
-                        id: r.id!,
-                        descricao: r.descricao,
-                        valor: String(r.valor),
-                        dia: String(r.dia),
-                        categoria: r.categoria,
-                      })
-                    }
-                  >
-                    <Edit2 className="h-4 w-4" />
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => setEncerrar(r)}>
-                    {t('recorrentes.end')}
-                  </Button>
+                  {!readOnly && (
+                    <>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        aria-label={t('recorrentes.edit', { descricao: r.descricao })}
+                        onClick={() =>
+                          setEdicao({
+                            id: r.id!,
+                            descricao: r.descricao,
+                            valor: String(r.valor),
+                            dia: String(r.dia),
+                            categoria: r.categoria,
+                          })
+                        }
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setEncerrar(r)}>
+                        {t('recorrentes.end')}
+                      </Button>
+                    </>
+                  )}
                 </li>
               ),
             )}

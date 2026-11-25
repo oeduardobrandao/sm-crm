@@ -14,6 +14,10 @@ vi.mock('../useTrialOfferRedirect', () => ({
   useTrialOfferRedirect: vi.fn(),
 }));
 
+vi.mock('@/components/paywall/useReadOnlyGrandfather', () => ({
+  useReadOnlyGrandfather: vi.fn(() => ({ readOnly: false, pending: false })),
+}));
+
 vi.mock('../useReverseTrialStart', () => ({
   useReverseTrialStart: vi.fn(() => ({
     pending: false,
@@ -26,6 +30,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useWorkspaceLimits } from '../../../hooks/useWorkspaceLimits';
 import { useTrialOfferRedirect } from '../useTrialOfferRedirect';
 import ProtectedRoute from '../ProtectedRoute';
+import { useReadOnlyGrandfather } from '@/components/paywall/useReadOnlyGrandfather';
 import { makeCan, fakeMembership } from '@/test/makeCan';
 
 const mockedUseWorkspaceLimits = vi.mocked(useWorkspaceLimits);
@@ -54,6 +59,7 @@ const defaultLimits = {
 };
 
 beforeEach(() => {
+  vi.mocked(useReadOnlyGrandfather).mockReturnValue({ readOnly: false, pending: false });
   mockedUseWorkspaceLimits.mockReturnValue(defaultLimits);
   mockedTrialOffer.mockReturnValue({ pending: false, redirect: false });
 });
@@ -449,6 +455,63 @@ describe('ProtectedRoute', () => {
     renderRoute('/dashboard');
 
     expect(screen.getByText('Área protegida: dashboard')).toBeInTheDocument();
+  });
+
+  describe('read-only Financeiro and Contratos after a reverse trial', () => {
+    function freeOwner() {
+      mockedUseAuth.mockReturnValue({
+        user: { id: 'owner-1' } as never,
+        profile: { id: 'owner-1', role: 'owner', empresa: 'Mesaas' } as never,
+        role: 'owner',
+        can: ownerCan,
+        loading: false,
+        refetchProfile: vi.fn(),
+        signOut: vi.fn(),
+      });
+      mockedUseWorkspaceLimits.mockReturnValue({
+        limits: null,
+        features: { feature_financial: false, feature_contracts: false } as never,
+        planName: 'free',
+        isLoading: false,
+        isUnlimited: false,
+      });
+    }
+
+    it('financeiro_read_only_for_ex_trial: renders the page instead of the locked screen', () => {
+      freeOwner();
+      vi.mocked(useReadOnlyGrandfather).mockImplementation((flag) => ({
+        readOnly: flag === 'feature_financial',
+        pending: false,
+      }));
+      renderRoute('/financeiro');
+      expect(screen.getByText('Área protegida')).toBeInTheDocument();
+      expect(screen.queryByText(/não está no seu plano/)).toBeNull();
+    });
+
+    it('financeiro_locked_for_other_free', () => {
+      freeOwner();
+      vi.mocked(useReadOnlyGrandfather).mockReturnValue({ readOnly: false, pending: false });
+      renderRoute('/financeiro');
+      expect(screen.getByText(/Financeiro não está no seu plano/)).toBeInTheDocument();
+    });
+
+    it('contratos opens read-only for an ex-trial workspace', () => {
+      freeOwner();
+      vi.mocked(useReadOnlyGrandfather).mockImplementation((flag) => ({
+        readOnly: flag === 'feature_contracts',
+        pending: false,
+      }));
+      renderRoute('/contratos');
+      expect(screen.getByText('Área protegida')).toBeInTheDocument();
+    });
+
+    it('shows a skeleton, never the locked screen, while deciding', () => {
+      freeOwner();
+      vi.mocked(useReadOnlyGrandfather).mockReturnValue({ readOnly: false, pending: true });
+      renderRoute('/financeiro');
+      expect(screen.queryByText(/não está no seu plano/)).toBeNull();
+      expect(screen.queryByText('Área protegida')).toBeNull();
+    });
   });
 
   it('shows upgrade screen (not dashboard redirect) when owner visits /leads with feature_leads:false', () => {

@@ -45,6 +45,8 @@ import { FinanceiroScopeBadge } from './v2/FinanceiroScopeBadge';
 import { isClientScoped } from '@/lib/permissions';
 import { useLocation } from 'react-router-dom';
 import { RecorrentesDialog } from './RecorrentesDialog';
+import { useReadOnlyGrandfather } from '@/components/paywall/useReadOnlyGrandfather';
+import { ReadOnlyNotice } from '@/components/paywall/ReadOnlyNotice';
 import {
   Select,
   SelectContent,
@@ -174,6 +176,8 @@ export default function FinanceiroPage() {
   const showScopeBadge =
     isClientScoped(membership) && !/^\/financeiro\/lancamentos\/?$/i.test(pathname);
   const qc = useQueryClient();
+  // Ex-reverse-trial workspace on Free: consultation only, every mutating control hidden.
+  const { readOnly } = useReadOnlyGrandfather('feature_financial');
   const [filter, setFilter] = useState<FilterType>('todas');
   const [search, setSearch] = useState('');
   const [monthFilter, setMonthFilter] = useState(() => {
@@ -624,6 +628,7 @@ export default function FinanceiroPage() {
         recorrentes={recorrentes}
         categorias={CATEGORIAS}
         access={canSeeFinancials}
+        readOnly={readOnly}
         onChanged={() => qc.invalidateQueries({ queryKey: ['transacoes-recorrentes'] })}
       />
 
@@ -735,25 +740,30 @@ export default function FinanceiroPage() {
           />
         </span>
       </HelpTooltip>
-      <Button
-        variant="outline"
-        size="icon"
-        onClick={handleCSVImport}
-        className="header-actions-icon-only"
-      >
-        <Upload className="h-4 w-4" />
-      </Button>
-      <Button variant="outline" onClick={handleCSVImport} className="header-actions-full-only">
-        <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('actions.importCsv')}
-      </Button>
+      {!readOnly && (
+        <>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={handleCSVImport}
+            className="header-actions-icon-only"
+          >
+            <Upload className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" onClick={handleCSVImport} className="header-actions-full-only">
+            <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} />{' '}
+            {t('actions.importCsv')}
+          </Button>
+        </>
+      )}
     </>
   );
-  const primaryAction = (
+  const primaryAction = readOnly ? null : (
     <Button onClick={() => openAdd('entrada')}>
       <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('shared.income')}
     </Button>
   );
-  const saidaAction = (
+  const saidaAction = readOnly ? null : (
     <Button variant="outline" onClick={() => openAdd('saida')}>
       <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('shared.expense')}
     </Button>
@@ -771,7 +781,7 @@ export default function FinanceiroPage() {
     title: t('shared.title'),
     titleAccessory,
     actions: csvActions,
-    primary: (
+    primary: readOnly ? undefined : (
       <>
         {primaryAction}
         {saidaAction}
@@ -783,6 +793,7 @@ export default function FinanceiroPage() {
     return (
       <>
         <FinanceiroPhone
+          readOnly={readOnly}
           isLoading={isLoading}
           transacoes={filtered}
           canSeeFinancials={canSeeFinancials}
@@ -833,6 +844,8 @@ export default function FinanceiroPage() {
           </div>
         </div>
       )}
+
+      {readOnly && <ReadOnlyNotice />}
 
       <StatCardGrid style={{ marginBottom: '1.5rem' }}>
         {(
@@ -935,7 +948,7 @@ export default function FinanceiroPage() {
       ) : (
         <>
           {/* Desktop table */}
-          {selecionadas.length > 0 && (
+          {!readOnly && selecionadas.length > 0 && (
             <div
               className="financeiro-desktop-table"
               style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.75rem' }}
@@ -950,34 +963,38 @@ export default function FinanceiroPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead style={{ width: 36, paddingLeft: '0.75rem' }}>
-                    <Checkbox
-                      checked={allSelected}
-                      onCheckedChange={toggleAll}
-                      disabled={agendadas.length === 0}
-                      aria-label={t('page.selectAllScheduled')}
-                    />
-                  </TableHead>
+                  {!readOnly && (
+                    <TableHead style={{ width: 36, paddingLeft: '0.75rem' }}>
+                      <Checkbox
+                        checked={allSelected}
+                        onCheckedChange={toggleAll}
+                        disabled={agendadas.length === 0}
+                        aria-label={t('page.selectAllScheduled')}
+                      />
+                    </TableHead>
+                  )}
                   <TableHead>{t('form.date')}</TableHead>
                   <TableHead>{t('form.description')}</TableHead>
                   <TableHead>{t('form.category')}</TableHead>
                   <TableHead>{t('page.columns.amount')}</TableHead>
                   <TableHead>{t('filter.status')}</TableHead>
-                  <TableHead>{t('page.columns.actions')}</TableHead>
+                  {!readOnly && <TableHead>{t('page.columns.actions')}</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered.map((tr, i) => (
                   <TableRow key={tr.id ?? `proj-${i}`}>
-                    <TableCell style={{ paddingLeft: '0.75rem' }}>
-                      {tr.status === 'agendado' && (
-                        <Checkbox
-                          checked={selectedKeys.has(rowKey(tr))}
-                          onCheckedChange={() => toggleOne(tr)}
-                          aria-label={t('page.selectTransaction')}
-                        />
-                      )}
-                    </TableCell>
+                    {!readOnly && (
+                      <TableCell style={{ paddingLeft: '0.75rem' }}>
+                        {tr.status === 'agendado' && (
+                          <Checkbox
+                            checked={selectedKeys.has(rowKey(tr))}
+                            onCheckedChange={() => toggleOne(tr)}
+                            aria-label={t('page.selectTransaction')}
+                          />
+                        )}
+                      </TableCell>
+                    )}
                     <TableCell data-label={t('form.date')}>{formatDate(tr.data)}</TableCell>
                     <TableCell data-label={t('form.description')}>
                       <div>{tr.descricao}</div>
@@ -1002,31 +1019,33 @@ export default function FinanceiroPage() {
                         {tr.status === 'pago' ? t('status.pago') : t('status.agendado')}
                       </Badge>
                     </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1" style={{ justifyContent: 'flex-end' }}>
-                        {tr.status === 'agendado' ? (
-                          <Button size="sm" variant="outline" onClick={() => setConfirmT(tr)}>
-                            <Check className="h-3 w-3" /> {t('actions.confirm')}
-                          </Button>
-                        ) : (
-                          <>
-                            <Button size="icon" variant="ghost" onClick={() => openEdit(tr)}>
-                              <Edit2 className="h-4 w-4" />
+                    {!readOnly && (
+                      <TableCell>
+                        <div className="flex gap-1" style={{ justifyContent: 'flex-end' }}>
+                          {tr.status === 'agendado' ? (
+                            <Button size="sm" variant="outline" onClick={() => setConfirmT(tr)}>
+                              <Check className="h-3 w-3" /> {t('actions.confirm')}
                             </Button>
-                            {tr.id && (
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="text-destructive"
-                                onClick={() => setDeleteId(tr.id!)}
-                              >
-                                <Trash2 className="h-4 w-4" />
+                          ) : (
+                            <>
+                              <Button size="icon" variant="ghost" onClick={() => openEdit(tr)}>
+                                <Edit2 className="h-4 w-4" />
                               </Button>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </TableCell>
+                              {tr.id && (
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="text-destructive"
+                                  onClick={() => setDeleteId(tr.id!)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
@@ -1087,7 +1106,7 @@ export default function FinanceiroPage() {
                       )}
                     </div>
                   </div>
-                  {tr.status === 'agendado' ? (
+                  {readOnly ? null : tr.status === 'agendado' ? (
                     <Button size="sm" className="shrink-0 mb-0" onClick={() => setConfirmT(tr)}>
                       <Check className="h-3 w-3" />
                     </Button>

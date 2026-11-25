@@ -12,6 +12,7 @@ import { isLayoutGuardedPath } from './AppLayout';
 import { useTrialOfferRedirect } from './useTrialOfferRedirect';
 import { useReverseTrialStart } from './useReverseTrialStart';
 import { ReverseTrialWelcomeDialog } from '@/components/billing/ReverseTrialWelcomeDialog';
+import { useReadOnlyGrandfather } from '@/components/paywall/useReadOnlyGrandfather';
 
 const FEATURE_GATED: Record<string, { flag: string; label: string }> = {
   '/analytics': { flag: 'feature_analytics_reports', label: 'Relatórios e Analytics' },
@@ -41,6 +42,10 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
   const reverseTrial = useReverseTrialStart(location.pathname.toLowerCase(), {
     disabled: !user || needsSetup,
   });
+  // After a reverse trial ends on Free, Financeiro and Contratos open read-only instead of the
+  // locked screen (spec Part 5). Other Free workspaces keep UpgradeLockedScreen.
+  const financialReadOnly = useReadOnlyGrandfather('feature_financial');
+  const contractsReadOnly = useReadOnlyGrandfather('feature_contracts');
 
   if (loading || limitsLoading) {
     // The shell (sidebar, top bar) is not mounted yet and the page is unknown, so this is a
@@ -120,6 +125,23 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
   if (!isUnlimited && features) {
     for (const [path, { flag, label }] of Object.entries(FEATURE_GATED)) {
       if (pathname.startsWith(path) && features[flag as keyof typeof features] === false) {
+        const grandfather =
+          flag === 'feature_financial'
+            ? financialReadOnly
+            : flag === 'feature_contracts'
+              ? contractsReadOnly
+              : null;
+        if (grandfather?.pending) {
+          return (
+            <PageSkeleton
+              style={{
+                minHeight: '100vh',
+                padding: 'clamp(1.25rem, 3vw, 2.5rem) clamp(1rem, 3vw, 3rem)',
+              }}
+            />
+          );
+        }
+        if (grandfather?.readOnly) break;
         return <UpgradeLockedScreen featureLabel={label} feature={flag} />;
       }
     }
