@@ -11,6 +11,7 @@ import { isWorkspaceOwner } from "../_shared/workspace-role.ts";
 import {
   buildCheckoutSessionParams,
   customerCurrencyConflict,
+  lockedCurrencyMismatch,
   parseBillingCurrency,
   pendingPagarmeAttemptBlocksCheckout,
   quarantinedAttemptBlocksCheckout,
@@ -71,47 +72,11 @@ Deno.serve(async (req: Request) => {
       .select("id, stripe_price_id, stripe_price_id_annual, price_usd, price_usd_annual")
       .eq("id", planId).single();
 
-    // The workspace's billing currency, locked on its first checkout so a later market change
-    // (landing/signup metadata) can never move a workspace that already reached Stripe. The
-    // RPC sets billing_currency_locked_at when still null and returns the currency. Fail
-    // closed: without a known currency the session below could not pin one.
-    const { data: lockedCurrency, error: lockErr } = await svc.rpc("billing_currency_lock", {
-      p_workspace_id: workspaceId,
-    });
-    const currency = parseBillingCurrency(lockedCurrency);
-    if (lockErr || !currency) {
-      console.error(
-        "[billing-checkout] billing currency lock failed:",
-        lockErr?.message ?? `unexpected value ${String(lockedCurrency)}`,
-      );
-      return json({ error: "Internal server error" }, 500, headers);
-    }
-
     // Fase 8: Stripe annual à vista now coexists with the Pagar.me 12x (the Fase 2 rejection
     // of interval === 'year' on a pagarme_12x_enabled plan is removed). Monthly is unaffected
     // either way.
     const priceId = interval === "year" ? plan?.stripe_price_id_annual : plan?.stripe_price_id;
     if (!priceId) return json({ error: "Plan price not configured" }, 400, headers);
-
-    // USD rides the same Stripe price through its currency_options.usd entry. Refuse before
-    // any session when either the plan's USD amount (what the app shows) or the Stripe-side
-    // option (what Checkout would charge) is missing: Stripe would otherwise reject the
-    // pinned currency, or charge an amount the pricing page never showed. BRL makes no
-    // extra Stripe call here.
-    if (currency === "usd") {
-      if (!plan || !usdPriceConfigured(plan, interval)) {
-        return json({ error: "Plan price not configured" }, 400, headers);
-      }
-      const price = await stripe.prices.retrieve(
-        priceId,
-        { expand: ["currency_options"] },
-        { timeout: STRIPE_TIMEOUT_MS },
-      );
-      if (!price.currency_options?.usd) {
-        console.error("[billing-checkout] price without a USD currency option:", priceId);
-        return json({ error: "Plan price not configured" }, 400, headers);
-      }
-    }
 
     // find-or-create Stripe customer for this workspace
     const { data: subRow, error: subRowErr } = await svc
@@ -133,11 +98,22 @@ Deno.serve(async (req: Request) => {
     // columns decide the trial end (resolveCheckoutTrial).
     const { data: trialWs, error: trialWsErr } = await svc
       .from("workspaces")
-      .select("demo_created_at, plan_source, reverse_trial_ends_at, reverse_trial_started_at")
+      .select("demo_created_at, plan_source, reverse_trial_ends_at, reverse_trial_started_at, billing_currency")
       .eq("id", workspaceId)
       .abortSignal(AbortSignal.timeout(10_000)).single();
     if (trialWsErr) {
       console.error("[billing-checkout] workspace read failed:", trialWsErr.message);
+      return json({ error: "Internal server error" }, 500, headers);
+    }
+    // Every refusal below runs with the currency as READ here; it is only locked
+    // (billing_currency_lock) right before the Stripe customer, so a refused checkout never
+    // locks it. Fail closed on an unknown value.
+    const currency = parseBillingCurrency(trialWs?.billing_currency);
+    if (!currency) {
+      console.error(
+        "[billing-checkout] unexpected billing currency:",
+        String(trialWs?.billing_currency),
+      );
       return json({ error: "Internal server error" }, 500, headers);
     }
     // A workspace mid-subscription belongs in the billing portal, not a second
@@ -213,6 +189,54 @@ Deno.serve(async (req: Request) => {
     if (quarantinedAttemptBlocksCheckout(!!quarantinedAttempt, quarantinedErr)) {
       return json(
         { error: "Encontramos uma cobrança que precisa de revisão. Fale com o suporte." },
+        409,
+        headers,
+      );
+    }
+
+    // USD rides the same Stripe price through its currency_options.usd entry. Refuse before
+    // any session when either the plan's USD amount (what the app shows) or the Stripe-side
+    // option (what Checkout would charge) is missing: Stripe would otherwise reject the
+    // pinned currency, or charge an amount the pricing page never showed. BRL makes no
+    // extra Stripe call here.
+    if (currency === "usd") {
+      if (!plan || !usdPriceConfigured(plan, interval)) {
+        return json({ error: "Plan price not configured" }, 400, headers);
+      }
+      const price = await stripe.prices.retrieve(
+        priceId,
+        { expand: ["currency_options"] },
+        { timeout: STRIPE_TIMEOUT_MS },
+      );
+      if (!price.currency_options?.usd) {
+        console.error("[billing-checkout] price without a USD currency option:", priceId);
+        return json({ error: "Plan price not configured" }, 400, headers);
+      }
+    }
+
+    // Lock the workspace's billing currency now that every refusal has passed: from here on a
+    // later market change (landing/signup metadata) can never move a workspace that reached
+    // Stripe. The RPC sets billing_currency_locked_at when still null and returns the
+    // currency. If it is not the one every check above used (changed in between), stop
+    // before creating anything.
+    const { data: lockedCurrency, error: lockErr } = await svc.rpc("billing_currency_lock", {
+      p_workspace_id: workspaceId,
+    });
+    if (lockErr) {
+      console.error("[billing-checkout] billing currency lock failed:", lockErr.message);
+      return json({ error: "Internal server error" }, 500, headers);
+    }
+    if (lockedCurrencyMismatch(currency, lockedCurrency)) {
+      console.error(
+        "[billing-checkout] billing currency changed before the lock:",
+        currency,
+        String(lockedCurrency),
+      );
+      return json(
+        {
+          error:
+            "A moeda de cobrança deste workspace mudou. Recarregue a página e tente de novo.",
+        },
         409,
         headers,
       );

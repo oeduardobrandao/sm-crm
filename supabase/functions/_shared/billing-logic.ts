@@ -276,6 +276,15 @@ export function parseBillingCurrency(value: unknown): BillingCurrency | null {
   return value === "brl" || value === "usd" ? value : null;
 }
 
+/**
+ * billing-checkout runs every refusal with the currency it READ, and only then locks it. True
+ * when the lock returned anything other than that value (a concurrent change between the read
+ * and the lock, or an unknown value): the checkout must stop before creating anything.
+ */
+export function lockedCurrencyMismatch(read: BillingCurrency, locked: unknown): boolean {
+  return parseBillingCurrency(locked) !== read;
+}
+
 /** True when the plan has a positive USD amount (cents) for the chosen interval. */
 export function usdPriceConfigured(
   plan: { price_usd: number | null; price_usd_annual: number | null },

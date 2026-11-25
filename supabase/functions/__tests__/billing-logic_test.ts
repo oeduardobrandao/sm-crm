@@ -444,3 +444,14 @@ Deno.test("buildCheckoutSessionParams maps each trial kind", async () => {
     { metadata: { workspace_id: "ws-1", plan_id: "pro" } },
   );
 });
+
+Deno.test("lockedCurrencyMismatch: the lock must return the currency every refusal used", async () => {
+  const { lockedCurrencyMismatch } = await import("../_shared/billing-logic.ts");
+  assertEquals(lockedCurrencyMismatch("brl", "brl"), false);
+  assertEquals(lockedCurrencyMismatch("usd", "usd"), false);
+  assertEquals(lockedCurrencyMismatch("brl", "usd"), true);
+  assertEquals(lockedCurrencyMismatch("usd", "brl"), true);
+  // Anything that is not a known currency is a mismatch (fail closed).
+  assertEquals(lockedCurrencyMismatch("usd", null), true);
+  assertEquals(lockedCurrencyMismatch("brl", "eur"), true);
+});
