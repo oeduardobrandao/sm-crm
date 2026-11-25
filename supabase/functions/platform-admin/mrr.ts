@@ -2,7 +2,7 @@ import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { aggregateMrr, MRR_STATUSES, toMonthlyCents } from "../_shared/billing-logic.ts";
 import { chunk, fetchAllRows } from "../_shared/paginate.ts";
 import { fetchInternalWorkspaceIds } from "../_shared/internal-workspaces.ts";
-import { priceSubscriptionRows } from "./pricing.ts";
+import { type PlanMeta, priceSubscriptionRows } from "./pricing.ts";
 import { fetchOwnerContacts } from "./owner-contact.ts";
 
 // workspace_subscriptions' primary key is workspace_id alone (migration
@@ -100,26 +100,25 @@ export async function handleGetMrr(
 
   const nameByWs = new Map<string, string>();
   const createdByWs = new Map<string, string>();
+  const currencyByWs = new Map<string, "brl" | "usd">();
   for (const ids of chunk(wsIds)) {
     const { data: wsRows, error: wsErr } = await svc
       .from("workspaces")
-      .select("id, name, created_at")
+      .select("id, name, created_at, billing_currency")
       .in("id", ids);
     if (wsErr) throw wsErr; // was silently ignored; a missing name must not zero a paying row
     for (const w of wsRows ?? []) {
       nameByWs.set(w.id, w.name);
       createdByWs.set(w.id, w.created_at);
+      currencyByWs.set(w.id, w.billing_currency === "usd" ? "usd" : "brl");
     }
   }
 
-  const planById = new Map<
-    string,
-    { name: string; price_brl: number | null; price_brl_annual: number | null }
-  >();
+  const planById = new Map<string, PlanMeta>();
   for (const ids of chunk(planIds)) {
     const { data: planRows, error: planErr } = await svc
       .from("plans")
-      .select("id, name, price_brl, price_brl_annual")
+      .select("id, name, price_brl, price_brl_annual, price_usd, price_usd_annual")
       .in("id", ids);
     if (planErr) throw planErr;
     for (const p of planRows ?? []) {
@@ -127,11 +126,17 @@ export async function handleGetMrr(
         name: p.name,
         price_brl: p.price_brl ?? null,
         price_brl_annual: p.price_brl_annual ?? null,
+        price_usd: p.price_usd ?? null,
+        price_usd_annual: p.price_usd_annual ?? null,
       });
     }
   }
+  const withCurrency = rows.map((s) => ({
+    ...s,
+    workspace_currency: currencyByWs.get(s.workspace_id) ?? ("brl" as const),
+  }));
 
-  const priceable = await priceSubscriptionRows(svc, rows, nameByWs, planById);
+  const priceable = await priceSubscriptionRows(svc, withCurrency, nameByWs, planById);
 
   const { mrr_cents, paying_count, priced } = aggregateMrr(priceable);
   const pricedWsIds = [...new Set(priced.map((r) => r.workspace_id))];
@@ -198,26 +203,25 @@ export async function handleGetTrials(
 
   const nameByWs = new Map<string, string>();
   const createdByWs = new Map<string, string>();
+  const currencyByWs = new Map<string, "brl" | "usd">();
   for (const ids of chunk(wsIds)) {
     const { data: wsRows, error: wsErr } = await svc
       .from("workspaces")
-      .select("id, name, created_at")
+      .select("id, name, created_at, billing_currency")
       .in("id", ids);
     if (wsErr) throw wsErr; // was silently ignored; a missing name must not zero a paying row
     for (const w of wsRows ?? []) {
       nameByWs.set(w.id, w.name);
       createdByWs.set(w.id, w.created_at);
+      currencyByWs.set(w.id, w.billing_currency === "usd" ? "usd" : "brl");
     }
   }
 
-  const planById = new Map<
-    string,
-    { name: string; price_brl: number | null; price_brl_annual: number | null }
-  >();
+  const planById = new Map<string, PlanMeta>();
   for (const ids of chunk(planIds)) {
     const { data: planRows, error: planErr } = await svc
       .from("plans")
-      .select("id, name, price_brl, price_brl_annual")
+      .select("id, name, price_brl, price_brl_annual, price_usd, price_usd_annual")
       .in("id", ids);
     if (planErr) throw planErr;
     for (const p of planRows ?? []) {
@@ -225,11 +229,17 @@ export async function handleGetTrials(
         name: p.name,
         price_brl: p.price_brl ?? null,
         price_brl_annual: p.price_brl_annual ?? null,
+        price_usd: p.price_usd ?? null,
+        price_usd_annual: p.price_usd_annual ?? null,
       });
     }
   }
+  const withCurrency = rows.map((s) => ({
+    ...s,
+    workspace_currency: currencyByWs.get(s.workspace_id) ?? ("brl" as const),
+  }));
 
-  const priced = await priceSubscriptionRows(svc, rows, nameByWs, planById);
+  const priced = await priceSubscriptionRows(svc, withCurrency, nameByWs, planById);
   const pricedWsIds = [...new Set(priced.map((r) => r.workspace_id))];
   const [ownerContacts, lastActivityByWs] = await Promise.all([
     fetchOwnerContactsFn(svc, pricedWsIds),

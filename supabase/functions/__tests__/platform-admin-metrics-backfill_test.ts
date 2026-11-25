@@ -87,7 +87,7 @@ Deno.test("toStripeSubLite reads ids, timestamps and the coupon-net amount", () 
   });
   assertEquals(lite, {
     id: "sub_1", customer: "cus_1", status: "canceled", start_date: 100, trial_start: null, trial_end: null, ended_at: 200,
-    price_id: "price_m", amount_cents: 9000, interval: "month",
+    price_id: "price_m", amount_cents: 9000, interval: "month", currency: "brl",
   });
 });
 
@@ -182,4 +182,13 @@ Deno.test("USD sub whose listed price lacks currency_options is priced from the 
   const brl = { ...mk("sub_c"), currency: "brl" };
   await enrichSubscriptionPrice(brl, retrieve, cache);
   assertEquals(retrieved.length, 1);
+});
+
+Deno.test("toStripeSubLite carries the subscription currency", () => {
+  const lite = toStripeSubLite({
+    id: "sub_us", customer: "cus_us", status: "active", start_date: 100, currency: "usd",
+    items: { data: [{ quantity: 1, price: { id: "price_m", unit_amount: 4900, currency: "usd", recurring: { interval: "month" } } }] },
+  });
+  assertEquals(lite.currency, "usd");
+  assertEquals(lite.amount_cents, 4900);
 });

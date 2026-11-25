@@ -15,6 +15,8 @@ export interface SnapshotRecord {
   monthly_cents: number;
   amount_source: AmountSource;
   provider_switch: boolean;
+  /** Missing on rows read before the column existed: treat as brl. */
+  currency: "brl" | "usd";
 }
 
 export interface RunRecord {

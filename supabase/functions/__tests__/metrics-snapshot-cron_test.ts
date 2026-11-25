@@ -126,3 +126,14 @@ Deno.test("cron aborts before writing when the internal-workspace lookup fails",
   assertEquals(written.length, 0);
   assertEquals(failures.length, 1);
 });
+
+Deno.test("toSnapshotRows keeps usd and defaults a missing currency to brl", () => {
+  const rows = toSnapshotRows(
+    [
+      { ...base, workspace_id: "us", currency: "usd", amount_cents: 4900 },
+      { ...base, workspace_id: "br", currency: null as unknown as "brl" },
+    ],
+    new Set(),
+  );
+  assertEquals(rows.map((r) => [r.workspace_id, r.currency]), [["us", "usd"], ["br", "brl"]]);
+});

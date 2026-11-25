@@ -72,3 +72,29 @@ Deno.test("get-metrics-history with no markers returns an empty series", async (
   assertEquals(body.first_month, null);
   assertEquals(body.months, []);
 });
+
+Deno.test("get-metrics-history splits BRL and USD months, never summing the two", async () => {
+  const snap = (ws: string, cents: number, currency?: string) => ({
+    workspace_id: ws, snapshot_date: "2026-08-31", provider: "stripe", plan_id: "pro", plan_name: "Pro",
+    status: "active", monthly_cents: cents, amount_source: "stripe", provider_switch: false,
+    ...(currency ? { currency } : {}),
+  });
+  const { svc } = fakeSvc(
+    [{ snapshot_date: "2026-08-31", source: "cron" }],
+    [snap("br", 13990, "brl"), snap("us", 4900, "usd")],
+  );
+  const body = await (await handleGetMetricsHistory(svc, {}, new Date("2026-09-25T12:00:00Z"))).json();
+  assertEquals(body.months.length, 1);
+  assertEquals(body.months_usd.length, 1);
+  assertEquals(body.months[0].mrr_cents, 13990);
+  assertEquals(body.months[0].paying_count, 1);
+  assertEquals(body.months_usd[0].mrr_cents, 4900);
+  assertEquals(body.months_usd[0].paying_count, 1);
+  assertEquals(body.months_usd[0].month, "2026-08");
+
+  // A row without a currency key (read before the column existed) counts as BRL.
+  const legacy = fakeSvc([{ snapshot_date: "2026-08-31", source: "cron" }], [snap("old", 1000)]);
+  const legacyBody = await (await handleGetMetricsHistory(legacy.svc, {}, new Date("2026-09-25T12:00:00Z"))).json();
+  assertEquals(legacyBody.months[0].mrr_cents, 1000);
+  assertEquals(legacyBody.months_usd[0].mrr_cents, 0);
+});

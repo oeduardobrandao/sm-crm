@@ -65,6 +65,7 @@ export function toStripeSubLite(raw: unknown): StripeSubLite {
     price_id: s.items?.data?.[0]?.price?.id ?? null,
     amount_cents: amt.amount_cents,
     interval: amt.interval,
+    currency: amt.currency.toLowerCase() === "usd" ? "usd" : "brl",
   };
 }
 
