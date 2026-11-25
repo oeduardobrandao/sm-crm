@@ -14,6 +14,14 @@ vi.mock('../useTrialOfferRedirect', () => ({
   useTrialOfferRedirect: vi.fn(),
 }));
 
+vi.mock('../useReverseTrialStart', () => ({
+  useReverseTrialStart: vi.fn(() => ({
+    pending: false,
+    welcomeEndsAt: null,
+    dismissWelcome: () => {},
+  })),
+}));
+
 import { useAuth } from '../../../context/AuthContext';
 import { useWorkspaceLimits } from '../../../hooks/useWorkspaceLimits';
 import { useTrialOfferRedirect } from '../useTrialOfferRedirect';

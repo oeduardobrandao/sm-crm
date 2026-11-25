@@ -81,6 +81,11 @@ export type AnalyticsEvent =
   | 'trial_skipped'
   | 'trial_plan_recommended'
   | 'trial_nudge_clicked'
+  // Reverse trial (14 days of Pro without a card): start (`source` signup | nudge), countdown
+  // banner seen (once a day, `days_left` + `phase`) and "Adicionar cartão" (`surface`).
+  | 'reverse_trial_started'
+  | 'reverse_trial_banner_viewed'
+  | 'reverse_trial_add_card_clicked'
   | 'whatsapp_support_clicked'
   | 'card_form_submitted'
   | 'card_tokenization_failed'

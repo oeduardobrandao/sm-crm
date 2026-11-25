@@ -10,6 +10,8 @@ import { UpgradeLockedScreen } from '@/components/paywall/UpgradeLockedScreen';
 import { resolveRouteGate } from './routePermissions';
 import { isLayoutGuardedPath } from './AppLayout';
 import { useTrialOfferRedirect } from './useTrialOfferRedirect';
+import { useReverseTrialStart } from './useReverseTrialStart';
+import { ReverseTrialWelcomeDialog } from '@/components/billing/ReverseTrialWelcomeDialog';
 
 const FEATURE_GATED: Record<string, { flag: string; label: string }> = {
   '/analytics': { flag: 'feature_analytics_reports', label: 'Relatórios e Analytics' },
@@ -26,8 +28,19 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, profile, role, can, loading } = useAuth();
   const location = useLocation();
   const { features, isLoading: limitsLoading, isUnlimited } = useWorkspaceLimits();
-  // Hook order: this must stay above every early return below.
+  const needsSetup =
+    role === 'owner' &&
+    profile !== null &&
+    !(profile as any).empresa &&
+    location.pathname !== '/workspace-setup';
+  // Hook order: these must stay above every early return below.
   const trialOffer = useTrialOfferRedirect(location.pathname.toLowerCase());
+  // Reverse trial (14 days of Pro without a card): starts on the first app visit of an eligible
+  // owner, never before /workspace-setup is done. This component is a single instance around
+  // AppLayout, so the welcome dialog survives navigation.
+  const reverseTrial = useReverseTrialStart(location.pathname.toLowerCase(), {
+    disabled: !user || needsSetup,
+  });
 
   if (loading || limitsLoading) {
     // The shell (sidebar, top bar) is not mounted yet and the page is unknown, so this is a
@@ -112,12 +125,6 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
     }
   }
 
-  const needsSetup =
-    role === 'owner' &&
-    profile !== null &&
-    !(profile as any).empresa &&
-    location.pathname !== '/workspace-setup';
-
   if (needsSetup) {
     // `next` rides the query (not router state) so a reload or a cold open of the setup page
     // still knows where the owner was headed, e.g. /comecar?plan=…&interval=… after signup.
@@ -125,7 +132,7 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
     return <Navigate to={`/workspace-setup?next=${next}`} replace />;
   }
 
-  if (trialOffer.pending) {
+  if (trialOffer.pending || reverseTrial.pending) {
     return (
       <PageSkeleton
         style={{
@@ -137,5 +144,13 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
   }
   if (trialOffer.redirect) return <Navigate to="/comecar" replace />;
 
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      <ReverseTrialWelcomeDialog
+        endsAt={reverseTrial.welcomeEndsAt}
+        onClose={reverseTrial.dismissWelcome}
+      />
+    </>
+  );
 }

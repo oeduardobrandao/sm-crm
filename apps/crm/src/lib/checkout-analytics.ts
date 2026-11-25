@@ -12,7 +12,13 @@ export function captureCheckoutStarted(
   source: CheckoutSource,
   provider: 'stripe' | 'pagarme' = 'stripe',
   /** Picker context from /comecar, merged into the event props. */
-  extra?: { recommended_plan_id?: string; accepted_recommendation?: boolean },
+  extra?: {
+    recommended_plan_id?: string;
+    accepted_recommendation?: boolean;
+    /** Checkout opened during a running reverse trial. */
+    reverse_trial?: boolean;
+    days_left?: number;
+  },
 ): void {
   captureEvent(
     'checkout_started',

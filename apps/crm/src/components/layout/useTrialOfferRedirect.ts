@@ -1,7 +1,12 @@
 import { useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
-import { getEffectivePlanWithSource, getWorkspaceSubscription } from '@/services/billing';
+import {
+  getEffectivePlanWithSource,
+  getReverseTrialOffer,
+  getWorkspaceSubscription,
+  REVERSE_TRIAL_OFFER_KEY,
+} from '@/services/billing';
 import { isTrialOfferEligible } from '@/pages/configuracao/cobranca/plan-display';
 import { isNativeApp } from '@/native/platform';
 
@@ -18,7 +23,7 @@ export const TRIAL_OFFER_EXEMPT_PREFIXES = [
 ];
 
 export interface TrialOfferRedirectState {
-  /** True only while one of the two billing queries is still loading. */
+  /** True only while one of the billing queries is still loading. */
   pending: boolean;
   /** True when this owner should be sent to /comecar once. */
   redirect: boolean;
@@ -52,6 +57,13 @@ export function useTrialOfferRedirect(pathname: string): TrialOfferRedirectState
     queryFn: () => getWorkspaceSubscription(),
     enabled,
   });
+  // Reverse trial kill switch: while it is on, new owners start the 14-day trial in the app
+  // (useReverseTrialStart) and nobody is sent to /comecar automatically.
+  const offer = useQuery({
+    queryKey: REVERSE_TRIAL_OFFER_KEY,
+    queryFn: () => getReverseTrialOffer(),
+    enabled,
+  });
 
   // Once the hook has settled in this mount it must never report `pending` again. In TanStack
   // v5 a query that errored with no data goes back to `status: 'pending'` on every refetch
@@ -63,9 +75,9 @@ export function useTrialOfferRedirect(pathname: string): TrialOfferRedirectState
 
   // `isFetched` is monotonic (a first fetch has finished), unlike `isLoading`/`isError`, which a
   // refetch resets for a query that has no data. A failure in either query ends the wait at once.
-  const failed = plan.isError || sub.isError;
+  const failed = plan.isError || sub.isError || offer.isError;
   if (!settled.current) {
-    if (!failed && !(plan.isFetched && sub.isFetched)) {
+    if (!failed && !(plan.isFetched && sub.isFetched && offer.isFetched)) {
       return { pending: true, redirect: false };
     }
     settled.current = true;
@@ -73,7 +85,10 @@ export function useTrialOfferRedirect(pathname: string): TrialOfferRedirectState
 
   // Fail open: no data (a failed or refetching-after-failure query) never redirects. A later
   // successful refetch can still produce a redirect, never a skeleton.
-  if (plan.data === undefined || sub.data === undefined) return { pending: false, redirect: false };
+  if (plan.data === undefined || sub.data === undefined || offer.data === undefined) {
+    return { pending: false, redirect: false };
+  }
+  if (offer.data.enabled) return { pending: false, redirect: false };
 
   return {
     pending: false,
