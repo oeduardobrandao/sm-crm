@@ -122,3 +122,78 @@ export function formatMetric(key: HealthMetricKey, v: number): string {
       return intFormatter.format(v);
   }
 }
+
+/** Ordem fixa das métricas no cartão e no bloco. */
+export const HEALTH_METRIC_ORDER: readonly HealthMetricKey[] = [
+  'engagement_rate',
+  'posts_30d',
+  'reel_views',
+  'reels_share',
+];
+
+export const HEALTH_METRIC_TITLES: Record<HealthMetricKey, string> = {
+  engagement_rate: 'Taxa de engajamento',
+  posts_30d: 'Posts em 30 dias',
+  reel_views: 'Visualizações nos reels',
+  reels_share: 'Reels no seu feed',
+};
+
+/** Motivo exibido quando a métrica vem nula (posts_30d nunca é nula na prática). */
+export const HEALTH_NULL_REASONS: Record<HealthMetricKey, string | null> = {
+  engagement_rate: 'Precisa de pelo menos 3 posts nos últimos 90 dias.',
+  posts_30d: null,
+  reel_views: 'Precisa de pelo menos 3 reels nos últimos 90 dias.',
+  reels_share: 'Precisa de pelo menos 3 posts nos últimos 90 dias.',
+};
+
+/** Linha de destaque da métrica de maior percentil (v = você, p = mediana das contas do tamanho). */
+export function highlightLine(key: HealthMetricKey, v: string, p: string): string {
+  switch (key) {
+    case 'engagement_rate':
+      return `Seu engajamento é ${v} por post; em contas do seu tamanho é ${p}.`;
+    case 'posts_30d':
+      return `Você publicou ${v} ${v === '1' ? 'post' : 'posts'} em 30 dias; contas do seu tamanho publicam ${p}.`;
+    case 'reel_views':
+      return `Seus reels têm ${v} visualizações; em contas do seu tamanho, ${p}.`;
+    case 'reels_share':
+      return `Reels são ${v} do seu feed; em contas do seu tamanho, ${p}.`;
+  }
+}
+
+export interface ScoredHealthMetric {
+  key: HealthMetricKey;
+  value: number;
+  benchmark: PeerBenchmark;
+  pct: number;
+}
+
+/** Métricas com valor e referência válida (exatamente 99 cortes), na ordem fixa, com o percentil. */
+export function scoreHealthMetrics(
+  metrics: Record<HealthMetricKey, number | null>,
+  benchmarks: Partial<Record<HealthMetricKey, PeerBenchmark>>,
+): ScoredHealthMetric[] {
+  const scored: ScoredHealthMetric[] = [];
+  for (const key of HEALTH_METRIC_ORDER) {
+    const value = metrics[key];
+    const benchmark = benchmarks[key];
+    // Benchmark malformado (diferente de 99 cortes) conta como sem referência.
+    if (value == null || !benchmark || benchmark.cuts.length !== CUT_COUNT) continue;
+    scored.push({ key, value, benchmark, pct: percentileFromCuts(value, benchmark.cuts) });
+  }
+  return scored;
+}
+
+/**
+ * `data_snapshot.instagram_health` (campo opcional; snapshot antigo não o tem). Lido de forma
+ * estrutural para o pacote não depender de a chave já existir em `ReportDocSnapshot`.
+ */
+export function readInstagramHealth(snapshot: object): InstagramHealthSnapshot | null {
+  const h = (snapshot as { instagram_health?: InstagramHealthSnapshot | null }).instagram_health;
+  return h && typeof h === 'object' ? h : null;
+}
+
+/** O bloco do relatório tem o que mostrar: seguidores, faixa e ao menos uma métrica comparável. */
+export function healthHasData(h: InstagramHealthSnapshot | null): h is InstagramHealthSnapshot {
+  if (!h || !h.band || !(h.followers > 0) || !h.metrics || !h.benchmarks) return false;
+  return scoreHealthMetrics(h.metrics, h.benchmarks).length > 0;
+}

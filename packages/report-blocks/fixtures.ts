@@ -1,8 +1,85 @@
 // Fixture de snapshot para testes e para o drawer do editor (PR 2).
 import type { ReportDocSnapshot } from './types';
+import type { InstagramHealthSnapshot } from './health';
 
-export function makeSnapshotFixture(over: Partial<ReportDocSnapshot> = {}): ReportDocSnapshot {
-  return {
+/** `instagram_health` é opcional no snapshot; a chave pode ainda não existir no tipo. */
+type SnapshotFixture = ReportDocSnapshot & { instagram_health?: InstagramHealthSnapshot | null };
+
+/** 99 cortes p1..p99 por interpolação linear entre âncoras [percentil, valor] (percentis
+ * crescentes, de 1 a 99). Na âncora o corte é o valor exato, então um valor igual a uma
+ * âncora cai exatamente naquele percentil (posto médio com um empate). */
+function cutsFromAnchors(anchors: [number, number][]): number[] {
+  return Array.from({ length: 99 }, (_, i) => {
+    const p = i + 1;
+    const k = anchors.findIndex(([ap]) => ap >= p);
+    const [p1, v1] = anchors[k];
+    if (p1 === p) return v1;
+    const [p0, v0] = anchors[k - 1];
+    return v0 + ((v1 - v0) * (p - p0)) / (p1 - p0);
+  });
+}
+
+/** Números do mockup: engajamento p41, posts p44, visualizações nos reels p96, reels p46. */
+const HEALTH_FIXTURE: InstagramHealthSnapshot = {
+  as_of: '2026-08-01T00:00:00.000Z',
+  followers: 9274,
+  band: '5k_20k',
+  metrics: { engagement_rate: 0.0113, posts_30d: 8, reel_views: 3885, reels_share: 0.5 },
+  benchmarks: {
+    engagement_rate: {
+      metric: 'engagement_rate',
+      source: 'mercado',
+      sample_size: null,
+      cuts: cutsFromAnchors([
+        [1, 0.002],
+        [41, 0.0113],
+        [50, 0.0165],
+        [99, 0.08],
+      ]),
+    },
+    posts_30d: {
+      metric: 'posts_30d',
+      source: 'mercado',
+      sample_size: null,
+      cuts: cutsFromAnchors([
+        [1, 1],
+        [44, 8],
+        [50, 9],
+        [99, 30],
+      ]),
+    },
+    reel_views: {
+      metric: 'reel_views',
+      source: 'mercado',
+      sample_size: null,
+      cuts: cutsFromAnchors([
+        [1, 50],
+        [50, 952],
+        [96, 3885],
+        [99, 9000],
+      ]),
+    },
+    reels_share: {
+      metric: 'reels_share',
+      source: 'mercado',
+      sample_size: null,
+      cuts: cutsFromAnchors([
+        [1, 0],
+        [46, 0.5],
+        [50, 0.52],
+        [99, 1],
+      ]),
+    },
+  },
+  best_post: {
+    ratio: 2.2,
+    permalink: 'https://www.instagram.com/p/DExemplo123/',
+    thumbnail_url: 'https://cdn.example.com/thumbs/melhor-post.jpg',
+  },
+};
+
+export function makeSnapshotFixture(over: Partial<SnapshotFixture> = {}): ReportDocSnapshot {
+  const snapshot: SnapshotFixture = {
     version: 1,
     period: {
       month: '2026-07',
@@ -235,6 +312,8 @@ export function makeSnapshotFixture(over: Partial<ReportDocSnapshot> = {}): Repo
         },
       ],
     },
+    instagram_health: structuredClone(HEALTH_FIXTURE),
     ...over,
   };
+  return snapshot;
 }

@@ -7,7 +7,8 @@ import {
   type PeerBenchmark,
 } from '@mesaas/report-blocks/health';
 import type { AccountHealth } from '@/services/analytics';
-import { AccountHealthCard, highlightLine } from '../AccountHealthCard';
+import { highlightLine } from '@mesaas/report-blocks/health';
+import { AccountHealthCard } from '../AccountHealthCard';
 
 /**
  * 99 cortes (p1..p99) estritamente crescentes, lineares por trechos, que passam por

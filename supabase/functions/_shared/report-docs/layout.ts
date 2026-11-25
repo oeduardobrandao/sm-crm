@@ -22,7 +22,7 @@ export const BLOCK_TYPES = [
   // Audiência
   "audience_gender", "audience_age", "audience_cities", "audience_countries",
   // Conteúdo
-  "top_posts", "post_list", "tags_table",
+  "top_posts", "post_list", "tags_table", "account_health",
   // Mídia
   "image",
   // TikTok (spec 2026-10-28 §B): tipos próprios, nunca um config.platform. Um

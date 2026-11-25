@@ -13,6 +13,7 @@ import {
   Clock,
   Eye,
   FileImage,
+  Gauge,
   Globe,
   Heading,
   Heart,
@@ -82,6 +83,7 @@ export const WIDGET_ICONS: Record<BlockType, LucideIcon> = {
   top_posts: Trophy,
   post_list: List,
   tags_table: Tags,
+  account_health: Gauge,
   image: FileImage,
   // TikTok: ícones próprios onde o dado difere do Instagram (vídeos, curtidas,
   // compartilhamentos); os demais seguem os equivalentes.

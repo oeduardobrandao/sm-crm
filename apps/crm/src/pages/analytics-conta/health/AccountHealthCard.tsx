@@ -3,13 +3,15 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   bandLabel,
   formatMetric,
+  HEALTH_METRIC_ORDER as METRIC_ORDER,
+  HEALTH_METRIC_TITLES as METRIC_TITLES,
+  HEALTH_NULL_REASONS as NULL_REASONS,
+  highlightLine,
   overallPercentile,
-  percentileFromCuts,
   roundedSampleLabel,
+  scoreHealthMetrics,
   verdictFor,
   type BenchmarkSource,
-  type HealthMetricKey,
-  type PeerBenchmark,
   type VerdictTone,
 } from '@mesaas/report-blocks/health';
 import type { AccountHealth } from '@/services/analytics';
@@ -24,27 +26,6 @@ interface AccountHealthCardProps {
 
 const TITLE = 'Seu Instagram está indo bem?';
 
-const METRIC_ORDER: HealthMetricKey[] = [
-  'engagement_rate',
-  'posts_30d',
-  'reel_views',
-  'reels_share',
-];
-
-const METRIC_TITLES: Record<HealthMetricKey, string> = {
-  engagement_rate: 'Taxa de engajamento',
-  posts_30d: 'Posts em 30 dias',
-  reel_views: 'Visualizações nos reels',
-  reels_share: 'Reels no seu feed',
-};
-
-const NULL_REASONS: Record<HealthMetricKey, string | null> = {
-  engagement_rate: 'Precisa de pelo menos 3 posts nos últimos 90 dias.',
-  posts_30d: null,
-  reel_views: 'Precisa de pelo menos 3 reels nos últimos 90 dias.',
-  reels_share: 'Precisa de pelo menos 3 posts nos últimos 90 dias.',
-};
-
 const SOURCE_MARK: Record<BenchmarkSource, string> = { mesaas: '*', mercado: '†' };
 const SOURCE_BADGE: Record<BenchmarkSource, string> = { mesaas: 'Mesaas', mercado: 'Mercado' };
 
@@ -53,30 +34,10 @@ const ratioFormatter = new Intl.NumberFormat('pt-BR', {
   maximumFractionDigits: 1,
 });
 
-export function highlightLine(key: HealthMetricKey, v: string, p: string): string {
-  switch (key) {
-    case 'engagement_rate':
-      return `Seu engajamento é ${v} por post; em contas do seu tamanho é ${p}.`;
-    case 'posts_30d':
-      return `Você publicou ${v} ${v === '1' ? 'post' : 'posts'} em 30 dias; contas do seu tamanho publicam ${p}.`;
-    case 'reel_views':
-      return `Seus reels têm ${v} visualizações; em contas do seu tamanho, ${p}.`;
-    case 'reels_share':
-      return `Reels são ${v} do seu feed; em contas do seu tamanho, ${p}.`;
-  }
-}
-
 function ToneIcon({ tone }: { tone: VerdictTone }) {
   if (tone === 'great' || tone === 'good') return <TrendingUp aria-hidden="true" />;
   if (tone === 'avg') return <Minus aria-hidden="true" />;
   return <TrendingDown aria-hidden="true" />;
-}
-
-interface ScoredMetric {
-  key: HealthMetricKey;
-  value: number;
-  benchmark: PeerBenchmark;
-  pct: number;
 }
 
 function HealthSkeleton({ layout }: { layout: 'desktop' | 'phone' }) {
@@ -105,14 +66,8 @@ export function AccountHealthCard({
 
   const rootClass = `ig-health${layout === 'phone' ? ' ig-health--phone' : ''}`;
 
-  const scored: ScoredMetric[] = [];
-  for (const key of METRIC_ORDER) {
-    const value = health.metrics[key];
-    const benchmark = health.benchmarks[key];
-    // Benchmark malformado (diferente de 99 cortes) conta como sem referência.
-    if (value == null || !benchmark || benchmark.cuts.length !== 99) continue;
-    scored.push({ key, value, benchmark, pct: percentileFromCuts(value, benchmark.cuts) });
-  }
+  // Benchmark malformado (diferente de 99 cortes) conta como sem referência.
+  const scored = scoreHealthMetrics(health.metrics, health.benchmarks);
 
   const allNull = METRIC_ORDER.every((k) => health.metrics[k] == null);
   const overall = overallPercentile(scored.map((m) => m.pct));
