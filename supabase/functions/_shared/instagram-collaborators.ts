@@ -54,3 +54,27 @@ export function buildCollaboratorFailureFields(
   if (code !== "COLLABORATOR_INVALID") return {};
   return { ig_collaborators_refused: refusedCollaborators(collaborators, userMsg) };
 }
+
+/**
+ * Grava os colaboradores que o teste de agendamento viu recusados, para o
+ * editor marcar os chips em vermelho (o trigger limpa a coluna quando a lista
+ * muda). Melhor esforço: a resposta de erro ao usuário já nomeia as contas, então
+ * uma falha aqui só é logada. `undefined` (sem recusa) não escreve nada.
+ */
+export async function recordRefusedCollaborators(
+  // deno-lint-ignore no-explicit-any
+  db: { from: (table: string) => any },
+  postId: number,
+  refused: string[] | undefined,
+): Promise<void> {
+  if (refused === undefined) return;
+  try {
+    const { error } = await db
+      .from("workflow_posts")
+      .update({ ig_collaborators_refused: refused })
+      .eq("id", postId);
+    if (error) console.error("[IG-COLLAB] falha ao gravar recusados:", error.message ?? error);
+  } catch (e) {
+    console.error("[IG-COLLAB] falha ao gravar recusados:", (e as Error)?.message);
+  }
+}

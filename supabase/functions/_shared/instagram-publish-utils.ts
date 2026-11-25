@@ -2,8 +2,13 @@ import { signGetUrl } from "./r2.ts";
 import { CAROUSEL_MAX_ITEMS, validateMedia } from "./instagram-limits.ts";
 import type { MediaFile, ValidationError } from "./instagram-limits.ts";
 import { GRAPH_BASE, throwGraphError } from "./instagram-graph.ts";
-import { TRIAL_MEDIA_SHAPE_ERROR } from "./publish-error-codes.ts";
-import { normalizeCollaborators, normalizeUserTags } from "./instagram-collaborators.ts";
+import { classifyPublishError, TRIAL_MEDIA_SHAPE_ERROR } from "./publish-error-codes.ts";
+import {
+  normalizeCollaborators,
+  normalizeUserTags,
+  refusedCollaborators,
+} from "./instagram-collaborators.ts";
+import { appBaseUrl } from "./app-url.ts";
 
 export { CAROUSEL_MAX_ITEMS, validateMedia };
 export type { MediaFile, ValidationError };
@@ -80,14 +85,27 @@ export interface ScheduleValidationResult {
   errors: string[];
   media?: MediaFile[];
   account?: { encrypted_access_token: string; instagram_user_id: string };
+  /** Colaboradores que a Meta recusou no teste de agendamento (só com
+   * `probeCollaborators`). Quem chama grava em `ig_collaborators_refused`. */
+  refusedCollaborators?: string[];
+}
+
+export interface ScheduleValidationOptions {
+  skipDateCheck?: boolean;
+  /** Agendamento (não publicar agora): testa os colaboradores na Meta com um
+   * container descartável. Ver probeCollaborators. */
+  probeCollaborators?: boolean;
+  /** Injeção para testes. */
+  probe?: typeof probeCollaborators;
 }
 
 export async function validateForScheduling(
   db: DbClient,
   postId: number,
-  opts?: { skipDateCheck?: boolean },
+  opts?: ScheduleValidationOptions,
 ): Promise<ScheduleValidationResult> {
   const errors: string[] = [];
+  let refused: string[] | undefined;
 
   const { data: post } = await db
     .from("workflow_posts")
@@ -148,8 +166,9 @@ export async function validateForScheduling(
 
   // Colaboradores (spec 2026-10-19): os CHECKs e o trigger do banco já tornam
   // estas combinações impossíveis; a checagem aqui faz "Agendar" falhar na hora.
+  const collaborators = normalizeCollaborators(post.ig_collaborators);
   const collaboratorError = collaboratorsConflict(
-    normalizeCollaborators(post.ig_collaborators),
+    collaborators,
     post.ig_trial_strategy,
     post.tipo,
   );
@@ -172,11 +191,29 @@ export async function validateForScheduling(
     if (account.token_expires_at && new Date(account.token_expires_at) < new Date()) {
       errors.push("Token do Instagram expirou. Reconecte a conta.");
     }
+    let token: string | null = null;
     if (errors.length === 0 && account.encrypted_access_token) {
       try {
-        await decryptToken(account.encrypted_access_token);
+        token = await decryptToken(account.encrypted_access_token);
       } catch {
         errors.push("Erro ao decifrar token do Instagram. Reconecte a conta.");
+      }
+    }
+
+    // Só testa na Meta quando todo o resto passou: um agendamento que já vai
+    // falhar não gasta container.
+    if (
+      opts?.probeCollaborators && errors.length === 0 && token &&
+      collaborators.length > 0 && !isStory
+    ) {
+      const probe = await (opts.probe ?? probeCollaborators)(
+        account.instagram_user_id,
+        token,
+        collaborators,
+      );
+      if (probe.status === "refused") {
+        errors.push(collaboratorRefusedMessage(probe.refused));
+        refused = probe.refused;
       }
     }
   }
@@ -189,7 +226,84 @@ export async function validateForScheduling(
       encrypted_access_token: account.encrypted_access_token,
       instagram_user_id: account.instagram_user_id,
     } : undefined,
+    ...(refused ? { refusedCollaborators: refused } : {}),
   };
+}
+
+/** Texto do erro de agendamento quando a Meta recusa colaboradores. Sem nomes
+ * (a mensagem da Meta não citou nenhum), fala de forma geral. */
+export function collaboratorRefusedMessage(refused: string[]): string {
+  if (refused.length === 0) {
+    return "O Instagram recusou um dos colaboradores. Confira se os @ estão certos e se os perfis são públicos.";
+  }
+  const names = refused.map((u) => `@${u}`).join(", ");
+  return refused.length === 1
+    ? `O Instagram recusou o colaborador ${names}. Confira se o @ está certo e se o perfil é público.`
+    : `O Instagram recusou os colaboradores ${names}. Confira se os @ estão certos e se os perfis são públicos.`;
+}
+
+// --- Collaborator probe (teste de agendamento) ---
+
+/** Imagem JPEG quadrada servida pelo próprio app (`public/`), usada só no
+ * container de teste. `IG_COLLAB_PROBE_IMAGE_URL` sobrescreve. */
+export const COLLAB_PROBE_IMAGE_PATH = "/ig-collab-probe.jpg";
+
+function collabProbeImageUrl(): string | null {
+  const override = Deno.env.get("IG_COLLAB_PROBE_IMAGE_URL");
+  if (override) return override;
+  try {
+    return `${appBaseUrl().replace(/\/+$/, "")}${COLLAB_PROBE_IMAGE_PATH}`;
+  } catch {
+    return null;
+  }
+}
+
+export type CollaboratorProbeResult =
+  | { status: "ok" }
+  | { status: "refused"; refused: string[] }
+  | { status: "skipped" };
+
+/**
+ * Testa os colaboradores na Meta criando um container de imagem descartável
+ * (imagem fixa, sem legenda) com `collaborators`. A Meta valida a lista na
+ * criação do container (spike da spec 2026-10-19), o mesmo ponto em que a
+ * publicação real falharia. O container nunca é publicado e expira sozinho em
+ * 24h; conta no limite de 400 containers por conta em 24h, não no de posts.
+ *
+ * Falha aberta: qualquer erro que não seja recusa de colaborador (timeout,
+ * instabilidade, imagem fora do ar) devolve "skipped" e o agendamento segue.
+ * Não pega recusas que a Meta só dá no media_publish (o "User not visible" do
+ * post 21090 veio nessa fase); essas seguem tratadas na publicação.
+ */
+export async function probeCollaborators(
+  igUserId: string,
+  token: string,
+  collaborators: string[],
+  opts?: { timeoutMs?: number; imageUrl?: string | null },
+): Promise<CollaboratorProbeResult> {
+  if (collaborators.length === 0) return { status: "ok" };
+  const imageUrl = opts?.imageUrl !== undefined ? opts.imageUrl : collabProbeImageUrl();
+  if (!imageUrl) {
+    console.warn("[IG-COLLAB-PROBE] sem URL da imagem de teste; teste pulado");
+    return { status: "skipped" };
+  }
+  try {
+    await createSingleImageContainer(igUserId, token, imageUrl, "", {
+      timeoutMs: opts?.timeoutMs ?? INTERACTIVE_GRAPH_TIMEOUT_MS,
+      collaborators,
+    });
+    return { status: "ok" };
+  } catch (err) {
+    if (classifyPublishError(err, { hasCollaborators: true }) === "COLLABORATOR_INVALID") {
+      const userMsg = (err as { graphUserMsg?: string } | null)?.graphUserMsg;
+      return { status: "refused", refused: refusedCollaborators(collaborators, userMsg) };
+    }
+    console.warn(
+      "[IG-COLLAB-PROBE] teste inconclusivo; agendamento segue:",
+      (err as Error)?.message,
+    );
+    return { status: "skipped" };
+  }
 }
 
 // --- Collaborators (spec 2026-10-19) ---

@@ -42,6 +42,11 @@ const RATE_LIMIT_GRAPH_CODES = new Set([4, 9, 17, 32, 613]);
 const MEDIA_UNSUPPORTED_SUBCODES = new Set([2207026]);
 // 2207018 = a Meta não consegue acessar um dos `collaborators` (código 110).
 const COLLABORATOR_INVALID_SUBCODE = 2207018;
+// "User not visible": a Meta também recusa assim um colaborador que existe mas
+// que a conta não pode marcar (visto em prod no post 21090, 2026-11-24, na fase
+// de publicação). O subcódigo não foi capturado, então casa pelo texto, e só
+// quando o post tem colaboradores (stories, sem colaboradores, não entram).
+const COLLABORATOR_NOT_VISIBLE_MSG = "user not visible";
 
 interface ClassifiableError {
   message?: string;
@@ -51,7 +56,12 @@ interface ClassifiableError {
   graphSubcode?: number;
 }
 
-export function classifyPublishError(err: unknown): PublishErrorCode {
+export interface ClassifyContext {
+  /** O post foi enviado com `collaborators` (lista não vazia). */
+  hasCollaborators?: boolean;
+}
+
+export function classifyPublishError(err: unknown, ctx?: ClassifyContext): PublishErrorCode {
   const e = (err ?? {}) as ClassifiableError;
   const msg = (typeof e.message === "string" ? e.message : String(err ?? "")).toLowerCase();
   const graphCode = typeof e.graphCode === "number" ? e.graphCode : undefined;
@@ -67,6 +77,9 @@ export function classifyPublishError(err: unknown): PublishErrorCode {
 
   if (e.code === "TOKEN_EXPIRED" || graphCode === 190) return "TOKEN_EXPIRED";
   if (e.graphSubcode === COLLABORATOR_INVALID_SUBCODE) return "COLLABORATOR_INVALID";
+  if (ctx?.hasCollaborators && msg.includes(COLLABORATOR_NOT_VISIBLE_MSG)) {
+    return "COLLABORATOR_INVALID";
+  }
   if (msg.includes("reduce the amount of data")) return "MEDIA_TOO_LARGE";
   if (
     msg.includes("carrossel do instagram aceita no máximo") ||
@@ -105,6 +118,16 @@ export function classifyPublishError(err: unknown): PublishErrorCode {
     msg.includes("failed to mark story post")
   ) return "INTERNAL";
   return "UNKNOWN";
+}
+
+/** Código e subcódigo da Graph API guardados no erro por `throwGraphError`
+ * (só os que são números), para irem nos alertas. */
+export function graphCodes(err: unknown): { graphCode?: number; graphSubcode?: number } {
+  const e = (err ?? {}) as ClassifiableError;
+  return {
+    ...(typeof e.graphCode === "number" ? { graphCode: e.graphCode } : {}),
+    ...(typeof e.graphSubcode === "number" ? { graphSubcode: e.graphSubcode } : {}),
+  };
 }
 
 // ---------------------------------------------------------------------------
