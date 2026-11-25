@@ -14,7 +14,8 @@ import { clearHubSession } from '../lib/hubSession';
 import { useTheme } from '../hooks/useTheme';
 import { PoweredByMesaas } from '../components/PoweredByMesaas';
 import { resolveHubTheme, buildGoogleFontsHref, effectiveHubFonts, type HubLook } from '../theme';
-import { hubBootstrapQuery, isLoginRequiredError } from '../queries';
+import { hubBootstrapQuery, isHubPausedError, isLoginRequiredError } from '../queries';
+import { PortalPausado } from '../pages/PortalPausado';
 import type { HubLoginPayload } from '../types';
 import { canonicalHubToken, compactHubToken } from '../lib/hubLinks';
 import { ShellSkeleton } from '../components/Skeleton';
@@ -178,6 +179,14 @@ export function HubShell() {
 
   if (loading) {
     return <ShellSkeleton />;
+  }
+
+  // Paused portal (403 hub_paused, reverse trial ended): checked before the login and the
+  // cached data, like login_required. The stored session stays: the same link and login work
+  // again once the agency reactivates the portal.
+  if (isHubPausedError(bootstrapQuery.error)) {
+    const name = (bootstrapQuery.error as { agencyName?: unknown }).agencyName;
+    return <PortalPausado agencyName={typeof name === 'string' ? name : null} />;
   }
 
   if (loginPayload && workspace && token) {

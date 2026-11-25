@@ -95,6 +95,22 @@ export class HubApiError extends Error {
   }
 }
 
+/**
+ * 403 `hub_paused`: the agency's workspace is paused (reverse trial ended), so the link opens
+ * the PortalPausado page. Keyed on the code, never on the status: "Hub desativado." is a 403
+ * too. Never a reason to clear the stored session; the same link and login work again once
+ * the agency reactivates the portal.
+ */
+export class HubPausedError extends HubApiError {
+  readonly agencyName: string | null;
+  constructor(message: string, body?: Record<string, unknown>) {
+    super(message, 403, 'hub_paused', body);
+    this.name = 'HubPausedError';
+    const name = body?.agency_name;
+    this.agencyName = typeof name === 'string' && name.trim() ? name : null;
+  }
+}
+
 /** The answer a client without a valid login session gets from a hub-* function. */
 // Twin of queries.ts `isLoginRequiredError` (structural, also matches PostReferenceError); keep in step.
 export function isLoginRequired(error: unknown): boolean {
@@ -158,8 +174,10 @@ async function request<T>(
     }
     const raw = await res.json().catch(() => null);
     const body = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+    const message = typeof body.error === 'string' ? body.error : `HTTP ${res.status}`;
+    if (res.status === 403 && body.code === 'hub_paused') throw new HubPausedError(message, body);
     const error = new HubApiError(
-      typeof body.error === 'string' ? body.error : `HTTP ${res.status}`,
+      message,
       res.status,
       typeof body.code === 'string' ? body.code : undefined,
       body,

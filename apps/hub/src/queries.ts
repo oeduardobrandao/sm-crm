@@ -80,9 +80,27 @@ export function isLoginRequiredError(error: unknown) {
   );
 }
 
-/** One quick retry, except for `login_required`: retrying cannot fix a missing login. */
+/**
+ * `hub_paused` (api.ts HubPausedError): the agency's portal is paused. Structural for the same
+ * reason as `isLoginRequiredError`. It is an answer, not a blip, and it never clears the
+ * stored session (it does not go through `handleLoginRequired`).
+ */
+export function isHubPausedError(error: unknown) {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { code?: unknown }).code === 'hub_paused'
+  );
+}
+
+/** Answers that a retry cannot change: a missing login, a paused portal. */
+function isFinalAccessAnswer(error: unknown) {
+  return isLoginRequiredError(error) || isHubPausedError(error);
+}
+
+/** One quick retry, except for `login_required` and `hub_paused`: retrying cannot fix them. */
 function retryOnce(failures: number, error: Error) {
-  return !isLoginRequiredError(error) && failures < 1;
+  return !isFinalAccessAnswer(error) && failures < 1;
 }
 
 /**
@@ -271,9 +289,9 @@ export function createHubQueryClient() {
     }),
     defaultOptions: {
       queries: {
-        // A missing login is an answer, not a blip; everything else keeps TanStack's default
-        // of up to 3 retries. Queries that set their own `retry` keep it.
-        retry: (failures, error) => !isLoginRequiredError(error) && failures < 3,
+        // A missing login or a paused portal is an answer, not a blip; everything else keeps
+        // TanStack's default of up to 3 retries. Queries that set their own `retry` keep it.
+        retry: (failures, error) => !isFinalAccessAnswer(error) && failures < 3,
       },
     },
   });
