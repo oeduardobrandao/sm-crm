@@ -3,6 +3,7 @@ import { getConsent } from './consent';
 import { purgeMarketingStorage } from './legacyStorage';
 import { trackMetaEvent } from './metaPixelLoader';
 import { trackOpenAiAdsEvent } from './openaiAdsLoader';
+import type { BillingCurrency } from './planPrice';
 
 declare global {
   interface Window {
@@ -18,6 +19,8 @@ export const GOOGLE_TAG_SRC = 'https://www.googletagmanager.com/gtag/js';
 /** Label of the "Compra" conversion action (Google Ads > Metas > Compra > snippet de evento). */
 export const PURCHASE_CONVERSION_LABEL = 'sdWKCNvS268dEPru1oxF';
 const CHECKOUT_VALUE_KEY = 'gads_checkout_value_cents';
+/** Kept next to the cents. Missing (a tab from before USD billing) reads as BRL. */
+const CHECKOUT_CURRENCY_KEY = 'gads_checkout_value_currency';
 
 const GRANTED = {
   ad_storage: 'granted',
@@ -130,12 +133,20 @@ export function trackGoogleAdsConversion(
 /**
  * Called when a checkout starts, so the return page can report the plan's price: Stripe's
  * success URL carries no plan. sessionStorage survives the round trip to the hosted checkout
- * in the same tab.
+ * in the same tab. `currency` is the workspace's billing currency, stored next to the cents.
  */
-export function rememberCheckoutValue(cents: number | null | undefined): void {
+export function rememberCheckoutValue(
+  cents: number | null | undefined,
+  currency: BillingCurrency = 'brl',
+): void {
   try {
-    if (cents && cents > 0) sessionStorage.setItem(CHECKOUT_VALUE_KEY, String(cents));
-    else sessionStorage.removeItem(CHECKOUT_VALUE_KEY);
+    if (cents && cents > 0) {
+      sessionStorage.setItem(CHECKOUT_VALUE_KEY, String(cents));
+      sessionStorage.setItem(CHECKOUT_CURRENCY_KEY, currency);
+    } else {
+      sessionStorage.removeItem(CHECKOUT_VALUE_KEY);
+      sessionStorage.removeItem(CHECKOUT_CURRENCY_KEY);
+    }
   } catch {
     // Storage blocked: the conversion still goes out, without a value.
   }
@@ -147,18 +158,24 @@ export function rememberCheckoutValue(cents: number | null | undefined): void {
  */
 export function reportPurchaseConversion(): void {
   let cents: number | null = null;
+  let currency = 'BRL';
   try {
     cents = Number(sessionStorage.getItem(CHECKOUT_VALUE_KEY)) || null;
+    if (sessionStorage.getItem(CHECKOUT_CURRENCY_KEY) === 'usd') currency = 'USD';
     sessionStorage.removeItem(CHECKOUT_VALUE_KEY);
+    sessionStorage.removeItem(CHECKOUT_CURRENCY_KEY);
   } catch {
     // Storage blocked: report without a value.
   }
-  trackGoogleAdsConversion(PURCHASE_CONVERSION_LABEL, cents ? { amount: cents / 100 } : undefined);
-  trackMetaEvent('Purchase', cents ? { value: cents / 100, currency: 'BRL' } : undefined);
+  trackGoogleAdsConversion(
+    PURCHASE_CONVERSION_LABEL,
+    cents ? { amount: cents / 100, currency } : undefined,
+  );
+  trackMetaEvent('Purchase', cents ? { value: cents / 100, currency } : undefined);
   trackOpenAiAdsEvent({
     name: 'subscription_created',
     data: cents
-      ? { type: 'plan_enrollment', amount: Math.round(cents), currency: 'BRL' }
+      ? { type: 'plan_enrollment', amount: Math.round(cents), currency }
       : { type: 'plan_enrollment' },
   });
 }

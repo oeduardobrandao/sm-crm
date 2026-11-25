@@ -31,6 +31,12 @@ import {
 import { captureCheckoutStarted } from '@/lib/checkout-analytics';
 import { rememberCheckoutValue, reportPurchaseConversion } from '@/lib/googleAdsLoader';
 import { isPagarme12xEnabled } from '@/lib/pagarme-gate';
+import {
+  formatPlanPrice,
+  planAnnualCents,
+  planMonthlyCents,
+  type BillingCurrency,
+} from '@/lib/planPrice';
 import { PagarmeCheckoutDialog, formatUtcDateBR } from '@/components/billing/PagarmeCheckoutDialog';
 import {
   AlertDialog,
@@ -51,9 +57,12 @@ import './cobranca.css';
 
 const RECOMMENDED_ID = 'pro';
 
-/** plans.price_brl is stored in centavos (e.g. 9990 = R$ 99,90). */
-function formatBRL(centavos: number): string {
-  return (centavos / 100).toLocaleString(getIntlLocale(), { style: 'currency', currency: 'BRL' });
+/**
+ * Plan prices are stored in cents. BRL keeps the UI language's locale (as it always did here);
+ * USD uses en-US.
+ */
+function formatPrice(cents: number, currency: BillingCurrency): string {
+  return formatPlanPrice(cents, currency, currency === 'brl' ? getIntlLocale() : undefined);
 }
 
 function formatStorage(bytes: number): string {
@@ -156,6 +165,8 @@ export default function CobrancaPage() {
     enabled: isOwner,
   });
   const effectivePlanId = effectivePlan?.planId;
+  // The workspace's billing currency: prices, the 12x gate and the conversion value follow it.
+  const currency: BillingCurrency = effectivePlan?.billingCurrency ?? 'brl';
   const planSource = effectivePlan?.planSource;
   const isDemo = planSource === 'demo';
   // Running reverse trial (14 days of Pro without a card): its own plan is a first checkout
@@ -202,13 +213,15 @@ export default function CobrancaPage() {
   const annualSavingsPct = useMemo(() => {
     let best = 0;
     for (const p of plans ?? []) {
-      if (p.price_brl && p.price_brl_annual) {
-        const pct = Math.round((1 - p.price_brl_annual / (p.price_brl * 12)) * 100);
+      const month = planMonthlyCents(p, currency);
+      const year = planAnnualCents(p, currency);
+      if (month && year) {
+        const pct = Math.round((1 - year / (month * 12)) * 100);
         if (pct > best) best = pct;
       }
     }
     return best;
-  }, [plans]);
+  }, [plans, currency]);
 
   if (!isOwner) {
     if (isPhone) return <CobrancaPhoneLocked />;
@@ -282,7 +295,14 @@ export default function CobrancaPage() {
    */
   async function startStripeUpgrade(planId: string) {
     const plan = plans?.find((p) => p.id === planId);
-    rememberCheckoutValue(interval === 'year' ? plan?.price_brl_annual : plan?.price_brl);
+    rememberCheckoutValue(
+      plan
+        ? interval === 'year'
+          ? planAnnualCents(plan, currency)
+          : planMonthlyCents(plan, currency)
+        : null,
+      currency,
+    );
     setBusy(planId);
     try {
       const url = await startCheckout(planId, interval, 'billing');
@@ -300,7 +320,7 @@ export default function CobrancaPage() {
 
   async function handleUpgrade(planId: string) {
     const plan = plans?.find((p) => p.id === planId);
-    if (interval === 'year' && isPagarme12xEnabled(plan)) {
+    if (interval === 'year' && isPagarme12xEnabled(plan, currency)) {
       rememberCheckoutValue(plan?.price_brl_annual);
       if (reverseCheckoutExtra) {
         captureCheckoutStarted(planId, 'year', 'billing', 'pagarme', reverseCheckoutExtra);
@@ -359,7 +379,7 @@ export default function CobrancaPage() {
     // "Plano atual" estático. Por isso o switch vem ANTES de tudo, inclusive do check de
     // plano atual.
     const switchable =
-      canSwitch && interval === 'year' && isPagarme12xEnabled(p) && p.id !== 'free';
+      canSwitch && interval === 'year' && isPagarme12xEnabled(p, currency) && p.id !== 'free';
     if (switchable) {
       return (
         <>
@@ -403,7 +423,7 @@ export default function CobrancaPage() {
       // The à vista escape hatch only makes sense next to the 12x path itself: month plans and
       // non-gated year plans already charge price_brl_annual (or price_brl) directly via
       // startStripeUpgrade above, so this second CTA would just be a duplicate of the primary one.
-      const showUpfront = interval === 'year' && isPagarme12xEnabled(p);
+      const showUpfront = interval === 'year' && isPagarme12xEnabled(p, currency);
       return (
         <>
           <button
@@ -488,12 +508,13 @@ export default function CobrancaPage() {
             // parcela (pagarme_installment_cents), never price_brl_annual / 12 — that
             // derivation would contradict the exact figure the checkout dialog charges.
             // Non-gated cards (or gate off) keep today's derivation unchanged.
-            const gated = isYear && isPagarme12xEnabled(p);
+            const gated = isYear && isPagarme12xEnabled(p, currency);
+            const annual = planAnnualCents(p, currency);
             const monthly = gated
               ? (p.pagarme_installment_cents ?? 0)
-              : isYear && p.price_brl_annual != null
-                ? p.price_brl_annual / 12
-                : p.price_brl;
+              : isYear && annual != null
+                ? annual / 12
+                : planMonthlyCents(p, currency);
             const isCurrent = p.id === currentPlanId;
             const isReco = p.id === RECOMMENDED_ID && !isCurrent;
             const isInternal = isInternalPlan(p.id);
@@ -528,7 +549,7 @@ export default function CobrancaPage() {
                       <span className="plan-price__note">{t('cobrancaPage.exclusivePlan')}</span>
                     ) : monthly != null && monthly > 0 ? (
                       <>
-                        <span className="plan-price__amount">{formatBRL(monthly)}</span>
+                        <span className="plan-price__amount">{formatPrice(monthly, currency)}</span>
                         {!isYear && (
                           <span className="plan-price__period">{t('cobrancaPage.perMonth')}</span>
                         )}
@@ -539,7 +560,9 @@ export default function CobrancaPage() {
                   </div>
                   {gated && p.price_brl_annual != null && p.price_brl_annual > 0 && (
                     <div className="plan-price__secondary">
-                      {t('cobrancaPage.orUpfront', { price: formatBRL(p.price_brl_annual) })}
+                      {t('cobrancaPage.orUpfront', {
+                        price: formatPrice(p.price_brl_annual, currency),
+                      })}
                     </div>
                   )}
                 </div>

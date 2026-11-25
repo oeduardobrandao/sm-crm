@@ -5,6 +5,7 @@ import { Check } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import type { BillingPlan } from '@/services/billing';
 import { formatTrialDate } from '@/lib/reverseTrial';
+import { formatPlanPrice, planMonthlyCents, type BillingCurrency } from '@/lib/planPrice';
 import {
   CLIENT_BUCKETS,
   TEAM_BUCKETS,
@@ -24,11 +25,6 @@ import {
 /** Shown before both questions are answered, when it is a candidate. */
 const MOST_CHOSEN_ID = 'pro';
 
-/** plans.price_brl is stored in centavos (e.g. 9990 = R$ 99,90). */
-function formatBRL(centavos: number): string {
-  return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
 /**
  * `card_trial`: today's 30-day card trial. `reverse_running`: a reverse trial (14 days of Pro
  * without a card) is running and the first charge is on its end date. `reverse_ended`: the
@@ -38,6 +34,8 @@ export type ComecarMode = 'card_trial' | 'reverse_running' | 'reverse_ended';
 
 export interface TrialPlanPickerProps {
   plans: BillingPlan[];
+  /** The workspace's billing currency (default BRL): which price column is shown. */
+  currency?: BillingCurrency;
   busyPlanId: string | null;
   now: Date;
   mode?: ComecarMode;
@@ -58,6 +56,7 @@ export interface TrialPlanPickerProps {
  */
 export function TrialPlanPicker({
   plans,
+  currency = 'brl',
   busyPlanId,
   now,
   mode = 'card_trial',
@@ -71,11 +70,11 @@ export function TrialPlanPicker({
   const [clients, setClients] = useState<ClientBucket | null>(null);
   const [team, setTeam] = useState<TeamBucket | null>(null);
 
-  const candidates = trialCandidates(plans);
+  const candidates = trialCandidates(plans, currency);
   const freePlan = findFreePlan(plans);
   const answered = clients !== null && team !== null;
   const plan = answered
-    ? recommendPlan(plans, clients, team)
+    ? recommendPlan(plans, clients, team, currency)
     : (candidates.find((p) => p.id === preferredPlanId) ??
       candidates.find((p) => p.id === MOST_CHOSEN_ID) ??
       candidates[0] ??
@@ -88,7 +87,7 @@ export function TrialPlanPicker({
     setClients(nextClients);
     setTeam(nextTeam);
     if (nextClients === null || nextTeam === null) return;
-    const next = recommendPlan(plans, nextClients, nextTeam);
+    const next = recommendPlan(plans, nextClients, nextTeam, currency);
     if (next) onRecommended({ clients: nextClients, team: nextTeam, planId: next.id });
   }
 
@@ -96,6 +95,8 @@ export function TrialPlanPicker({
     mode === 'reverse_running' && trialEndsAt
       ? formatTrialDate(trialEndsAt)
       : format(estimateFirstCharge(now), "d 'de' MMMM", { locale: ptBR });
+  const price = plan ? formatPlanPrice(planMonthlyCents(plan, currency) ?? 0, currency) : '';
+  const zeroToday = formatPlanPrice(0, currency);
 
   return (
     <div className="comecar-picker">
@@ -208,19 +209,17 @@ export function TrialPlanPicker({
             </button>
             {mode === 'reverse_running' ? (
               <p className="comecar-reco__fine">
-                R$ 0 hoje. Primeira cobrança de {formatBRL(plan.price_brl ?? 0)}/mês em{' '}
-                {firstCharge}, no fim do teste. Cancele quando quiser.
+                {zeroToday} hoje. Primeira cobrança de {price}/mês em {firstCharge}, no fim do
+                teste. Cancele quando quiser.
               </p>
             ) : mode === 'reverse_ended' ? (
               <p className="comecar-reco__fine">
-                Cobrança de {formatBRL(plan.price_brl ?? 0)}/mês a partir de hoje. Cancele quando
-                quiser.
+                Cobrança de {price}/mês a partir de hoje. Cancele quando quiser.
               </p>
             ) : (
               <p className="comecar-reco__fine">
-                R$ 0 hoje. Primeira cobrança de {formatBRL(plan.price_brl ?? 0)}/mês por volta de{' '}
-                {firstCharge}, só se você continuar. Avisamos por e-mail 7 dias antes, com o valor e
-                a data exatos.
+                {zeroToday} hoje. Primeira cobrança de {price}/mês por volta de {firstCharge}, só se
+                você continuar. Avisamos por e-mail 7 dias antes, com o valor e a data exatos.
               </p>
             )}
             <button type="button" className="comecar-link" onClick={onShowAllPlans}>

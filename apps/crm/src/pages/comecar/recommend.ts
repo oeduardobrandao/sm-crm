@@ -5,6 +5,7 @@
  */
 
 import type { BillingPlan } from '@/services/billing';
+import { planMonthlyCents, type BillingCurrency } from '@/lib/planPrice';
 import {
   isSelectableTrialPlan,
   planHasPortal,
@@ -28,15 +29,16 @@ export const TEAM_BUCKETS: { id: TeamBucket; label: string; upper: number }[] = 
   { id: '6+', label: '6 ou mais', upper: Infinity },
 ];
 
-/** Paid, self-serve plans the trial can start on, cheapest first. */
-export function trialCandidates(plans: BillingPlan[]): BillingPlan[] {
+/** Paid, self-serve plans the trial can start on, cheapest first, priced in `currency`. */
+export function trialCandidates(
+  plans: BillingPlan[],
+  currency: BillingCurrency = 'brl',
+): BillingPlan[] {
+  const monthly = (p: BillingPlan) => planMonthlyCents(p, currency) ?? 0;
   return plans
-    .filter((p) => isSelectableTrialPlan(p) && (p.price_brl ?? 0) > 0)
+    .filter((p) => isSelectableTrialPlan(p, currency) && monthly(p) > 0)
     .sort(
-      (a, b) =>
-        (a.price_brl ?? 0) - (b.price_brl ?? 0) ||
-        a.sort_order - b.sort_order ||
-        a.id.localeCompare(b.id),
+      (a, b) => monthly(a) - monthly(b) || a.sort_order - b.sort_order || a.id.localeCompare(b.id),
     );
 }
 
@@ -52,8 +54,9 @@ export function recommendPlan(
   plans: BillingPlan[],
   clients: ClientBucket,
   team: TeamBucket,
+  currency: BillingCurrency = 'brl',
 ): BillingPlan | null {
-  const candidates = trialCandidates(plans);
+  const candidates = trialCandidates(plans, currency);
   if (candidates.length === 0) return null;
   const clientUpper = CLIENT_BUCKETS.find((b) => b.id === clients)?.upper ?? Infinity;
   const teamUpper = TEAM_BUCKETS.find((b) => b.id === team)?.upper ?? Infinity;

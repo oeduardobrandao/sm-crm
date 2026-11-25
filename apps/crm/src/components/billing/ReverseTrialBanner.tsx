@@ -19,7 +19,13 @@ import {
   reverseTrialPhase,
 } from '@/lib/reverseTrial';
 import { isNativeApp } from '@/native/platform';
-import { ReverseTrialEndDialog, formatCentavosBRL } from './ReverseTrialEndDialog';
+import {
+  formatPlanPrice,
+  planAnnualCents,
+  planMonthlyCents,
+  toBillingCurrency,
+} from '@/lib/planPrice';
+import { ReverseTrialEndDialog } from './ReverseTrialEndDialog';
 
 const DAY_MS = 86_400_000;
 const CARD_ADDED_DAYS = 3;
@@ -129,6 +135,7 @@ export function ReverseTrialBanner() {
         endsAt={endsAt}
         planId={plan.planId}
         daysLeft={daysLeft}
+        currency={plan.billingCurrency ?? 'brl'}
       />
     ) : null;
 
@@ -137,12 +144,16 @@ export function ReverseTrialBanner() {
   if (cardAdded && plan) {
     const firstChargeAt = subscription?.current_period_end ?? plan.reverseTrial.endsAt;
     const paidPlan = plans?.find((p) => p.id === plan.planId);
+    // The subscription's own currency when the row has one, else the workspace's.
+    const currency = subscription?.currency
+      ? toBillingCurrency(subscription.currency)
+      : (plan.billingCurrency ?? 'brl');
     const cents =
-      subscription?.provider === 'pagarme'
+      subscription?.provider === 'pagarme' || !paidPlan
         ? null
         : subscription?.billingInterval === 'year'
-          ? (paidPlan?.price_brl_annual ?? null)
-          : (paidPlan?.price_brl ?? null);
+          ? planAnnualCents(paidPlan, currency)
+          : planMonthlyCents(paidPlan, currency);
     if (!firstChargeAt) return null;
     const date = formatTrialDate(firstChargeAt);
     return (
@@ -151,7 +162,10 @@ export function ReverseTrialBanner() {
         <div className="banner-content reverse-trial-banner__text">
           <strong>{t('reverseTrial.banner.cardLead')}</strong>{' '}
           {cents
-            ? t('reverseTrial.banner.cardText', { amount: formatCentavosBRL(cents), date })
+            ? t('reverseTrial.banner.cardText', {
+                amount: formatPlanPrice(cents, currency),
+                date,
+              })
             : t('reverseTrial.banner.cardTextNoAmount', { date })}
         </div>
         {isOwner && (
