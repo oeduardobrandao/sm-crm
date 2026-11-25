@@ -348,7 +348,7 @@ export default function ComecarPage() {
   }
 
   async function handleSkip() {
-    captureEvent('trial_skipped');
+    if (mode === 'card_trial') captureEvent('trial_skipped');
     // The dashboard redirect reads the cached effective plan: mark it seen (and the
     // cache with it) first, or a fast click bounces straight back to /comecar.
     await ensureTrialOfferSeen();
@@ -551,7 +551,15 @@ export default function ComecarPage() {
             : undefined
         }
         onClose={() => setPagarmeDialog(null)}
-        onSuccess={() => navigate('/dashboard?trial=started')}
+        onSuccess={() =>
+          // The dashboard's ?trial=started toast promises the 30-day card trial; a reverse-trial
+          // checkout lands on Cobrança, which confirms the payment and polls the plan.
+          navigate(
+            mode === 'card_trial'
+              ? '/dashboard?trial=started'
+              : '/configuracao/cobranca?status=success',
+          )
+        }
       />
     </div>
   );

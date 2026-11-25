@@ -54,6 +54,17 @@ describe('useReadOnlyGrandfather', () => {
     await waitFor(() => expect(result.current).toEqual({ readOnly: true, pending: false }));
   });
 
+  it('stays read-only on a later plan that still lacks the flag', async () => {
+    limits(false);
+    vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
+      planId: 'start',
+      planSource: 'stripe',
+      reverseTrial: rt('downgraded'),
+    } as never);
+    const { result } = run();
+    await waitFor(() => expect(result.current).toEqual({ readOnly: true, pending: false }));
+  });
+
   it('stays locked for any other Free workspace', async () => {
     limits(false);
     vi.mocked(getEffectivePlanWithSource).mockResolvedValue({

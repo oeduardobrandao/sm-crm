@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { getEffectivePlanWithSource } from '@/services/billing';
-import { isExReverseTrial } from '@/lib/reverseTrial';
 
 export type ReadOnlyGrandfatherFlag = 'feature_financial' | 'feature_contracts';
 
@@ -28,5 +27,11 @@ export function useReadOnlyGrandfather(flag: ReadOnlyGrandfatherFlag): ReadOnlyG
   });
   if (!flagOff) return { readOnly: false, pending: false };
   if (plan.data === undefined) return { readOnly: false, pending: !plan.isError };
-  return { readOnly: isExReverseTrial(plan.data), pending: false };
+  // Any plan without the flag, not only Free: an ex-trial workspace that later picks a plan
+  // without Financeiro or Contratos keeps reading what it created during the trial.
+  const rt = plan.data.reverseTrial;
+  return {
+    readOnly: rt?.outcome === 'downgraded' && plan.data.planSource !== 'trial',
+    pending: false,
+  };
 }
