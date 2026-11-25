@@ -14,6 +14,7 @@ import { listActivePlans } from '@/services/billing';
 import type { WorkspaceUsage } from '@/hooks/useWorkspaceUsage';
 import { captureEvent } from '@/lib/analytics';
 import { ADD_CARD_PATH, formatTrialDate } from '@/lib/reverseTrial';
+import { isNativeApp } from '@/native/platform';
 
 export interface ReverseTrialEndedDialogProps {
   open: boolean;
@@ -101,7 +102,7 @@ export function ReverseTrialEndedDialog({
             </li>
           ))}
         </ul>
-        {showActions ? (
+        {showActions && !isNativeApp() ? (
           <>
             <DialogFooter className="reverse-trial-dialog__actions">
               <Button asChild>

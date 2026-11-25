@@ -16,6 +16,7 @@ import { useWorkspaceUsage } from '@/hooks/useWorkspaceUsage';
 import { captureEvent } from '@/lib/analytics';
 import { ADD_CARD_PATH, formatTrialDate } from '@/lib/reverseTrial';
 import { isPagarme12xEnabled } from '@/lib/pagarme-gate';
+import { isNativeApp } from '@/native/platform';
 
 /** plans.price_brl is stored in centavos. */
 export function formatCentavosBRL(centavos: number): string {
@@ -83,6 +84,9 @@ export function ReverseTrialEndDialog({
       );
     }
   }
+
+  // Never in the iOS app (apps/mobile DECISIONS.md D5): the parent already skips it there.
+  if (isNativeApp()) return null;
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
