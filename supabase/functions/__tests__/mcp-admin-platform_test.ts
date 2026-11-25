@@ -82,10 +82,12 @@ Deno.test("getWorkspace: 404 do handler vira McpInputError", async () => {
 });
 
 Deno.test("listPlans: reutiliza handleListPlans", async () => {
-  const { db } = makeFakeDb({ plans: [{ data: [{ id: "max", name: "Max", sort_order: 1 }], error: null }], workspaces: [{ data: null, error: null, count: 4 } as never] });
+  const { db } = makeFakeDb({ plans: [{ data: [{ id: "max", name: "Max", sort_order: 1 }], error: null }], workspaces: [{ data: null, error: null, count: 4 } as never, { data: null, error: null, count: 2 } as never] });
   const r = await listPlans(makeDeps(db));
   assertEquals(r.plans[0].id, "max");
+  // Teste reverso não conta como cliente pagante: vem separado em trial_workspace_count.
   assertEquals(r.plans[0].workspace_count, 4);
+  assertEquals(r.plans[0].trial_workspace_count, 2);
 });
 
 Deno.test("getDashboard: só agregados — nenhuma chave owner_* ou lista de workspaces sai", async () => {

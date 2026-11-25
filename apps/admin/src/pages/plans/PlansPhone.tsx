@@ -67,7 +67,8 @@ export function PlansPhone({ plans, isLoading, onCreate, onEdit }: PlansPhonePro
                   <span className="block whitespace-normal">
                     <span className="block">
                       {price.main}
-                      {price.suffix} · {workspaceCountLabel(plan.workspace_count)}
+                      {price.suffix} ·{' '}
+                      {workspaceCountLabel(plan.workspace_count, plan.trial_workspace_count)}
                     </span>
                     <span className="block">
                       {planLimits(plan).join(' · ')} · {featureSummary(plan)}

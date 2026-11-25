@@ -152,6 +152,8 @@ export interface Plan {
   created_at: string;
   updated_at: string;
   workspace_count: number;
+  /** Workspaces no teste reverso deste plano (fora de workspace_count). */
+  trial_workspace_count?: number;
 }
 
 export interface PlatformAdmin {

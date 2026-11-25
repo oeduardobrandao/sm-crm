@@ -110,7 +110,7 @@ function PlanCard({ plan, onEdit }: { plan: Plan; onEdit: (p: Plan) => void }) {
       </div>
 
       <p className="mt-auto border-t border-border pt-3 text-sm text-muted-foreground">
-        {workspaceCountLabel(plan.workspace_count)}
+        {workspaceCountLabel(plan.workspace_count, plan.trial_workspace_count)}
       </p>
     </Card>
   );
