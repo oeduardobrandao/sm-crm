@@ -287,6 +287,11 @@ begin
   perform ig_peer_benchmarks_refresh();
   assert (select source from ig_peer_benchmarks where band = '5k_20k' and metric = 'engagement_rate') = 'mercado',
     'desligar volta para mercado';
+  -- valor malformado: fica desligado, sem erro
+  update platform_settings set value = '{"enabled": "yes"}' where key = 'ig_peer_benchmarks_mesaas';
+  perform ig_peer_benchmarks_refresh();
+  assert (select source from ig_peer_benchmarks where band = '5k_20k' and metric = 'engagement_rate') = 'mercado',
+    '{"enabled": "yes"} fica em mercado';
   raise notice 'PASS 99_ig_peer_benchmarks chave';
 end $$;
 rollback;
