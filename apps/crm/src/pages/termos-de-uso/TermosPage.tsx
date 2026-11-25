@@ -132,12 +132,30 @@ export default function TermosPage() {
                   assinatura com mais recursos e limites maiores, descritos na página de preços.
                 </p>
                 <p>
-                  Teste grátis: cada workspace pode testar um plano pago uma única vez, por 30 dias.
-                  Para iniciar o teste pedimos um cartão de crédito. Nada é cobrado durante o teste.
-                  Enviamos um e-mail 7 dias antes da primeira cobrança, com o valor e a data. Se
+                  <strong>Teste do Pro sem cartão.</strong> Ao criar uma conta, o workspace pode
+                  ficar no plano Pro por 14 dias, sem cartão de crédito e sem nenhuma cobrança. Cada
+                  pessoa tem direito a um único teste, mesmo que crie outros workspaces. Se nenhum
+                  cartão for cadastrado até o fim do teste, o workspace volta automaticamente para o
+                  plano Free. Nada do que foi criado é apagado, mas passam a valer os limites do
+                  Free: financeiro e contratos ficam só para consulta, as respostas automáticas no
+                  Instagram param e os links do portal do cliente ficam pausados a partir de 7 dias
+                  depois do fim do teste, até o workspace voltar para um plano pago.
+                </p>
+                <p>
+                  <strong>Cartão cadastrado durante o teste.</strong> Se você cadastrar um cartão
+                  durante o teste, a primeira cobrança é feita na data em que o teste termina, com o
+                  valor mostrado no momento do cadastro. Nada é cobrado antes disso. Se cancelar
+                  antes dessa data, o workspace continua no teste até o fim e depois volta para o
+                  Free.
+                </p>
+                <p>
+                  <strong>Teste com cartão.</strong> Quando oferecido, o teste com cartão dura o
+                  período informado na contratação. Nada é cobrado durante o teste. Se houver tempo,
+                  enviamos um e-mail 7 dias antes da primeira cobrança, com o valor e a data. Se
                   você não cancelar até o fim do teste, a assinatura começa e a primeira cobrança é
                   feita automaticamente.
                 </p>
+                <p>Depois de usar um teste, a contratação de um plano pago é cobrada no ato.</p>
                 <p>Nos planos pagos:</p>
                 <ul>
                   <li>
@@ -306,7 +324,7 @@ export default function TermosPage() {
           fontSize: '0.9rem',
         }}
       >
-        Última atualização: outubro de 2026
+        Última atualização: novembro de 2026
         <br />
         Mesaas — EBS IT SOLUTIONS · CNPJ 63.758.902/0001-01
       </p>
