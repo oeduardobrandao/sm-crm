@@ -54,7 +54,7 @@
 ### Task 2: Tipos e lógica compartilhados
 
 **Files:**
-- Create: `supabase/functions/_shared/report-docs/health-types.ts` (só tipos, sem import de runtime)
+- Já existe (commitado antes da execução): `supabase/functions/_shared/report-docs/health-types.ts`; não recriar
 - Create: `packages/report-blocks/health.ts` (conteúdo de `apps/crm/src/lib/ig-account-health.ts`, importando os tipos do arquivo acima)
 - Move: `apps/crm/src/lib/__tests__/ig-account-health.test.ts` → `packages/report-blocks/__tests__/health.test.ts`
 - Delete: `apps/crm/src/lib/ig-account-health.ts`
