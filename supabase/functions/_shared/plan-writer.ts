@@ -17,8 +17,11 @@ const DB_TIMEOUT_MS = 10_000;
  * Teste reverso (spec 2026-11-24-reverse-trial-design.md, Part 4): the read-then-update below
  * has no lock, so every transition that involves the trial goes through a locked SQL function:
  *   - "subscribed" on a running trial (plan_source='trial') or on a workspace the sweep already
- *     downgraded → convert_reverse_trial. 'not_trial' on a running trial writes nothing (the
- *     function refused the plan); on a downgraded one it is a win-back and the normal write runs.
+ *     downgraded → convert_reverse_trial. On 'not_trial' the row is read again (the first read
+ *     has no lock: the cron may have ended the trial in between): still 'trial' means the
+ *     function refused the plan itself (invalid/default), so nothing is written; anything else
+ *     takes the normal guarded write (a manual comp is still never overridden), so a paying
+ *     customer is never left on Free behind a 200 to the provider.
  *   - "fallback" on a running trial: no-op (like a demo).
  *   - "fallback" on a converted trial that never paid (reverse_trial_first_paid_at null):
  *     before the original reverse_trial_ends_at → revert_reverse_trial_conversion (back to the
@@ -35,16 +38,7 @@ export async function writeWorkspacePlan(
   kind: "subscribed" | "fallback" = "subscribed",
   now: Date = new Date(),
 ) {
-  const { data: ws, error: readErr } = await svc
-    .from("workspaces")
-    .select(
-      "plan_source, reverse_trial_outcome, reverse_trial_ends_at, reverse_trial_first_paid_at",
-    )
-    .eq("id", workspaceId)
-    .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS)).single();
-  if (readErr) {
-    throw new Error(`workspace read failed for ${workspaceId}: ${readErr.message}`);
-  }
+  const ws = await readWorkspace(svc, workspaceId);
   if (ws?.plan_source === "manual") return;
   if (ws?.plan_source === "demo" && kind === "fallback") return;
 
@@ -56,7 +50,9 @@ export async function writeWorkspacePlan(
         p_source: planSource,
       });
       if (result === "converted" || result === "rewritten_late") return;
-      if (ws?.plan_source === "trial") {
+      const fresh = await readWorkspace(svc, workspaceId);
+      if (fresh?.plan_source === "manual") return;
+      if (fresh?.plan_source === "trial") {
         console.error(
           `[plan-writer] convert_reverse_trial refused plan ${planId} for trial workspace ${workspaceId}; plan left unchanged`,
         );
@@ -83,11 +79,12 @@ export async function writeWorkspacePlan(
 }
 
 /**
- * First charge FAILED on a subscription bound during a reverse trial (Stripe past_due before
- * any payment). statusToPlanId leaves the plan alone on past_due (dunning grace), so without
+ * First charge FAILED on a subscription bound during a reverse trial (Stripe past_due or a
+ * non-terminal Pagar.me charge.payment_failed, before any payment). statusToPlanId leaves the plan alone on past_due (dunning grace), so without
  * this the never-paid conversion would keep Pro until the provider finally cancels. Spec Part 4:
  * a conversion that never paid is a downgraded trial once the original end has passed. Acts
- * only on outcome 'converted' with reverse_trial_first_paid_at null and now >= the original
+ * only on outcome 'converted' with reverse_trial_card_added_at set,
+ * reverse_trial_first_paid_at null and now >= the original
  * reverse_trial_ends_at (never on a comp); returns whether it downgraded. Throws on error.
  */
 export async function downgradeUnpaidReverseTrialConversion(
@@ -97,19 +94,11 @@ export async function downgradeUnpaidReverseTrialConversion(
   planSource: "stripe" | "pagarme",
   now: Date = new Date(),
 ): Promise<boolean> {
-  const { data: ws, error: readErr } = await svc
-    .from("workspaces")
-    .select(
-      "plan_source, reverse_trial_outcome, reverse_trial_ends_at, reverse_trial_first_paid_at",
-    )
-    .eq("id", workspaceId)
-    .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS)).single();
-  if (readErr) {
-    throw new Error(`workspace read failed for ${workspaceId}: ${readErr.message}`);
-  }
+  const ws = await readWorkspace(svc, workspaceId);
   if (
     ws?.plan_source === "manual" || ws?.reverse_trial_outcome !== "converted" ||
-    ws?.reverse_trial_first_paid_at || !ws?.reverse_trial_ends_at ||
+    !ws?.reverse_trial_card_added_at || ws?.reverse_trial_first_paid_at ||
+    !ws?.reverse_trial_ends_at ||
     now < new Date(ws.reverse_trial_ends_at)
   ) {
     return false;
@@ -127,6 +116,21 @@ export async function downgradeUnpaidReverseTrialConversion(
  */
 export async function markReverseTrialFirstPaid(svc: SupabaseClient, workspaceId: string) {
   await callRpc(svc, "mark_reverse_trial_first_paid", { p_workspace: workspaceId });
+}
+
+// deno-lint-ignore no-explicit-any
+async function readWorkspace(svc: SupabaseClient, workspaceId: string): Promise<any> {
+  const { data, error } = await svc
+    .from("workspaces")
+    .select(
+      "plan_source, reverse_trial_outcome, reverse_trial_ends_at, reverse_trial_card_added_at, reverse_trial_first_paid_at",
+    )
+    .eq("id", workspaceId)
+    .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS)).single();
+  if (error) {
+    throw new Error(`workspace read failed for ${workspaceId}: ${error.message}`);
+  }
+  return data;
 }
 
 async function updatePlan(

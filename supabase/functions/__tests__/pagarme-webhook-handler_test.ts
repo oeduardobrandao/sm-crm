@@ -58,6 +58,8 @@ interface DbFx {
   defaultPlan?: { id: string } | null;
   defaultPlanError?: { message: string } | null;
   workspacePlanSource?: string | null;
+  /** Full workspaces row for the reverse-trial reads (overrides workspacePlanSource). */
+  workspaceRow?: Record<string, unknown>;
   workspaceReadError?: { message: string } | null;
   workspaceWriteError?: { message: string } | null;
   // grant_pagarme_plan RPC result: the count of workspaces rows written (0 = a concurrent
@@ -118,7 +120,7 @@ function makeDb(fx: DbFx & { events: Ev[] }, seq: { n: number }) {
       }
       if (table === "workspaces" && op === "read") {
         return {
-          data: { plan_source: fx.workspacePlanSource ?? "system" },
+          data: fx.workspaceRow ?? { plan_source: fx.workspacePlanSource ?? "system" },
           error: fx.workspaceReadError ?? null,
         };
       }
@@ -776,4 +778,45 @@ Deno.test("teste reverso: charge.paid stamps the first payment; subscription.upd
     updated.events.some((e) => e.table === "rpc:mark_reverse_trial_first_paid"),
     false,
   );
+});
+
+Deno.test("teste reverso: failed first charge on a never-paid conversion, on or after the original end: Free + mark_reverse_trial_unpaid", async () => {
+  const { events, result } = run(
+    "charge.payment_failed",
+    { id: "ch_1", invoice: { subscription_id: SUB }, last_transaction: { attempt_count: 1 } },
+    {
+      subRow: baseRow,
+      workspaceRow: {
+        plan_source: "pagarme",
+        reverse_trial_outcome: "converted",
+        reverse_trial_ends_at: NOW.toISOString(), // exactly the original end
+        reverse_trial_card_added_at: "2026-08-01T00:00:00Z",
+        reverse_trial_first_paid_at: null,
+      },
+    },
+  );
+  assertEquals(await result, "dunning:first");
+  const planWrite = events.find((e) => e.table === "workspaces" && e.op === "update");
+  assertEquals(planWrite?.values, { plan_id: "free", plan_source: "pagarme" });
+  assert(events.some((e) => e.table === "rpc:mark_reverse_trial_unpaid"));
+});
+
+Deno.test("teste reverso: failed first charge before the original end: nothing beyond dunning", async () => {
+  const { events, result } = run(
+    "charge.payment_failed",
+    { id: "ch_1", invoice: { subscription_id: SUB }, last_transaction: { attempt_count: 1 } },
+    {
+      subRow: baseRow,
+      workspaceRow: {
+        plan_source: "pagarme",
+        reverse_trial_outcome: "converted",
+        reverse_trial_ends_at: new Date(NOW.getTime() + 60_000).toISOString(),
+        reverse_trial_card_added_at: "2026-08-01T00:00:00Z",
+        reverse_trial_first_paid_at: null,
+      },
+    },
+  );
+  assertEquals(await result, "dunning:first");
+  assertEquals(events.some((e) => e.table === "workspaces" && e.op === "update"), false);
+  assertEquals(events.some((e) => e.table === "rpc:mark_reverse_trial_unpaid"), false);
 });

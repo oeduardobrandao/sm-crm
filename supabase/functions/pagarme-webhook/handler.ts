@@ -3,6 +3,7 @@
 // to the shell → 5xx → Pagar.me redelivers (up to 3 attempts, dashboard-configured).
 
 import { getDefaultPlanId } from "../_shared/billing-logic.ts";
+import { downgradeUnpaidReverseTrialConversion } from "../_shared/plan-writer.ts";
 import {
   buildChargeDunningKey,
   canWebhookWrite,
@@ -282,7 +283,16 @@ export function createPagarmeWebhookHandler(deps: PagarmeWebhookDeps) {
       pagarme_dunning_key: key,
       updated_at: now().toISOString(),
     }, { observedStatus: row.status, observedDunningKey: row.pagarme_dunning_key });
-    // past_due keeps the plan (grace, like statusToPlanId) — no plan write here.
+    // past_due keeps the plan (grace, like statusToPlanId) — no plan write here, EXCEPT for a
+    // reverse-trial conversion that never paid, on or after the original trial end: it drops to
+    // Free like a trial without a card (same rule as stripe-webhook's past_due branch).
+    await downgradeUnpaidReverseTrialConversion(
+      deps.db,
+      row.workspace_id,
+      await getDefaultPlanId(deps.db),
+      "pagarme",
+      now(),
+    );
     const stage = selectPagarmeDunningStage(episode.failed_payment_count);
     await deps.notify(row.workspace_id, stage);
     return `dunning:${stage}`;

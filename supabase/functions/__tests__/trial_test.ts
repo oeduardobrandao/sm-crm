@@ -70,3 +70,21 @@ Deno.test("isWorkspaceOwner accepts only an owner membership row", () => {
   assertEquals(isWorkspaceOwner(null), false);
   assertEquals(isWorkspaceOwner(undefined), false);
 });
+
+Deno.test("idempotency_key_changes_with_trial_state", async () => {
+  const { checkoutTrialTag } = await import("../_shared/trial.ts");
+  const now = Date.UTC(2026, 11, 1, 10, 0, 0);
+  const key = (tag: string) => buildCheckoutIdempotencyKey("ws-1", "pro", "month", "billing", now, tag);
+  const running = checkoutTrialTag({ kind: "reverse", trialEnd: new Date("2026-12-10T15:00:00Z") });
+  const extended = checkoutTrialTag({ kind: "reverse", trialEnd: new Date("2026-12-20T15:00:00Z") });
+  const ended = checkoutTrialTag({ kind: "none" });
+  const card = checkoutTrialTag({ kind: "days", days: 30 });
+  // Every trial state (and each trial_end) sends different Stripe parameters: different key.
+  const keys = new Set([key(running), key(extended), key(ended), key(card)]);
+  assertEquals(keys.size, 4);
+  // Same state inside the hour: same key (two racing tabs still share one session).
+  assertEquals(
+    key(running),
+    buildCheckoutIdempotencyKey("ws-1", "pro", "month", "billing", now + 30 * 60_000, running),
+  );
+});

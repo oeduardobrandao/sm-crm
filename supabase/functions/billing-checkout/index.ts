@@ -3,6 +3,7 @@ import { buildCorsHeaders, resolveAllowedOrigin } from "../_shared/cors.ts";
 import { stripe } from "../_shared/stripe.ts";
 import {
   buildCheckoutIdempotencyKey,
+  checkoutTrialTag,
   resolveCheckoutSource,
   resolveReturnPaths,
 } from "../_shared/trial.ts";
@@ -226,6 +227,7 @@ Deno.serve(async (req: Request) => {
         interval,
         source,
         nowMs,
+        checkoutTrialTag(trial),
       ),
     });
 

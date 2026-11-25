@@ -69,7 +69,22 @@ export function buildCheckoutIdempotencyKey(
   interval: string,
   source: string,
   nowMs: number,
+  // Trial state (checkoutTrialTag). It changes the request too (trial_end, trial_period_days
+  // or nothing), and it can change inside the hour (reverse-trial cron, Admin end-now or
+  // extension): without it the same key would carry different parameters and Stripe would
+  // answer idempotency_error for the rest of the hour.
+  trialTag = "",
 ): string {
   const bucket = Math.floor(nowMs / 3_600_000);
-  return `co_${workspaceId}_${planId}_${interval}_${source}_${bucket}`;
+  const base = `co_${workspaceId}_${planId}_${interval}_${source}_${bucket}`;
+  return trialTag ? `${base}_${trialTag}` : base;
+}
+
+/** Short, stable tag of a checkout's trial parameters, for buildCheckoutIdempotencyKey. */
+export function checkoutTrialTag(
+  trial: { kind: "reverse"; trialEnd: Date } | { kind: "days"; days: number } | { kind: "none" },
+): string {
+  if (trial.kind === "reverse") return `r${Math.floor(trial.trialEnd.getTime() / 1000)}`;
+  if (trial.kind === "days") return `d${trial.days}`;
+  return "n";
 }
