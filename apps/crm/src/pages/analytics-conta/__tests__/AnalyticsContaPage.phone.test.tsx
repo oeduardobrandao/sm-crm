@@ -434,6 +434,45 @@ describe('AnalyticsContaPage (phone)', () => {
     );
   });
 
+  it('a reopen while the tag toggle is still saving also invalidates its refresh', async () => {
+    vi.mocked(getAccountHealth).mockResolvedValue({
+      bestPost: { id: 'post-old', ratio: 1.4 },
+    } as never);
+    let resolveToggle: (value: unknown) => void = () => {};
+    vi.mocked(assignTagToPost).mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveToggle = resolve;
+      }) as never,
+    );
+    vi.mocked(getPostAnalyticsById)
+      .mockResolvedValueOnce(post({ id: 'post-old', caption: 'Post antigo', tags: [] }))
+      .mockResolvedValueOnce(post({ id: 'post-old', caption: 'Post antigo', tags: [] }))
+      .mockResolvedValueOnce(post({ id: 'post-old', caption: 'Post antigo', tags: [TAG] }));
+    renderPage();
+    await ready();
+    await screen.findByRole('list', { name: 'Performance de conteúdo' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver o post' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Métricas do post' });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Educativo' }));
+    await waitFor(() => expect(assignTagToPost).toHaveBeenCalled());
+
+    // Closed and reopened while the toggle is still saving.
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Fechar' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Ver o post' }));
+    const reopened = await screen.findByRole('dialog', { name: 'Métricas do post' });
+    expect(getPostAnalyticsById).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      resolveToggle(undefined);
+    });
+    await act(async () => {});
+    expect(within(reopened).getByRole('button', { name: 'Educativo' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+  });
+
   it('"Ver o post" shows a toast when fetching the post fails', async () => {
     vi.mocked(getAccountHealth).mockResolvedValue({
       bestPost: { id: 'post-old', ratio: 1.4 },

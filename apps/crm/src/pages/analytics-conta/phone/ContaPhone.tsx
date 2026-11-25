@@ -306,14 +306,16 @@ export function ContaPhone(props: ContaPhoneProps) {
   // A post fetched by id is not in the list, so the list refetch after a tag toggle does not
   // reach it: fetch it again, unless the user has moved on meanwhile.
   const toggleTag = async (post: PostAnalytics, tag: PostTag, assigned: boolean) => {
+    // Captured before the toggle's await: an open or close during the toggle also invalidates it.
+    const request = openRequestRef.current;
     await onToggleTag(post, tag, assigned);
     if (fetchedPost === null || post.id !== fetchedPost.id || selectedPostId !== post.id) return;
     if (posts.some((p) => p.id === post.id)) return;
-    const request = openRequestRef.current;
     try {
       const refreshed = await getPostAnalyticsById(clientId, post.id, dists);
       if (request !== openRequestRef.current || !refreshed) return;
-      setFetchedPost(refreshed);
+      // Never replace a different post that was fetched meanwhile.
+      setFetchedPost((prev) => (prev?.id === refreshed.id ? refreshed : prev));
     } catch {
       // The toggle itself succeeded; the sheet keeps the previous copy.
     }
