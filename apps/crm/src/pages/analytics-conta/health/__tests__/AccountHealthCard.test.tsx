@@ -113,7 +113,7 @@ describe('AccountHealthCard', () => {
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText('Mercado')).not.toBeInTheDocument();
-    expect(screen.queryByText(/Referência de mercado/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Estimativa de mercado/)).not.toBeInTheDocument();
     expect(screen.getByText('Taxa de engajamento')).toBeInTheDocument();
     expect(screen.getByText('Posts em 30 dias')).toBeInTheDocument();
     expect(screen.getByText('Visualizações nos reels')).toBeInTheDocument();
@@ -154,7 +154,9 @@ describe('AccountHealthCard', () => {
       screen.getByText('À frente de cerca de 96% das contas do seu tamanho'),
     ).toBeInTheDocument();
     expect(
-      screen.getByText('†Referência de mercado para contas de 5 mil a 20 mil seguidores.'),
+      screen.getByText(
+        '†Estimativa de mercado para contas de 5 mil a 20 mil seguidores, a partir de estudos públicos com métricas parecidas.',
+      ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/Comparado com/)).not.toBeInTheDocument();
     expect(screen.queryByText('Mercado')).not.toBeInTheDocument();
@@ -170,7 +172,9 @@ describe('AccountHealthCard', () => {
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByText('†Referência de mercado para contas de 5 mil a 20 mil seguidores.'),
+      screen.getByText(
+        '†Estimativa de mercado para contas de 5 mil a 20 mil seguidores, a partir de estudos públicos com métricas parecidas.',
+      ),
     ).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -315,8 +319,39 @@ describe('AccountHealthCard', () => {
   });
 
   it('never renders an em-dash', () => {
-    const h = makeHealth({ posts_30d: 'mercado', reels_share: null });
-    const { container } = renderCard({ ...h, metrics: { ...h.metrics, reel_views: null } });
-    expect(container.textContent).not.toContain('—');
+    const allMercado = {
+      engagement_rate: 'mercado',
+      posts_30d: 'mercado',
+      reel_views: 'mercado',
+      reels_share: 'mercado',
+    } as const;
+    const partial = makeHealth({ posts_30d: 'mercado', reels_share: null });
+    const cases: AccountHealth[] = [
+      makeHealth(),
+      makeHealth(allMercado),
+      makeHealth({ posts_30d: 'mercado', reels_share: 'mercado' }),
+      { ...partial, metrics: { ...partial.metrics, reel_views: null } },
+      makeHealth({}, { followers: 0 }),
+    ];
+    for (const h of cases) {
+      const { container, unmount } = renderCard(h);
+      expect(container.textContent).not.toContain('—');
+      unmount();
+    }
+  });
+
+  it('uses headings for the question and metric titles', () => {
+    renderCard(makeHealth());
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Seu Instagram está indo bem?' }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { level: 3 })).toHaveLength(4);
+  });
+
+  it('uses an h3 for the empty-state heading', () => {
+    renderCard(makeHealth({}, { followers: 0 }));
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'Ainda não dá para comparar' }),
+    ).toBeInTheDocument();
   });
 });

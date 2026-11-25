@@ -20721,6 +20721,8 @@ button.phone-stat-tile:active {
   border-bottom: 1px solid var(--border-color);
 }
 .ig-health-q {
+  letter-spacing: normal;
+  line-height: inherit;
   font-family: var(--font-heading);
   font-weight: 600;
   font-size: 16px;
@@ -20773,6 +20775,10 @@ button.phone-stat-tile:active {
   border-right: 1px solid var(--border-color);
 }
 .ig-health-m__t {
+  font-family: inherit;
+  line-height: inherit;
+  letter-spacing: normal;
+  color: inherit;
   font-weight: 600;
   font-size: 13.5px;
   margin: 0;

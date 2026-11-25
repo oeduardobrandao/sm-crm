@@ -109,8 +109,8 @@ export function AccountHealthCard({
   for (const key of METRIC_ORDER) {
     const value = health.metrics[key];
     const benchmark = health.benchmarks[key];
-    // Benchmark malformado (menos de 99 cortes) conta como sem referência.
-    if (value == null || !benchmark || benchmark.cuts.length < 99) continue;
+    // Benchmark malformado (diferente de 99 cortes) conta como sem referência.
+    if (value == null || !benchmark || benchmark.cuts.length !== 99) continue;
     scored.push({ key, value, benchmark, pct: percentileFromCuts(value, benchmark.cuts) });
   }
 
@@ -121,8 +121,8 @@ export function AccountHealthCard({
     return (
       <article aria-label={TITLE} className={rootClass}>
         <div className="ig-health-empty">
-          <p className="ig-health-q">{TITLE}</p>
-          <h3>Ainda não dá para comparar</h3>
+          <h2 className="ig-health-q">{TITLE}</h2>
+          <h3 className="ig-health-empty__title">Ainda não dá para comparar</h3>
           <p>
             Publique alguns posts e sincronize. A comparação aparece quando a conta tiver posts de
             feed nos últimos 90 dias.
@@ -153,12 +153,13 @@ export function AccountHealthCard({
     .map((m) => m.benchmark.sample_size as number);
   const mesaasCount = mesaasSamples.length > 0 ? Math.min(...mesaasSamples) : null;
 
+  const best = health.bestPost;
   const scoredByKey = new Map(scored.map((m) => [m.key, m]));
 
   return (
     <article aria-label={TITLE} className={rootClass}>
       <div className="ig-health-top">
-        <p className="ig-health-q">{TITLE}</p>
+        <h2 className="ig-health-q">{TITLE}</h2>
         <div className={`ig-health-verdict ig-health-tone-${verdict.tone}`}>
           <ToneIcon tone={verdict.tone} />
           <span>{verdict.label}</span>
@@ -180,9 +181,9 @@ export function AccountHealthCard({
             const reason = NULL_REASONS[key];
             return (
               <div key={key} className="ig-health-m">
-                <p className="ig-health-m__t">
+                <h3 className="ig-health-m__t">
                   <span>{title}</span>
-                </p>
+                </h3>
                 <p className="ig-health-m__empty">
                   <span>Sem dados suficientes.</span>
                   {reason && (
@@ -200,9 +201,9 @@ export function AccountHealthCard({
           if (!m) {
             return (
               <div key={key} className="ig-health-m">
-                <p className="ig-health-m__t">
+                <h3 className="ig-health-m__t">
                   <span>{title}</span>
-                </p>
+                </h3>
                 <div className="ig-health-kv">
                   <div className="ig-health-kv__you">
                     Você: <b>{formatMetric(key, value)}</b>
@@ -220,10 +221,10 @@ export function AccountHealthCard({
           const approx = source === 'mercado';
           return (
             <div key={key} className="ig-health-m">
-              <p className="ig-health-m__t">
+              <h3 className="ig-health-m__t">
                 <span>{title}</span>
                 {mixed && <span className="ig-health-src">{SOURCE_BADGE[source]}</span>}
-              </p>
+              </h3>
               <div className={`ig-health-m__v ig-health-tone-${v.tone}`}>
                 <ToneIcon tone={v.tone} />
                 <span>{v.label}</span>
@@ -260,15 +261,15 @@ export function AccountHealthCard({
           </p>
         )}
         {sources.has('mercado') && (
-          <p className="ig-health-fine">{`†Referência de mercado para contas ${bandLabel(band)}.`}</p>
+          <p className="ig-health-fine">{`†Estimativa de mercado para contas ${bandLabel(band)}, a partir de estudos públicos com métricas parecidas.`}</p>
         )}
-        {health.bestPost && (
+        {best && (
           <p className="ig-health-best">
-            {`Seu melhor post dos últimos 30 dias teve ${ratioFormatter.format(health.bestPost.ratio)}x o resultado normal da sua conta.`}{' '}
+            {`Seu melhor post dos últimos 30 dias teve ${ratioFormatter.format(best.ratio)}x o resultado normal da sua conta.`}{' '}
             <button
               type="button"
               className="ig-health-best__link"
-              onClick={() => onOpenPost(health.bestPost!.id)}
+              onClick={() => onOpenPost(best.id)}
             >
               Ver o post
             </button>
