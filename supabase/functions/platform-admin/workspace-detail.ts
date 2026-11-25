@@ -54,7 +54,9 @@ export async function handleGetWorkspace(
 
   const { data: ws, error } = await svc
     .from("workspaces")
-    .select("id, name, logo_url, created_at, plan_id, plan_source, demo_created_at, storage_used_bytes")
+    .select(
+      "id, name, logo_url, created_at, plan_id, plan_source, demo_created_at, storage_used_bytes, reverse_trial_started_at, reverse_trial_ends_at, reverse_trial_ended_at, reverse_trial_outcome, reverse_trial_card_added_at, reverse_trial_first_paid_at",
+    )
     .eq("id", workspace_id)
     .single();
   if (error || !ws) {
@@ -137,7 +139,20 @@ export async function handleGetWorkspace(
   const affiliate = await loadWorkspaceAffiliate(svc, workspace_id);
 
   const { storage_used_bytes: storageUsed, ...rest } = ws;
-  const workspace = { ...rest, demo_created_at: (rest as { demo_created_at?: string | null }).demo_created_at ?? null };
+  const r = rest as Record<string, unknown>;
+  const orNull = (k: string) => (r[k] as string | null | undefined) ?? null;
+  // Reverse trial (spec 2026-11-24-reverse-trial-design Part 4): the Admin badge and the
+  // extend/end-now actions read these. Always present (null), so the Admin can rely on them.
+  const workspace = {
+    ...rest,
+    demo_created_at: orNull("demo_created_at"),
+    reverse_trial_started_at: orNull("reverse_trial_started_at"),
+    reverse_trial_ends_at: orNull("reverse_trial_ends_at"),
+    reverse_trial_ended_at: orNull("reverse_trial_ended_at"),
+    reverse_trial_outcome: orNull("reverse_trial_outcome"),
+    reverse_trial_card_added_at: orNull("reverse_trial_card_added_at"),
+    reverse_trial_first_paid_at: orNull("reverse_trial_first_paid_at"),
+  };
 
   return new Response(JSON.stringify({
     workspace,

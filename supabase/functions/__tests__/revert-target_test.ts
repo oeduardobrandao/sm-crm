@@ -77,3 +77,19 @@ Deno.test("canceled with period end already in the past => system + default plan
     { plan_source: "system", plan_id: "free" },
   );
 });
+
+Deno.test("revert_never_restores_trial", () => {
+  // Un-comping must never hand a workspace back to the reverse trial: once a comp ended it
+  // (outcome ended_by_admin), the only targets are the live subscription or the default plan.
+  const subs = [
+    null,
+    { status: "canceled", plan_id: "pro" },
+    { status: "active", plan_id: "pro" },
+    { status: "trialing", plan_id: "pro", provider: "pagarme" },
+  ];
+  for (const sub of subs) {
+    const target = revertPlanTarget(sub, "free", NOW);
+    assertEquals(["stripe", "pagarme", "system"].includes(target.plan_source), true);
+    assertEquals((target.plan_source as string) === "trial", false);
+  }
+});
