@@ -65,6 +65,10 @@ Schedule-time checks catch everything else synchronously (see `validateForSchedu
   sees business/creator accounts, so it would wrongly reject personal profiles.
   Creating a throwaway container to validate would burn the account's container
   budget. Publish-time validation plus a clear error is the v1 answer.
+  **Revisto em 2026-11-25:** com cerca de 60 posts com colaborador por mês no
+  produto todo, um container descartável no agendamento custa perto de 2 por dia,
+  contra o limite de 400 containers por conta em 24h. O agendamento passou a
+  testar os colaboradores assim (`probeCollaborators`), com falha aberta.
 - Collaborator autocomplete or a per-client list of frequent partners.
 - MCP tools (`create_post`/`update_post`), Post Express and the Hub writing
   collaborators. Read-only in the Hub. MCP is a small follow-up.

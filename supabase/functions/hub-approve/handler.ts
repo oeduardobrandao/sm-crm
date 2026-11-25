@@ -1,5 +1,6 @@
 import { createJsonResponder } from "../_shared/http.ts";
 import { validateForScheduling } from "../_shared/instagram-publish-utils.ts";
+import { recordRefusedCollaborators } from "../_shared/instagram-collaborators.ts";
 import { hubAccessDenied, resolveHubAccess } from "../_shared/hub-token.ts";
 import { MAX_REFERENCES_PER_POST } from "../_shared/post-references.ts";
 
@@ -285,11 +286,16 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
         // Express posts have no scheduled_at: approval IS the publish moment, so the
         // min-future date check is skipped and the post is stamped to publish now.
         const isExpress = post.is_express === true;
+        // Express publica na hora (o container sai em seguida e a recusa
+        // aparece logo); só o agendamento com data paga o teste de colaboradores.
         const validation = await validateForScheduling(
           db,
           post_id,
-          isExpress ? { skipDateCheck: true } : undefined,
+          isExpress ? { skipDateCheck: true } : { probeCollaborators: true },
         );
+        // Recusa no teste: a aprovação vale e o post fica sem agendar, como em
+        // qualquer falha de validação; os chips ficam vermelhos para a agência.
+        await recordRefusedCollaborators(db, post_id, validation.refusedCollaborators);
         if (validation.ok) {
           const { error: scheduleErr } = await db.rpc("record_post_status_change", {
             p_post_id: post_id,

@@ -174,6 +174,7 @@ Monorepo with npm workspaces:
 - `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
 - `TOKEN_ENCRYPTION_KEY` -- REQUIRED, no default
 - `META_APP_ID`, `META_APP_SECRET`, `META_REDIRECT_URI` -- Instagram/Meta OAuth
+- `IG_COLLAB_PROBE_IMAGE_URL` -- opcional. Imagem JPEG pública do teste de colaboradores no agendamento (`probeCollaborators` em `_shared/instagram-publish-utils.ts`). Sem ela, usa `${APP_BASE_URL}/ig-collab-probe.jpg` (arquivo em `public/`); sem as duas, o teste é pulado e o agendamento segue. Secret comum: mudar não precisa de deploy
 - `OAUTH_REDIRECT_BASE` -- Production URL for OAuth redirects (default: http://localhost:5173)
 - `ALLOWED_ORIGINS` -- Comma-separated allowed CORS origins
 - `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` -- Cloudflare R2

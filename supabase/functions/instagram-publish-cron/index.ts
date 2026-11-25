@@ -5,7 +5,7 @@ import { timingSafeEqual } from "../_shared/crypto.ts";
 import { createPublishCronHandler } from "./handler.ts";
 import { reportCronFailure } from "../_shared/triage.ts";
 import type { CronFailureError } from "../_shared/notify.ts";
-import { classifyPublishError } from "../_shared/publish-error-codes.ts";
+import { classifyPublishError, graphCodes } from "../_shared/publish-error-codes.ts";
 import {
   buildCollaboratorFailureFields,
   normalizeCollaborators,
@@ -100,7 +100,7 @@ async function markFailed(
   clientId?: number,
   collaborators: string[] = [],
 ) {
-  const errorCode = classifyPublishError(err);
+  const errorCode = classifyPublishError(err, { hasCollaborators: collaborators.length > 0 });
   const message = err instanceof Error ? err.message : String(err);
   // publish_processing_at MUST be nulled on every failure, same as on success: the gallery's
   // post_file_link_replace RPC (20260916000001) refuses to swap a post's media whenever this
@@ -420,11 +420,12 @@ Deno.serve(createPublishCronHandler({
     const failedPosts: CronFailureError[] = [];
 
     function collectFailure(post: ClaimedPost, err: unknown) {
-      const errorCode = classifyPublishError(err);
+      const collaborators = normalizeCollaborators(post.ig_collaborators);
+      const errorCode = classifyPublishError(err, { hasCollaborators: collaborators.length > 0 });
       let message = err instanceof Error ? err.message : String(err);
       if (errorCode === "COLLABORATOR_INVALID") {
         const refused = refusedCollaborators(
-          normalizeCollaborators(post.ig_collaborators),
+          collaborators,
           (err as { graphUserMsg?: string } | null)?.graphUserMsg,
         );
         if (refused.length > 0) message += ` (recusados: ${refused.map((u) => `@${u}`).join(", ")})`;
@@ -436,6 +437,9 @@ Deno.serve(createPublishCronHandler({
         accountId: post.instagram_user_id,
         errorCode,
         error: message.slice(0, 500),
+        // Código e subcódigo da Meta no alerta: um erro novo (como o "User not
+        // visible", que entrou como UNKNOWN) pode então ser casado pelo número.
+        ...graphCodes(err),
       });
     }
 

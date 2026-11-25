@@ -17,7 +17,11 @@ import {
   advanceCarouselContainer,
   INTERACTIVE_GRAPH_TIMEOUT_MS,
 } from "../_shared/instagram-publish-utils.ts";
-import { buildCollaboratorFailureFields, normalizeCollaborators } from "../_shared/instagram-collaborators.ts";
+import {
+  buildCollaboratorFailureFields,
+  normalizeCollaborators,
+  recordRefusedCollaborators,
+} from "../_shared/instagram-collaborators.ts";
 import {
   type ClientScopeLoader,
   memberWorkspaceOfClient,
@@ -121,8 +125,9 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
       }
       let validation;
       try {
-        validation = await validateForScheduling(svcDb, postId);
+        validation = await validateForScheduling(svcDb, postId, { probeCollaborators: true });
         if (!validation.ok) {
+          await recordRefusedCollaborators(svcDb, postId, validation.refusedCollaborators);
           return json({ error: "Validação falhou", details: validation.errors }, 422);
         }
       } catch (e) {
@@ -459,7 +464,7 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
         return json({ ok: true, status: "postado", instagram_permalink: permalink });
       } catch (err: any) {
         console.error(`[IG-PUBLISH-NOW] Failed for post ${postId}:`, err.message);
-        const errorCode = classifyPublishError(err);
+        const errorCode = classifyPublishError(err, { hasCollaborators: collaborators.length > 0 });
         await svcDb.rpc("record_post_status_change", {
           p_post_id: postId,
           p_new_status: "falha_publicacao",
