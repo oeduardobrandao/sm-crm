@@ -200,21 +200,63 @@ Deno.test("fetchStripeAmount requests currency_options", async () => {
   assertEquals(amt.amount_cents, 2900);
 });
 
-Deno.test("usd sub with no usd currency option yields 0 and warns", () => {
-  const warns: string[] = [];
-  const orig = console.warn;
-  console.warn = (m: string) => warns.push(String(m));
+Deno.test("usd sub with no usd currency option throws (never an authoritative 0)", () => {
+  const sub = {
+    id: "sub_z",
+    currency: "usd",
+    items: { data: [{ quantity: 1, price: { unit_amount: 9990, currency: "brl" } }] },
+  };
+  let msg = "";
   try {
-    const sub = {
-      id: "sub_z",
-      currency: "usd",
-      items: { data: [{ quantity: 1, price: { unit_amount: 9990, currency: "brl" } }] },
-    };
-    const amt = stripeAmountFromSubscription(sub, null);
-    assertEquals(amt.amount_cents, 0);
-    assertEquals(amt.currency, "usd");
-    assert(warns.some((w) => w.includes("sub_z")));
-  } finally {
-    console.warn = orig;
+    stripeAmountFromSubscription(sub, null);
+  } catch (e) {
+    msg = e instanceof Error ? e.message : String(e);
   }
+  assert(msg.includes("sub_z"), `expected a throw naming the subscription, got "${msg}"`);
+  assert(msg.includes("usd"), `expected the currency in the message, got "${msg}"`);
+});
+
+Deno.test("usd sub whose usd option is null also throws", () => {
+  const sub = {
+    id: "sub_n",
+    currency: "usd",
+    items: {
+      data: [{
+        quantity: 1,
+        price: { unit_amount: 9990, currency: "brl", currency_options: { usd: { unit_amount: null } } },
+      }],
+    },
+  };
+  let threw = false;
+  try {
+    stripeAmountFromSubscription(sub, null);
+  } catch {
+    threw = true;
+  }
+  assert(threw);
+});
+
+Deno.test("same-currency unit_amount 0 still returns 0 (a free price is not a missing option)", () => {
+  const sub = {
+    id: "sub_free",
+    currency: "brl",
+    items: { data: [{ quantity: 1, price: { unit_amount: 0, currency: "brl" } }] },
+  };
+  const amt = stripeAmountFromSubscription(sub, null);
+  assertEquals(amt.amount_cents, 0);
+  assertEquals(amt.currency, "brl");
+});
+
+Deno.test("usd option with unit_amount 0 returns 0, no throw", () => {
+  const sub = {
+    id: "sub_free_usd",
+    currency: "usd",
+    items: {
+      data: [{
+        quantity: 1,
+        price: { unit_amount: 9990, currency: "brl", currency_options: { usd: { unit_amount: 0 } } },
+      }],
+    },
+  };
+  assertEquals(stripeAmountFromSubscription(sub, null).amount_cents, 0);
 });

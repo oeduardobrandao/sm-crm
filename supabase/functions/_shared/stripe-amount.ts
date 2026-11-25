@@ -121,17 +121,17 @@ export function stripeAmountFromSubscription(
   const qty = item?.quantity ?? 1;
   const currency = (s.currency ?? item?.price?.currency ?? "brl").toLowerCase();
   const optionAmount = item?.price?.currency_options?.[currency]?.unit_amount;
-  const unit =
-    typeof optionAmount === "number"
-      ? optionAmount
-      : currency === (item?.price?.currency ?? "brl").toLowerCase()
-        ? (item?.price?.unit_amount ?? 0)
-        : 0;
-  if (typeof optionAmount !== "number" && unit === 0 && currency !== (item?.price?.currency ?? "brl").toLowerCase()) {
-    console.warn(
-      `[stripe-amount] no ${currency} price option for subscription ${(sub as { id?: string }).id ?? "?"}; amount 0`,
+  const priceCurrency = (item?.price?.currency ?? "brl").toLowerCase();
+  // A subscription charged in a currency the price has no option for cannot be priced from
+  // this object. Throw instead of returning 0: every live caller treats a returned amount as
+  // authoritative (mirror write-back, admin display), and each one catches and clears or
+  // falls back. The metrics backfill lets it abort the run (fail closed by design).
+  if (typeof optionAmount !== "number" && currency !== priceCurrency) {
+    throw new Error(
+      `[stripe-amount] no ${currency} price option for subscription ${(sub as { id?: string }).id ?? "?"}`,
     );
   }
+  const unit = typeof optionAmount === "number" ? optionAmount : (item?.price?.unit_amount ?? 0);
   const gross = unit * qty;
   const coupon = extractCoupon(sub);
   let net = gross;
