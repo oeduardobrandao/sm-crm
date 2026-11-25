@@ -93,6 +93,7 @@
     "updateStatusError": "Erro ao atualizar status",
     "saveContentError": "Erro ao salvar conteúdo",
     "invalidateApprovalError": "Não foi possível invalidar a aprovação. O conteúdo não foi salvo.",
+    "invalidateApprovalTransientError": "A conexão com o servidor falhou e a aprovação não foi invalidada. O conteúdo não foi salvo. Tente editar de novo em instantes.",
     "suggestionAccepted": "Sugestão aceita!",
     "suggestionChanged": "A sugestão foi atualizada pelo cliente. Revise a nova versão.",
     "suggestionConflict": "O post mudou desde que você abriu. Revise a sugestão de novo.",

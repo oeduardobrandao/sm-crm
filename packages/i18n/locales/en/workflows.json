@@ -108,6 +108,7 @@
     "statusError": "Failed to update status",
     "contentSaveError": "Failed to save content",
     "invalidateError": "Could not invalidate the approval. The content was not saved.",
+    "invalidateTransientError": "The connection to the server failed and the approval was not invalidated. The content was not saved. Try editing again in a moment.",
     "missingThumbnail": "{{n}} post(s) have videos without a thumbnail. Add a thumbnail before sending.",
     "noneReady": "No internally approved posts to send.",
     "sent_one": "{{count}} post sent to the client!",

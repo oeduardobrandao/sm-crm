@@ -36,6 +36,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { isTransientDbError, retryTransient } from '@/lib/transientError';
 import { Checkbox } from '@/components/ui/checkbox';
 import { CardListSkeleton } from '@/components/ui/skeletons';
 import {
@@ -760,10 +761,18 @@ export function WorkflowDrawer({
     // The approval invalidation must land BEFORE the content save is armed:
     // saving new content on a still-approved post would defeat the confirm.
     try {
-      await updateWorkflowPost(id, { status: 'revisao_interna' });
+      // Mudar para revisao_interna é idempotente, então dá para repetir após
+      // um 504 ou queda de rede (o primeiro pode até ter gravado).
+      await retryTransient(() => updateWorkflowPost(id, { status: 'revisao_interna' }));
       refresh();
-    } catch {
-      toast.error(t('workflowDrawer.invalidateError'));
+    } catch (err) {
+      toast.error(
+        t(
+          isTransientDbError(err)
+            ? 'workflowDrawer.invalidateTransientError'
+            : 'workflowDrawer.invalidateError',
+        ),
+      );
       return;
     }
     confirmedEditIds.current.add(id);

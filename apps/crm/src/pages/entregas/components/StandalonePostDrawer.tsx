@@ -31,6 +31,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { isTransientDbError, retryTransient } from '@/lib/transientError';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SkeletonStatus } from '@/components/ui/skeletons';
 import {
@@ -524,10 +525,18 @@ export function StandalonePostDrawer({
     // The approval invalidation must land BEFORE the content save is armed:
     // saving new content on a still-approved post would defeat the confirm.
     try {
-      await updateWorkflowPost(postId, { status: 'revisao_interna' });
+      // Mudar para revisao_interna é idempotente, então dá para repetir após
+      // um 504 ou queda de rede (o primeiro pode até ter gravado).
+      await retryTransient(() => updateWorkflowPost(postId, { status: 'revisao_interna' }));
       refresh();
-    } catch {
-      toast.error(t('standalonePostDrawer.invalidateApprovalError'));
+    } catch (err) {
+      toast.error(
+        t(
+          isTransientDbError(err)
+            ? 'standalonePostDrawer.invalidateApprovalTransientError'
+            : 'standalonePostDrawer.invalidateApprovalError',
+        ),
+      );
       return;
     }
     confirmedEditRef.current = true;

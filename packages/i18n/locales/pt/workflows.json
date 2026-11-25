@@ -108,6 +108,7 @@
     "statusError": "Erro ao atualizar status",
     "contentSaveError": "Erro ao salvar conteúdo",
     "invalidateError": "Não foi possível invalidar a aprovação. O conteúdo não foi salvo.",
+    "invalidateTransientError": "A conexão com o servidor falhou e a aprovação não foi invalidada. O conteúdo não foi salvo. Tente editar de novo em instantes.",
     "missingThumbnail": "Há {{n}} post(s) com vídeos sem thumbnail. Adicione uma thumbnail antes de enviar.",
     "noneReady": "Nenhum post aprovado internamente para enviar.",
     "sent_one": "{{count}} post enviado ao cliente!",

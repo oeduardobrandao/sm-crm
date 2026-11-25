@@ -93,6 +93,7 @@
     "updateStatusError": "Couldn't update the status",
     "saveContentError": "Couldn't save the content",
     "invalidateApprovalError": "Couldn't invalidate the approval. The content was not saved.",
+    "invalidateApprovalTransientError": "The connection to the server failed and the approval was not invalidated. The content was not saved. Try editing again in a moment.",
     "suggestionAccepted": "Suggestion accepted!",
     "suggestionChanged": "The client updated the suggestion. Review the new version.",
     "suggestionConflict": "The post changed since you opened it. Review the suggestion again.",
