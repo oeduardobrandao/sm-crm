@@ -1,8 +1,18 @@
 export type SignupField = 'nome' | 'email' | 'password';
 
-export type SignupFieldError = 'nameRequired' | 'emailInvalid' | 'passwordShort';
+export type SignupFieldError =
+  | 'nameRequired'
+  | 'emailInvalid'
+  | 'passwordShort'
+  // Server-side: Supabase could not send the confirmation email to this address.
+  | 'emailUndeliverable';
 
-export type SignupErrorKey = 'rateLimit' | 'weakPassword' | 'emailInvalid' | 'generic';
+export type SignupErrorKey =
+  | 'rateLimit'
+  | 'weakPassword'
+  | 'emailInvalid'
+  | 'emailUndeliverable'
+  | 'generic';
 
 /** Order the fields appear in the form: focus goes to the first invalid one. */
 export const SIGNUP_FIELDS: readonly SignupField[] = ['nome', 'email', 'password'];
@@ -44,6 +54,18 @@ export function signupErrorKey(error: {
     (code === 'validation_failed' && /email/i.test(error.message ?? ''))
   ) {
     return 'emailInvalid';
+  }
+  // GoTrue answers 500 `unexpected_failure` "Error sending confirmation email" when the mail
+  // provider refuses the recipient (a domain with no MX, a "gmail.com.br" typo). supabase-js keeps
+  // the 500 as an AuthApiError with that message; `code` can be absent on older API versions.
+  // Matched narrowly so every other 500 stays generic. An SMTP outage lands here too, which is
+  // why the copy asks to check the address instead of saying it is wrong.
+  if (
+    error.status === 500 &&
+    (!code || code === 'unexpected_failure') &&
+    /error sending confirmation e?mail/i.test(error.message ?? '')
+  ) {
+    return 'emailUndeliverable';
   }
   return 'generic';
 }
