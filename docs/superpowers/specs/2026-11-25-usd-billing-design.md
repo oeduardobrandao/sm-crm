@@ -238,14 +238,21 @@ language is part 3.
    webhook mirror, Cobrança page, Admin metrics (internal excluded as today) and portal; then
    refund in Stripe and cancel the subscription.
 
-## Open question (blocks §8 and the end-to-end, not the code)
+## Stripe account capability (checked 2026-11-25)
 
-Can the Mesaas Stripe account charge in USD? A Brazil-registered account may be limited to
-BRL presentment; Stripe's public docs don't settle it. Check Dashboard → Settings → Business
-(country) and a test-mode Checkout with `currency: 'usd'` on a multi-currency price. If USD is
-not available, approach A still holds but on a second (e.g. US) Stripe account, which adds
-per-workspace account routing to checkout, portal, webhook and the amount helper. That would
-be a revision of this spec.
+The Mesaas account is registered in Brazil. In **test mode** it accepted a BRL price with
+`currency_options.usd` and opened a subscription Checkout with `currency: 'usd'`
+(`amount_total: 2900`, `currency: usd`); the probe product was archived afterwards. So no
+second account or US entity is needed for v1.
+
+Consequences:
+- USD charges settle **converted to BRL** (Stripe's default for the account's settlement
+  currency). The deposits USD side will normally be empty; the per-currency shape stays so
+  nothing is summed wrongly if that ever changes.
+- US cards are international cards for a BR account: Stripe BR pricing adds about 2% on top of
+  the domestic rate, plus currency conversion. Accepted cost for v1; a US entity/account can
+  come later without changing this design beyond account routing.
+- Live mode is confirmed by the real purchase in Deploy order step 6.
 
 Rollback: frontend first; edge functions can stay (BRL behaves as today). Removing
 `currency_options` from Stripe is safe only while no USD subscription exists.
