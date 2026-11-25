@@ -89,6 +89,7 @@ function makeDb(fx: {
   workspaceRow?: {
     plan_id?: string | null;
     plan_source: string;
+    billing_currency?: string;
     demo_created_at?: string | null;
     reverse_trial_ends_at?: string | null;
     reverse_trial_started_at?: string | null;
@@ -1036,6 +1037,37 @@ Deno.test("switch: retrieve remoto lanca -> 500, zero reserva", async () => {
   const res = await result;
   assertEquals(res.status, 500);
   assert(!events.some((e) => e.table === "pagarme_checkout_attempts" && e.op === "insert"));
+});
+
+Deno.test("USD: workspace em dolar -> 409 antes de qualquer chamada Pagar.me (checkout comum)", async () => {
+  const { result, events, calls, stripeCalls } = run(
+    { plan: PLAN, subRow: null, workspaceRow: { plan_source: "system", billing_currency: "usd" } },
+    {},
+    {},
+  );
+  const res = await result;
+  assertEquals(res.status, 409);
+  assert(!events.some((e) => e.table === "pagarme_checkout_attempts" && e.op === "insert"));
+  assertEquals(calls.length, 0);
+  assertEquals(stripeCalls.length, 0);
+});
+
+Deno.test("USD: workspace em dolar -> 409 antes de qualquer chamada (switch)", async () => {
+  const { result, events, calls, stripeCalls } = run(
+    {
+      plan: PLAN,
+      subRow: STRIPE_ROW,
+      workspaceRow: { plan_id: "pro", plan_source: "system", billing_currency: "usd" },
+    },
+    {},
+    {},
+    SWITCH_REQ,
+  );
+  const res = await result;
+  assertEquals(res.status, 409);
+  assert(!events.some((e) => e.table === "pagarme_checkout_attempts" && e.op === "insert"));
+  assertEquals(calls.length, 0);
+  assertEquals(stripeCalls.length, 0);
 });
 
 Deno.test("switch: plan_source manual -> 409 pre-reserva (decisao 11)", async () => {

@@ -142,8 +142,11 @@ export function stripeSwitchSourceEligible(row: {
   stripe_subscription_id?: string | null;
   status?: string | null;
   billing_interval?: string | null;
+  /** Moeda da linha espelho. Pagar.me e so Brasil: so brl (ou ausente) pode trocar. */
+  currency?: string | null;
 } | null | undefined): boolean {
   if (!row) return false;
+  if (row.currency != null && row.currency !== "brl") return false;
   if ((row.provider ?? "stripe") !== "stripe") return false;
   if (!row.stripe_subscription_id) return false;
   if (row.status !== "active" && row.status !== "trialing") return false;

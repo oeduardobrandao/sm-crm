@@ -189,6 +189,10 @@ Deno.test("stripeSwitchSourceEligible: matriz", () => {
   assert(!stripeSwitchSourceEligible({ ...base, billing_interval: "year" }));
   assert(!stripeSwitchSourceEligible({ ...base, stripe_subscription_id: null }));
   assert(!stripeSwitchSourceEligible(null));
+  // USD: Pagar.me e so Brasil; a moeda da linha so libera se for brl (ou ausente)
+  assert(stripeSwitchSourceEligible({ ...base, currency: "brl" }));
+  assert(stripeSwitchSourceEligible({ ...base, currency: null }));
+  assert(!stripeSwitchSourceEligible({ ...base, currency: "usd" }));
 });
 
 Deno.test("ceilToUtcMidnightDate: meio-dia sobe para o proximo midnight; midnight exato fica", () => {

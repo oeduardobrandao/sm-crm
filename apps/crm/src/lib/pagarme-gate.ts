@@ -8,7 +8,10 @@ export function isPagarme12xEnabled(
     | { pagarme_12x_enabled?: boolean | null; pagarme_installment_cents?: number | null }
     | null
     | undefined,
+  workspaceCurrency?: 'brl' | 'usd',
 ): boolean {
+  // Pagar.me is Brazil-only: a USD workspace never sees the 12x UI.
+  if (workspaceCurrency === 'usd') return false;
   return (
     Boolean(plan?.pagarme_12x_enabled) &&
     Boolean(import.meta.env.VITE_PAGARME_PUBLIC_KEY) &&

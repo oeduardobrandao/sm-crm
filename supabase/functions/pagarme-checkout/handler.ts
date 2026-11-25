@@ -92,12 +92,33 @@ export function createPagarmeCheckoutHandler(deps: {
       };
     }
 
+    // (1b) Pagar.me e so Brasil: workspace em dolar nunca chega ao gateway, nem no checkout
+    // comum nem no switch. Read com erro nega (fail closed), como as demais leituras.
+    const { data: currencyWs, error: currencyWsErr } = await db
+      .from("workspaces")
+      .select("billing_currency")
+      .eq("id", ctx.workspaceId)
+      .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS))
+      .single();
+    if (currencyWsErr) throw new Error(`workspace currency read failed: ${currencyWsErr.message}`);
+    const wsCurrency = (currencyWs as { billing_currency?: string | null } | null)
+      ?.billing_currency;
+    if (wsCurrency != null && wsCurrency !== "brl") {
+      return {
+        status: 409,
+        body: {
+          error: "O parcelamento em 12x não está disponível para este workspace.",
+          code: "currency_not_supported",
+        },
+      };
+    }
+
     // (2) Existing row. A read ERROR must deny, not fall through as "no row": that would
     // skip the 409 and duplicate a live subscription.
     const { data: row, error: rowErr } = await db
       .from("workspace_subscriptions")
       .select(
-        "provider, stripe_subscription_id, pagarme_customer_id, pagarme_subscription_id, status, cancel_at_period_end, current_period_end, ever_subscribed_at, billing_interval, plan_id",
+        "provider, stripe_subscription_id, pagarme_customer_id, pagarme_subscription_id, status, cancel_at_period_end, current_period_end, ever_subscribed_at, billing_interval, plan_id, currency",
       )
       .eq("workspace_id", ctx.workspaceId)
       .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS))
