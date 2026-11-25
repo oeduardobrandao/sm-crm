@@ -108,6 +108,8 @@ export interface FirstChargeInput {
   amount_cents: number | null;
   amount_interval: string | null;
   billing_interval: string | null;
+  /** ISO-ish currency of amount_cents ("brl" | "usd"); a missing value reads as brl. */
+  currency: string;
 }
 
 /**
@@ -118,12 +120,13 @@ export interface FirstChargeInput {
 export function formatFirstCharge(c: FirstChargeInput): string | null {
   if (c.amount_cents == null) return null;
   if (c.provider === "pagarme") {
+    // Pagar.me only bills in reais.
     return `12x de ${formatMoney(Math.round(c.amount_cents / 12), "brl")} (total de ${
       formatMoney(c.amount_cents, "brl")
     })`;
   }
   const yearly = c.amount_interval === "year" || c.billing_interval === "year";
-  return `${formatMoney(c.amount_cents, "brl")} ${yearly ? "por ano" : "por mês"}`;
+  return `${formatPlanMoney(c.amount_cents, c.currency ?? "brl")} ${yearly ? "por ano" : "por mês"}`;
 }
 
 /** "26 de novembro", in the São Paulo calendar (not UTC). */
@@ -217,6 +220,8 @@ export interface ReverseTrialEmailInput {
   planName: string | null;
   /** Monthly price of the trial plan, in centavos; null drops the amount. */
   priceCents: number | null;
+  /** Currency of priceCents; absent or null reads as brl. */
+  currency?: string | null;
   endsAt: string | null;
   endedAt: string | null;
   hubPauseAt: string | null;
@@ -243,7 +248,9 @@ export function buildReverseTrialEmail(p: ReverseTrialEmailInput): { subject: st
   switch (p.type) {
     case "reverse_trial_ending": {
       const date = requireDate(p.endsAt, p.type, "ends_at");
-      const price = p.priceCents != null ? `${formatMoney(p.priceCents, "brl")} por mês` : null;
+      const price = p.priceCents != null
+        ? `${formatPlanMoney(p.priceCents, p.currency ?? "brl")} por mês`
+        : null;
       const html = mesaasEmail({
         preheader: `Sem cartão, o workspace volta para o plano Free em ${date}.`,
         eyebrow: "Seu teste do Pro",
@@ -404,6 +411,16 @@ function formatMoney(cents: number, currency: string): string {
   const intPart = String(Math.trunc(abs / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
   const num = `${sign}${intPart},${String(abs % 100).padStart(2, "0")}`;
   return currency.toLowerCase() === "brl" ? `R$ ${num}` : `${num} ${currency.toUpperCase()}`;
+}
+
+/**
+ * Plan prices in the customer-facing emails: "R$ 119,00" for brl, "US$ 29,00" for usd
+ * (pt-BR digits; the email language is a later part). formatMoney keeps its generic
+ * "14,90 USD" form for the founder notice.
+ */
+function formatPlanMoney(cents: number, currency: string): string {
+  if (currency.toLowerCase() === "usd") return `US$ ${formatMoney(cents, "brl").slice(3)}`;
+  return formatMoney(cents, currency);
 }
 
 /**
