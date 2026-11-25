@@ -278,7 +278,8 @@ describe('CobrancaPage', () => {
       fireEvent.click(await screen.findByRole('button', { name: 'Anual' }));
       fireEvent.click(await screen.findByRole('button', { name: 'Assinar' }));
       expect(await screen.findByText(/no fim do teste/)).toBeInTheDocument();
-      expect(screen.getByText(/09\/12\/2099/)).toBeInTheDocument();
+      // Ends 08/12 14h in São Paulo; the gateway charges at 00:00 UTC on the 9th, 21h on the 8th in SP.
+      expect(screen.getByText(/só é cobrada em 8 de dezembro/)).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Continuar depois do teste' })).toBeInTheDocument();
     });
   });
