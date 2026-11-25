@@ -22,6 +22,7 @@ import {
   toNullableCount,
   type ActionSortKey,
 } from '../lib/post-action-metrics';
+import type { FollowerBand, HealthMetricKey, PeerBenchmark } from '../lib/ig-account-health';
 
 export const EDGE_URL = import.meta.env.VITE_SUPABASE_URL + '/functions/v1/instagram-analytics';
 
@@ -728,6 +729,60 @@ export async function getAccountMetrics(
   return res.json();
 }
 
+async function loadPostTags(postIds: string[]): Promise<Record<string, PostTag[]>> {
+  const tagMap: Record<string, PostTag[]> = {};
+  if (postIds.length === 0) return tagMap;
+  try {
+    const { data: assignments } = await supabase
+      .from('instagram_post_tag_assignments')
+      .select('post_id, tag_id, instagram_post_tags(id, tag_name, color)')
+      .in('post_id', postIds);
+
+    for (const a of assignments || []) {
+      if (!tagMap[a.post_id]) tagMap[a.post_id] = [];
+      if (a.instagram_post_tags) tagMap[a.post_id].push(a.instagram_post_tags as any);
+    }
+  } catch (_e) {
+    // Tag tables may not exist yet — posts still load without tags
+  }
+  return tagMap;
+}
+
+// Engagement + per-view rates + ig_score for one instagram_posts row.
+function mapPostRow(p: any, tags: PostTag[], dists?: RateDistributions): PostAnalytics {
+  const interactions = (p.likes || 0) + (p.comments || 0) + (p.saved || 0) + (p.shares || 0);
+  const engRate = p.reach > 0 ? (interactions / p.reach) * 100 : 0;
+  const savesRate = p.reach > 0 ? ((p.saved || 0) / p.reach) * 100 : 0;
+  const unavailable = Array.isArray(p.unavailable_metrics) ? p.unavailable_metrics : [];
+  const rates = computeRates(
+    {
+      shares: p.shares ?? 0,
+      likes: p.likes ?? 0,
+      saved: p.saved ?? 0,
+      comments: p.comments ?? 0,
+      impressions: p.impressions ?? 0,
+    },
+    unavailable,
+  );
+  const follows = toNullableCount(p.follows);
+  return {
+    ...p,
+    engagement_rate: Math.round(engRate * 100) / 100,
+    saves_rate: Math.round(savesRate * 100) / 100,
+    views: p.impressions ?? 0,
+    reposts: toNullableCount(p.reposts),
+    profile_visits: toNullableCount(p.profile_visits),
+    follows,
+    bio_link_clicks: toNullableCount(p.bio_link_clicks),
+    follows_per_mil_reach: followsPerMilReach(follows, p.reach),
+    rates,
+    unavailable_metrics: unavailable,
+    ig_score: dists ? scorePost({ media_type: p.media_type, rates }, dists) : null,
+    tags,
+    synced_at: p.synced_at ?? null,
+  };
+}
+
 export async function getPostsAnalytics(
   clientId: number,
   days = 30,
@@ -756,60 +811,10 @@ export async function getPostsAnalytics(
   if (error) throw error;
   const allPosts = posts || [];
 
-  // Get tag assignments
-  const postIds = allPosts.map((p) => p.id);
-  const tagMap: Record<string, PostTag[]> = {};
-
-  if (postIds.length > 0) {
-    try {
-      const { data: assignments } = await supabase
-        .from('instagram_post_tag_assignments')
-        .select('post_id, tag_id, instagram_post_tags(id, tag_name, color)')
-        .in('post_id', postIds);
-
-      for (const a of assignments || []) {
-        if (!tagMap[a.post_id]) tagMap[a.post_id] = [];
-        if (a.instagram_post_tags) tagMap[a.post_id].push(a.instagram_post_tags as any);
-      }
-    } catch (_e) {
-      // Tag tables may not exist yet — posts still load without tags
-    }
-  }
+  const tagMap = await loadPostTags(allPosts.map((p) => p.id));
 
   // Compute engagement + per-view rates + ig_score
-  const enriched: PostAnalytics[] = allPosts.map((p) => {
-    const interactions = (p.likes || 0) + (p.comments || 0) + (p.saved || 0) + (p.shares || 0);
-    const engRate = p.reach > 0 ? (interactions / p.reach) * 100 : 0;
-    const savesRate = p.reach > 0 ? ((p.saved || 0) / p.reach) * 100 : 0;
-    const unavailable = Array.isArray(p.unavailable_metrics) ? p.unavailable_metrics : [];
-    const rates = computeRates(
-      {
-        shares: p.shares ?? 0,
-        likes: p.likes ?? 0,
-        saved: p.saved ?? 0,
-        comments: p.comments ?? 0,
-        impressions: p.impressions ?? 0,
-      },
-      unavailable,
-    );
-    const follows = toNullableCount(p.follows);
-    return {
-      ...p,
-      engagement_rate: Math.round(engRate * 100) / 100,
-      saves_rate: Math.round(savesRate * 100) / 100,
-      views: p.impressions ?? 0,
-      reposts: toNullableCount(p.reposts),
-      profile_visits: toNullableCount(p.profile_visits),
-      follows,
-      bio_link_clicks: toNullableCount(p.bio_link_clicks),
-      follows_per_mil_reach: followsPerMilReach(follows, p.reach),
-      rates,
-      unavailable_metrics: unavailable,
-      ig_score: dists ? scorePost({ media_type: p.media_type, rates }, dists) : null,
-      tags: tagMap[p.id] || [],
-      synced_at: p.synced_at ?? null,
-    };
-  });
+  const enriched: PostAnalytics[] = allPosts.map((p) => mapPostRow(p, tagMap[p.id] || [], dists));
 
   const validCols = [
     'posted_at',
@@ -866,6 +871,78 @@ export async function getClientRateBaseline(
   const rows = (posts ?? []) as PostMetricRow[];
   const dists = buildRateDistributions(rows);
   return { sampleSize: rows.length, dists, baseline: buildBaseline(dists, rows.length) };
+}
+
+export async function getPostAnalyticsById(
+  clientId: number,
+  postId: string,
+  dists?: RateDistributions,
+): Promise<PostAnalytics | null> {
+  const account = await getAccountByClientId(clientId);
+  const { data: post, error } = await supabase
+    .from('instagram_posts')
+    .select('*')
+    .eq('id', postId)
+    .eq('instagram_account_id', account.id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!post) return null;
+  const tagMap = await loadPostTags([post.id]);
+  return mapPostRow(post, tagMap[post.id] || [], dists);
+}
+
+export interface AccountHealth {
+  followers: number;
+  band: FollowerBand | null;
+  metrics: Record<HealthMetricKey, number | null>;
+  bestPost: { id: string; ratio: number } | null;
+  benchmarks: Partial<Record<HealthMetricKey, PeerBenchmark>>;
+}
+
+const HEALTH_METRIC_KEYS: HealthMetricKey[] = [
+  'engagement_rate',
+  'posts_30d',
+  'reel_views',
+  'reels_share',
+];
+
+function numOrNull(v: unknown): number | null {
+  if (v === null || v === undefined) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+export async function getAccountHealth(clientId: number): Promise<AccountHealth | null> {
+  const { data, error } = await supabase.rpc('ig_account_health', { p_client_id: clientId });
+  if (error) throw error;
+  if (!data) return null;
+  const raw = data as any;
+
+  const metrics = {} as Record<HealthMetricKey, number | null>;
+  for (const key of HEALTH_METRIC_KEYS) metrics[key] = numOrNull(raw.metrics?.[key]);
+
+  const benchmarks: Partial<Record<HealthMetricKey, PeerBenchmark>> = {};
+  for (const b of Array.isArray(raw.benchmarks) ? raw.benchmarks : []) {
+    if (!HEALTH_METRIC_KEYS.includes(b?.metric)) continue;
+    benchmarks[b.metric as HealthMetricKey] = {
+      metric: b.metric,
+      source: b.source,
+      sample_size: numOrNull(b.sample_size),
+      cuts: (Array.isArray(b.cuts) ? b.cuts : []).map(Number),
+    };
+  }
+
+  const bestPostRatio = numOrNull(raw.best_post?.ratio);
+  return {
+    followers: numOrNull(raw.followers) ?? 0,
+    band: raw.band ?? null,
+    metrics,
+    bestPost:
+      raw.best_post && bestPostRatio !== null
+        ? { id: String(raw.best_post.id), ratio: bestPostRatio }
+        : null,
+    benchmarks,
+  };
 }
 
 export async function getFollowerHistory(

@@ -63,6 +63,8 @@ import {
   upsertManualFollowerCount,
   getClientRateBaseline,
   getStoriesAnalytics,
+  getAccountHealth,
+  getPostAnalyticsById,
   type KpiDelta,
   type PostAnalytics,
   type PostTag,
@@ -103,6 +105,7 @@ import { cn } from '@/lib/utils';
 import { AccountCommentsCard } from './comments/AccountCommentsCard';
 import { keepPostsAcrossBaselineRefresh } from './postsPlaceholder';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
+import { AccountHealthCard } from './health/AccountHealthCard';
 
 Chart.register(...registerables);
 
@@ -923,6 +926,12 @@ function AnalyticsContent({
   // The post as it was when opened: a posts-key change empties the list for a moment, and the
   // dialog keeps showing this one until the list settles.
   const [heldPost, setHeldPost] = useState<PostAnalytics | null>(null);
+  // A post opened by id from the health card that may sit outside the loaded list: the
+  // close-when-missing effect below must leave it open.
+  const [fetchedPostId, setFetchedPostId] = useState<string | null>(null);
+  // Bumped on every open and close: a by-id fetch that resolves after another open or a close
+  // is stale and must not take over the dialog (nor toast its error).
+  const openRequestRef = useRef(0);
   const openerRef = useRef<HTMLElement | null>(null);
   const commentsAiEnabled = useWorkspaceLimits().features?.feature_instagram_comments_ai === true;
   const [syncing, setSyncing] = useState(false);
@@ -962,6 +971,15 @@ function AnalyticsContent({
     queryFn: () => getClientRateBaseline(clientId),
     retry: false, // non-critical: never block/delay the posts query
   });
+  const healthQuery = useQuery({
+    queryKey: ['ig-account-health', clientId],
+    queryFn: () => getAccountHealth(clientId),
+    staleTime: 3_600_000,
+    retry: false,
+  });
+  // Non-critical: a failed first read hides the card and leaves the rest of the page alone;
+  // a failed background refetch keeps the card already shown.
+  const health = healthQuery.data ?? (healthQuery.error ? null : undefined);
   const postsKey = [
     'analytics-posts',
     clientId,
@@ -1010,18 +1028,56 @@ function AnalyticsContent({
   const openPost = posts.find((p) => p.id === openPostId) ?? null;
   const dialogPost = openPostId === null ? null : (openPost ?? heldPost);
   const openPostMetrics: OpenPostHandler = (post, opener) => {
+    openRequestRef.current += 1;
     openerRef.current = opener;
+    setFetchedPostId(null);
     setHeldPost(post);
     setOpenPostId(post.id);
   };
+  // The health card's best post can be older than the loaded period: open it from the list
+  // when it is there, otherwise fetch it by id and hold it.
+  const openHealthPost = async (postId: string) => {
+    const request = ++openRequestRef.current;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const listed = posts.find((p) => p.id === postId);
+    if (listed) {
+      openerRef.current = opener;
+      setFetchedPostId(null);
+      setHeldPost(listed);
+      setOpenPostId(listed.id);
+      return;
+    }
+    try {
+      const fetched = await getPostAnalyticsById(clientId, postId, baselineQuery.data?.dists);
+      if (request !== openRequestRef.current) return;
+      if (!fetched) {
+        toast.error('Não foi possível abrir o post.');
+        return;
+      }
+      openerRef.current = opener;
+      setFetchedPostId(fetched.id);
+      setHeldPost(fetched);
+      setOpenPostId(fetched.id);
+    } catch {
+      if (request === openRequestRef.current) toast.error('Não foi possível abrir o post.');
+    }
+  };
   // Close only once the list has settled without the post (a sync removed it). A key change
   // or a refetch empties or holds the list while fetching and must not close the dialog.
+  // A post fetched by id was never in the list, so it stays open.
   useEffect(() => {
-    if (openPostId !== null && !openPost && postsSettled && !postsFetching) {
+    if (
+      openPostId !== null &&
+      openPostId !== fetchedPostId &&
+      !openPost &&
+      postsSettled &&
+      !postsFetching
+    ) {
+      openRequestRef.current += 1;
       setOpenPostId(null);
       setHeldPost(null);
     }
-  }, [openPostId, openPost, postsSettled, postsFetching]);
+  }, [openPostId, fetchedPostId, openPost, postsSettled, postsFetching]);
   const history = historyRes?.history || [];
   const postDates = historyRes?.postDates || [];
   const demographicsData: AudienceDemographics | null = demoRes?.data || null;
@@ -1228,6 +1284,7 @@ function AnalyticsContent({
       qc.invalidateQueries({ queryKey: ['analytics-posts', clientId] });
       qc.invalidateQueries({ queryKey: ['analytics-history', clientId] });
       qc.invalidateQueries({ queryKey: ['client-rate-baseline', clientId] });
+      qc.invalidateQueries({ queryKey: ['ig-account-health', clientId] });
     } catch (err: any) {
       if (err.message === 'TOKEN_EXPIRED') {
         toast.error('Token expirado. Por favor, reconecte a conta.');
@@ -1665,6 +1722,8 @@ function AnalyticsContent({
           stories={storiesQuery.data ?? null}
           baseline={baselineQuery.data?.baseline ?? null}
           dists={baselineQuery.data?.dists}
+          health={health}
+          healthLoading={healthQuery.isLoading}
           tabs={tabs}
         />
         {dialogs}
@@ -1729,6 +1788,12 @@ function AnalyticsContent({
           }}
         />
       </div>
+
+      <AccountHealthCard
+        health={health}
+        isLoading={healthQuery.isLoading}
+        onOpenPost={(postId) => void openHealthPost(postId)}
+      />
 
       {kpiGrid}
 
@@ -2283,8 +2348,10 @@ function AnalyticsContent({
         post={dialogPost}
         onOpenChange={(o) => {
           if (!o) {
+            openRequestRef.current += 1;
             setOpenPostId(null);
             setHeldPost(null);
+            setFetchedPostId(null);
           }
         }}
         returnFocusTo={openerRef}

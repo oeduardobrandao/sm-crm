@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -61,6 +61,30 @@ vi.mock('../../../services/analytics', () => ({
   getReportDownloadUrl: vi.fn(),
   getClientRateBaseline: vi.fn(),
   getStoriesAnalytics: vi.fn(),
+  getAccountHealth: vi.fn(),
+  getPostAnalyticsById: vi.fn(),
+}));
+
+// The card has its own suite; here only where the phone mounts it and what "Ver o post" does.
+vi.mock('../health/AccountHealthCard', () => ({
+  AccountHealthCard: ({
+    health,
+    layout = 'desktop',
+    onOpenPost,
+  }: {
+    health: { bestPost: { id: string } | null } | null | undefined;
+    layout?: string;
+    onOpenPost: (postId: string) => void;
+  }) =>
+    health ? (
+      <section aria-label="Seu Instagram está indo bem?" data-layout={layout}>
+        {health.bestPost && (
+          <button type="button" onClick={() => onOpenPost(health.bestPost!.id)}>
+            Ver o post
+          </button>
+        )}
+      </section>
+    ) : null,
 }));
 
 vi.mock('../../../services/reportDocs', () => ({
@@ -127,9 +151,11 @@ import {
   getAnalyticsOverview,
   getAudienceDemographics,
   getBestPostingTimes,
+  getAccountHealth,
   getClientRateBaseline,
   getClientReports,
   getFollowerHistory,
+  getPostAnalyticsById,
   getPostsAnalytics,
   getStoriesAnalytics,
   getTags,
@@ -274,6 +300,199 @@ describe('AnalyticsContaPage (phone)', () => {
     });
     vi.mocked(getBestPostingTimes).mockResolvedValue(null);
     vi.mocked(getStoriesAnalytics).mockResolvedValue(null);
+    vi.mocked(getAccountHealth).mockResolvedValue(null);
+    vi.mocked(getPostAnalyticsById).mockResolvedValue(null);
+  });
+
+  it('mounts the health card in the phone layout, before the KPI strip', async () => {
+    vi.mocked(getAccountHealth).mockResolvedValue({
+      bestPost: { id: 'post-1', ratio: 1.4 },
+    } as never);
+    const { container } = renderPage();
+    await ready();
+    const card = await screen.findByRole('region', { name: 'Seu Instagram está indo bem?' });
+    expect(card).toHaveAttribute('data-layout', 'phone');
+    expect(getAccountHealth).toHaveBeenCalledTimes(1);
+    const strip = container.querySelector('.phone-stat-grid--scroll') as HTMLElement;
+    expect(card.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('"Ver o post" opens the post sheet for a post in the list', async () => {
+    vi.mocked(getAccountHealth).mockResolvedValue({
+      bestPost: { id: 'post-2', ratio: 1.4 },
+    } as never);
+    renderPage();
+    await ready();
+    await screen.findByRole('list', { name: 'Performance de conteúdo' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver o post' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Métricas do post' });
+    expect(within(sheet).getByText('Reel de bastidores')).toBeInTheDocument();
+    expect(getPostAnalyticsById).not.toHaveBeenCalled();
+  });
+
+  it('"Ver o post" fetches a post outside the list and opens it in the sheet', async () => {
+    vi.mocked(getAccountHealth).mockResolvedValue({
+      bestPost: { id: 'post-old', ratio: 1.4 },
+    } as never);
+    const dists = { overall: {}, byFormat: {} };
+    vi.mocked(getClientRateBaseline).mockResolvedValue({
+      sampleSize: 0,
+      dists,
+      baseline: { sample_size: 0 },
+    } as never);
+    vi.mocked(getPostAnalyticsById).mockResolvedValue(
+      post({ id: 'post-old', instagram_post_id: 'ig-old', caption: 'Post antigo do mês passado' }),
+    );
+    renderPage();
+    await ready();
+    await screen.findByRole('list', { name: 'Performance de conteúdo' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver o post' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Métricas do post' });
+    // The client's distributions go along, so the post gets its IG Score.
+    expect(getPostAnalyticsById).toHaveBeenCalledWith(42, 'post-old', dists);
+    expect(within(sheet).getByText('Post antigo do mês passado')).toBeInTheDocument();
+
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Fechar' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('"Ver o post" shows a toast when the post no longer exists', async () => {
+    vi.mocked(getAccountHealth).mockResolvedValue({
+      bestPost: { id: 'post-gone', ratio: 1.4 },
+    } as never);
+    renderPage();
+    await ready();
+    await screen.findByRole('list', { name: 'Performance de conteúdo' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver o post' }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Não foi possível abrir o post.'));
+    expect(getPostAnalyticsById).toHaveBeenCalledWith(42, 'post-gone', undefined);
+    expect(screen.queryByRole('dialog', { name: 'Métricas do post' })).toBeNull();
+  });
+
+  it('a tag toggle refreshes a post opened by id', async () => {
+    vi.mocked(getAccountHealth).mockResolvedValue({
+      bestPost: { id: 'post-old', ratio: 1.4 },
+    } as never);
+    vi.mocked(assignTagToPost).mockResolvedValue(undefined as never);
+    vi.mocked(getPostAnalyticsById)
+      .mockResolvedValueOnce(post({ id: 'post-old', caption: 'Post antigo', tags: [] }))
+      .mockResolvedValueOnce(post({ id: 'post-old', caption: 'Post antigo', tags: [TAG] }));
+    renderPage();
+    await ready();
+    await screen.findByRole('list', { name: 'Performance de conteúdo' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver o post' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Métricas do post' });
+    const tag = within(sheet).getByRole('button', { name: 'Educativo' });
+    expect(tag).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(tag);
+    await waitFor(() => expect(assignTagToPost).toHaveBeenCalledWith('post-old', 9));
+    await waitFor(() => expect(getPostAnalyticsById).toHaveBeenCalledTimes(2));
+    expect(getPostAnalyticsById).toHaveBeenLastCalledWith(42, 'post-old', undefined);
+    await waitFor(() =>
+      expect(within(sheet).getByRole('button', { name: 'Educativo' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      ),
+    );
+  });
+
+  it('a tag-toggle refresh that lands after the post was reopened is ignored', async () => {
+    vi.mocked(getAccountHealth).mockResolvedValue({
+      bestPost: { id: 'post-old', ratio: 1.4 },
+    } as never);
+    vi.mocked(assignTagToPost).mockResolvedValue(undefined as never);
+    let resolveRefresh: (value: unknown) => void = () => {};
+    vi.mocked(getPostAnalyticsById)
+      .mockResolvedValueOnce(post({ id: 'post-old', caption: 'Post antigo', tags: [] }))
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveRefresh = resolve;
+        }) as never,
+      )
+      .mockResolvedValueOnce(post({ id: 'post-old', caption: 'Post antigo', tags: [] }));
+    renderPage();
+    await ready();
+    await screen.findByRole('list', { name: 'Performance de conteúdo' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver o post' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Métricas do post' });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Educativo' }));
+    await waitFor(() => expect(getPostAnalyticsById).toHaveBeenCalledTimes(2));
+
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Fechar' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    // Reopened (a fresh by-id fetch) before the stale refresh lands: it must not win.
+    fireEvent.click(screen.getByRole('button', { name: 'Ver o post' }));
+    const reopened = await screen.findByRole('dialog', { name: 'Métricas do post' });
+    expect(getPostAnalyticsById).toHaveBeenCalledTimes(3);
+    await act(async () => {
+      resolveRefresh(post({ id: 'post-old', caption: 'Post antigo', tags: [TAG] }));
+    });
+    expect(within(reopened).getByRole('button', { name: 'Educativo' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+  });
+
+  it('a reopen while the tag toggle is still saving also invalidates its refresh', async () => {
+    vi.mocked(getAccountHealth).mockResolvedValue({
+      bestPost: { id: 'post-old', ratio: 1.4 },
+    } as never);
+    let resolveToggle: (value: unknown) => void = () => {};
+    vi.mocked(assignTagToPost).mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveToggle = resolve;
+      }) as never,
+    );
+    vi.mocked(getPostAnalyticsById)
+      .mockResolvedValueOnce(post({ id: 'post-old', caption: 'Post antigo', tags: [] }))
+      .mockResolvedValueOnce(post({ id: 'post-old', caption: 'Post antigo', tags: [] }))
+      .mockResolvedValueOnce(post({ id: 'post-old', caption: 'Post antigo', tags: [TAG] }));
+    renderPage();
+    await ready();
+    await screen.findByRole('list', { name: 'Performance de conteúdo' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver o post' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Métricas do post' });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Educativo' }));
+    await waitFor(() => expect(assignTagToPost).toHaveBeenCalled());
+
+    // Closed and reopened while the toggle is still saving.
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Fechar' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Ver o post' }));
+    const reopened = await screen.findByRole('dialog', { name: 'Métricas do post' });
+    expect(getPostAnalyticsById).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      resolveToggle(undefined);
+    });
+    await act(async () => {});
+    expect(within(reopened).getByRole('button', { name: 'Educativo' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+  });
+
+  it('"Ver o post" shows a toast when fetching the post fails', async () => {
+    vi.mocked(getAccountHealth).mockResolvedValue({
+      bestPost: { id: 'post-old', ratio: 1.4 },
+    } as never);
+    vi.mocked(getPostAnalyticsById).mockRejectedValue(new Error('network'));
+    renderPage();
+    await ready();
+    await screen.findByRole('list', { name: 'Performance de conteúdo' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver o post' }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Não foi possível abrir o post.'));
+    expect(screen.queryByRole('dialog', { name: 'Métricas do post' })).toBeNull();
+  });
+
+  it('a failed health query leaves no card and the page renders', async () => {
+    vi.mocked(getAccountHealth).mockRejectedValue(new Error('rpc failed'));
+    const { container } = renderPage();
+    await ready();
+    await waitFor(() => expect(getAccountHealth).toHaveBeenCalled());
+    expect(screen.queryByRole('region', { name: 'Seu Instagram está indo bem?' })).toBeNull();
+    expect(container.querySelector('.phone-stat-grid--scroll')).not.toBeNull();
   });
 
   it('renders the nav bar, identity and KPI strip instead of the desktop header', async () => {

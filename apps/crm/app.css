@@ -20659,3 +20659,299 @@ button.phone-stat-tile:active {
 .post-metrics--sheet .post-metrics__footer {
   padding: 12px 0 0;
 }
+
+/* ── Saúde do Instagram ("Seu Instagram está indo bem?") ── */
+.ig-health {
+  --ig-health-track: #e5e7eb;
+  --ig-health-hero: linear-gradient(180deg, rgba(62, 207, 142, 0.1), rgba(62, 207, 142, 0) 70%);
+  --ig-health-great: #15803d;
+  --ig-health-good: #16a34a;
+  --ig-health-avg: #6b7280;
+  --ig-health-bad: #c2410c;
+  --ig-health-worst: var(--danger-text);
+  --ig-health-fill-great: #22c55e;
+  --ig-health-fill-good: #4ade80;
+  --ig-health-fill-avg: #9ca3af;
+  --ig-health-fill-bad: var(--warning);
+  --ig-health-fill-worst: var(--danger);
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  overflow: hidden;
+  color: var(--text-main);
+}
+[data-theme='dark'] .ig-health {
+  --ig-health-track: #252b38;
+  --ig-health-hero: linear-gradient(180deg, rgba(62, 207, 142, 0.12), rgba(62, 207, 142, 0) 70%);
+  --ig-health-great: #4ade80;
+  --ig-health-good: #86efac;
+  --ig-health-avg: #9ca3af;
+  --ig-health-bad: #f5a342;
+  --ig-health-fill-good: #86d97a;
+  --ig-health-fill-avg: #6b7280;
+}
+.ig-health-tone-great {
+  --ig-health-tone: var(--ig-health-great);
+  --ig-health-fill: var(--ig-health-fill-great);
+}
+.ig-health-tone-good {
+  --ig-health-tone: var(--ig-health-good);
+  --ig-health-fill: var(--ig-health-fill-good);
+}
+.ig-health-tone-avg {
+  --ig-health-tone: var(--ig-health-avg);
+  --ig-health-fill: var(--ig-health-fill-avg);
+}
+.ig-health-tone-bad {
+  --ig-health-tone: var(--ig-health-bad);
+  --ig-health-fill: var(--ig-health-fill-bad);
+}
+.ig-health-tone-worst {
+  --ig-health-tone: var(--ig-health-worst);
+  --ig-health-fill: var(--ig-health-fill-worst);
+}
+.ig-health-top {
+  background: var(--ig-health-hero);
+  padding: 24px 24px 20px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--border-color);
+}
+.ig-health-q {
+  letter-spacing: normal;
+  line-height: inherit;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--text-muted);
+  margin: 0;
+}
+.ig-health-verdict {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 44px;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--ig-health-tone);
+}
+.ig-health-verdict svg {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+}
+.ig-health-top__bar {
+  width: min(100%, 460px);
+}
+.ig-health-sum {
+  font-weight: 600;
+  margin: 4px 0 0;
+  max-width: 52ch;
+  text-wrap: balance;
+}
+.ig-health-line {
+  color: var(--text-muted);
+  margin: 0;
+  max-width: 60ch;
+}
+.ig-health-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+.ig-health-m {
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-bottom: 1px solid var(--border-color);
+  min-width: 0;
+}
+.ig-health-grid .ig-health-m:nth-child(odd) {
+  border-right: 1px solid var(--border-color);
+}
+.ig-health-m__t {
+  font-family: inherit;
+  line-height: inherit;
+  letter-spacing: normal;
+  color: inherit;
+  font-weight: 600;
+  font-size: 13.5px;
+  margin: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ig-health-m__v {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 22px;
+  line-height: 1.1;
+  color: var(--ig-health-tone);
+}
+.ig-health-m__v svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+.ig-health-m__ahead {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin: 0;
+}
+.ig-health-kv {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color);
+  margin-top: 2px;
+}
+.ig-health-kv > div {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.ig-health-kv b {
+  color: var(--text-main);
+  font-variant-numeric: tabular-nums;
+  font-size: 15px;
+}
+.ig-health-kv .ig-health-kv__you b {
+  font-size: 18px;
+}
+.ig-health-m__help,
+.ig-health-fine {
+  font-size: 12px;
+  color: var(--text-light);
+  margin: 0;
+}
+.ig-health-m__empty {
+  font-size: 13px;
+  color: var(--text-light);
+  margin: 0;
+}
+.ig-health-src {
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-light);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ig-health-foot {
+  padding: 12px 20px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ig-health-best {
+  background: var(--surface-1);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 13.5px;
+  margin: 0;
+}
+.ig-health-best__link {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--text-main);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.ig-health-best__link:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.ig-health-bar {
+  position: relative;
+  height: 10px;
+  border-radius: 99px;
+  background: var(--ig-health-track);
+}
+.ig-health-bar__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 99px;
+  background: var(--ig-health-fill);
+  opacity: 0.55;
+}
+.ig-health-bar__tick {
+  position: absolute;
+  left: 50%;
+  top: -5px;
+  bottom: -5px;
+  width: 2px;
+  background: var(--text-light);
+  opacity: 0.7;
+  border-radius: 2px;
+}
+.ig-health-bar__dot {
+  position: absolute;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--ig-health-fill);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 3px var(--card-bg);
+}
+.ig-health-bar--sm {
+  height: 7px;
+}
+.ig-health-bar--sm .ig-health-bar__dot {
+  width: 12px;
+  height: 12px;
+}
+.ig-health-empty {
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+}
+.ig-health-empty h3 {
+  font-family: var(--font-heading);
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+}
+.ig-health-empty p:last-child {
+  color: var(--text-muted);
+  max-width: 46ch;
+  margin: 0;
+}
+.ig-health-skeleton {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.ig-health--phone .ig-health-grid {
+  grid-template-columns: 1fr;
+}
+.ig-health--phone .ig-health-grid .ig-health-m:nth-child(odd) {
+  border-right: 0;
+}
+.ig-health--phone .ig-health-verdict {
+  font-size: 36px;
+}
+.ig-health--phone .ig-health-top {
+  padding: 20px 16px 16px;
+}
