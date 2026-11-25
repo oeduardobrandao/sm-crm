@@ -99,7 +99,7 @@ primary key (band, metric)
 - Seed copia o mercado para `ig_peer_benchmarks` na própria migration, então a página funciona antes
   da primeira execução do cron.
 
-### Cron `ig_peer_benchmarks_refresh()` (pg_cron, diário `17 6 * * *` UTC)
+### Cron `ig_peer_benchmarks_refresh()` (pg_cron, diário `53 6 * * *` UTC)
 
 SQL puro, SECURITY DEFINER, `search_path` fixo, EXECUTE revogado de `PUBLIC, anon, authenticated`.
 
@@ -210,7 +210,7 @@ também para Google, cujo Uso Limitado não admite esse uso, então o texto novo
 > seguidores). Uma referência só aparece quando reúne pelo menos 30 contas e nunca identifica uma conta,
 > um cliente ou uma agência. Não vendemos esses dados nem os usamos para publicidade.
 
-Atualizar a data de "Última atualização" da política. A chave `ig_peer_benchmarks_mesaas` só liga depois dessa política no ar; até lá o
+A data de "Última atualização" da política é dinâmica (render), nada a mudar. A chave `ig_peer_benchmarks_mesaas` só liga depois dessa política no ar; até lá o
 produto funciona só com mercado.
 
 ### Testes
