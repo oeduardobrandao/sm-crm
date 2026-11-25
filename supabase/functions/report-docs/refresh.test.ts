@@ -200,6 +200,7 @@ const FROZEN = {
   instagram_connected: true,
   kpis: { reach: { value: 123, unit: "count", prev: null } },
   top_posts: [{ caption_preview: "post antigo" }],
+  instagram_health: { as_of: "2026-07-01T03:00:00.000Z", followers: 9100 },
   tiktok: { account: { handle: "old.tt", display_name: null, avatar_url: null }, top_posts: [] },
 };
 type CarryPatch = {
@@ -208,6 +209,7 @@ type CarryPatch = {
     account: { handle: string };
     kpis: { reach: { value: number | null } };
     top_posts: unknown[];
+    instagram_health?: { followers: number } | null;
     tiktok?: { account: { handle: string } } | null;
   };
   instagram_account_id: string | null;
@@ -254,6 +256,7 @@ Deno.test("refresh: Instagram desconectado mantém a seção Instagram congelada
   assert(patch.data_snapshot.kpis.reach.value === 123);
   assert(patch.data_snapshot.top_posts.length === 1);
   assert(patch.instagram_account_id === "ig-old");
+  assert(patch.data_snapshot.instagram_health?.followers === 9100);
   assert(patch.data_snapshot.tiktok?.account.handle === "dra.tt");
   assert(patch.tiktok_account_id === "tt-1");
 });
