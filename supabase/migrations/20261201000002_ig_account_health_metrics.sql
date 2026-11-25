@@ -13,7 +13,7 @@
 --   posts_30d:       feed com posted_at nos últimos 30 d; nulo sem feed em 90 d.
 --   reel_views:      mediana de impressions dos 12 reels mais recentes em 90 d,
 --                    fora os com 'impressions' em unavailable_metrics; nulo com < 3.
---   reels_share:     reels ÷ feed nos 12 feed mais recentes em 90 d; nulo com < 3.
+--   reels_share:     reels ÷ feed nos 12 feed mais recentes em 90 d (4 casas); nulo com < 3.
 --   melhor post:     maior (likes+comments) em 30 d ÷ mediana(likes+comments) de
 --                    todos os feed em 90 d; nulo com < 2 posts em 30 d ou mediana 0.
 
@@ -51,7 +51,6 @@ create or replace function public.ig_follower_band(p_followers int)
 returns text
 language sql
 immutable
-set search_path = public
 as $$
   select case
     when p_followers is null or p_followers <= 0 then null
@@ -133,7 +132,7 @@ as $$
          then trim_scale(agg.med12 / acc.followers) end,
     case when agg.n90 > 0 then agg.n30::int end,
     case when agg.n_reels >= 3 then trim_scale(agg.med_reels) end,
-    case when agg.n12 >= 3 then agg.n12_reels::numeric / agg.n12 end,
+    case when agg.n12 >= 3 then round(agg.n12_reels::numeric / agg.n12, 4) end,
     case when agg.n30 >= 2 and agg.med90 > 0 then best.id end,
     case when agg.n30 >= 2 and agg.med90 > 0 then trim_scale(best.eng::numeric / agg.med90) end
   from acc
