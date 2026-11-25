@@ -88,3 +88,23 @@ Deno.test("idempotency_key_changes_with_trial_state", async () => {
     buildCheckoutIdempotencyKey("ws-1", "pro", "month", "billing", now + 30 * 60_000, running),
   );
 });
+
+Deno.test("idempotency_key_changes_with_currency", () => {
+  const now = Date.UTC(2026, 11, 1, 10, 0, 0);
+  const brl = buildCheckoutIdempotencyKey("ws-1", "pro", "month", "billing", now, "d30", "brl");
+  const usd = buildCheckoutIdempotencyKey("ws-1", "pro", "month", "billing", now, "d30", "usd");
+  // currency changes the Stripe parameters, so it MUST change the key.
+  assertEquals(brl === usd, false);
+  assertEquals(usd.includes("usd"), true);
+  // Same inputs inside the hour: same key.
+  assertEquals(
+    usd,
+    buildCheckoutIdempotencyKey("ws-1", "pro", "month", "billing", now + 30 * 60_000, "d30", "usd"),
+  );
+  // No trial tag still carries the currency.
+  assertEquals(
+    buildCheckoutIdempotencyKey("ws-1", "pro", "month", "billing", now, "", "usd") ===
+      buildCheckoutIdempotencyKey("ws-1", "pro", "month", "billing", now, "", "brl"),
+    false,
+  );
+});

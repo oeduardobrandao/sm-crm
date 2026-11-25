@@ -263,3 +263,82 @@ export function extractInvoiceSubscriptionId(invoice: InvoiceSubscriptionSource)
   if (raw == null) return null;
   return typeof raw === "string" ? raw : (raw.id ?? null);
 }
+
+// ---------------------------------------------------------------------------
+// USD billing: checkout pins the workspace currency
+// ---------------------------------------------------------------------------
+
+/** Billing currency of a workspace (workspaces.billing_currency). */
+export type BillingCurrency = "brl" | "usd";
+
+/** Narrows a DB/RPC value to BillingCurrency; anything else is null (callers fail closed). */
+export function parseBillingCurrency(value: unknown): BillingCurrency | null {
+  return value === "brl" || value === "usd" ? value : null;
+}
+
+/** True when the plan has a positive USD amount (cents) for the chosen interval. */
+export function usdPriceConfigured(
+  plan: { price_usd: number | null; price_usd_annual: number | null },
+  interval: "month" | "year",
+): boolean {
+  const cents = interval === "year" ? plan.price_usd_annual : plan.price_usd;
+  return typeof cents === "number" && cents > 0;
+}
+
+/**
+ * A Stripe customer gets a fixed currency on its first subscription/invoice and can never be
+ * billed in another one. True when the customer already has a currency and it is not the
+ * workspace's (a customer without a currency yet takes whatever this checkout pins).
+ */
+export function customerCurrencyConflict(
+  customerCurrency: string | null | undefined,
+  workspaceCurrency: BillingCurrency,
+): boolean {
+  if (!customerCurrency) return false;
+  return customerCurrency.toLowerCase() !== workspaceCurrency;
+}
+
+/** Checkout page language: English for USD workspaces, Portuguese for BRL. */
+export function checkoutLocale(currency: BillingCurrency): "en" | "pt-BR" {
+  return currency === "usd" ? "en" : "pt-BR";
+}
+
+/**
+ * Stripe Checkout session parameters for billing-checkout. `currency` is ALWAYS sent: once the
+ * live prices carry a USD currency_options entry, Checkout would otherwise pick the currency
+ * from the buyer's location (a Brazilian workspace could be billed in USD and vice versa).
+ */
+export function buildCheckoutSessionParams(args: {
+  customerId: string;
+  workspaceId: string;
+  planId: string;
+  priceId: string;
+  trial: CheckoutTrial;
+  currency: BillingCurrency;
+  successUrl: string;
+  cancelUrl: string;
+}) {
+  const { trial } = args;
+  return {
+    mode: "subscription" as const,
+    customer: args.customerId,
+    client_reference_id: args.workspaceId,
+    line_items: [{ price: args.priceId, quantity: 1 }],
+    subscription_data: {
+      metadata: { workspace_id: args.workspaceId, plan_id: args.planId },
+      ...(trial.kind === "reverse"
+        ? { trial_end: Math.floor(trial.trialEnd.getTime() / 1000) }
+        : trial.kind === "days"
+        ? { trial_period_days: trial.days }
+        : {}),
+    },
+    // Stripe's own promo box stays open for any real future coupon.
+    allow_promotion_codes: true,
+    // Always collect the card: a trial has to convert on day 30.
+    payment_method_collection: "always" as const,
+    success_url: args.successUrl,
+    cancel_url: args.cancelUrl,
+    currency: args.currency,
+    locale: checkoutLocale(args.currency),
+  };
+}
