@@ -219,3 +219,31 @@ Deno.test("invoice_paid_marks_first_paid", async () => {
   await markReverseTrialFirstPaid(svc, "ws-1");
   assertEquals(rpcs, [{ name: "mark_reverse_trial_first_paid", args: { p_workspace: "ws-1" } }]);
 });
+
+Deno.test("first charge failed (past_due) on a never-paid conversion after the end: downgraded", async () => {
+  const { downgradeUnpaidReverseTrialConversion } = await import("../_shared/plan-writer.ts");
+  const row = {
+    plan_source: "stripe",
+    reverse_trial_outcome: "converted",
+    reverse_trial_ends_at: past,
+    reverse_trial_first_paid_at: null,
+  };
+  const hit = makeTrialSvc(row, { mark_reverse_trial_unpaid: true });
+  assertEquals(await downgradeUnpaidReverseTrialConversion(hit.svc, "ws-1", "free", "stripe", NOW), true);
+  assertEquals(hit.updates, [{ plan_id: "free", plan_source: "stripe" }]);
+  assertEquals(hit.rpcs.map((r) => r.name), ["mark_reverse_trial_unpaid"]);
+
+  for (
+    const other of [
+      { ...row, reverse_trial_first_paid_at: past }, // already paid once: ordinary dunning
+      { ...row, reverse_trial_ends_at: future }, // before the original end
+      { ...row, reverse_trial_outcome: null }, // not a reverse-trial conversion
+      { ...row, plan_source: "manual" }, // comp
+    ]
+  ) {
+    const miss = makeTrialSvc(other);
+    assertEquals(await downgradeUnpaidReverseTrialConversion(miss.svc, "ws-1", "free", "stripe", NOW), false);
+    assertEquals(miss.updates, []);
+    assertEquals(miss.rpcs, []);
+  }
+});

@@ -607,6 +607,41 @@ begin;
   end $$;
 rollback;
 
+-- 2.8 admin_extend_reverse_trial: only while running, future, <= start + 30 days
+begin;
+  do $$
+  declare f record; g record;
+  begin
+    select * into f from et_rt_trial('1 day', '13 days');
+    if admin_extend_reverse_trial(f.workspace_id, now() - interval '1 minute') then
+      raise exception 'extend: past date accepted';
+    end if;
+    if admin_extend_reverse_trial(f.workspace_id, now() - interval '1 day' + interval '30 days 1 minute') then
+      raise exception 'extend: beyond start + 30 days accepted';
+    end if;
+    if not admin_extend_reverse_trial(f.workspace_id, now() - interval '1 day' + interval '30 days') then
+      raise exception 'extend: valid date refused';
+    end if;
+    if (select reverse_trial_ends_at from workspaces where id = f.workspace_id)
+       <> now() - interval '1 day' + interval '30 days' then
+      raise exception 'extend: ends_at not written';
+    end if;
+    perform convert_reverse_trial(f.workspace_id, 'pro', 'stripe');
+    if admin_extend_reverse_trial(f.workspace_id, now() + interval '20 days') then
+      raise exception 'extend_refused_after_conversion';
+    end if;
+    select * into g from et_rt_trial();
+    perform end_reverse_trial(g.workspace_id);
+    if admin_extend_reverse_trial(g.workspace_id, now() + interval '20 days') then
+      raise exception 'extend_refused_when_ended';
+    end if;
+    if has_function_privilege('authenticated', 'public.admin_extend_reverse_trial(uuid,timestamptz)', 'EXECUTE')
+       or not has_function_privilege('service_role', 'public.admin_extend_reverse_trial(uuid,timestamptz)', 'EXECUTE') then
+      raise exception 'extend: wrong grants';
+    end if;
+  end $$;
+rollback;
+
 -- 2.7 grants
 begin;
   do $$

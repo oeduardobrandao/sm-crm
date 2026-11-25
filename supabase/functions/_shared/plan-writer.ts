@@ -83,6 +83,43 @@ export async function writeWorkspacePlan(
 }
 
 /**
+ * First charge FAILED on a subscription bound during a reverse trial (Stripe past_due before
+ * any payment). statusToPlanId leaves the plan alone on past_due (dunning grace), so without
+ * this the never-paid conversion would keep Pro until the provider finally cancels. Spec Part 4:
+ * a conversion that never paid is a downgraded trial once the original end has passed. Acts
+ * only on outcome 'converted' with reverse_trial_first_paid_at null and now >= the original
+ * reverse_trial_ends_at (never on a comp); returns whether it downgraded. Throws on error.
+ */
+export async function downgradeUnpaidReverseTrialConversion(
+  svc: SupabaseClient,
+  workspaceId: string,
+  defaultPlanId: string,
+  planSource: "stripe" | "pagarme",
+  now: Date = new Date(),
+): Promise<boolean> {
+  const { data: ws, error: readErr } = await svc
+    .from("workspaces")
+    .select(
+      "plan_source, reverse_trial_outcome, reverse_trial_ends_at, reverse_trial_first_paid_at",
+    )
+    .eq("id", workspaceId)
+    .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS)).single();
+  if (readErr) {
+    throw new Error(`workspace read failed for ${workspaceId}: ${readErr.message}`);
+  }
+  if (
+    ws?.plan_source === "manual" || ws?.reverse_trial_outcome !== "converted" ||
+    ws?.reverse_trial_first_paid_at || !ws?.reverse_trial_ends_at ||
+    now < new Date(ws.reverse_trial_ends_at)
+  ) {
+    return false;
+  }
+  await updatePlan(svc, workspaceId, defaultPlanId, planSource);
+  await callRpc(svc, "mark_reverse_trial_unpaid", { p_workspace: workspaceId });
+  return true;
+}
+
+/**
  * First successful payment of a subscription bound during a reverse trial (Stripe invoice.paid
  * with amount > 0, Pagar.me first paid charge). The SQL function only stamps a workspace that
  * has reverse_trial_card_added_at and no first payment yet, so calling it for any workspace is

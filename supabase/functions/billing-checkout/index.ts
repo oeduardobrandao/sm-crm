@@ -187,7 +187,10 @@ Deno.serve(async (req: Request) => {
 
     // Running reverse trial: first charge on its end date (trial_end, >= Stripe's 48h minimum).
     // Reverse trial used or any earlier subscription: no trial. Otherwise the 30-day card trial.
-    const trial = resolveCheckoutTrial(trialWs, subRow, new Date());
+    // One clock for the trial floor and the hourly idempotency bucket, so the two never
+    // straddle an hour boundary (same key, different trial_end = idempotency_error).
+    const nowMs = Date.now();
+    const trial = resolveCheckoutTrial(trialWs, subRow, new Date(nowMs));
     const source = resolveCheckoutSource(body.source);
     const returnPaths = resolveReturnPaths(source);
 
@@ -222,7 +225,7 @@ Deno.serve(async (req: Request) => {
         planId,
         interval,
         source,
-        Date.now(),
+        nowMs,
       ),
     });
 

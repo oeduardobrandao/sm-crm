@@ -1687,3 +1687,36 @@ $$;
 
 revoke all on function public.get_reverse_trial_email_candidates(timestamptz) from public, anon, authenticated;
 grant execute on function public.get_reverse_trial_email_candidates(timestamptz) to service_role;
+
+-- =============================================================
+-- 10) Extensao pelo Admin (service_role; platform-admin extend-reverse-trial). So enquanto o
+--     teste roda (plan_source = 'trial'): depois de uma assinatura vinculada a data do
+--     provedor e a verdade, e um teste encerrado nao recomeca (a ferramenta e a cortesia).
+--     p_ends_at no futuro e no maximo 30 dias depois do inicio. Trava a linha.
+-- =============================================================
+create or replace function public.admin_extend_reverse_trial(p_workspace uuid, p_ends_at timestamptz)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  w record;
+begin
+  if p_ends_at is null or p_ends_at <= now() then
+    return false;
+  end if;
+  select * into w from workspaces where id = p_workspace for update;
+  if not found
+     or w.plan_source is distinct from 'trial'
+     or w.reverse_trial_started_at is null
+     or p_ends_at > w.reverse_trial_started_at + interval '30 days' then
+    return false;
+  end if;
+  update workspaces set reverse_trial_ends_at = p_ends_at where id = p_workspace;
+  return true;
+end;
+$$;
+
+revoke all on function public.admin_extend_reverse_trial(uuid, timestamptz) from public, anon, authenticated;
+grant execute on function public.admin_extend_reverse_trial(uuid, timestamptz) to service_role;
