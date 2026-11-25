@@ -792,6 +792,8 @@ Deno.test("buildReverseTrialEmail ending: subject and date in the São Paulo cal
   assertReverseTrialBasics(html, subject);
   assertStringIncludes(html, "termina em 7 de dezembro");
   assertStringIncludes(html, "R$ 149,00 por mês");
+  assertStringIncludes(html, "Nada é cobrado agora");
+  assert(!html.includes("cobrança, de R$ 149,00 por mês, só acontece em"), "no charge date: the provider may charge later");
   assertStringIncludes(html, "Adicionar cartão");
   assertStringIncludes(html, "Nada é apagado");
 });
@@ -799,7 +801,7 @@ Deno.test("buildReverseTrialEmail ending: subject and date in the São Paulo cal
 Deno.test("buildReverseTrialEmail ending: no price drops the amount, not the sentence", () => {
   const { html } = buildReverseTrialEmail({ ...RT_INPUT, type: "reverse_trial_ending", priceCents: null });
   assert(!html.includes("R$"));
-  assertStringIncludes(html, "A primeira cobrança só acontece em 7 de dezembro.");
+  assertStringIncludes(html, "a primeira cobrança nunca acontece antes do fim do teste.");
 });
 
 Deno.test("buildReverseTrialEmail ended: you are on Free, nothing deleted, Hub pause date", () => {

@@ -251,9 +251,12 @@ export function buildReverseTrialEmail(p: ReverseTrialEmailInput): { subject: st
           greet +
           paragraph(`O teste grátis do ${plan} no workspace ${p.workspaceName} termina em ${date}.`) +
           paragraph(
+            // No charge date here: a card added in the last 48h is charged
+            // later than the trial end (Stripe floor, Pagar.me rounding); the
+            // checkout shows the exact date.
             price
-              ? `Para continuar no ${plan}, adicione um cartão. A primeira cobrança, de ${price}, só acontece em ${date}.`
-              : `Para continuar no ${plan}, adicione um cartão. A primeira cobrança só acontece em ${date}.`,
+              ? `Para continuar no ${plan}, adicione um cartão. Nada é cobrado agora: a primeira cobrança, de ${price}, nunca acontece antes do fim do teste.`
+              : `Para continuar no ${plan}, adicione um cartão. Nada é cobrado agora: a primeira cobrança nunca acontece antes do fim do teste.`,
             "body",
             "0 0 20px",
           ) +
