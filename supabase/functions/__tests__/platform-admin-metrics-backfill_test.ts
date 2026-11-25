@@ -5,7 +5,6 @@ import {
   handleBackfillMetrics,
   enrichSubscriptionPrice,
   listPagarmeSubscriptions,
-  toStripeSubLite,
   PAGARME_MAX_PAGES,
   toPagarmeSubLite,
   toStripeSubLite,
