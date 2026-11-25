@@ -1,5 +1,10 @@
 import { assertEquals, assert } from "./assert.ts";
-import { classifyPublishError, NON_RETRYABLE_CODES, PUBLISH_ERROR_COPY } from "../_shared/publish-error-codes.ts";
+import {
+  classifyPublishError,
+  graphCodes,
+  NON_RETRYABLE_CODES,
+  PUBLISH_ERROR_COPY,
+} from "../_shared/publish-error-codes.ts";
 
 function graphErr(message: string, graphCode?: number): Error {
   const e = new Error(message) as Error & { graphCode?: number };
@@ -159,4 +164,30 @@ Deno.test("classifyPublishError: media-shape trial error → TRIAL_INELIGIBLE", 
 Deno.test("TRIAL_INELIGIBLE is non-retryable and has copy", () => {
   assert(NON_RETRYABLE_CODES.includes("TRIAL_INELIGIBLE"));
   assert(PUBLISH_ERROR_COPY.TRIAL_INELIGIBLE.titulo.length > 0);
+});
+
+// Post 21090 (2026-11-24): "User not visible" num post com colaborador caiu em
+// UNKNOWN e foi retentado 6 vezes.
+Deno.test("classify: 'User not visible' com colaboradores → COLLABORATOR_INVALID", () => {
+  assertEquals(
+    classifyPublishError(new Error("User not visible"), { hasCollaborators: true }),
+    "COLLABORATOR_INVALID",
+  );
+});
+
+Deno.test("classify: 'User not visible' sem colaboradores segue UNKNOWN", () => {
+  assertEquals(classifyPublishError(new Error("User not visible")), "UNKNOWN");
+  assertEquals(
+    classifyPublishError(new Error("User not visible"), { hasCollaborators: false }),
+    "UNKNOWN",
+  );
+});
+
+Deno.test("graphCodes: só os números que existem", () => {
+  const e = new Error("x") as Error & { graphCode?: number; graphSubcode?: number };
+  e.graphCode = 110;
+  e.graphSubcode = 2207018;
+  assertEquals(graphCodes(e), { graphCode: 110, graphSubcode: 2207018 });
+  assertEquals(graphCodes(new Error("y")), {});
+  assertEquals(graphCodes(null), {});
 });

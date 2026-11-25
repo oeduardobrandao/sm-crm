@@ -5,6 +5,9 @@ export interface CronFailureError {
   accountId?: string;
   error?: string;
   errorCode?: string;
+  /** `error.code` / `error.error_subcode` da Graph API, quando houver. */
+  graphCode?: number;
+  graphSubcode?: number;
   postId?: number;
   postCaption?: string;
   clientId?: number;

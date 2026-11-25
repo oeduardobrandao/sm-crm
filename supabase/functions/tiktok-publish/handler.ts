@@ -45,6 +45,7 @@ import {
   TikTokApiError,
 } from "../_shared/tiktok.ts";
 import { isTikTokCannotPostCode, tiktokErrorMessage } from "../_shared/tiktok-messages.ts";
+import { recordRefusedCollaborators } from "../_shared/instagram-collaborators.ts";
 import {
   evaluateTikTokPrecheck,
   fetchCreatorCheck as realFetchCreatorCheck,
@@ -382,7 +383,7 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
       let igValidation: ScheduleValidationResult | null = null;
       if (post.platform === "both") {
         try {
-          igValidation = await validateIG(svcDb as never, postId);
+          igValidation = await validateIG(svcDb as never, postId, { probeCollaborators: true });
         } catch (e) {
           console.error("[TIKTOK-PUBLISH] schedule IG validation error:", (e as Error)?.message);
           const restoreFailure = await restoreScheduledAt();
@@ -394,6 +395,7 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
       const mergedErrors = [...(tiktokValidation?.errors ?? []), ...(igValidation?.errors ?? [])];
       const ok = (tiktokValidation ? tiktokValidation.ok : true) && (igValidation ? igValidation.ok : true);
       if (!ok) {
+        await recordRefusedCollaborators(svcDb, postId, igValidation?.refusedCollaborators);
         const restoreFailure = await restoreScheduledAt();
         if (restoreFailure) return restoreFailure;
         return json({ error: "Validação falhou", details: mergedErrors }, 422);
