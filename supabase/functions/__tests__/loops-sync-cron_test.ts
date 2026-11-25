@@ -497,3 +497,27 @@ Deno.test("no candidates is a clean no-op", async () => {
   const res = await runLoopsSyncCron(deps);
   assertEquals(res, { traitsSynced: 0, eventsSent: 0, contactsDeleted: 0, failed: 0 });
 });
+
+Deno.test("reverse trial owners get their own traits, not a paying Pro", async () => {
+  const deps = makeDeps({
+    rpc: (name: string) =>
+      Promise.resolve({
+        data: name === "get_loops_trait_candidates"
+          ? [{
+            user_id: "user-1",
+            email: "a@b.com",
+            nome: "Ana",
+            days_since_signup: 2,
+            workspace_count: 1,
+            any_free: false,
+            any_reverse_trial: true,
+            reverse_trial_ends_at: "2026-12-08T13:00:00+00:00",
+          }]
+          : [],
+        error: null,
+      }),
+  });
+  await runLoopsSyncCron(deps);
+  assertEquals(deps.traits[0].traits.anyReverseTrial, true);
+  assertEquals(deps.traits[0].traits.reverseTrialEndsAt, "2026-12-08");
+});

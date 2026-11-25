@@ -27,6 +27,7 @@ interface DbOpts {
   issue?: { data: unknown; error: unknown };
   verify?: { data: unknown; error: unknown };
   sessionDelete?: { data: unknown; error: unknown };
+  paused?: boolean;
 }
 
 function makeDb(opts: DbOpts = {}) {
@@ -48,6 +49,7 @@ function makeDb(opts: DbOpts = {}) {
     }),
     rpc: async (fn: string, params: Record<string, unknown>) => {
       if (fn === "effective_plan_feature") return { data: true, error: null };
+      if (fn === "hub_workspace_paused") return { data: opts.paused === true, error: null };
       rpcCalls.push({ fn, params });
       if (fn === "hub_login_issue") return opts.issue ?? { data: true, error: null };
       if (fn === "hub_login_verify") return opts.verify ?? { data: { ok: true }, error: null };
@@ -376,6 +378,19 @@ Deno.test("invalid token or slug mismatch -> 404 for both actions, hub-badtoken 
     assertEquals(t.limits, [{ key: `hub-badtoken:${IP}`, max: 30, win: 600 }]);
     assertEquals(t.db.rpcCalls.length, 0);
     assertEquals(t.deferred.length, 0);
+  }
+});
+
+Deno.test("hub_auth_paused_returns_hub_paused: both actions -> 403 with the agency name, nothing issued", async () => {
+  for (const make of [() => reqCode("marina@clinica.com"), () => verify(CODE)]) {
+    const t = setup({ paused: true });
+    const res = await t.handler(make());
+    assertEquals(res.status, 403);
+    assertEquals(await res.json(), { error: "Portal pausado.", code: "hub_paused", agency_name: "Agência Sol" });
+    assertEquals(t.limits, []);
+    assertEquals(t.db.rpcCalls.length, 0);
+    assertEquals(t.deferred.length, 0);
+    assertEquals(t.sent.length, 0);
   }
 });
 

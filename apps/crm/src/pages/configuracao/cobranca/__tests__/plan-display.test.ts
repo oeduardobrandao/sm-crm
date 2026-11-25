@@ -63,6 +63,11 @@ describe('plan-display', () => {
       expect(canUpgradeTo('pro', 'pro', false, 'demo')).toBe(true);
     });
 
+    it('allows the current plan during a reverse trial (adding a card)', () => {
+      expect(canUpgradeTo('pro', 'pro', false, 'trial')).toBe(true);
+      expect(canUpgradeTo('pro', 'pro', true, 'trial')).toBe(false);
+    });
+
     it('still refuses the current plan otherwise', () => {
       expect(canUpgradeTo('pro', 'pro', false)).toBe(false);
       expect(canUpgradeTo('pro', 'pro', false, 'manual')).toBe(false);

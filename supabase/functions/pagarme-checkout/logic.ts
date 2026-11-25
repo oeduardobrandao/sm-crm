@@ -4,7 +4,7 @@
 
 import { PagarmeApiError } from "../_shared/pagarme.ts";
 import { isInForce, isPaidThrough } from "../_shared/pagarme-logic.ts";
-import { PAGARME_PAID_PLAN_IDS } from "../_shared/billing-logic.ts";
+import { type CheckoutTrial, PAGARME_PAID_PLAN_IDS } from "../_shared/billing-logic.ts";
 import type { PagarmeSubscriptionResponse } from "./gateway.ts";
 
 // Re-exported for callers that imported the old local name; the list itself now lives in
@@ -176,6 +176,25 @@ export function ceilToUtcMidnightDate(boundary: Date): string {
 export function resolveStartAt(trialDays: number | undefined, now: Date): string | undefined {
   if (!trialDays) return undefined;
   return ceilToUtcMidnightDate(new Date(now.getTime() + trialDays * 24 * 3600 * 1000));
+}
+
+/**
+ * start_at for a Pagar.me checkout from the shared trial decision. A running reverse trial
+ * charges on its own end date (reverse_trial_ends_at, ceiled to UTC midnight like
+ * resolveStartAt; Pagar.me has no 48h floor, so the raw end date is used and never a past
+ * one); the card trial keeps resolveStartAt; no trial = charge now.
+ */
+export function resolveCheckoutStartAt(
+  trial: CheckoutTrial,
+  reverseTrialEndsAt: string | null | undefined,
+  now: Date,
+): string | undefined {
+  if (trial.kind === "reverse") {
+    const ends = reverseTrialEndsAt ? new Date(reverseTrialEndsAt) : trial.trialEnd;
+    return ceilToUtcMidnightDate(ends.getTime() > now.getTime() ? ends : now);
+  }
+  if (trial.kind === "days") return resolveStartAt(trial.days, now);
+  return undefined;
 }
 
 /**

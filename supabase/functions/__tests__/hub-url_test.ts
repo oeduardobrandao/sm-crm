@@ -34,6 +34,8 @@ function makeDb(opts: {
   token: string | null;
   featureOn: boolean;
   rpcError?: unknown;
+  paused?: boolean;
+  pausedError?: unknown;
 }): SupabaseClient {
   return {
     from: (table: string) => ({
@@ -57,12 +59,42 @@ function makeDb(opts: {
       }),
       _table: table,
     }),
-    rpc: async () =>
-      opts.rpcError
+    rpc: async (fn: string) => {
+      if (fn === "hub_workspace_paused") {
+        return opts.pausedError
+          ? { data: null, error: opts.pausedError }
+          : { data: opts.paused === true, error: null };
+      }
+      return opts.rpcError
         ? { data: null, error: opts.rpcError }
-        : { data: opts.featureOn, error: null },
+        : { data: opts.featureOn, error: null };
+    },
   } as unknown as SupabaseClient;
 }
+
+Deno.test("resolveHubUrl: returns empty when the Hub is paused (reverse trial ended)", async () => {
+  // The link would open "Este portal está pausado": the email omits the button instead.
+  Deno.env.set("APP_BASE_URL", "https://app.mesaas.com.br");
+  const db = makeDb({ slug: "agencia-dk", token: "tok-1", featureOn: true, paused: true });
+  assertEquals(await resolveHubUrl(db, 7, "ws-1"), "");
+});
+
+Deno.test("resolveHubUrl: a failing pause check reads as not paused", async () => {
+  Deno.env.set("APP_BASE_URL", "https://app.mesaas.com.br");
+  const orig = console.error;
+  console.error = () => {};
+  try {
+    const db = makeDb({
+      slug: "agencia-dk",
+      token: "tok-1",
+      featureOn: true,
+      pausedError: { code: "42883" },
+    });
+    assertEquals((await resolveHubUrl(db, 7, "ws-1")).endsWith("/agencia-dk/hub/tok-1"), true);
+  } finally {
+    console.error = orig;
+  }
+});
 
 Deno.test("resolveHubUrl: returns a link for a live token on an enabled plan", async () => {
   // appBaseUrl() now throws when APP_BASE_URL is unset — set it explicitly so this test's

@@ -12,8 +12,9 @@ import { describe, expect, it } from 'vitest';
 
 const SRC = path.resolve(__dirname, '..');
 
-/** BILLING_PATH, or the three paths as string literals in any quote style. */
-const BILLING_REF = /\bBILLING_PATH\b|['"`]\/(?:configuracao\/cobranca|comecar|precos)(?=['"`?#/])/;
+/** BILLING_PATH, ADD_CARD_PATH, or the three paths as string literals in any quote style. */
+const BILLING_REF =
+  /\b(?:BILLING_PATH|ADD_CARD_PATH)\b|['"`]\/(?:configuracao\/cobranca|comecar|precos)(?=['"`?#/])/;
 
 const IMPORTS_IS_NATIVE =
   /import\s*\{[^}]*\bisNativeApp\b[^}]*\}\s*from\s*['"][^'"]*native\/platform['"]/;
@@ -26,6 +27,8 @@ const ALLOWLIST_FILES = new Set([
   'native/blockedPaths.ts',
   // Re-export of BILLING_PATH; the tabs that render it are checked themselves.
   'pages/analytics-conta/tiktok/tiktokTabFormat.ts',
+  // Declares ADD_CARD_PATH (reverse trial); every file that renders it is checked itself.
+  'lib/reverseTrial.ts',
   // Gated by Task 4 (login, routes, trial redirect, workspace setup).
   'pages/login/LoginPage.tsx',
   'components/layout/ProtectedRoute.tsx',

@@ -1,8 +1,11 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
+import { capturePostHog } from "../_shared/posthog.ts";
 import { createHubBootstrapHandler } from "./handler.ts";
 import { makeTouchToken, TOUCH_TIMEOUT_MS } from "./touch.ts";
+
+declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -30,4 +33,14 @@ Deno.serve(createHubBootstrapHandler({
   touchSession,
   // deno-lint-ignore no-explicit-any
   rateLimit: (db, key, max, win) => checkRateLimit(db as any, key, max, win),
+  // The Hub has no analytics SDK, so the paused page is measured here. Distinct id
+  // is the workspace (agency) id; nothing about the client or the person viewing.
+  trackPaused: (contaId) => {
+    EdgeRuntime.waitUntil(
+      capturePostHog("hub_paused_viewed", contaId, {
+        $groups: { workspace: contaId },
+        $process_person_profile: false,
+      }).catch(() => {}),
+    );
+  },
 }));

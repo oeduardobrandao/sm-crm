@@ -17,6 +17,10 @@ import { MASKED_BRL } from '@/lib/financialAccess';
  */
 
 const { useAuthMock } = vi.hoisted(() => ({ useAuthMock: vi.fn() }));
+// The read-only grandfather hook reads useWorkspaceLimits (AuthContext), which these suites mock.
+vi.mock('@/components/paywall/useReadOnlyGrandfather', () => ({
+  useReadOnlyGrandfather: () => ({ readOnly: false, pending: false }),
+}));
 vi.mock('../../../context/AuthContext', () => ({ useAuth: useAuthMock }));
 vi.mock('@/context/AuthContext', () => ({ useAuth: useAuthMock }));
 

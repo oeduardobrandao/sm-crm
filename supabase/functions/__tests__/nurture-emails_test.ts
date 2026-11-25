@@ -4,6 +4,7 @@ import {
   NURTURE_SAMPLE,
   type NurtureEmailInput,
   type NurtureStep,
+  nurtureTagType,
   nurtureUtm,
   nurtureWorkspaceName,
 } from "../_shared/nurture-emails.ts";
@@ -150,5 +151,87 @@ Deno.test("feature screenshots: one per tip/trial email, none on the last-ask em
     const shots = [...html.matchAll(/src="https:\/\/www\.mesaas\.com\.br\/email\/([^"]+)"/g)].map((m) => m[1]);
     assert(file ? shots.length === 1 && shots[0] === file : shots.length === 0, `${step}: ${shots.join(",")}`);
     if (file) assert(/alt="[^"]{10,}"/.test(html.slice(html.indexOf(file))), `${step}: alt text`);
+  }
+});
+
+// ─── Teste reverso (Task 10) ────────────────────────────────────────────────
+
+const EX_STEPS: NurtureStep[] = ["a3", "b1", "b2", "b3"];
+const RECOVER_HREF = `href="${BASE}/comecar?recomendado=pro&amp;utm_source=email`;
+
+function assertRecoverCopy(step: NurtureStep, o: Partial<NurtureEmailInput> = {}) {
+  const { subject, html } = mk(step, { exReverseTrial: true, ...o });
+  const text = `${subject} ${html}`;
+  assert(!/grátis/i.test(text), `${step}: no "grátis" for an ex-trial owner`);
+  assert(!text.includes("30 dias"), `${step}: no 30-day trial`);
+  assert(!text.includes("O teste pede um cartão"), `${step}: no card-trial fine print`);
+  assert(html.includes("Recuperar o Pro"), `${step}: CTA`);
+  assert(html.includes(RECOVER_HREF), `${step}: link to /comecar?recomendado=pro with utm`);
+  assert(!/href="[^"]*\/comecar\?utm/.test(html), `${step}: no plain /comecar trial link`);
+  assert(html.includes("a primeira cobrança é feita ao assinar"), `${step}: immediate-charge framing`);
+  assert(html.includes("Descadastrar</a>."), `${step}: unsub footer`);
+  assert(!text.includes("—"), `${step}: em dash`);
+  return { subject, html };
+}
+
+Deno.test("nurtureUtm appends with & when the path already has a query", () => {
+  assert(
+    nurtureUtm(BASE, "/comecar?recomendado=pro", "b1") ===
+      `${BASE}/comecar?recomendado=pro&utm_source=email&utm_medium=nurture&utm_campaign=nurture_b1`,
+  );
+});
+
+Deno.test("nurture_a3_ex_trial_variant: ex-trial a3 offers the Pro back, not a free trial", () => {
+  const { subject, html } = assertRecoverCopy("a3");
+  assert(subject === "Recupere o Pro no Mesaas", subject);
+  assert(html.includes("teste de 14 dias do Pro terminou"));
+  assert(html.includes("Nada foi apagado"));
+});
+
+Deno.test("nurture_b_ex_trial_no_free_trial_copy: b1, b2 and b3 never pitch a free trial to an ex-trial owner", () => {
+  for (const step of ["b1", "b2", "b3"] as NurtureStep[]) {
+    for (const o of [{ clientCount: 0 }, { clientCount: 1 }, { clientCount: 4, hasInstagram: true }]) {
+      assertRecoverCopy(step, o);
+    }
+  }
+});
+
+Deno.test("nurture b1 ex-trial: own subject and the Free limit line at 2+ clients", () => {
+  const atLimit = assertRecoverCopy("b1", { clientCount: 3 });
+  assert(atLimit.subject === "Recupere o Pro para a sua agência", atLimit.subject);
+  assert(atLimit.html.includes("Você já cadastrou 3 clientes, e esse é o limite do plano Free."));
+  assert(atLimit.html.includes("Seu Free parou em 2 clientes. O Pro libera o resto."));
+  const one = assertRecoverCopy("b1", { clientCount: 1 });
+  assert(one.html.includes("Você já cadastrou seu primeiro cliente. Com o Pro de volta"));
+});
+
+Deno.test("nurture b2 ex-trial: Hub, equipe e Instagram são do Pro", () => {
+  const { subject, html } = assertRecoverCopy("b2");
+  assert(subject === "Seu cliente aprova o post pelo celular", subject);
+  assert(html.includes("fazem parte do Pro."));
+});
+
+Deno.test("nurture b3 ex-trial: report line says Pro, not the trial", () => {
+  const { html } = assertRecoverCopy("b3", { hasInstagram: true });
+  assert(html.includes("No Pro, o relatório em PDF"));
+  assert(!html.includes("No teste,"));
+});
+
+Deno.test("nurture: exReverseTrial changes only a3, b1, b2 and b3", () => {
+  for (const s of STEPS) {
+    const plain = mk(s);
+    const ex = mk(s, { exReverseTrial: true });
+    const same = plain.subject === ex.subject && plain.html === ex.html;
+    assert(EX_STEPS.includes(s) ? !same : same, s);
+  }
+  assert(mk("a3").subject === "Teste tudo do Mesaas por 30 dias");
+  assert(mk("b1").html.includes("Começar meu teste grátis"), "non-ex b1 unchanged");
+});
+
+Deno.test("nurtureTagType: _ex_trial suffix only on the four variant steps", () => {
+  for (const s of STEPS) {
+    assert(nurtureTagType(s, false) === `nurture_${s}`, s);
+    assert(nurtureTagType(s, null) === `nurture_${s}`, s);
+    assert(nurtureTagType(s, true) === (EX_STEPS.includes(s) ? `nurture_${s}_ex_trial` : `nurture_${s}`), s);
   }
 });

@@ -52,3 +52,226 @@ Deno.test("writeWorkspacePlan writes a null plan_source on a fallback write", as
   await writeWorkspacePlan(svc, "ws-1", "free", "stripe", "fallback");
   assertEquals(updates, [{ plan_id: "free", plan_source: "stripe" }]);
 });
+
+// ---- teste reverso -------------------------------------------------------------------------
+// Fake svc with the full workspace row and an rpc recorder; rpc results by name.
+function makeTrialSvc(
+  rowOrRows: Record<string, unknown> | Record<string, unknown>[],
+  rpcResults: Record<string, unknown> = {},
+) {
+  const rows = Array.isArray(rowOrRows) ? rowOrRows : [rowOrRows];
+  let reads = 0;
+  const updates: Record<string, unknown>[] = [];
+  const rpcs: Array<{ name: string; args: Record<string, unknown> }> = [];
+  // deno-lint-ignore no-explicit-any
+  const chain: any = {};
+  chain.select = () => chain;
+  chain.eq = () => chain;
+  chain.abortSignal = () => chain;
+  chain.single = () =>
+    Promise.resolve({ data: rows[Math.min(reads++, rows.length - 1)], error: null });
+  chain.update = (p: Record<string, unknown>) => {
+    updates.push(p);
+    return chain;
+  };
+  chain.then = (resolve: (r: unknown) => unknown) =>
+    Promise.resolve(resolve({ data: null, error: null }));
+  const svc = {
+    from: () => chain,
+    rpc: (name: string, args: Record<string, unknown>) => {
+      rpcs.push({ name, args });
+      // deno-lint-ignore no-explicit-any
+      const q: any = {
+        abortSignal: () => q,
+        then: (resolve: (r: unknown) => unknown) =>
+          Promise.resolve(resolve({ data: rpcResults[name] ?? null, error: null })),
+      };
+      return q;
+    },
+  } as unknown as SupabaseClient;
+  return { svc, updates, rpcs };
+}
+
+const NOW = new Date("2026-12-01T12:00:00Z");
+const future = "2026-12-05T12:00:00Z";
+const past = "2026-11-30T12:00:00Z";
+
+Deno.test("subscribed_on_trial_calls_convert", async () => {
+  const { svc, updates, rpcs } = makeTrialSvc(
+    { plan_source: "trial", reverse_trial_outcome: null },
+    { convert_reverse_trial: "converted" },
+  );
+  await writeWorkspacePlan(svc, "ws-1", "pro", "stripe", "subscribed", NOW);
+  assertEquals(rpcs, [{
+    name: "convert_reverse_trial",
+    args: { p_workspace: "ws-1", p_plan: "pro", p_source: "stripe" },
+  }]);
+  assertEquals(updates, []);
+});
+
+Deno.test("subscribed on a downgraded trial: late conversion via convert, win-back writes normally", async () => {
+  const late = makeTrialSvc(
+    { plan_source: "system", reverse_trial_outcome: "downgraded" },
+    { convert_reverse_trial: "rewritten_late" },
+  );
+  await writeWorkspacePlan(late.svc, "ws-1", "pro", "stripe", "subscribed", NOW);
+  assertEquals(late.rpcs.map((r) => r.name), ["convert_reverse_trial"]);
+  assertEquals(late.updates, []);
+
+  const winback = makeTrialSvc(
+    { plan_source: "system", reverse_trial_outcome: "downgraded" },
+    { convert_reverse_trial: "not_trial" },
+  );
+  await writeWorkspacePlan(winback.svc, "ws-1", "pro", "stripe", "subscribed", NOW);
+  assertEquals(winback.updates, [{ plan_id: "pro", plan_source: "stripe" }]);
+});
+
+Deno.test("subscribed on a trial that is still running after convert refused writes nothing", async () => {
+  // convert refused the plan itself (invalid/default) and the re-read still shows the trial.
+  const { svc, updates } = makeTrialSvc(
+    { plan_source: "trial" },
+    { convert_reverse_trial: "not_trial" },
+  );
+  await writeWorkspacePlan(svc, "ws-1", "pro", "stripe", "subscribed", NOW);
+  assertEquals(updates, []);
+});
+
+Deno.test("not_trial_after_cron_falls_through_to_paid_write", async () => {
+  // Stale read: plan_source was 'trial', the cron ended the trial before convert's lock and
+  // there is no checkout attempt, so convert returns not_trial. The re-read shows the
+  // downgraded workspace and the guarded normal write grants the paid plan.
+  const reads = [
+    { plan_source: "trial", reverse_trial_outcome: null },
+    { plan_source: "system", reverse_trial_outcome: "downgraded" },
+  ];
+  const { svc, updates, rpcs } = makeTrialSvc(reads, { convert_reverse_trial: "not_trial" });
+  await writeWorkspacePlan(svc, "ws-1", "pro", "stripe", "subscribed", NOW);
+  assertEquals(rpcs.map((r) => r.name), ["convert_reverse_trial"]);
+  assertEquals(updates, [{ plan_id: "pro", plan_source: "stripe" }]);
+
+  // ...but a comp that landed in between is still never overridden.
+  const comp = makeTrialSvc(
+    [{ plan_source: "trial" }, { plan_source: "manual" }],
+    { convert_reverse_trial: "not_trial" },
+  );
+  await writeWorkspacePlan(comp.svc, "ws-1", "pro", "stripe", "subscribed", NOW);
+  assertEquals(comp.updates, []);
+});
+
+Deno.test("fallback_on_trial_is_noop", async () => {
+  const { svc, updates, rpcs } = makeTrialSvc({ plan_source: "trial" });
+  await writeWorkspacePlan(svc, "ws-1", "free", "stripe", "fallback", NOW);
+  assertEquals(updates, []);
+  assertEquals(rpcs, []);
+});
+
+Deno.test("cancel_inside_window_reverts_to_trial", async () => {
+  const { svc, updates, rpcs } = makeTrialSvc(
+    {
+      plan_source: "stripe",
+      reverse_trial_outcome: "converted",
+      reverse_trial_ends_at: future,
+      reverse_trial_first_paid_at: null,
+    },
+    { revert_reverse_trial_conversion: true },
+  );
+  await writeWorkspacePlan(svc, "ws-1", "free", "stripe", "fallback", NOW);
+  assertEquals(rpcs, [{ name: "revert_reverse_trial_conversion", args: { p_workspace: "ws-1" } }]);
+  assertEquals(updates, []);
+});
+
+Deno.test("fallback_on_never_paid_trial_conversion_marks_downgraded", async () => {
+  const { svc, updates, rpcs } = makeTrialSvc(
+    {
+      plan_source: "stripe",
+      reverse_trial_outcome: "converted",
+      reverse_trial_ends_at: past,
+      reverse_trial_first_paid_at: null,
+    },
+    { mark_reverse_trial_unpaid: true },
+  );
+  await writeWorkspacePlan(svc, "ws-1", "free", "stripe", "fallback", NOW);
+  assertEquals(updates, [{ plan_id: "free", plan_source: "stripe" }]);
+  assertEquals(rpcs, [{ name: "mark_reverse_trial_unpaid", args: { p_workspace: "ws-1" } }]);
+});
+
+Deno.test("fallback_on_paid_customer_unchanged", async () => {
+  const { svc, updates, rpcs } = makeTrialSvc({
+    plan_source: "stripe",
+    reverse_trial_outcome: "converted",
+    reverse_trial_ends_at: past,
+    reverse_trial_first_paid_at: past,
+  });
+  await writeWorkspacePlan(svc, "ws-1", "free", "stripe", "fallback", NOW);
+  assertEquals(updates, [{ plan_id: "free", plan_source: "stripe" }]);
+  assertEquals(rpcs, []);
+});
+
+Deno.test("manual_still_never_overridden (trial fields present)", async () => {
+  const { svc, updates, rpcs } = makeTrialSvc(
+    { plan_source: "manual", reverse_trial_outcome: "converted", reverse_trial_first_paid_at: null },
+  );
+  await writeWorkspacePlan(svc, "ws-1", "pro", "stripe", "subscribed", NOW);
+  await writeWorkspacePlan(svc, "ws-1", "free", "stripe", "fallback", NOW);
+  assertEquals(updates, []);
+  assertEquals(rpcs, []);
+});
+
+Deno.test("an rpc error throws (webhook redelivers)", async () => {
+  // deno-lint-ignore no-explicit-any
+  const chain: any = {};
+  chain.select = () => chain;
+  chain.eq = () => chain;
+  chain.abortSignal = () => chain;
+  chain.single = () => Promise.resolve({ data: { plan_source: "trial" }, error: null });
+  const svc = {
+    from: () => chain,
+    rpc: () => ({
+      abortSignal: () => Promise.resolve({ data: null, error: { message: "boom" } }),
+    }),
+  } as unknown as SupabaseClient;
+  let threw = false;
+  try {
+    await writeWorkspacePlan(svc, "ws-1", "pro", "stripe", "subscribed", NOW);
+  } catch {
+    threw = true;
+  }
+  assertEquals(threw, true);
+});
+
+Deno.test("invoice_paid_marks_first_paid", async () => {
+  const { markReverseTrialFirstPaid } = await import("../_shared/plan-writer.ts");
+  const { svc, rpcs } = makeTrialSvc({});
+  await markReverseTrialFirstPaid(svc, "ws-1");
+  assertEquals(rpcs, [{ name: "mark_reverse_trial_first_paid", args: { p_workspace: "ws-1" } }]);
+});
+
+Deno.test("first charge failed (past_due) on a never-paid conversion after the end: downgraded", async () => {
+  const { downgradeUnpaidReverseTrialConversion } = await import("../_shared/plan-writer.ts");
+  const row = {
+    plan_source: "stripe",
+    reverse_trial_outcome: "converted",
+    reverse_trial_ends_at: past,
+    reverse_trial_card_added_at: past,
+    reverse_trial_first_paid_at: null,
+  };
+  const hit = makeTrialSvc(row, { mark_reverse_trial_unpaid: true });
+  assertEquals(await downgradeUnpaidReverseTrialConversion(hit.svc, "ws-1", "free", "stripe", NOW), true);
+  assertEquals(hit.updates, [{ plan_id: "free", plan_source: "stripe" }]);
+  assertEquals(hit.rpcs.map((r) => r.name), ["mark_reverse_trial_unpaid"]);
+
+  for (
+    const other of [
+      { ...row, reverse_trial_first_paid_at: past }, // already paid once: ordinary dunning
+      { ...row, reverse_trial_ends_at: future }, // before the original end
+      { ...row, reverse_trial_outcome: null }, // not a reverse-trial conversion
+      { ...row, plan_source: "manual" }, // comp
+      { ...row, reverse_trial_card_added_at: null }, // no card added during the trial
+    ]
+  ) {
+    const miss = makeTrialSvc(other);
+    assertEquals(await downgradeUnpaidReverseTrialConversion(miss.svc, "ws-1", "free", "stripe", NOW), false);
+    assertEquals(miss.updates, []);
+    assertEquals(miss.rpcs, []);
+  }
+});

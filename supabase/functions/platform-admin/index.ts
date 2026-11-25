@@ -1,6 +1,8 @@
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
-import { revertPlanTarget } from "./revert-target.ts";
+import { handleSetWorkspacePlan, handleUnsetWorkspacePlan } from "./workspace-plan.ts";
+import { handleEndReverseTrial, handleExtendReverseTrial } from "./reverse-trial.ts";
+import { handleGetReverseTrialFunnel } from "./reverse-trial-funnel.ts";
 import { handleCreatePlan, handleUpdatePlan } from "./plan-mutations.ts";
 import { handleGetWorkspaceInvites, handleAdminCancelInvite, handleAdminResendInvite, handleAdminCreateInvite } from "./invite-handlers.ts";
 import { handleListWorkspaces } from "./list-workspaces.ts";
@@ -150,6 +152,8 @@ Deno.serve(async (req: Request) => {
         return await handleGetTrials(svc, headers);
       case "get-churned":
         return await handleGetChurned(svc, headers);
+      case "get-reverse-trial-funnel":
+        return await handleGetReverseTrialFunnel(svc, headers);
       case "get-deposits":
         return await handleGetDeposits(headers);
       case "email-metrics":
@@ -169,7 +173,11 @@ Deno.serve(async (req: Request) => {
       case "delete-plan":
         return await handleDeletePlan(svc, body, headers);
       case "set-workspace-plan":
-        return await handleSetWorkspacePlan(svc, body, admin.id, headers);
+        return await handleSetWorkspacePlan(svc, body, { adminId: admin.id, userId: user.id }, headers);
+      case "extend-reverse-trial":
+        return await handleExtendReverseTrial(svc, body, user.id, headers);
+      case "end-reverse-trial":
+        return await handleEndReverseTrial(svc, body, user.id, headers);
       case "create-demo-workspace": {
         const r = await createDemoWorkspace(demoDeps(svc), body, { adminId: admin.id, userId: user.id });
         return new Response(JSON.stringify(r.body), { status: r.status, headers });
@@ -499,112 +507,6 @@ function demoDeps(svc: SupabaseClient): DemoDeps {
       return { actionLink: link.properties.action_link };
     },
   };
-}
-
-// ─── Workspace Plan Assignment ─────────────────────────────────
-
-async function handleSetWorkspacePlan(
-  svc: SupabaseClient,
-  body: { workspace_id: string; plan_id: string },
-  adminId: string,
-  headers: Record<string, string>,
-) {
-  const { workspace_id, plan_id } = body;
-  if (!workspace_id || !plan_id) {
-    return new Response(JSON.stringify({ error: "workspace_id and plan_id are required" }), { status: 400, headers });
-  }
-
-  const { error: wErr } = await svc
-    .from("workspaces")
-    .update({ plan_id, plan_source: "manual" })
-    .eq("id", workspace_id);
-  if (wErr) throw wErr;
-
-  const { data: existing } = await svc
-    .from("workspace_plan_overrides")
-    .select("id")
-    .eq("workspace_id", workspace_id)
-    .maybeSingle();
-
-  if (existing) {
-    const { error } = await svc
-      .from("workspace_plan_overrides")
-      .update({
-        resource_overrides: null,
-        feature_overrides: null,
-        notes: null,
-        updated_by: adminId,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("workspace_id", workspace_id);
-    if (error) throw error;
-  } else {
-    const { error } = await svc
-      .from("workspace_plan_overrides")
-      .insert({ workspace_id, updated_by: adminId });
-    if (error) throw error;
-  }
-
-  return new Response(JSON.stringify({ message: "Workspace plan updated" }), { status: 200, headers });
-}
-
-async function handleUnsetWorkspacePlan(
-  svc: SupabaseClient,
-  body: { workspace_id: string },
-  adminId: string,
-  headers: Record<string, string>,
-) {
-  const { workspace_id } = body;
-  if (!workspace_id) {
-    return new Response(JSON.stringify({ error: "workspace_id is required" }), { status: 400, headers });
-  }
-
-  const { data: sub } = await svc
-    .from("workspace_subscriptions")
-    .select("status, plan_id, provider, cancel_at_period_end, current_period_end")
-    .eq("workspace_id", workspace_id)
-    .maybeSingle();
-
-  const { data: def } = await svc
-    .from("plans")
-    .select("id")
-    .eq("is_default", true)
-    .maybeSingle();
-
-  const target = revertPlanTarget(
-    sub as {
-      status?: string;
-      plan_id?: string;
-      provider?: string;
-      cancel_at_period_end?: boolean;
-      current_period_end?: string;
-    } | null,
-    (def?.id as string) ?? "free",
-    new Date(),
-  );
-
-  const { error: wErr } = await svc
-    .from("workspaces")
-    .update({ plan_id: target.plan_id, plan_source: target.plan_source })
-    .eq("id", workspace_id);
-  if (wErr) throw wErr;
-
-  // clear any manual granular overrides left from the comp
-  await svc
-    .from("workspace_plan_overrides")
-    .update({
-      resource_overrides: null,
-      feature_overrides: null,
-      notes: null,
-      updated_by: adminId,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("workspace_id", workspace_id);
-
-  return new Response(
-    JSON.stringify({ message: "Comp removed", plan_source: target.plan_source }),
-    { status: 200, headers },
-  );
 }
 
 // ─── MCP do Admin (conector platform-admin) ────────────────────

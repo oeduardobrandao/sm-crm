@@ -110,6 +110,14 @@ vi.mock('../../billing/DunningBanner', () => ({
   DunningBanner: () => null,
 }));
 
+vi.mock('../../billing/ReverseTrialBanner', () => ({
+  ReverseTrialBanner: () => null,
+}));
+
+vi.mock('../../billing/ReverseTrialEndedBanner', () => ({
+  ReverseTrialEndedBanner: () => null,
+}));
+
 vi.mock('../IncidentBanner', () => ({
   IncidentBanner: () => null,
 }));

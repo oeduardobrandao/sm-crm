@@ -55,8 +55,9 @@ export function planPrice(plan: Plan): PriceLine {
   return { main: formatBrl(plan.price_brl), suffix: `/mês${annual}` };
 }
 
-export function workspaceCountLabel(n: number): string {
-  return `${n} ${n === 1 ? 'workspace' : 'workspaces'}`;
+export function workspaceCountLabel(n: number, trial = 0): string {
+  const base = `${n} ${n === 1 ? 'workspace' : 'workspaces'}`;
+  return trial > 0 ? `${base} · ${trial} em teste` : base;
 }
 
 export function plansSummary(plans: Plan[]): string {

@@ -108,6 +108,14 @@ beforeEach(() => {
     planId: 'free',
     planSource: 'system',
     wasDemo: false,
+    reverseTrial: {
+      startedAt: null,
+      endsAt: null,
+      endedAt: null,
+      outcome: null,
+      cardAddedAt: null,
+      firstPaidAt: null,
+    },
   });
   vi.mocked(startCheckout).mockResolvedValue('https://checkout.stripe.com/abc');
   vi.mocked(useWorkspaceLimits).mockReturnValue({
@@ -138,6 +146,14 @@ describe('CobrancaPage (phone)', () => {
       planId: 'pro',
       planSource: 'demo',
       wasDemo: true,
+      reverseTrial: {
+        startedAt: null,
+        endsAt: null,
+        endedAt: null,
+        outcome: null,
+        cardAddedAt: null,
+        firstPaidAt: null,
+      },
     });
     vi.mocked(getWorkspaceSubscription).mockResolvedValue(subscription({}));
     renderPage();
@@ -194,6 +210,14 @@ describe('CobrancaPage (phone)', () => {
       planId: 'pro',
       planSource: 'pagarme',
       wasDemo: false,
+      reverseTrial: {
+        startedAt: null,
+        endsAt: null,
+        endedAt: null,
+        outcome: null,
+        cardAddedAt: null,
+        firstPaidAt: null,
+      },
     });
     vi.mocked(getWorkspaceSubscription).mockResolvedValue(PAGARME_ACTIVE);
     renderPage();
@@ -214,6 +238,14 @@ describe('CobrancaPage (phone)', () => {
       planId: 'pro',
       planSource: 'pagarme',
       wasDemo: false,
+      reverseTrial: {
+        startedAt: null,
+        endsAt: null,
+        endedAt: null,
+        outcome: null,
+        cardAddedAt: null,
+        firstPaidAt: null,
+      },
     });
     vi.mocked(getWorkspaceSubscription).mockResolvedValue(PAGARME_ACTIVE);
     renderPage();
@@ -247,6 +279,14 @@ describe('CobrancaPage (phone)', () => {
       planId: 'pro',
       planSource: 'pagarme',
       wasDemo: false,
+      reverseTrial: {
+        startedAt: null,
+        endsAt: null,
+        endedAt: null,
+        outcome: null,
+        cardAddedAt: null,
+        firstPaidAt: null,
+      },
     });
     vi.mocked(getWorkspaceSubscription).mockResolvedValue(PAGARME_ACTIVE);
     vi.mocked(cancelPagarmeSubscription).mockResolvedValue({ status: 'canceled' } as never);
@@ -273,6 +313,14 @@ describe('CobrancaPage (phone)', () => {
       planId: 'pro',
       planSource: 'pagarme',
       wasDemo: false,
+      reverseTrial: {
+        startedAt: null,
+        endsAt: null,
+        endedAt: null,
+        outcome: null,
+        cardAddedAt: null,
+        firstPaidAt: null,
+      },
     });
     vi.mocked(getWorkspaceSubscription).mockResolvedValue(PAGARME_ACTIVE);
     renderPage();
@@ -288,6 +336,14 @@ describe('CobrancaPage (phone)', () => {
       planId: 'pro',
       planSource: 'pagarme',
       wasDemo: false,
+      reverseTrial: {
+        startedAt: null,
+        endsAt: null,
+        endedAt: null,
+        outcome: null,
+        cardAddedAt: null,
+        firstPaidAt: null,
+      },
     });
     vi.mocked(getWorkspaceSubscription).mockResolvedValue(PAGARME_ACTIVE);
     vi.mocked(cancelPagarmeSubscription).mockRejectedValueOnce(new Error('Falhou.'));
@@ -311,6 +367,14 @@ describe('CobrancaPage (phone)', () => {
       planId: 'pro',
       planSource: 'pagarme',
       wasDemo: false,
+      reverseTrial: {
+        startedAt: null,
+        endsAt: null,
+        endedAt: null,
+        outcome: null,
+        cardAddedAt: null,
+        firstPaidAt: null,
+      },
     });
     vi.mocked(getWorkspaceSubscription).mockResolvedValue(
       subscription({

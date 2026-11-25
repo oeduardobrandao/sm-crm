@@ -25,7 +25,7 @@ export function makeFakeDb(responses: Record<string, Resp[]>, rpc: Record<string
       const key = eqKeys.find((k) => k in queues) ?? table;
       return (queues[key] ?? []).shift() ?? { data: null, error: null };
     };
-    for (const m of ["select", "eq", "in", "is", "gte", "order", "limit", "range", "insert", "update", "upsert", "delete", "ilike"]) {
+    for (const m of ["select", "eq", "in", "is", "gte", "order", "limit", "range", "insert", "update", "upsert", "delete", "ilike", "or"]) {
       rec[m] = (...args: unknown[]) => {
         calls.push({ table, method: m, args });
         if (m === "eq") eqKeys.push(`${table}[${String(args[0])}=${String(args[1])}]`);

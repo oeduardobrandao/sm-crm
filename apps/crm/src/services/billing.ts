@@ -1,4 +1,7 @@
 import { supabase } from '../lib/supabase';
+import type { ReverseTrialOutcome, ReverseTrialState } from '../lib/reverseTrial';
+
+export type { ReverseTrialState } from '../lib/reverseTrial';
 
 export type BillingInterval = 'month' | 'year';
 
@@ -148,7 +151,10 @@ export async function listPublicPricingPlans(): Promise<PublicPricingPlan[]> {
 
 export interface EffectivePlan {
   planId: string | null;
-  /** 'system' | 'stripe' | 'manual' | 'pagarme' | 'demo' | null. 'manual' = admin comp override. */
+  /**
+   * 'system' | 'stripe' | 'manual' | 'pagarme' | 'demo' | 'trial' | null. 'manual' = admin comp
+   * override; 'trial' = a running reverse trial (14 days of Pro without a card).
+   */
   planSource: string | null;
   /** `workspaces.demo_created_at` is set: the workspace started as an Admin-made demo. */
   wasDemo: boolean;
@@ -164,7 +170,18 @@ export interface EffectivePlan {
    * trial, because `mark_trial_offer_seen()` would match no row and the offer would repeat.
    */
   hasWorkspace: boolean;
+  /** `workspaces.reverse_trial_*`: the reverse trial's history. All null = never had one. */
+  reverseTrial: ReverseTrialState;
 }
+
+const EMPTY_REVERSE_TRIAL: ReverseTrialState = {
+  startedAt: null,
+  endsAt: null,
+  endedAt: null,
+  outcome: null,
+  cardAddedAt: null,
+  firstPaidAt: null,
+};
 
 const NO_WORKSPACE: EffectivePlan = {
   planId: null,
@@ -172,17 +189,35 @@ const NO_WORKSPACE: EffectivePlan = {
   wasDemo: false,
   trialOfferSeenAt: null,
   hasWorkspace: false,
+  reverseTrial: EMPTY_REVERSE_TRIAL,
 };
+
+const REVERSE_TRIAL_OUTCOMES = new Set<ReverseTrialOutcome>([
+  'converted',
+  'downgraded',
+  'ended_by_admin',
+]);
+
+function str(value: unknown): string | null {
+  return typeof value === 'string' && value !== '' ? value : null;
+}
 
 /**
  * Whether the trial is already spent. A demo has no `workspace_subscriptions` row, so the
- * workspace marker counts too (even after an admin moves an ex-demo to Free or a comp).
+ * workspace marker counts too (even after an admin moves an ex-demo to Free or a comp). A
+ * reverse trial, running or ended, counts as a spent trial. `reverseTrial` is read defensively
+ * because fixtures and older callers may not carry it.
  */
 export function hasUsedTrial(
   sub: WorkspaceSubscription | null | undefined,
-  plan: Pick<EffectivePlan, 'wasDemo'> | null | undefined,
+  plan:
+    | (Pick<EffectivePlan, 'wasDemo'> & {
+        reverseTrial?: Pick<ReverseTrialState, 'startedAt'> | null;
+      })
+    | null
+    | undefined,
 ): boolean {
-  return Boolean(sub?.hasEverSubscribed || plan?.wasDemo);
+  return Boolean(sub?.hasEverSubscribed || plan?.wasDemo || plan?.reverseTrial?.startedAt);
 }
 
 /**
@@ -203,7 +238,9 @@ async function fetchEffectivePlan(): Promise<EffectivePlan> {
   if (!profile?.conta_id) return { ...NO_WORKSPACE };
   const { data, error } = await supabase
     .from('workspaces')
-    .select('plan_id, plan_source, demo_created_at, trial_offer_seen_at')
+    .select(
+      'plan_id, plan_source, demo_created_at, trial_offer_seen_at, reverse_trial_started_at, reverse_trial_ends_at, reverse_trial_ended_at, reverse_trial_outcome, reverse_trial_card_added_at, reverse_trial_first_paid_at',
+    )
     .eq('id', profile.conta_id)
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -214,7 +251,61 @@ async function fetchEffectivePlan(): Promise<EffectivePlan> {
     wasDemo: Boolean(data.demo_created_at),
     trialOfferSeenAt: (data.trial_offer_seen_at as string | null) ?? null,
     hasWorkspace: true,
+    reverseTrial: {
+      startedAt: str(data.reverse_trial_started_at),
+      endsAt: str(data.reverse_trial_ends_at),
+      endedAt: str(data.reverse_trial_ended_at),
+      outcome: REVERSE_TRIAL_OUTCOMES.has(data.reverse_trial_outcome as ReverseTrialOutcome)
+        ? (data.reverse_trial_outcome as ReverseTrialOutcome)
+        : null,
+      cardAddedAt: str(data.reverse_trial_card_added_at),
+      firstPaidAt: str(data.reverse_trial_first_paid_at),
+    },
   };
+}
+
+export interface ReverseTrialOffer {
+  /** The kill switch is on. */
+  enabled: boolean;
+  /** This owner and workspace can start a reverse trial now. */
+  eligible: boolean;
+  /** Eligible for the automatic start on first app visit (new signups). */
+  auto: boolean;
+}
+
+export const REVERSE_TRIAL_OFFER_KEY = ['billing', 'reverse-trial-offer'] as const;
+
+/** `reverse_trial_offer()`: the kill switch and this owner's eligibility. */
+export async function getReverseTrialOffer(): Promise<ReverseTrialOffer> {
+  const { data, error } = await supabase.rpc('reverse_trial_offer');
+  if (error) throw new Error(error.message);
+  const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null;
+  return {
+    enabled: Boolean(row?.enabled),
+    eligible: Boolean(row?.eligible),
+    auto: Boolean(row?.auto),
+  };
+}
+
+export interface StartReverseTrialResult {
+  started: boolean;
+  endsAt: string | null;
+  reason?: 'not_eligible' | 'disabled';
+}
+
+/** `start_reverse_trial(p_source)`. Idempotent server-side: a running trial is returned. */
+export async function startReverseTrial(
+  source: 'signup' | 'nudge',
+): Promise<StartReverseTrialResult> {
+  const { data, error } = await supabase.rpc('start_reverse_trial', { p_source: source });
+  if (error) throw new Error(error.message);
+  const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null;
+  const result: StartReverseTrialResult = {
+    started: Boolean(row?.started),
+    endsAt: str(row?.ends_at),
+  };
+  if (row?.reason === 'not_eligible' || row?.reason === 'disabled') result.reason = row.reason;
+  return result;
 }
 
 /**

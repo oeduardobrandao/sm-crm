@@ -135,6 +135,14 @@ beforeEach(() => {
     planId: 'free',
     planSource: 'system',
     wasDemo: false,
+    reverseTrial: {
+      startedAt: null,
+      endsAt: null,
+      endedAt: null,
+      outcome: null,
+      cardAddedAt: null,
+      firstPaidAt: null,
+    },
   });
   vi.mocked(startCheckout).mockResolvedValue('https://checkout.stripe.com/abc');
   // UsagePanel is covered by its own test suite; keep it a no-op here (isUnlimited: true).
@@ -220,6 +228,62 @@ describe('CobrancaPage', () => {
     expect(screen.getByText(HINT)).toBeInTheDocument();
   });
 
+  describe('running reverse trial', () => {
+    function asTrial() {
+      vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
+        planId: 'pro',
+        planSource: 'trial',
+        wasDemo: false,
+        trialOfferSeenAt: '2026-11-24T17:00:00Z',
+        hasWorkspace: true,
+        reverseTrial: {
+          startedAt: '2026-11-24T17:00:00Z',
+          endsAt: '2099-12-08T17:00:00Z',
+          endedAt: null,
+          outcome: null,
+          cardAddedAt: null,
+          firstPaidAt: null,
+        },
+      });
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(null);
+    }
+
+    it('shows the trial section with the end date and the add-card link', async () => {
+      asTrial();
+      renderPage();
+      expect(await screen.findByText('Teste do Pro sem cartão')).toBeInTheDocument();
+      expect(screen.getByText(/está no Pro até 8 de dezembro/)).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Adicionar cartão' })).toHaveAttribute(
+        'href',
+        '/comecar?recomendado=pro',
+      );
+    });
+
+    it('offers "Assinar" on the trial plan and tags the checkout as a reverse trial', async () => {
+      asTrial();
+      vi.mocked(startCheckout).mockResolvedValue('https://checkout.example');
+      renderPage();
+      fireEvent.click(await screen.findByRole('button', { name: 'Assinar' }));
+      await waitFor(() => expect(captureCheckoutStarted).toHaveBeenCalled());
+      expect(vi.mocked(captureCheckoutStarted).mock.calls[0]?.[4]).toMatchObject({
+        reverse_trial: true,
+      });
+    });
+
+    it('the 12x dialog says the first installment waits for the trial end', async () => {
+      vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
+      vi.mocked(listActivePlans).mockResolvedValue([PRO_PLAN_PAGARME]);
+      asTrial();
+      renderPage();
+      fireEvent.click(await screen.findByRole('button', { name: 'Anual' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Assinar' }));
+      expect(await screen.findByText(/no fim do teste/)).toBeInTheDocument();
+      // Ends 08/12 14h in São Paulo; the gateway charges at 00:00 UTC on the 9th, 21h on the 8th in SP.
+      expect(screen.getByText(/só é cobrada em 8 de dezembro/)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Continuar depois do teste' })).toBeInTheDocument();
+    });
+  });
+
   describe('demo workspace', () => {
     const NOTE =
       'Conta demo: você está usando o plano Pro sem custo. Para continuar depois, é só assinar um plano.';
@@ -229,6 +293,14 @@ describe('CobrancaPage', () => {
         planId: 'pro',
         planSource: 'demo',
         wasDemo: true,
+        reverseTrial: {
+          startedAt: null,
+          endsAt: null,
+          endedAt: null,
+          outcome: null,
+          cardAddedAt: null,
+          firstPaidAt: null,
+        },
       });
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(subscription({}));
     }
@@ -277,6 +349,14 @@ describe('CobrancaPage', () => {
         planId: 'pro',
         planSource: src,
         wasDemo: false,
+        reverseTrial: {
+          startedAt: null,
+          endsAt: null,
+          endedAt: null,
+          outcome: null,
+          cardAddedAt: null,
+          firstPaidAt: null,
+        },
       });
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(subscription({}));
       renderPage();
@@ -289,6 +369,14 @@ describe('CobrancaPage', () => {
         planId: 'free',
         planSource: 'system',
         wasDemo: true,
+        reverseTrial: {
+          startedAt: null,
+          endsAt: null,
+          endedAt: null,
+          outcome: null,
+          cardAddedAt: null,
+          firstPaidAt: null,
+        },
       });
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(subscription({}));
       renderPage();
@@ -821,6 +909,14 @@ describe('CobrancaPage', () => {
         planId: 'pro',
         planSource: 'stripe',
         wasDemo: false,
+        reverseTrial: {
+          startedAt: null,
+          endsAt: null,
+          endedAt: null,
+          outcome: null,
+          cardAddedAt: null,
+          firstPaidAt: null,
+        },
       });
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(MONTHLY_STRIPE_SUB);
       renderPage();
@@ -844,6 +940,14 @@ describe('CobrancaPage', () => {
         planId: 'start',
         planSource: 'stripe',
         wasDemo: false,
+        reverseTrial: {
+          startedAt: null,
+          endsAt: null,
+          endedAt: null,
+          outcome: null,
+          cardAddedAt: null,
+          firstPaidAt: null,
+        },
       });
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(MONTHLY_STRIPE_SUB);
       renderPage();
@@ -865,6 +969,14 @@ describe('CobrancaPage', () => {
         planId: 'pro',
         planSource: 'stripe',
         wasDemo: false,
+        reverseTrial: {
+          startedAt: null,
+          endsAt: null,
+          endedAt: null,
+          outcome: null,
+          cardAddedAt: null,
+          firstPaidAt: null,
+        },
       });
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(MONTHLY_STRIPE_SUB);
       renderPage();
@@ -889,6 +1001,14 @@ describe('CobrancaPage', () => {
         planId: 'pro',
         planSource: 'manual',
         wasDemo: false,
+        reverseTrial: {
+          startedAt: null,
+          endsAt: null,
+          endedAt: null,
+          outcome: null,
+          cardAddedAt: null,
+          firstPaidAt: null,
+        },
       });
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(MONTHLY_STRIPE_SUB);
       renderPage();
@@ -909,6 +1029,14 @@ describe('CobrancaPage', () => {
         planId: 'pro',
         planSource: 'stripe',
         wasDemo: false,
+        reverseTrial: {
+          startedAt: null,
+          endsAt: null,
+          endedAt: null,
+          outcome: null,
+          cardAddedAt: null,
+          firstPaidAt: null,
+        },
       });
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(MONTHLY_STRIPE_SUB);
       renderPage();
@@ -927,6 +1055,14 @@ describe('CobrancaPage', () => {
         planId: 'pro',
         planSource: 'stripe',
         wasDemo: false,
+        reverseTrial: {
+          startedAt: null,
+          endsAt: null,
+          endedAt: null,
+          outcome: null,
+          cardAddedAt: null,
+          firstPaidAt: null,
+        },
       });
 
       // 1) Já está no anual: billingInterval 'year' desqualifica o switch.

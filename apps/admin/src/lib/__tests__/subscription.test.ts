@@ -83,7 +83,8 @@ describe('subscription helpers', () => {
     it('isStatusGroup guards URL values', () => {
       expect(isStatusGroup('pendente')).toBe(true);
       expect(isStatusGroup('xyz')).toBe(false);
-      expect(STATUS_GROUPS).toHaveLength(5);
+      expect(isStatusGroup('teste_sem_cartao')).toBe(true);
+      expect(STATUS_GROUPS).toHaveLength(6);
     });
   });
 

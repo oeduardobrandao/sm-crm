@@ -5,6 +5,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { VidroToolbarHarness } from '@/test/vidroToolbar';
 
 // The desktop table layout (the phone branch has its own suite).
+// The read-only grandfather hook reads useWorkspaceLimits (AuthContext), which these suites mock.
+vi.mock('@/components/paywall/useReadOnlyGrandfather', () => ({
+  useReadOnlyGrandfather: () => ({ readOnly: false, pending: false }),
+}));
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 
 const { useAuthMock, store } = vi.hoisted(() => ({

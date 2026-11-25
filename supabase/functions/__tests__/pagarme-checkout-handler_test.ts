@@ -86,7 +86,13 @@ function makeDb(fx: {
   stalePending?: Array<{ id: string; pagarme_subscription_id: string | null }>;
   /** Linha devolvida pelo read de workspaces do PASSO 3b do switch (plan_id + plan_source)
    * e pelo read do plan-writer (que so olha plan_source). */
-  workspaceRow?: { plan_id?: string | null; plan_source: string; demo_created_at?: string | null };
+  workspaceRow?: {
+    plan_id?: string | null;
+    plan_source: string;
+    demo_created_at?: string | null;
+    reverse_trial_ends_at?: string | null;
+    reverse_trial_started_at?: string | null;
+  };
   /** True = existe attempt quarantined para o workspace (gate amigavel da decisao 10). */
   quarantinedAttempt?: boolean;
   /** Faz o SEGUNDO update de workspace_subscriptions em diante devolver zero linhas (o
@@ -164,8 +170,16 @@ function makeDb(fx: {
       ) {
         return { data: null, error: fx.attemptPointerError ?? null };
       }
-      if (table === "workspaces" && op === "read" && selected === "demo_created_at") {
-        return { data: fx.trialWsError ? null : { demo_created_at: fx.workspaceRow?.demo_created_at ?? null }, error: fx.trialWsError ?? null };
+      if (table === "workspaces" && op === "read" && String(selected).startsWith("demo_created_at")) {
+        return {
+          data: fx.trialWsError ? null : {
+            demo_created_at: fx.workspaceRow?.demo_created_at ?? null,
+            plan_source: fx.workspaceRow?.plan_source ?? "system",
+            reverse_trial_ends_at: fx.workspaceRow?.reverse_trial_ends_at ?? null,
+            reverse_trial_started_at: fx.workspaceRow?.reverse_trial_started_at ?? null,
+          },
+          error: fx.trialWsError ?? null,
+        };
       }
       if (table === "workspaces" && op === "read") {
         return { data: fx.workspaceRow ?? { plan_source: "system" }, error: null };
@@ -1337,4 +1351,36 @@ Deno.test("switch: rollback PARCIAL (flip-back CAS falha) -> troca fica de pe, 2
     restore.seq < failedCas.seq,
     "o restore remoto deve rodar ANTES da tentativa de CAS que perde a corrida",
   );
+});
+
+Deno.test("teste reverso em andamento: start_at = data de fim do teste; teste usado: cobra agora", async () => {
+  const running = run(
+    {
+      plan: PLAN,
+      subRow: null,
+      workspaceRow: {
+        plan_source: "trial",
+        reverse_trial_ends_at: "2099-01-10T15:00:00Z",
+        reverse_trial_started_at: "2098-12-27T15:00:00Z",
+      },
+    },
+    { subStatus: "future" },
+  );
+  await running.result;
+  assertEquals((running.calls[2].args[0] as Record<string, unknown>).start_at, "2099-01-11");
+
+  const used = run(
+    {
+      plan: PLAN,
+      subRow: null,
+      workspaceRow: {
+        plan_source: "system",
+        reverse_trial_ends_at: "2026-01-10T15:00:00Z",
+        reverse_trial_started_at: "2025-12-27T15:00:00Z",
+      },
+    },
+    { subStatus: "active" },
+  );
+  await used.result;
+  assertEquals((used.calls[2].args[0] as Record<string, unknown>).start_at, undefined);
 });

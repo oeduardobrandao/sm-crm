@@ -151,6 +151,14 @@ describe('PricingSection', () => {
       planId: 'free',
       planSource: 'system',
       wasDemo: false,
+      reverseTrial: {
+        startedAt: null,
+        endsAt: null,
+        endedAt: null,
+        outcome: null,
+        cardAddedAt: null,
+        firstPaidAt: null,
+      },
       trialOfferSeenAt: null,
     });
     vi.mocked(getWorkspaceSubscription).mockResolvedValue({
@@ -176,6 +184,14 @@ describe('PricingSection', () => {
       planId: 'free',
       planSource: 'system',
       wasDemo: false,
+      reverseTrial: {
+        startedAt: null,
+        endsAt: null,
+        endedAt: null,
+        outcome: null,
+        cardAddedAt: null,
+        firstPaidAt: null,
+      },
       trialOfferSeenAt: null,
     });
     vi.mocked(getWorkspaceSubscription).mockResolvedValue(null);

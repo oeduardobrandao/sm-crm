@@ -21,6 +21,10 @@ const { useAuthMock, store } = vi.hoisted(() => ({
   },
 }));
 
+// The read-only grandfather hook reads useWorkspaceLimits (AuthContext), which these suites mock.
+vi.mock('@/components/paywall/useReadOnlyGrandfather', () => ({
+  useReadOnlyGrandfather: () => ({ readOnly: false, pending: false }),
+}));
 vi.mock('../../../context/AuthContext', () => ({ useAuth: useAuthMock }));
 vi.mock('@/context/AuthContext', () => ({ useAuth: useAuthMock }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));

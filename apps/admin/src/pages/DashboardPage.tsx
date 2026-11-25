@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { listWorkspaces, getMrr, getTrials, getChurned } from '../lib/api';
+import { listWorkspaces, getMrr, getTrials, getChurned, getReverseTrialFunnel } from '../lib/api';
 import { formatMoney } from '../lib/subscription';
 import { toCSV, downloadCSV } from '../lib/csv-export';
 import { useIsPhone } from '../hooks/useIsPhone';
@@ -60,6 +60,12 @@ export default function DashboardPage() {
   const churnQuery = useQuery({
     queryKey: ['admin', 'churned'],
     queryFn: getChurned,
+  });
+
+  // Reverse trial funnel (spec Part 8), read from the reverse_trial_* columns.
+  const funnelQuery = useQuery({
+    queryKey: ['admin', 'reverse-trial-funnel'],
+    queryFn: getReverseTrialFunnel,
   });
 
   const now = new Date();
@@ -192,6 +198,12 @@ export default function DashboardPage() {
       loading: churnQuery.isPending,
       error: churnQuery.isError,
       retry: () => churnQuery.refetch(),
+    },
+    funnel: {
+      data: funnelQuery.data,
+      loading: funnelQuery.isPending,
+      error: funnelQuery.isError,
+      retry: () => funnelQuery.refetch(),
     },
     mrr: { loading: mrrLoading, data: mrrData },
     trials: { loading: trialsLoading, data: trialsData, mrrCents: trialMrrCents, currency },

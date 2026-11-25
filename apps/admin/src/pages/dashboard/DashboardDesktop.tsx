@@ -28,6 +28,7 @@ import { KpiGrid, KpiTile } from '../../components/shell/KpiTile';
 import { cn } from '../../lib/utils';
 import { RiskCard } from './RiskCard';
 import { ChurnCard } from './ChurnCard';
+import { ReverseTrialFunnelCard } from './ReverseTrialFunnelCard';
 import { PlanBadge, activity, trialEndInfo, type DashboardViewProps } from './shared';
 
 function ListSkeleton() {
@@ -64,6 +65,7 @@ export function DashboardDesktop({
   kpis,
   risk,
   churn,
+  funnel,
   mrr,
   trials,
   recent,
@@ -103,6 +105,7 @@ export function DashboardDesktop({
         <div className="flex min-w-0 flex-[1_1_340px] flex-col gap-4">
           <RiskCard {...risk} />
           <ChurnCard {...churn} />
+          <ReverseTrialFunnelCard {...funnel} />
         </div>
 
         <GlassPanel

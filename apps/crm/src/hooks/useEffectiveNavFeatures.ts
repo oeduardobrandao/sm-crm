@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { CONTACTS_COUNT_KEY, countInstagramAutomations, countInstagramContacts } from '@/store';
+import { getEffectivePlanWithSource } from '@/services/billing';
 
 /**
  * Nav visibility for the `automacoes` item follows the workspace's automation
@@ -18,12 +19,16 @@ export function buildEffectiveNavFeatures(
   features: Record<string, boolean> | null,
   hasAutomations: boolean,
   hasContacts = false,
+  exReverseTrial = false,
 ): Record<string, boolean> | null {
   if (!features) return features;
   return {
     ...features,
     feature_instagram_automation:
       features.feature_instagram_automation || hasAutomations || hasContacts,
+    // After a reverse trial ends, Financeiro and Contratos stay reachable read-only
+    // (useReadOnlyGrandfather), so their nav items must not disappear.
+    ...(exReverseTrial ? { feature_financial: true, feature_contracts: true } : {}),
   };
 }
 
@@ -48,5 +53,15 @@ export function useEffectiveNavFeatures(
   });
   // Errored count fails open (retained contacts must stay reachable).
   const hasContacts = contacts.isError || (contacts.data ?? 0) > 0;
-  return buildEffectiveNavFeatures(features, (count ?? 0) > 0, hasContacts);
+  const modulesOff =
+    features !== null &&
+    (features.feature_financial === false || features.feature_contracts === false);
+  const plan = useQuery({
+    queryKey: ['billing', 'effective-plan-with-source'],
+    queryFn: getEffectivePlanWithSource,
+    enabled: modulesOff,
+  });
+  const exReverseTrial =
+    plan.data?.reverseTrial?.outcome === 'downgraded' && plan.data.planSource !== 'trial';
+  return buildEffectiveNavFeatures(features, (count ?? 0) > 0, hasContacts, exReverseTrial);
 }

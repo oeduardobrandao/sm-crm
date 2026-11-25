@@ -266,3 +266,30 @@ Deno.test("handleGetWorkspace: affiliate is null without a referral, demo_create
   assertEquals(body.affiliate, null);
   assertEquals(body.workspace.demo_created_at, null);
 });
+
+Deno.test("handleGetWorkspace: selects and returns the reverse_trial_* columns (null when unset)", async () => {
+  const { handleGetWorkspace } = await import("../platform-admin/workspace-detail.ts");
+  const { db, calls } = makeFakeDb({
+    workspaces: [{
+      data: {
+        id: "w1", name: "X", logo_url: null, created_at: "t", plan_id: "pro", plan_source: "trial",
+        storage_used_bytes: 0, reverse_trial_started_at: "2026-12-01T15:00:00Z",
+        reverse_trial_ends_at: "2026-12-15T15:00:00Z",
+      },
+      error: null,
+    }],
+    workspace_members: [{ data: [], error: null }],
+    workspace_subscriptions: [{ data: null, error: null }],
+  });
+  const res = await handleGetWorkspace(db as never, { workspace_id: "w1" }, {}, { readOnly: true });
+  const body = await res.json();
+  assertEquals(body.workspace.plan_source, "trial");
+  assertEquals(body.workspace.reverse_trial_started_at, "2026-12-01T15:00:00Z");
+  assertEquals(body.workspace.reverse_trial_ends_at, "2026-12-15T15:00:00Z");
+  assertEquals(body.workspace.reverse_trial_outcome, null);
+  assertEquals(body.workspace.reverse_trial_first_paid_at, null);
+  const sel = String(calls.find((c) => c.table === "workspaces" && c.method === "select")?.args[0]);
+  for (const col of ["reverse_trial_started_at", "reverse_trial_ends_at", "reverse_trial_outcome", "reverse_trial_card_added_at"]) {
+    assert(sel.includes(col), `${col} must be selected`);
+  }
+});

@@ -38,6 +38,7 @@ const REQUIRED_FUNCTIONS = [
   "crisp-sync-cron",
   "storage-autoclean-cron",
   "billing-downgrade-cron",
+  "reverse-trial-cron",
   "instagram-automation-cron",
   // Token/internal auth
   "crisp-identity",

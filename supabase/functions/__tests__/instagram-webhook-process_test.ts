@@ -1880,3 +1880,112 @@ Deno.test("executeSend (card-5): key fora do prefixo do tenant ignora a mídia e
   const marks = rpcCallsFor(db, "mark_automation_dm_sent");
   assertEquals(marks[0].payload, { p_send_id: SEND_ID, p_dm_kind: "text" });
 });
+
+// ═══════════════ Plano sem automação (teste reverso, Task 9) ═══════════════
+// Sem `feature_instagram_automation` no plano efetivo do workspace (fim do
+// teste reverso, cliente que deixou de pagar), nenhuma resposta automática
+// sai. A regra fica guardada como está e volta a valer no upgrade.
+
+Deno.test("webhook_skips_send_when_feature_off: plano sem automação -> claim, skipped/plan_feature_off, sem DM nem reply", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_accounts", "select", { data: [accountRow()], error: null }); // candidatos
+  db.queue("instagram_comment_automations", "select", { data: [automationRow()], error: null }); // passo 2
+  db.queueRpc("claim_automation_send", { data: [{ send_id: SEND_ID, outcome: "claimed" }], error: null });
+  db.queue("instagram_comment_automations", "select", { data: [{ id: AUTOMATION_ID }], error: null }); // throttle
+  db.queue("instagram_automation_sends", "select", { data: null, error: null, count: 0 }); // throttle
+  db.queue("instagram_comment_automations", "select", {
+    data: revalidatedAutomation({ dm_message: "Aqui está o link da promo!", public_reply: "Verifique sua DM!" }),
+    error: null,
+  }); // revalidação
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null }); // aptidão
+  db.queueRpc("effective_plan_feature", { data: false, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null }); // skipped
+  db.queue("instagram_webhook_events", "update", { data: null, error: null }); // stamp
+
+  // fetchFn/decryptToken `unreachable`: nenhuma chamada à Graph pode sair.
+  await createProcessDelivery(baseProcessDeps())(db as never, [eventRow()]);
+
+  const gate = rpcCallsFor(db, "effective_plan_feature");
+  assertEquals(gate.length, 1);
+  assertEquals(gate[0].payload, { ws_id: CONTA_ID, feature_key: "feature_instagram_automation" });
+
+  const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(sendUpdates.length, 1);
+  assertEquals(sendUpdates[0].payload, { status: "skipped", skip_reason: "plan_feature_off" });
+  assertEquals(rpcCallsFor(db, "mark_automation_dm_sent").length, 0);
+  // O evento é carimbado: não pode ficar voltando no sweep de órfãos.
+  assertEquals(callsFor(db, "instagram_webhook_events", "update").length, 1);
+});
+
+Deno.test("rules_untouched_when_feature_off: a automação não é desativada nem editada", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", { data: revalidatedAutomation(), error: null });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queueRpc("effective_plan_feature", { data: false, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null });
+
+  await executeSend(
+    baseSendCtx(db, { decryptToken: unreachable("decryptToken") as unknown as (t: string) => Promise<string> }),
+    baseClaimedSend(),
+  );
+
+  assertEquals(callsFor(db, "instagram_comment_automations", "update").length, 0);
+  assertEquals(callsFor(db, "instagram_comment_automations", "delete").length, 0);
+  assertEquals(callsFor(db, "instagram_comment_automations", "upsert").length, 0);
+  assertEquals(rpcCallsFor(db, "insert_notification_batch").length, 0);
+  const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(sendUpdates.length, 1);
+  assertEquals(sendUpdates[0].payload, { status: "skipped", skip_reason: "plan_feature_off" });
+});
+
+Deno.test("executeSend: retry com DM já enviada e plano sem automação -> fecha sent_partial (nunca relabela a DM entregue como skipped)", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: revalidatedAutomation({ public_reply: "Verifique sua DM!" }),
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queueRpc("effective_plan_feature", { data: false, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null });
+
+  // fetchFn `unreachable` (baseSendCtx): a resposta pública também não sai.
+  await executeSend(baseSendCtx(db), baseClaimedSend({ dm_status: "sent", attempts: 1 }));
+
+  const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(sendUpdates.length, 1);
+  assertEquals(sendUpdates[0].payload, { status: "sent_partial", skip_reason: "plan_feature_off" });
+  assert(sendUpdates[0].modifiers.some((m) => m.method === "eq" && m.args[0] === "id" && m.args[1] === SEND_ID));
+});
+
+Deno.test("executeSend: retry com DM já enviada, sem resposta pública planejada e plano sem automação -> fecha sent", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", {
+    data: revalidatedAutomation({ public_reply: null, public_replies: [] }),
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queueRpc("effective_plan_feature", { data: false, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null });
+
+  await executeSend(baseSendCtx(db), baseClaimedSend({ dm_status: "sent", attempts: 1 }));
+
+  const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(sendUpdates.length, 1);
+  assertEquals(sendUpdates[0].payload, { status: "sent" });
+});
+
+Deno.test("executeSend: erro ao ler o plano -> lança (o webhook deixa para o sweep), nada é enviado", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("instagram_comment_automations", "select", { data: revalidatedAutomation(), error: null });
+  db.queue("instagram_accounts", "select", { data: { id: "acct-row-1" }, error: null });
+  db.queueRpc("effective_plan_feature", { data: null, error: { message: "boom" } });
+
+  let threw = false;
+  try {
+    await executeSend(baseSendCtx(db), baseClaimedSend());
+  } catch {
+    threw = true;
+  }
+  assert(threw, "falha transitória ao ler o plano precisa subir, sem enviar nem gravar skipped");
+  assertEquals(callsFor(db, "instagram_automation_sends", "update").length, 0);
+});

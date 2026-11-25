@@ -14,8 +14,27 @@ export function firstNameFrom(nome: string | null | undefined): string | null {
   return first ? first : null;
 }
 
-export function buildWelcomeEmail(p: { firstName: string | null; appBaseUrl: string }): string {
+/** Lead-in of the welcome email when the workspace qualifies for the reverse trial. */
+export const WELCOME_REVERSE_TRIAL_LEAD = "Ao entrar, seu workspace fica no Pro por 14 dias, sem cartão.";
+
+export function buildWelcomeEmail(
+  p: {
+    firstName: string | null;
+    appBaseUrl: string;
+    /** Workspace qualifies for the automatic 14-day Pro (keyed on the offer, not on plan_source). */
+    reverseTrialOffer?: boolean;
+  },
+): string {
   const base = p.appBaseUrl.replace(/\/+$/, "");
+  // The 30-day card trial block, or the reverse-trial one: the email can go out
+  // before the first app visit starts the trial, so it promises what that visit
+  // will do, and links straight into the app instead of /comecar.
+  const trialLead = p.reverseTrialOffer
+    ? `${WELCOME_REVERSE_TRIAL_LEAD} Nesse período você também tem:`
+    : "No teste grátis de 30 dias dos planos pagos você também tem:";
+  const trialButton = p.reverseTrialOffer
+    ? button(`${base}/dashboard`, "Entrar no Mesaas", "outline")
+    : button(`${base}/comecar`, "Começar meu teste grátis", "outline");
   const waUrl = whatsAppSupportUrl({ firstName: p.firstName });
   // Gated by the same waUrl as the button, so the sentence never mentions a missing button.
   const closingLine = waUrl
@@ -43,13 +62,13 @@ export function buildWelcomeEmail(p: { firstName: string | null; appBaseUrl: str
         { title: "Entregas", text: "kanban de workflows + calendário editorial." },
       ]) +
         spacer(8) +
-        paragraph("No teste grátis de 30 dias dos planos pagos você também tem:", "body", "0 0 12px") +
+        paragraph(trialLead, "body", "0 0 12px") +
         featureGrid([
           { title: "Aprovações pelo Hub do cliente", text: "Portal whitelabel, sem login, com a sua marca." },
           { title: "Equipe", text: "Convide seu time e trabalhe junto nas entregas." },
           { title: "Analytics de Instagram", text: "Métricas e relatórios prontos para enviar." },
         ]) +
-        button(`${base}/comecar`, "Começar meu teste grátis", "outline"),
+        trialButton,
       callout(`Dúvidas? A ${link(`${base}/ajuda`, "Central de Ajuda")} tem guias passo a passo, e as ${link(`${base}/novidades`, "Novidades")} mostram o que estamos lançando.`),
       paragraphHtml(closingLine, "body", "0 0 18px") +
         (waUrl ? button(waUrl, "Falar no WhatsApp", "outline") + spacer(24) : "") +
@@ -168,6 +187,142 @@ export function buildTrialReminderEmail(p: {
     footerLines: [`Você recebeu este e-mail porque o workspace ${p.workspaceName} está em teste grátis no Mesaas.`],
   });
   return { subject, html };
+}
+
+// ─── Reverse trial (14 days of Pro without a card) ──────────────────────────
+
+export type ReverseTrialEmailType =
+  | "reverse_trial_ending"
+  | "reverse_trial_ended"
+  | "reverse_trial_hub_pausing";
+
+export const REVERSE_TRIAL_EMAIL_TYPES: readonly ReverseTrialEmailType[] = [
+  "reverse_trial_ending",
+  "reverse_trial_ended",
+  "reverse_trial_hub_pausing",
+];
+
+export const REVERSE_TRIAL_ENDED_SUBJECT = "Seu workspace voltou para o plano Free";
+export const REVERSE_TRIAL_HUB_PAUSING_SUBJECT = "Os links do portal dos seus clientes pausam amanhã";
+
+/** Subject of `reverse_trial_ending`. Shared with the e-mail classifier. */
+export function reverseTrialEndingSubject(dateLabel: string): string {
+  return `Seu teste do Pro termina em ${sanitizeSubjectValue(dateLabel)}`;
+}
+
+export interface ReverseTrialEmailInput {
+  type: ReverseTrialEmailType;
+  firstName: string | null;
+  workspaceName: string;
+  planName: string | null;
+  /** Monthly price of the trial plan, in centavos; null drops the amount. */
+  priceCents: number | null;
+  endsAt: string | null;
+  endedAt: string | null;
+  hubPauseAt: string | null;
+  appBaseUrl: string;
+}
+
+function requireDate(value: string | null, type: ReverseTrialEmailType, field: string): string {
+  if (!value) throw new Error(`${type}: missing ${field}`);
+  return formatChargeDate(value);
+}
+
+/**
+ * The three reverse-trial emails. Every date is the São Paulo calendar day; the
+ * add-card link is Plano e cobrança. Throws when the date the email is about is
+ * missing, so a malformed candidate is reported instead of sent half-empty.
+ */
+export function buildReverseTrialEmail(p: ReverseTrialEmailInput): { subject: string; html: string } {
+  const base = p.appBaseUrl.replace(/\/+$/, "");
+  const billingUrl = `${base}/configuracao/cobranca`;
+  const plan = p.planName?.trim() || "Pro";
+  const greet = paragraph(p.firstName ? `Oi, ${p.firstName},` : "Oi,");
+  const footerLines = [`Você recebeu este e-mail porque é dono do workspace ${p.workspaceName} no Mesaas.`];
+
+  switch (p.type) {
+    case "reverse_trial_ending": {
+      const date = requireDate(p.endsAt, p.type, "ends_at");
+      const price = p.priceCents != null ? `${formatMoney(p.priceCents, "brl")} por mês` : null;
+      const html = mesaasEmail({
+        preheader: `Sem cartão, o workspace volta para o plano Free em ${date}.`,
+        eyebrow: "Seu teste do Pro",
+        sections: [
+          greet +
+          paragraph(`O teste grátis do ${plan} no workspace ${p.workspaceName} termina em ${date}.`) +
+          paragraph(
+            // No charge date here: a card added in the last 48h is charged
+            // later than the trial end (Stripe floor, Pagar.me rounding); the
+            // checkout shows the exact date.
+            price
+              ? `Para continuar no ${plan}, adicione um cartão. Nada é cobrado agora: a primeira cobrança, de ${price}, nunca acontece antes do fim do teste.`
+              : `Para continuar no ${plan}, adicione um cartão. Nada é cobrado agora: a primeira cobrança nunca acontece antes do fim do teste.`,
+            "body",
+            "0 0 20px",
+          ) +
+          button(billingUrl, "Adicionar cartão"),
+          paragraph(
+            "Sem cartão, o workspace volta para o plano Free nesse dia: até 2 clientes, só você na conta, sem portal do cliente e sem relatórios. Nada é apagado.",
+            "small",
+            "0",
+          ),
+        ],
+        footerLines,
+      });
+      return { subject: reverseTrialEndingSubject(date), html };
+    }
+    case "reverse_trial_ended": {
+      const endedDate = requireDate(p.endedAt, p.type, "ended_at");
+      const pauseDate = p.hubPauseAt ? formatChargeDate(p.hubPauseAt) : null;
+      const html = mesaasEmail({
+        preheader: "Nada foi apagado. Adicione um cartão para recuperar o Pro.",
+        eyebrow: "Plano Free",
+        sections: [
+          greet +
+          paragraph(
+            `O teste grátis do ${plan} no workspace ${p.workspaceName} terminou em ${endedDate}, e o workspace voltou para o plano Free.`,
+          ) +
+          paragraph(
+            "Nada foi apagado: seus clientes, posts, entregas e relatórios continuam lá. No Free, cadastrar além dos limites do plano fica bloqueado, e Financeiro e Contratos ficam só para consulta.",
+            "body",
+            "0 0 20px",
+          ) +
+          (pauseDate
+            ? callout(
+              escapeHtml(
+                `Os links do portal dos seus clientes pausam em ${pauseDate}. Recuperando o ${plan} antes disso, eles continuam funcionando.`,
+              ),
+            ) + spacer(20)
+            : "") +
+          button(billingUrl, `Recuperar o ${plan}`),
+          paragraph(`Para recuperar o ${plan}, é só adicionar um cartão em Plano e cobrança.`, "small", "0"),
+        ],
+        footerLines,
+      });
+      return { subject: REVERSE_TRIAL_ENDED_SUBJECT, html };
+    }
+    case "reverse_trial_hub_pausing": {
+      const pauseDate = requireDate(p.hubPauseAt, p.type, "hub_pause_at");
+      const html = mesaasEmail({
+        preheader: `A partir de ${pauseDate}, os links do portal deixam de abrir.`,
+        eyebrow: "Portal do cliente",
+        sections: [
+          greet +
+          paragraph(
+            `Amanhã, ${pauseDate}, os links do portal dos clientes do workspace ${p.workspaceName} deixam de abrir. Seus clientes vão ver um aviso de que o portal está pausado.`,
+          ) +
+          paragraph(
+            `Nada foi apagado. Assim que você recuperar o ${plan}, os mesmos links voltam a funcionar, sem precisar enviar links novos.`,
+            "body",
+            "0 0 20px",
+          ) +
+          button(billingUrl, `Recuperar o ${plan}`),
+        ],
+        footerLines,
+      });
+      return { subject: REVERSE_TRIAL_HUB_PAUSING_SUBJECT, html };
+    }
+  }
 }
 
 export const LIFECYCLE_FROM = "Eduardo do Mesaas <eduardo@mesaas.com.br>";
@@ -365,12 +520,22 @@ export async function sendViaResend(
 }
 
 export async function sendWelcomeEmail(
-  p: { to: string; firstName: string | null; appBaseUrl: string; idempotencyKey: string },
+  p: {
+    to: string;
+    firstName: string | null;
+    appBaseUrl: string;
+    idempotencyKey: string;
+    reverseTrialOffer?: boolean;
+  },
 ): Promise<void> {
   await sendViaResend(
     p.to,
     WELCOME_SUBJECT,
-    buildWelcomeEmail({ firstName: p.firstName, appBaseUrl: p.appBaseUrl }),
+    buildWelcomeEmail({
+      firstName: p.firstName,
+      appBaseUrl: p.appBaseUrl,
+      reverseTrialOffer: p.reverseTrialOffer === true,
+    }),
     p.idempotencyKey,
     LIFECYCLE_FROM,
     undefined,
@@ -394,6 +559,23 @@ export async function sendTrialReminderEmail(
     undefined,
     undefined,
     { type: "trial_reminder" },
+  );
+}
+
+/** Reverse-trial emails: the handler builds subject/html; this ships them tagged with their type. */
+export async function sendReverseTrialEmail(
+  p: { to: string; subject: string; html: string; idempotencyKey: string; type: ReverseTrialEmailType },
+): Promise<void> {
+  await sendViaResend(
+    p.to,
+    p.subject,
+    p.html,
+    p.idempotencyKey,
+    LIFECYCLE_FROM,
+    undefined,
+    undefined,
+    undefined,
+    { type: p.type },
   );
 }
 

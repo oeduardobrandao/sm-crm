@@ -31,6 +31,7 @@ import { decryptToken as defaultDecryptToken } from "../_shared/instagram-publis
 import { notifyAutomationFailure } from "../_shared/automation-notify.ts";
 import { parsePublicReplies, pickPublicReply } from "../_shared/instagram-public-replies.ts";
 import { signGetUrl } from "../_shared/r2.ts";
+import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 
 // deno-lint-ignore no-explicit-any
 type DbClient = { from: (table: string) => any; rpc: (name: string, params: Record<string, unknown>) => any };
@@ -464,6 +465,51 @@ export async function executeSend(ctx: SendContext, send: ClaimedSend): Promise<
       .update({ status: "failed", error_code: "account_unauthorized" })
       .eq("id", send.send_id);
     if (error) throw new Error(`instagram_automation_sends (account_unauthorized): ${errMessage(error)}`);
+    return;
+  }
+
+  // 1c. Plano: sem `feature_instagram_automation` no plano efetivo do
+  // workspace (fim do teste reverso, cliente que deixou de pagar) nenhuma
+  // resposta automática sai, nem a DM nem a resposta pública de um retry. A
+  // automação fica como está (nada é desativado) e volta a valer no upgrade.
+  // Fica aqui, logo antes do envio, porque o webhook e o cron de retry passam
+  // os dois por `executeSend`. Erro ao ler o plano sobe como qualquer falha de
+  // banco: o webhook deixa o evento para o sweep e o cron conta a falha.
+  const planAllows = await effectivePlanFeature(
+    // DbClient is the structural subset of SupabaseClient this module uses.
+    ctx.svc as unknown as Parameters<typeof effectivePlanFeature>[0],
+    send.conta_id,
+    "feature_instagram_automation",
+  );
+  if (!planAllows) {
+    // Retry com a DM já entregue: a DM não é des-entregável, então o send
+    // fecha como 'sent_partial' (a resposta pública não sai), nunca como
+    // 'skipped', que diria que nada foi enviado.
+    const dmAlreadySent = send.dm_status === "sent";
+    // Mesmo critério do fechamento normal (`hadPlanned`, mais abaixo): sem resposta pública
+    // planejada, ou com ela já enviada, o send estava completo e fecha como 'sent'.
+    const publicReplyPending = send.public_reply_status !== "sent" && (
+      (send.public_reply_text ?? null) !== null ||
+      send.public_reply_status === "unknown" ||
+      send.public_reply_status === "failed" ||
+      parsePublicReplies(automation.public_replies, automation.public_reply).length > 0
+    );
+    console.log(
+      `[instagram-webhook] plano do workspace ${send.conta_id} sem automação; send ${send.send_id} ${
+        dmAlreadySent ? "fechado sem a resposta pública" : "ignorado"
+      }`,
+    );
+    const { error } = await ctx.svc
+      .from("instagram_automation_sends")
+      .update(
+        !dmAlreadySent
+          ? { status: "skipped", skip_reason: "plan_feature_off" }
+          : publicReplyPending
+          ? { status: "sent_partial", skip_reason: "plan_feature_off" }
+          : { status: "sent" },
+      )
+      .eq("id", send.send_id);
+    if (error) throw new Error(`instagram_automation_sends (plan_feature_off): ${errMessage(error)}`);
     return;
   }
 

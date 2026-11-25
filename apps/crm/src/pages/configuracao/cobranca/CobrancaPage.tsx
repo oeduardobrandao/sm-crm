@@ -43,6 +43,8 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { ReverseTrialCobrancaSection } from '@/components/billing/ReverseTrialCobrancaSection';
+import { isReverseTrialRunning, reverseTrialPhase } from '@/lib/reverseTrial';
 import { UsagePanel } from './UsagePanel';
 import { CobrancaPhone, CobrancaPhoneLocked } from './CobrancaPhone';
 import './cobranca.css';
@@ -156,6 +158,13 @@ export default function CobrancaPage() {
   const effectivePlanId = effectivePlan?.planId;
   const planSource = effectivePlan?.planSource;
   const isDemo = planSource === 'demo';
+  // Running reverse trial (14 days of Pro without a card): its own plan is a first checkout
+  // ("Assinar"), and the first charge waits for the trial's end.
+  const reverseRunning = isReverseTrialRunning(effectivePlan);
+  const reverseEndsAt = reverseRunning ? (effectivePlan?.reverseTrial?.endsAt ?? null) : null;
+  const reverseCheckoutExtra = reverseEndsAt
+    ? { reverse_trial: true, days_left: reverseTrialPhase(new Date(), reverseEndsAt).daysLeft }
+    : undefined;
 
   // Refetches the subscription + effective-plan queries every 2s, up to 5 tries, so the
   // UI catches up once the backend (Stripe webhook or the synchronous Pagar.me checkout)
@@ -277,7 +286,11 @@ export default function CobrancaPage() {
     setBusy(planId);
     try {
       const url = await startCheckout(planId, interval, 'billing');
-      captureCheckoutStarted(planId, interval, 'billing');
+      if (reverseCheckoutExtra) {
+        captureCheckoutStarted(planId, interval, 'billing', 'stripe', reverseCheckoutExtra);
+      } else {
+        captureCheckoutStarted(planId, interval, 'billing');
+      }
       window.location.assign(url);
     } catch (err) {
       toast.error(t('cobrancaPage.checkoutError', { message: (err as Error).message }));
@@ -289,7 +302,11 @@ export default function CobrancaPage() {
     const plan = plans?.find((p) => p.id === planId);
     if (interval === 'year' && isPagarme12xEnabled(plan)) {
       rememberCheckoutValue(plan?.price_brl_annual);
-      captureCheckoutStarted(planId, 'year', 'billing', 'pagarme');
+      if (reverseCheckoutExtra) {
+        captureCheckoutStarted(planId, 'year', 'billing', 'pagarme', reverseCheckoutExtra);
+      } else {
+        captureCheckoutStarted(planId, 'year', 'billing', 'pagarme');
+      }
       setPagarmeDialog({ mode: 'checkout', plan: plan ?? null });
       return;
     }
@@ -369,7 +386,7 @@ export default function CobrancaPage() {
     }
     // A demo has no subscription: its own plan is a first checkout, so it gets a CTA (below)
     // instead of the static label.
-    if (p.id === currentPlanId && !isDemo) {
+    if (p.id === currentPlanId && !isDemo && !reverseRunning) {
       return <span className="plan-cta__static">{t('shared.currentPlan')}</span>;
     }
     const upgradable = canUpgradeTo(p.id, currentPlanId, hasActiveSub, planSource);
@@ -398,7 +415,7 @@ export default function CobrancaPage() {
               ? t('shared.wait')
               : firstTime
                 ? t('cobrancaPage.startTrial')
-                : isDemo && p.id === currentPlanId
+                : (isDemo || reverseRunning) && p.id === currentPlanId
                   ? t('cobrancaPage.subscribe')
                   : t('cobrancaPage.upgrade')}
           </button>
@@ -441,6 +458,11 @@ export default function CobrancaPage() {
     <p className="billing-demo-note text-sm text-muted-foreground">
       {t('cobrancaPage.demoNote', { plan: currentPlan?.name ?? currentPlanId })}
     </p>
+  ) : reverseEndsAt ? (
+    <ReverseTrialCobrancaSection
+      planName={currentPlan?.name ?? currentPlanId}
+      endsAt={reverseEndsAt}
+    />
   ) : null;
 
   const planGrid = (
@@ -553,7 +575,8 @@ export default function CobrancaPage() {
           : null
       }
       source="billing"
-      trialEligible={!hasUsedTrial(subscription, effectivePlan)}
+      trialEligible={reverseRunning || !hasUsedTrial(subscription, effectivePlan)}
+      trialEndsAt={reverseEndsAt}
       firstChargeAt={switchPreviewDate}
       switchChangesPlan={pagarmeDialog?.plan ? pagarmeDialog.plan.id !== currentPlanId : false}
       onPayUpfront={

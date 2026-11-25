@@ -54,3 +54,23 @@ describe('buildEffectiveNavFeatures with contacts', () => {
     ).toEqual({ feature_instagram_automation: false });
   });
 });
+
+describe('buildEffectiveNavFeatures after a reverse trial', () => {
+  it('keeps Financeiro and Contratos visible for an ex-trial workspace', () => {
+    const out = buildEffectiveNavFeatures(
+      { feature_financial: false, feature_contracts: false, feature_instagram_automation: false },
+      false,
+      false,
+      true,
+    );
+    expect(out).toMatchObject({ feature_financial: true, feature_contracts: true });
+  });
+
+  it('leaves them hidden for any other workspace without the flags', () => {
+    const out = buildEffectiveNavFeatures(
+      { feature_financial: false, feature_contracts: false, feature_instagram_automation: false },
+      false,
+    );
+    expect(out).toMatchObject({ feature_financial: false, feature_contracts: false });
+  });
+});

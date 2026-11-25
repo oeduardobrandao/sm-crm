@@ -11,10 +11,12 @@ vi.mock('../../lib/api', () => ({
   getMrr: vi.fn(),
   getTrials: vi.fn(),
   getChurned: vi.fn(),
+  getReverseTrialFunnel: vi.fn(),
 }));
 
 import {
   getChurned,
+  getReverseTrialFunnel,
   getMrr,
   getTrials,
   listWorkspaces,
@@ -100,6 +102,7 @@ let restorePhone: () => void;
 beforeEach(() => {
   restorePhone = mockPhone();
   vi.mocked(getChurned).mockReturnValue(new Promise(() => {}) as never);
+  vi.mocked(getReverseTrialFunnel).mockReturnValue(new Promise(() => {}) as never);
   vi.mocked(listWorkspaces).mockImplementation(((params?: ListWorkspacesParams) =>
     Promise.resolve(params?.status === 'pendente' ? PENDING : RECENT)) as never);
   vi.mocked(getMrr).mockResolvedValue({

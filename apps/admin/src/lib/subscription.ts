@@ -122,12 +122,21 @@ export function providerLabel(provider: BillingProvider | null | undefined): str
  * Coarse status groups used by the Workspaces list filter and the Dashboard at-risk card.
  * MUST stay in sync with the CASE on p_status inside admin_list_workspaces
  * (supabase/migrations/20260909000001_admin_list_workspaces_filters_sort.sql).
+ * 'teste_sem_cartao' is not a subscription status: it filters on plan_source = 'trial' (the
+ * reverse trial, 14 dias do Pro sem cartão), so statusGroup() never returns it.
  */
-export type WorkspaceStatusGroup = 'ativo' | 'teste' | 'pendente' | 'cancelado' | 'sem_assinatura';
+export type WorkspaceStatusGroup =
+  | 'ativo'
+  | 'teste'
+  | 'teste_sem_cartao'
+  | 'pendente'
+  | 'cancelado'
+  | 'sem_assinatura';
 
 export const STATUS_GROUPS: readonly WorkspaceStatusGroup[] = [
   'ativo',
   'teste',
+  'teste_sem_cartao',
   'pendente',
   'cancelado',
   'sem_assinatura',
@@ -136,6 +145,7 @@ export const STATUS_GROUPS: readonly WorkspaceStatusGroup[] = [
 export const STATUS_GROUP_LABELS: Record<WorkspaceStatusGroup, string> = {
   ativo: 'Ativo',
   teste: 'Teste',
+  teste_sem_cartao: 'Teste sem cartão',
   pendente: 'Pagamento pendente',
   cancelado: 'Cancelado',
   sem_assinatura: 'Sem assinatura',

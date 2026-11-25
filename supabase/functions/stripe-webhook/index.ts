@@ -20,7 +20,11 @@ import {
   clearedAmountColumns,
   fetchStripeAmount,
 } from "../_shared/stripe-amount.ts";
-import { writeWorkspacePlan } from "../_shared/plan-writer.ts";
+import {
+  downgradeUnpaidReverseTrialConversion,
+  markReverseTrialFirstPaid,
+  writeWorkspacePlan,
+} from "../_shared/plan-writer.ts";
 import { notifyOwnerOfFailure } from "../_shared/dunning-notify.ts";
 import {
   applyCommissionAdjustment,
@@ -104,6 +108,9 @@ async function handleEvent(svc: SupabaseClient, event: Stripe.Event) {
     // Programa de afiliados (só Stripe gera comissão). Os quatro eventos abaixo precisam
     // estar ativos no endpoint do webhook no painel do Stripe.
     case "invoice.paid": {
+      // Teste reverso: first payment of a subscription bound during the trial. Before the
+      // commission so a failure here (5xx -> redelivery) never follows a recorded commission.
+      await markFirstPaidFromInvoice(svc, event.data.object as Stripe.Invoice);
       const outcome = await recordInvoiceCommission(
         svc,
         event.data.object as unknown as CommissionInvoice,
@@ -295,6 +302,10 @@ async function syncSubscription(
       ? "subscribed"
       : "fallback";
     await writeWorkspacePlan(svc, workspaceId, targetPlanId, "stripe", kind);
+  } else if (sub.status === "past_due") {
+    // Teste reverso: the first charge of a subscription bound during the trial failed. A
+    // conversion that never paid drops to Free like a trial without a card (no-op otherwise).
+    await downgradeUnpaidReverseTrialConversion(svc, workspaceId, defaultPlanId, "stripe");
   }
 }
 
@@ -377,6 +388,22 @@ async function retrieveInvoicePriceIdForAffiliate(id: string): Promise<string | 
 async function retrieveChargeForAffiliate(id: string) {
   const charge = await stripe.charges.retrieve(id, undefined, { timeout: STRIPE_READ_TIMEOUT_MS });
   return charge as unknown as { invoice?: string | { id: string } | null };
+}
+
+async function markFirstPaidFromInvoice(svc: SupabaseClient, invoice: Stripe.Invoice) {
+  if (!((invoice.amount_paid ?? 0) > 0)) return;
+  const customerId = typeof invoice.customer === "string"
+    ? invoice.customer
+    : invoice.customer?.id ?? null;
+  if (!customerId) return;
+  const { data, error } = await svc
+    .from("workspace_subscriptions").select("workspace_id")
+    .eq("stripe_customer_id", customerId).maybeSingle();
+  if (error) {
+    throw new Error(`invoice.paid workspace lookup failed: ${error.message}`);
+  }
+  if (!data?.workspace_id) return;
+  await markReverseTrialFirstPaid(svc, data.workspace_id);
 }
 
 async function resolveWorkspaceId(

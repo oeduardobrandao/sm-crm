@@ -6,6 +6,8 @@ import MobileNav from './MobileNav';
 import TopBar from './TopBar';
 import PhoneShellHeader from './PhoneShellHeader';
 import { DunningBanner } from '../billing/DunningBanner';
+import { ReverseTrialBanner } from '../billing/ReverseTrialBanner';
+import { ReverseTrialEndedBanner } from '../billing/ReverseTrialEndedBanner';
 import { IncidentBanner } from './IncidentBanner';
 import { useAuth } from '../../context/AuthContext';
 import type { FinancialAccess } from '../../lib/financialAccess';
@@ -275,6 +277,8 @@ export default function AppLayout() {
             <Suspense fallback={null}>
               <GlobalBannerContainer>
                 <DunningBanner />
+                <ReverseTrialBanner />
+                <ReverseTrialEndedBanner />
                 <IncidentBanner />
               </GlobalBannerContainer>
             </Suspense>

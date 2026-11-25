@@ -6,6 +6,7 @@ import {
 import {
   buildFounderSignupNotice,
   buildFounderSubscriptionNotice,
+  buildReverseTrialEmail,
   buildThankYouEmail,
   buildTrialReminderEmail,
   buildWelcomeEmail,
@@ -16,12 +17,14 @@ import {
   LIFECYCLE_FROM,
   sendFounderSignupNotice,
   sendFounderSubscriptionNotice,
+  sendReverseTrialEmail,
   sendThankYouEmail,
   sendTrialReminderEmail,
   sendViaResend,
   subscriptionValueLine,
   sendWelcomeEmail,
   THANKYOU_SUBJECT,
+  WELCOME_REVERSE_TRIAL_LEAD,
   WELCOME_SUBJECT,
 } from "../_shared/lifecycle-emails.ts";
 
@@ -760,4 +763,137 @@ Deno.test("lifecycle senders tag each email with its type", async () => {
     bodies.map((b) => (b.tags as Array<{ value: string }>)[0].value),
     ["welcome", "thank_you", "trial_reminder", "founder_signup", "founder_subscription"],
   );
+});
+
+// ─── Reverse trial (teste reverso, Task 10) ─────────────────────────────────
+
+const RT_INPUT = {
+  firstName: "Carla",
+  workspaceName: "Agência <Sol>",
+  planName: "Pro",
+  priceCents: 14900,
+  endsAt: "2026-12-08T02:30:00Z", // 7 de dezembro em São Paulo (23h30)
+  endedAt: "2026-12-08T02:45:00Z",
+  hubPauseAt: "2026-12-15T02:45:00Z", // 14 de dezembro em São Paulo
+  appBaseUrl: "https://app.test/",
+};
+
+function assertReverseTrialBasics(html: string, subject: string) {
+  assert(!html.includes("—") && !subject.includes("—"), "no em dash");
+  assertStringIncludes(html, `href="https://app.test/configuracao/cobranca"`);
+  assertStringIncludes(html, "Agência &lt;Sol&gt;");
+  assert(!html.includes("<Sol>"), "workspace name must be escaped");
+  assertStringIncludes(html, "Oi, Carla,");
+}
+
+Deno.test("buildReverseTrialEmail ending: subject and date in the São Paulo calendar, price, add-card link", () => {
+  const { subject, html } = buildReverseTrialEmail({ ...RT_INPUT, type: "reverse_trial_ending" });
+  assertEquals(subject, "Seu teste do Pro termina em 7 de dezembro");
+  assertReverseTrialBasics(html, subject);
+  assertStringIncludes(html, "termina em 7 de dezembro");
+  assertStringIncludes(html, "R$ 149,00 por mês");
+  assertStringIncludes(html, "Nada é cobrado agora");
+  assert(!html.includes("cobrança, de R$ 149,00 por mês, só acontece em"), "no charge date: the provider may charge later");
+  assertStringIncludes(html, "Adicionar cartão");
+  assertStringIncludes(html, "Nada é apagado");
+});
+
+Deno.test("buildReverseTrialEmail ending: no price drops the amount, not the sentence", () => {
+  const { html } = buildReverseTrialEmail({ ...RT_INPUT, type: "reverse_trial_ending", priceCents: null });
+  assert(!html.includes("R$"));
+  assertStringIncludes(html, "a primeira cobrança nunca acontece antes do fim do teste.");
+});
+
+Deno.test("buildReverseTrialEmail ended: you are on Free, nothing deleted, Hub pause date", () => {
+  const { subject, html } = buildReverseTrialEmail({ ...RT_INPUT, type: "reverse_trial_ended" });
+  assertEquals(subject, "Seu workspace voltou para o plano Free");
+  assertReverseTrialBasics(html, subject);
+  assertStringIncludes(html, "terminou em 7 de dezembro");
+  assertStringIncludes(html, "Nada foi apagado");
+  assertStringIncludes(html, "pausam em 14 de dezembro");
+  assertStringIncludes(html, "Recuperar o Pro");
+});
+
+Deno.test("buildReverseTrialEmail hub pausing: tomorrow's date and links coming back", () => {
+  const { subject, html } = buildReverseTrialEmail({ ...RT_INPUT, type: "reverse_trial_hub_pausing" });
+  assertEquals(subject, "Os links do portal dos seus clientes pausam amanhã");
+  assertReverseTrialBasics(html, subject);
+  assertStringIncludes(html, "Amanhã, 14 de dezembro");
+  assertStringIncludes(html, "os mesmos links voltam a funcionar");
+});
+
+Deno.test("buildReverseTrialEmail throws when the date the email is about is missing", () => {
+  const cases = [
+    { type: "reverse_trial_ending" as const, endsAt: null },
+    { type: "reverse_trial_ended" as const, endedAt: null },
+    { type: "reverse_trial_hub_pausing" as const, hubPauseAt: null },
+  ];
+  for (const c of cases) {
+    let threw = false;
+    try {
+      buildReverseTrialEmail({ ...RT_INPUT, ...c });
+    } catch {
+      threw = true;
+    }
+    assert(threw, `${c.type} without its date must throw`);
+  }
+});
+
+Deno.test("buildReverseTrialEmail: nameless greeting and blank plan name fall back", () => {
+  const { html } = buildReverseTrialEmail({
+    ...RT_INPUT,
+    type: "reverse_trial_ending",
+    firstName: null,
+    planName: "  ",
+  });
+  assertStringIncludes(html, "Oi,");
+  assertStringIncludes(html, "teste grátis do Pro");
+});
+
+Deno.test("welcome_offer_variant_before_trial_started: the 30-day block becomes the 14-day Pro", () => {
+  const html = buildWelcomeEmail({ firstName: "Ana", appBaseUrl: "https://app.test", reverseTrialOffer: true });
+  assertStringIncludes(html, WELCOME_REVERSE_TRIAL_LEAD);
+  assertEquals(WELCOME_REVERSE_TRIAL_LEAD, "Ao entrar, seu workspace fica no Pro por 14 dias, sem cartão.");
+  assert(!html.includes("30 dias"), "no 30-day trial promise in the offer variant");
+  assert(!html.includes("/comecar"), "no /comecar link in the offer variant");
+  assert(!html.includes("—"));
+  const lead = html.indexOf("Ao entrar, seu workspace");
+  assert(html.indexOf("Hub do cliente") > lead, "paid features sit under the 14-day lead-in");
+  assert(html.indexOf("Clientes &amp; CRM") < lead);
+});
+
+Deno.test("welcome without the offer keeps the 30-day block", () => {
+  const html = buildWelcomeEmail({ firstName: "Ana", appBaseUrl: "https://app.test", reverseTrialOffer: false });
+  assertStringIncludes(html, "No teste grátis de 30 dias dos planos pagos você também tem:");
+  assert(!html.includes(WELCOME_REVERSE_TRIAL_LEAD));
+});
+
+Deno.test("sendReverseTrialEmail tags the email with its type and keeps the key", async () => {
+  const original = globalThis.fetch;
+  const prevKey = Deno.env.get("RESEND_API_KEY");
+  Deno.env.set("RESEND_API_KEY", "test-key");
+  const seen: Array<{ body: Record<string, unknown>; key: string | null }> = [];
+  globalThis.fetch = ((_i: unknown, init?: RequestInit) => {
+    seen.push({
+      body: JSON.parse(String(init?.body ?? "{}")),
+      key: new Headers(init?.headers).get("Idempotency-Key"),
+    });
+    return Promise.resolve(new Response("{}", { status: 200 }));
+  }) as typeof fetch;
+  try {
+    await sendReverseTrialEmail({
+      to: "a@x.test",
+      subject: "s",
+      html: "h",
+      idempotencyKey: "reverse_trial/reverse_trial_ended/w/2026-12-08T02:45:00Z",
+      type: "reverse_trial_ended",
+    });
+  } finally {
+    globalThis.fetch = original;
+    if (prevKey === undefined) Deno.env.delete("RESEND_API_KEY");
+    else Deno.env.set("RESEND_API_KEY", prevKey);
+  }
+  assertEquals(seen[0].body.tags, [{ name: "type", value: "reverse_trial_ended" }]);
+  assertEquals(seen[0].body.from, LIFECYCLE_FROM);
+  assertEquals(seen[0].key, "reverse_trial/reverse_trial_ended/w/2026-12-08T02:45:00Z");
 });

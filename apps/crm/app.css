@@ -543,6 +543,197 @@ html[data-standalone] .app-container {
   color: #e8eaf0;
 }
 
+/* ===== Reverse trial (14 days of Pro without a card) ===== */
+
+.reverse-trial-banner {
+  gap: 12px;
+  color: var(--text-main);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.reverse-trial-banner--info {
+  background: color-mix(in srgb, var(--teal) 14%, var(--card-bg));
+}
+
+.reverse-trial-banner--warning {
+  background: color-mix(in srgb, var(--warning) 20%, var(--card-bg));
+}
+
+.reverse-trial-banner--success {
+  background: color-mix(in srgb, var(--success) 16%, var(--card-bg));
+}
+
+.reverse-trial-banner--ended {
+  background: var(--surface-1);
+}
+
+.reverse-trial-banner__icon {
+  flex-shrink: 0;
+  color: var(--success);
+}
+
+.reverse-trial-banner__cta {
+  flex-shrink: 0;
+  padding: 0.35rem 0.85rem;
+  border-radius: 8px;
+  background: var(--primary-color);
+  color: var(--dark);
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-decoration: none;
+}
+
+.reverse-trial-banner__cta:hover {
+  background: var(--primary-hover);
+}
+
+.reverse-trial-banner__link {
+  flex-shrink: 0;
+  color: var(--text-main);
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+.reverse-trial-banner .banner-dismiss {
+  color: var(--text-muted);
+}
+
+.reverse-trial-banner .banner-dismiss:hover {
+  color: var(--text-main);
+}
+
+.reverse-trial-dialog__compare {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.reverse-trial-dialog__col {
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 0.85rem;
+}
+
+.reverse-trial-dialog__col--free {
+  background: var(--surface-1);
+}
+
+.reverse-trial-dialog__col-title {
+  margin: 0 0 6px;
+  font-weight: 600;
+}
+
+.reverse-trial-dialog__col ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.reverse-trial-dialog__actions {
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.reverse-trial-dialog__later {
+  background: none;
+  white-space: nowrap;
+  border: none;
+  color: var(--text-light);
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 8px 4px;
+}
+
+.reverse-trial-dialog__later:hover {
+  color: var(--text-main);
+}
+
+.reverse-trial-dialog__changes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 0.875rem;
+}
+
+.reverse-trial-cobranca {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+
+.reverse-trial-cobranca__icon {
+  flex-shrink: 0;
+  color: var(--primary-hover);
+}
+
+.reverse-trial-cobranca__body {
+  flex: 1;
+  min-width: 14rem;
+}
+
+.reverse-trial-cobranca__title {
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+
+.reverse-trial-cobranca__text {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.reverse-trial-cobranca__cta {
+  flex-shrink: 0;
+  text-decoration: none;
+}
+
+.read-only-notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  background: var(--surface-1);
+  color: var(--text-main);
+  font-size: 0.875rem;
+}
+
+.read-only-notice__text {
+  flex: 1;
+  min-width: 12rem;
+  margin: 0;
+}
+
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
+  .reverse-trial-banner {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .reverse-trial-banner .banner-content {
+    flex-basis: calc(100% - 32px);
+    text-align: left;
+  }
+
+  .reverse-trial-dialog__compare {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* Phones: a 44px touch target around the small "×" without growing the bar (the stack's
    height drives --banner-height). */
 

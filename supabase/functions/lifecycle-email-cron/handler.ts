@@ -12,12 +12,15 @@
  */
 
 import {
+  buildReverseTrialEmail,
   buildTrialReminderEmail,
   firstNameFrom,
   formatChargeDate,
   formatFirstCharge,
+  REVERSE_TRIAL_EMAIL_TYPES,
+  type ReverseTrialEmailType,
 } from "../_shared/lifecycle-emails.ts";
-import { buildNurtureEmail, NURTURE_SAMPLE, type NurtureStep } from "../_shared/nurture-emails.ts";
+import { buildNurtureEmail, NURTURE_SAMPLE, type NurtureStep, nurtureTagType } from "../_shared/nurture-emails.ts";
 
 interface DbResult<T> {
   data: T | null;
@@ -70,6 +73,7 @@ export interface LifecycleCronDeps {
     firstName: string | null;
     appBaseUrl: string;
     idempotencyKey: string;
+    reverseTrialOffer?: boolean;
   }) => Promise<void>;
   sendThanks: (p: {
     to: string;
@@ -105,6 +109,15 @@ export interface LifecycleCronDeps {
     html: string;
     idempotencyKey: string;
   }) => Promise<void>;
+  // Reverse-trial emails (ending, ended, Hub pausing): the handler builds
+  // subject/html and the dep ships them tagged with their type.
+  sendReverseTrial: (p: {
+    to: string;
+    subject: string;
+    html: string;
+    idempotencyKey: string;
+    type: ReverseTrialEmailType;
+  }) => Promise<void>;
   // Nurture (owners who never subscribed). Read per run from NURTURE_EMAILS;
   // false skips the sweep entirely (no RPC call).
   nurtureEnabled: boolean;
@@ -132,6 +145,9 @@ interface WelcomeCandidate {
   email: string;
   nome: string | null;
   attempts: number;
+  // Reverse trial: the workspace would get the automatic 14-day Pro on the
+  // first visit. Optional so the function tolerates the pre-migration RPC.
+  reverse_trial_offer?: boolean | null;
 }
 
 interface ThankCandidate {
@@ -160,6 +176,30 @@ interface TrialReminderCandidate {
   billing_interval: string | null;
   first_charge_at: string;
   attempts: number;
+  // A reverse-trial conversion (card added during the 14-day Pro). Optional
+  // for the pre-migration RPC.
+  reverse_trial_conversion?: boolean | null;
+}
+
+interface ReverseTrialCandidate {
+  workspace_id: string;
+  user_id: string;
+  email: string | null;
+  nome: string | null;
+  workspace_name: string;
+  email_type: string;
+  /** The date this email is about (ends_at, ended_at or hub_pause_at); re-arms the ledger row. */
+  ref_at: string;
+  ends_at: string | null;
+  ended_at: string | null;
+  hub_pause_at: string | null;
+  plan_name: string | null;
+  price_cents: number | null;
+  attempts: number;
+}
+
+function isReverseTrialType(t: string): t is ReverseTrialEmailType {
+  return (REVERSE_TRIAL_EMAIL_TYPES as readonly string[]).includes(t);
 }
 
 interface NurtureCandidate {
@@ -175,6 +215,8 @@ interface NurtureCandidate {
   client_count: number;
   first_client_name: string | null;
   has_instagram: boolean;
+  // Workspace whose reverse trial ended on Free (a3 "Recupere o Pro").
+  ex_reverse_trial?: boolean | null;
 }
 
 const NURTURE_STEPS: readonly NurtureStep[] = ["a1", "a2", "a3", "a4", "b1", "b2", "b3", "b4"];
@@ -327,6 +369,7 @@ export async function runLifecycleEmailCron(
     welcomeSent: number;
     thanksSent: number;
     trialRemindersSent: number;
+    reverseTrialSent: number;
     nurtureSent: number;
     failed: number;
   }
@@ -334,6 +377,7 @@ export async function runLifecycleEmailCron(
   let welcomeSent = 0;
   let thanksSent = 0;
   let trialRemindersSent = 0;
+  let reverseTrialSent = 0;
   let nurtureSent = 0;
   const errors: Array<{ accountId?: string; error?: string }> = [];
 
@@ -354,6 +398,7 @@ export async function runLifecycleEmailCron(
           firstName: firstNameFrom(c.nome),
           appBaseUrl: deps.appBaseUrl,
           idempotencyKey: `welcome/${c.user_id}`,
+          reverseTrialOffer: c.reverse_trial_offer === true,
         });
         await deps.sendFounderSignup({
           userEmail: c.email,
@@ -429,9 +474,18 @@ export async function runLifecycleEmailCron(
         // Round, not ceil: a normal send at 7d00m-7d59m must read "7 dias".
         const daysLeft = Math.round(untilCharge / DAY_MS);
         if (untilCharge < 7 * DAY_MS) {
-          console.warn(
-            `[lifecycle-email-cron] trial-reminder:late workspace ${c.workspace_id} daysLeft=${daysLeft}`,
-          );
+          // A card added during the reverse trial usually lands here (fewer
+          // than 7 days left): expected, the checkout and the banner already
+          // showed the amount and the date. Anything else is a late send.
+          if (c.reverse_trial_conversion === true) {
+            console.info(
+              `[lifecycle-email-cron] trial-reminder:reverse-trial workspace ${c.workspace_id} daysLeft=${daysLeft}`,
+            );
+          } else {
+            console.warn(
+              `[lifecycle-email-cron] trial-reminder:late workspace ${c.workspace_id} daysLeft=${daysLeft}`,
+            );
+          }
         }
         const firstCharge = formatFirstCharge(c);
         if (firstCharge === null) {
@@ -473,6 +527,72 @@ export async function runLifecycleEmailCron(
         });
         await markDelivered(deps, "trial_reminder", "workspace_id", c.workspace_id);
         trialRemindersSent++;
+      } catch (e) {
+        errors.push({
+          accountId: c.workspace_id,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+  }
+
+  // --- Reverse trial sweep -------------------------------------------------
+  // ending (3 days before the end), ended (at the downgrade) and Hub pausing
+  // (the day before the pause). Eligibility, including a late conversion that
+  // cancels a pending ended/hub_pausing email, lives in the RPC; the ledger is
+  // lifecycle_emails keyed (email_type, workspace_id) with ref_at as the date
+  // the email is about, so a moved date re-arms the row.
+  const reverse = await deps.db.rpc("get_reverse_trial_email_candidates", {
+    p_now: deps.now().toISOString(),
+  });
+  if (reverse.error) {
+    errors.push({ error: `reverse trial candidates: ${reverse.error.message}` });
+  } else {
+    for (const c of (reverse.data ?? []) as ReverseTrialCandidate[]) {
+      try {
+        const type = c.email_type;
+        if (!isReverseTrialType(type)) throw new Error(`reverse trial: unknown email_type ${String(type)}`);
+        const to = (c.email ?? "").trim();
+        if (!to) throw new Error(`${type}: candidate has no email`);
+        // Built before the claim: a malformed row is reported without spending an attempt.
+        const { subject, html } = buildReverseTrialEmail({
+          type,
+          firstName: firstNameFrom(c.nome),
+          workspaceName: c.workspace_name,
+          planName: c.plan_name,
+          priceCents: c.price_cents,
+          endsAt: c.ends_at,
+          endedAt: c.ended_at,
+          hubPauseAt: c.hub_pause_at,
+          appBaseUrl: deps.appBaseUrl,
+        });
+        await claim(
+          deps,
+          {
+            email_type: type,
+            workspace_id: c.workspace_id,
+            attempts: c.attempts + 1,
+            ref_at: c.ref_at,
+            delivered_at: null,
+            meta: {
+              to,
+              user_id: c.user_id,
+              ends_at: c.ends_at,
+              ended_at: c.ended_at,
+              hub_pause_at: c.hub_pause_at,
+            },
+          },
+          "email_type,workspace_id",
+        );
+        await deps.sendReverseTrial({
+          to,
+          subject,
+          html,
+          idempotencyKey: `reverse_trial/${type}/${c.workspace_id}/${c.ref_at}`,
+          type,
+        });
+        await markDelivered(deps, type, "workspace_id", c.workspace_id);
+        reverseTrialSent++;
       } catch (e) {
         errors.push({
           accountId: c.workspace_id,
@@ -528,6 +648,7 @@ export async function runLifecycleEmailCron(
             appBaseUrl: deps.appBaseUrl,
             unsubUrl: unsub.page,
             whatsappUrl: deps.whatsappUrl,
+            exReverseTrial: c.ex_reverse_trial === true,
           });
           await deps.sendNurture({
             to,
@@ -535,7 +656,7 @@ export async function runLifecycleEmailCron(
             html,
             idempotencyKey: `nurture_${step}/${c.workspace_id}`,
             headers: unsubHeaders(unsub.oneClick),
-            tags: { type: `nurture_${step}` },
+            tags: { type: nurtureTagType(step, c.ex_reverse_trial) },
           });
           await markNurtureDelivered(deps, c.workspace_id, step, nowIso);
           nurtureSent++;
@@ -553,5 +674,5 @@ export async function runLifecycleEmailCron(
     console.error(`[lifecycle-email-cron] ${errors.length} failure(s)`, errors);
     await deps.report({ failed: errors.length, errors });
   }
-  return { welcomeSent, thanksSent, trialRemindersSent, nurtureSent, failed: errors.length };
+  return { welcomeSent, thanksSent, trialRemindersSent, reverseTrialSent, nurtureSent, failed: errors.length };
 }

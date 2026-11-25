@@ -18,12 +18,21 @@ function makeDb(opts: {
   tokenRow?: unknown;
   access?: unknown;
   accessError?: unknown;
+  paused?: boolean;
+  agencyName?: string | null;
 } = {}) {
   const calls: Call[] = [];
   const tokenRow = "tokenRow" in opts ? opts.tokenRow : TOKEN_ROW;
+  const workspacesSelect = {
+    eq: () => ({
+      maybeSingle: async () => ({
+        data: { name: "agencyName" in opts ? opts.agencyName : "Agência Sol" },
+      }),
+    }),
+  };
   const db = {
-    from: (_t: string) => ({
-      select: () => ({
+    from: (t: string) => ({
+      select: () => t === "workspaces" ? workspacesSelect : ({
         eq: () => ({
           gt: () => ({
             eq: () => ({ maybeSingle: async () => ({ data: tokenRow }) }),
@@ -37,6 +46,7 @@ function makeDb(opts: {
       if (fn === "hub_access_context" && opts.accessError) {
         return { data: null, error: opts.accessError };
       }
+      if (fn === "hub_workspace_paused") return { data: opts.paused === true, error: null };
       const r = hubAccessRpc(fn, opts.access);
       if (r) return r;
       return { data: true, error: null }; // effective_plan_feature
@@ -200,6 +210,56 @@ Deno.test("hubAccessDenied: login_required -> 401 with code, error -> 500", asyn
   assertEquals(b.status, 500);
   assertEquals(await b.json(), { error: "Erro interno." });
   assertEquals(called, 0);
+});
+
+Deno.test("paused_workspace_returns_paused: resolveHubAccess -> paused with the agency name, no access rpc", async () => {
+  const { db, calls } = makeDb({ paused: true });
+  const r = await resolveHubAccess(db, req("abc"), TOKEN, NOW);
+  assertEquals(r, { ok: false, reason: "paused", agencyName: "Agência Sol" });
+  assertEquals(accessCalls(calls).length, 0);
+  // Paused is decided before the feature gate.
+  assertEquals(calls.filter((c) => c.fn === "effective_plan_feature").length, 0);
+  assertEquals(calls.find((c) => c.fn === "hub_workspace_paused")?.args, { p_conta: "ws-1" });
+});
+
+Deno.test("paused_keeps_session: stored session + paused workspace -> 403 hub_paused, nothing cleared", async () => {
+  const { db, calls } = makeDb({ paused: true, access: { require_login: true, person: PERSON } });
+  const request = req("live-session");
+  const access = await resolveHubAccess(db, request, TOKEN, NOW);
+  assert(!access.ok);
+  let limited = 0;
+  const res = await hubAccessDenied(access.reason, {
+    db,
+    req: request,
+    json,
+    rateLimit: async () => {
+      limited++;
+      return true;
+    },
+  });
+  assertEquals(res.status, 403);
+  const body = await res.json();
+  assertEquals(body, { error: "Portal pausado.", code: "hub_paused", agency_name: "Agência Sol" });
+  // Not login_required (the Hub clears its stored session only on that code),
+  // no session rpc, no session header, bad-token budget untouched.
+  assertEquals(calls.filter((c) => c.fn.startsWith("hub_session")).length, 0);
+  assertEquals(res.headers.get("x-hub-session"), null);
+  assertEquals(limited, 0);
+});
+
+Deno.test("hubAccessDenied: paused with an explicit name wins; unknown request -> agency_name null", async () => {
+  const ctx = { db: {}, req: new Request("http://x"), json, rateLimit: async () => true };
+  const a = await hubAccessDenied("paused", ctx, "Agência Lua");
+  assertEquals(a.status, 403);
+  assertEquals((await a.json()).agency_name, "Agência Lua");
+  const b = await hubAccessDenied("paused", ctx);
+  assertEquals(await b.json(), { error: "Portal pausado.", code: "hub_paused", agency_name: null });
+});
+
+Deno.test("not paused -> normal access", async () => {
+  const { db } = makeDb({ paused: false });
+  const r = await resolveHubAccess(db, req(), TOKEN, NOW);
+  assert(r.ok);
 });
 
 Deno.test("cors allows the x-hub-session header", () => {

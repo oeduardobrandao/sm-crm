@@ -36,6 +36,8 @@ export interface CandidateRow {
   segments: string[];
   fingerprint: string;
   people_id: string | null;
+  /** Fim do teste reverso em andamento (YYYY-MM-DD, America/Sao_Paulo), ou null. */
+  reverse_trial_ends_at?: string | null;
 }
 
 interface DeletionRow {
@@ -129,6 +131,8 @@ export const MANAGED_SEGMENTS = [
   "owner",
   "membro",
   "trial",
+  // teste reverso (Pro sem cartão); "trial" segue sendo o teste com cartão
+  "teste_sem_cartao",
   "pagante",
   "free",
   "inadimplente",
@@ -173,6 +177,7 @@ export function buildData(
     workspace_count: row.workspace_count,
     clientes: row.clientes,
     cliente_desde: row.cliente_desde ?? "",
+    teste_sem_cartao_ate: row.reverse_trial_ends_at ?? "",
   };
   if (adminUrl) data.admin_url = adminUrl;
   return data;

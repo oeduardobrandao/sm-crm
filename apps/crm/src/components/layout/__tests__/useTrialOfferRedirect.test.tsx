@@ -11,17 +11,30 @@ vi.mock('@/services/billing', async (importOriginal) => {
     ...actual,
     getWorkspaceSubscription: vi.fn(),
     getEffectivePlanWithSource: vi.fn(),
+    getReverseTrialOffer: vi.fn(),
   };
 });
 
 import { useAuth } from '../../../context/AuthContext';
-import { getEffectivePlanWithSource, getWorkspaceSubscription } from '@/services/billing';
+import {
+  getEffectivePlanWithSource,
+  getReverseTrialOffer,
+  getWorkspaceSubscription,
+} from '@/services/billing';
 import { useTrialOfferRedirect } from '../useTrialOfferRedirect';
 
 const plan = (over: Record<string, unknown> = {}) => ({
   planId: 'free',
   planSource: 'system',
   wasDemo: false,
+  reverseTrial: {
+    startedAt: null,
+    endsAt: null,
+    endedAt: null,
+    outcome: null,
+    cardAddedAt: null,
+    firstPaidAt: null,
+  },
   trialOfferSeenAt: null,
   hasWorkspace: true,
   ...over,
@@ -54,6 +67,11 @@ beforeEach(() => {
   setAuth('owner');
   vi.mocked(getEffectivePlanWithSource).mockResolvedValue(plan());
   vi.mocked(getWorkspaceSubscription).mockResolvedValue(NEVER_SUBSCRIBED);
+  vi.mocked(getReverseTrialOffer).mockResolvedValue({
+    enabled: false,
+    eligible: false,
+    auto: false,
+  });
 });
 
 describe('useTrialOfferRedirect', () => {
@@ -66,6 +84,41 @@ describe('useTrialOfferRedirect', () => {
   it('redirects an eligible owner who has not seen the offer', async () => {
     const { result } = run('/dashboard');
     await waitFor(() => expect(result.current).toEqual({ pending: false, redirect: true }));
+  });
+
+  it('redirect_off_when_switch_on', async () => {
+    vi.mocked(getReverseTrialOffer).mockResolvedValue({
+      enabled: true,
+      eligible: true,
+      auto: true,
+    });
+    const { result, seen } = run('/dashboard');
+    await waitFor(() => expect(result.current.pending).toBe(false));
+    expect(result.current.redirect).toBe(false);
+    expect(seen.some((state) => state.redirect)).toBe(false);
+  });
+
+  it('waits for the reverse-trial offer before deciding', async () => {
+    let release: (v: { enabled: boolean; eligible: boolean; auto: boolean }) => void = () => {};
+    vi.mocked(getReverseTrialOffer).mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+    const { result } = run('/dashboard');
+    await waitFor(() => expect(getEffectivePlanWithSource).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 20));
+    expect(result.current).toEqual({ pending: true, redirect: false });
+    await act(async () => {
+      release({ enabled: false, eligible: false, auto: false });
+    });
+    await waitFor(() => expect(result.current).toEqual({ pending: false, redirect: true }));
+  });
+
+  it('fails open (no redirect) when the offer query rejects', async () => {
+    vi.mocked(getReverseTrialOffer).mockRejectedValue(new Error('boom'));
+    const { result } = run('/dashboard');
+    await waitFor(() => expect(result.current).toEqual({ pending: false, redirect: false }));
   });
 
   it('does not redirect once the offer was seen', async () => {
@@ -206,5 +259,6 @@ describe('useTrialOfferRedirect inside the iOS app', () => {
     expect(seen.some((state) => state.pending || state.redirect)).toBe(false);
     expect(getEffectivePlanWithSource).not.toHaveBeenCalled();
     expect(getWorkspaceSubscription).not.toHaveBeenCalled();
+    expect(getReverseTrialOffer).not.toHaveBeenCalled();
   });
 });

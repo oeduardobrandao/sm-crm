@@ -4,8 +4,7 @@
 // owner of workspaceId and the body parsed" lives here.
 
 import { SupabaseClient } from "npm:@supabase/supabase-js@2";
-import { hasEverSubscribed } from "../_shared/billing-logic.ts";
-import { resolveTrialDays } from "../_shared/trial.ts";
+import { resolveCheckoutTrial } from "../_shared/billing-logic.ts";
 import {
   buildRestoreStripeColumns,
   isDefinitiveGatewayReject,
@@ -27,7 +26,7 @@ import {
   PagarmeCheckoutRequest,
   pagarmeCheckoutBlocked,
   resolveAmountMirror,
-  resolveStartAt,
+  resolveCheckoutStartAt,
   stripeSwitchSourceEligible,
 } from "./logic.ts";
 import { PagarmeGateway, PagarmeSubscriptionResponse } from "./gateway.ts";
@@ -347,7 +346,9 @@ export function createPagarmeCheckoutHandler(deps: {
     const { data: trialWs, error: trialWsErr } = isSwitch
       ? { data: null, error: null }
       : await db
-        .from("workspaces").select("demo_created_at").eq("id", ctx.workspaceId)
+        .from("workspaces")
+        .select("demo_created_at, plan_source, reverse_trial_ends_at, reverse_trial_started_at")
+        .eq("id", ctx.workspaceId)
         .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS)).single();
     if (trialWsErr) {
       console.error("[pagarme-checkout] workspace read failed:", trialWsErr.message);
@@ -359,10 +360,14 @@ export function createPagarmeCheckoutHandler(deps: {
       // (4) Trial (checkout comum) OU fronteira do switch. O switch NUNCA consulta
       // resolveTrialDays: o "periodo gratis" dele e o mes Stripe ja pago, e a 1a parcela
       // cai no ceil da fronteira (spec: nao ha gap de acesso; o plano e concedido no bind).
-      const trialDays = isSwitch ? undefined : resolveTrialDays(hasEverSubscribed(row, trialWs));
+      // Teste reverso em andamento: a 1a parcela cai na data de fim do teste; teste reverso ja
+      // usado: cobra agora; nunca teve: os 30 dias do teste com cartao.
+      const checkoutTrial = isSwitch ? null : resolveCheckoutTrial(trialWs, row, now);
       const startAt = isSwitch && switchBoundary
         ? ceilToUtcMidnightDate(switchBoundary)
-        : resolveStartAt(trialDays, now);
+        : checkoutTrial
+        ? resolveCheckoutStartAt(checkoutTrial, trialWs?.reverse_trial_ends_at ?? null, now)
+        : undefined;
 
       // (5) Customer upsert: email is unique at Pagar.me, so this is find-or-create. The
       // customer may be shared across this owner's workspaces (1:N by design, never a

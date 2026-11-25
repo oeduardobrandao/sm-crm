@@ -82,6 +82,8 @@ import { GroupedList, Cell } from '@/components/mobile/GroupedList';
 import { FormRow } from '@/components/mobile/FormRow';
 import { PickerCell } from '@/components/mobile/PickerSheet';
 import { ContratosPhone } from './phone/ContratosPhone';
+import { useReadOnlyGrandfather } from '@/components/paywall/useReadOnlyGrandfather';
+import { ReadOnlyNotice } from '@/components/paywall/ReadOnlyNotice';
 
 const contratoSchema = z.object({
   titulo: z.string().min(1, 'Título obrigatório'),
@@ -122,6 +124,8 @@ export default function ContratosPage() {
   // couples the two capabilities for every one of them.
   const { can, profile } = useAuth();
   const canSeeContracts = can('contratos', 'ver');
+  // Ex-reverse-trial workspace on Free: consultation only, every mutating control hidden.
+  const { readOnly } = useReadOnlyGrandfather('feature_contracts');
   const qc = useQueryClient();
   const navigate = useNavigate();
   // Below 768px the page is the phone list (PLAN F2d). The form body follows the dialog
@@ -553,12 +557,14 @@ export default function ContratosPage() {
       >
         <HelpCircle className="h-4 w-4" style={{ color: 'var(--text-muted)', cursor: 'pointer' }} />
       </span>
-      <Button variant="outline" onClick={handleCSVImport}>
-        <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Importar CSV
-      </Button>
+      {!readOnly && (
+        <Button variant="outline" onClick={handleCSVImport}>
+          <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Importar CSV
+        </Button>
+      )}
     </>
   );
-  const primaryAction = (
+  const primaryAction = readOnly ? null : (
     <Button onClick={openAdd}>
       <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Novo Contrato
     </Button>
@@ -575,6 +581,7 @@ export default function ContratosPage() {
     return (
       <>
         <ContratosPhone
+          readOnly={readOnly}
           isLoading={isLoading}
           contratos={filtered}
           canSeeValues={canSeeContracts}
@@ -611,6 +618,8 @@ export default function ContratosPage() {
           </div>
         </div>
       )}
+
+      {readOnly && <ReadOnlyNotice />}
 
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: '320px' }}>
@@ -669,7 +678,7 @@ export default function ContratosPage() {
                 <TableHead>Período</TableHead>
                 <TableHead>Valor</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Ações</TableHead>
+                {!readOnly && <TableHead>Ações</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -707,23 +716,25 @@ export default function ContratosPage() {
                       {STATUS_LABEL[c.status]}
                     </Badge>
                   </TableCell>
-                  <TableCell>
-                    <div className="flex gap-1" style={{ justifyContent: 'flex-end' }}>
-                      <Button size="icon" variant="ghost" onClick={() => openEdit(c)}>
-                        <Edit2 className="h-4 w-4" />
-                      </Button>
-                      {c.id && (
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="text-destructive"
-                          onClick={() => setDeleteId(c.id!)}
-                        >
-                          <Trash2 className="h-4 w-4" />
+                  {!readOnly && (
+                    <TableCell>
+                      <div className="flex gap-1" style={{ justifyContent: 'flex-end' }}>
+                        <Button size="icon" variant="ghost" onClick={() => openEdit(c)}>
+                          <Edit2 className="h-4 w-4" />
                         </Button>
-                      )}
-                    </div>
-                  </TableCell>
+                        {c.id && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="text-destructive"
+                            onClick={() => setDeleteId(c.id!)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>

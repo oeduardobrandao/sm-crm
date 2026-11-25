@@ -16,10 +16,13 @@ import {
   type EffectivePlan,
 } from '@/services/billing';
 import {
+  checkoutBlocked,
   isSelectableTrialPlan,
   isTrialOfferEligible,
   planHasPortal,
+  resolveCurrentPlanId,
 } from '@/pages/configuracao/cobranca/plan-display';
+import { formatTrialDate, isReverseTrialRunning, reverseTrialPhase } from '@/lib/reverseTrial';
 import { captureEvent } from '@/lib/analytics';
 import { captureCheckoutStarted } from '@/lib/checkout-analytics';
 import { rememberCheckoutValue } from '@/lib/googleAdsLoader';
@@ -29,13 +32,18 @@ import { WhatsAppSupportButton } from '@/components/support/WhatsAppSupportButto
 import { PagarmeCheckoutDialog } from '@/components/billing/PagarmeCheckoutDialog';
 import { parsePlanIntent } from './plan-intent';
 import { trialCandidates } from './recommend';
-import { TrialPlanPicker } from './TrialPlanPicker';
+import { TrialPlanPicker, type ComecarMode } from './TrialPlanPicker';
 import './comecar.css';
 
 const RECOMMENDED_ID = 'pro';
 const EFFECTIVE_PLAN_KEY = ['billing', 'effective-plan-with-source'] as const;
 
-type CheckoutExtra = { recommended_plan_id: string; accepted_recommendation: boolean };
+type CheckoutExtra = {
+  recommended_plan_id?: string;
+  accepted_recommendation?: boolean;
+  reverse_trial?: boolean;
+  days_left?: number;
+};
 
 /** plans.price_brl is stored in centavos (e.g. 9990 = R$ 99,90). */
 function formatBRL(centavos: number): string {
@@ -155,6 +163,29 @@ export default function ComecarPage() {
   // `eligible` stays false while any query has errored.
   const eligible = ready && !hasError && isTrialOfferEligible(effectivePlan, subscription);
 
+  // Reverse trial (14 days of Pro without a card). A running trial, or one that ended on Free,
+  // is admitted here as a plan picker even though the card trial is spent: during the trial
+  // the first charge waits for its end date, after it the charge is immediate. The landing
+  // intent auto-checkout stays gated on `eligible` (never trialed) alone.
+  const reverseRunning = isReverseTrialRunning(effectivePlan);
+  const reverseEndsAt = reverseRunning ? (effectivePlan?.reverseTrial?.endsAt ?? null) : null;
+  const reverseEnded =
+    !reverseRunning &&
+    Boolean(effectivePlan?.reverseTrial?.startedAt) &&
+    effectivePlan?.planSource !== 'manual' &&
+    resolveCurrentPlanId(effectivePlan?.planId, subscription?.plan_id) === 'free';
+  const reverseAdmitted = (reverseRunning || reverseEnded) && !checkoutBlocked(subscription, now);
+  const mode: ComecarMode = reverseRunning
+    ? 'reverse_running'
+    : reverseEnded
+      ? 'reverse_ended'
+      : 'card_trial';
+  const reverseExtra: CheckoutExtra | undefined = reverseEndsAt
+    ? { reverse_trial: true, days_left: reverseTrialPhase(now, reverseEndsAt).daysLeft }
+    : undefined;
+  // `recomendado` only preselects the picker; it never starts a checkout (unlike plan/interval).
+  const preferredPlanId = new URLSearchParams(location.search).get('recomendado');
+
   /** Stamps the cached effective plan as seen, without a refetch that could fail. */
   const markSeenInCache = () => {
     queryClient.setQueryData<EffectivePlan>(EFFECTIVE_PLAN_KEY, (old) =>
@@ -202,7 +233,11 @@ export default function ComecarPage() {
     const plan = plans?.find((p) => p.id === planId);
     rememberCheckoutValue(interval === 'year' ? plan?.price_brl_annual : plan?.price_brl);
     if (interval === 'year' && plan && isPagarme12xEnabled(plan)) {
-      captureCheckoutStarted(planId, 'year', 'onboarding', 'pagarme');
+      if (reverseExtra) {
+        captureCheckoutStarted(planId, 'year', 'onboarding', 'pagarme', reverseExtra);
+      } else {
+        captureCheckoutStarted(planId, 'year', 'onboarding', 'pagarme');
+      }
       setPagarmeDialog({ plan });
       setBusy(null);
       setIntent(null);
@@ -271,12 +306,12 @@ export default function ComecarPage() {
   // /comecar is a typeable URL that WorkspaceSetupPage links to unconditionally, so
   // this has to be enforced here and not only by hiding the entry point. Mirrors the
   // invariant canUpgradeTo already holds on Plano e Cobrança.
-  if (!isTrialOfferEligible(effectivePlan, subscription)) {
+  if (!isTrialOfferEligible(effectivePlan, subscription) && !reverseAdmitted) {
     return <Navigate to="/dashboard" replace />;
   }
 
   const intentPlan = intent ? plans?.find((p) => p.id === intent.planId) : undefined;
-  if (intent) {
+  if (intent && eligible) {
     return (
       <div className="comecar-shell comecar-shell--center">
         <div className="comecar-standby">
@@ -298,7 +333,7 @@ export default function ComecarPage() {
 
   async function handleStart(planId: string) {
     setBusy(planId);
-    const ok = await beginCheckout(planId, interval);
+    const ok = await beginCheckout(planId, interval, reverseExtra);
     if (!ok) setBusy(null);
   }
 
@@ -307,12 +342,13 @@ export default function ComecarPage() {
     const ok = await beginCheckout(planId, 'month', {
       recommended_plan_id: recommendedPlanId,
       accepted_recommendation: planId === recommendedPlanId,
+      ...reverseExtra,
     });
     if (!ok) setBusy(null);
   }
 
   async function handleSkip() {
-    captureEvent('trial_skipped');
+    if (mode === 'card_trial') captureEvent('trial_skipped');
     // The dashboard redirect reads the cached effective plan: mark it seen (and the
     // cache with it) first, or a fast click bounces straight back to /comecar.
     await ensureTrialOfferSeen();
@@ -320,6 +356,14 @@ export default function ComecarPage() {
     markSeenInCache();
     navigate('/dashboard', { replace: true });
   }
+
+  const reverseEndDate = reverseEndsAt ? formatTrialDate(reverseEndsAt) : '';
+  const footNote =
+    mode === 'reverse_running'
+      ? `Nada é cobrado antes de ${reverseEndDate}, quando o teste termina.`
+      : mode === 'reverse_ended'
+        ? null
+        : 'Pedimos o cartão agora, mas nada é cobrado nos primeiros 30 dias.';
 
   const footerHelp = isWhatsAppSupportEnabled() && (
     <p className="comecar-foot__help">
@@ -340,6 +384,9 @@ export default function ComecarPage() {
             plans={plans ?? []}
             busyPlanId={busy}
             now={now}
+            mode={mode}
+            trialEndsAt={reverseEndsAt}
+            preferredPlanId={preferredPlanId}
             onStart={(planId, recommendedPlanId) =>
               void handlePickerStart(planId, recommendedPlanId)
             }
@@ -354,7 +401,7 @@ export default function ComecarPage() {
             }
           />
           <footer className="comecar-foot">
-            <p>Pedimos o cartão agora, mas nada é cobrado nos primeiros 30 dias.</p>
+            {footNote && <p>{footNote}</p>}
             {footerHelp}
           </footer>
         </div>
@@ -370,11 +417,28 @@ export default function ComecarPage() {
             </button>
           )}
           <header className="comecar-head">
-            <h1>Comece com 30 dias grátis</h1>
-            <p>
-              Escolha o plano do seu teste. Você só é cobrado depois de 30 dias e pode cancelar
-              quando quiser.
-            </p>
+            {mode === 'reverse_running' ? (
+              <>
+                <h1>Escolha o plano para depois do teste</h1>
+                <p>
+                  A primeira cobrança só acontece em {reverseEndDate}, no fim do teste. Cancele
+                  quando quiser.
+                </p>
+              </>
+            ) : mode === 'reverse_ended' ? (
+              <>
+                <h1>Escolha seu plano</h1>
+                <p>A cobrança é imediata: o teste grátis já foi usado. Cancele quando quiser.</p>
+              </>
+            ) : (
+              <>
+                <h1>Comece com 30 dias grátis</h1>
+                <p>
+                  Escolha o plano do seu teste. Você só é cobrado depois de 30 dias e pode cancelar
+                  quando quiser.
+                </p>
+              </>
+            )}
           </header>
 
           <div className="comecar-toggle" role="group" aria-label="Período de cobrança">
@@ -408,9 +472,13 @@ export default function ComecarPage() {
                     <span className="comecar-card__name">{p.name}</span>
                     {p.id === RECOMMENDED_ID && <span className="comecar-tag">Recomendado</span>}
                   </div>
-                  <p className="comecar-card__trial">30 dias grátis</p>
+                  {mode === 'reverse_running' ? (
+                    <p className="comecar-card__trial">Grátis até {reverseEndDate}</p>
+                  ) : mode === 'card_trial' ? (
+                    <p className="comecar-card__trial">30 dias grátis</p>
+                  ) : null}
                   <p className="comecar-card__price">
-                    depois{' '}
+                    {mode === 'reverse_ended' ? '' : 'depois '}
                     {monthly == null
                       ? 'Sob consulta'
                       : gated
@@ -432,7 +500,13 @@ export default function ComecarPage() {
                     onClick={() => handleStart(p.id)}
                     disabled={busy !== null || unpriced}
                   >
-                    {busy === p.id ? 'Aguarde…' : 'Começar teste'}
+                    {busy === p.id
+                      ? 'Aguarde…'
+                      : mode === 'reverse_running'
+                        ? 'Continuar depois do teste'
+                        : mode === 'reverse_ended'
+                          ? 'Assinar'
+                          : 'Começar teste'}
                   </button>
                 </div>
               );
@@ -440,9 +514,11 @@ export default function ComecarPage() {
           </div>
 
           <footer className="comecar-foot">
-            <p>Pedimos o cartão agora, mas nada é cobrado nos primeiros 30 dias.</p>
+            {footNote && <p>{footNote}</p>}
             <button type="button" className="comecar-link" onClick={() => void handleSkip()}>
-              Prefiro continuar no plano Free por enquanto
+              {mode === 'reverse_running'
+                ? 'Decidir depois'
+                : 'Prefiro continuar no plano Free por enquanto'}
             </button>
             {footerHelp}
           </footer>
@@ -463,7 +539,8 @@ export default function ComecarPage() {
             : null
         }
         source="onboarding"
-        trialEligible={!hasUsedTrial(subscription, effectivePlan)}
+        trialEligible={reverseRunning || !hasUsedTrial(subscription, effectivePlan)}
+        trialEndsAt={reverseEndsAt}
         onPayUpfront={
           pagarmeDialog
             ? () => {
@@ -474,7 +551,15 @@ export default function ComecarPage() {
             : undefined
         }
         onClose={() => setPagarmeDialog(null)}
-        onSuccess={() => navigate('/dashboard?trial=started')}
+        onSuccess={() =>
+          // The dashboard's ?trial=started toast promises the 30-day card trial; a reverse-trial
+          // checkout lands on Cobrança, which confirms the payment and polls the plan.
+          navigate(
+            mode === 'card_trial'
+              ? '/dashboard?trial=started'
+              : '/configuracao/cobranca?status=success',
+          )
+        }
       />
     </div>
   );

@@ -47,6 +47,7 @@ import {
   type PagarmeCheckoutResult,
 } from '@/services/billing';
 import { ceilPeriodEndToUtcDate } from '@/pages/configuracao/cobranca/plan-display';
+import { formatTrialDate } from '@/lib/reverseTrial';
 import { useIsPhoneUi } from '@/lib/phoneShell';
 import { PagarmeLogo } from './PagarmeLogo';
 import './pagarmeCheckoutPhone.css';
@@ -64,8 +65,16 @@ export interface PagarmeCheckoutDialogProps {
     pagarme_installment_cents: number;
   } | null;
   source: CheckoutSource;
-  /** Checkout mode only: !hasUsedTrial(subscription, effectivePlan) (a demo has used it too). */
+  /**
+   * Checkout mode only: !hasUsedTrial(subscription, effectivePlan) (a demo has used it too), or
+   * true during a running reverse trial (the first charge waits for its end).
+   */
   trialEligible: boolean;
+  /**
+   * Checkout mode only. End of a running reverse trial: the first installment is charged on that
+   * date (backend `start_at`, ceiled to UTC midnight) instead of 30 days from now.
+   */
+  trialEndsAt?: string | null;
   /**
    * Checkout mode only. When provided, an "À vista sai por ..." escape hatch renders below the
    * 12x summary; clicking it calls this instead of submitting the card form. The parent is
@@ -251,6 +260,7 @@ export function PagarmeCheckoutDialog({
   plan,
   source,
   trialEligible,
+  trialEndsAt,
   onPayUpfront,
   onSuccess,
   firstChargeAt,
@@ -385,15 +395,20 @@ export function PagarmeCheckoutDialog({
 
   if ((mode === 'checkout' || mode === 'switch') && !plan) return null;
 
+  const reverseTrialEnd = mode === 'checkout' && trialEligible && trialEndsAt ? trialEndsAt : null;
   const trialEndPreview =
     mode === 'checkout' && trialEligible
-      ? ceilPeriodEndToUtcDate(new Date(Date.now() + TRIAL_DAYS * 24 * 3600 * 1000).toISOString())
+      ? ceilPeriodEndToUtcDate(
+          reverseTrialEnd ?? new Date(Date.now() + TRIAL_DAYS * 24 * 3600 * 1000).toISOString(),
+        )
       : null;
 
   const ctaLabel =
     mode === 'checkout'
       ? trialEligible
-        ? t('pagarmeCheckout.cta.startTrial')
+        ? reverseTrialEnd
+          ? t('pagarmeCheckout.cta.continueAfterTrial')
+          : t('pagarmeCheckout.cta.startTrial')
         : t('pagarmeCheckout.cta.confirmSubscription')
       : mode === 'switch'
         ? t('pagarmeCheckout.cta.confirmSwitch')
@@ -704,7 +719,19 @@ export function PagarmeCheckoutDialog({
           <CalendarDays aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
           <p>
             {trialEndPreview
-              ? t('pagarmeCheckout.notes.trialOn', { date: formatUtcDateBR(trialEndPreview) })
+              ? t(
+                  reverseTrialEnd
+                    ? 'pagarmeCheckout.notes.reverseTrialOn'
+                    : 'pagarmeCheckout.notes.trialOn',
+                  {
+                    // O gateway cobra à meia-noite UTC do start_at, que em São Paulo ainda é a
+                    // véspera (21h). O teste reverso mostra a data de SP desse instante, igual ao
+                    // banner e aos e-mails, para nunca prometer um dia depois da cobrança real.
+                    date: reverseTrialEnd
+                      ? formatTrialDate(trialEndPreview)
+                      : formatUtcDateBR(trialEndPreview),
+                  },
+                )
               : t('pagarmeCheckout.notes.trialNoDate')}
           </p>
         </div>

@@ -38,6 +38,11 @@ export interface WorkspaceDetailViewProps {
   onPlanChange: (planId: string) => void;
   onUnsetComp: () => void;
   unsetPending: boolean;
+  /** Teste sem cartão (plan_source 'trial'): opens the extend dialog. */
+  onExtendTrial: () => void;
+  /** Ends the teste sem cartão now, after a confirm. */
+  onEndTrial: () => void;
+  endTrialPending: boolean;
   /** Re-sends the demo owner's set-password e-mail (only offered when demo_created_at is set). */
   onResendAccess: () => void;
   resendPending: boolean;

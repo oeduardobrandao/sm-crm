@@ -135,7 +135,8 @@
       "startTrial": "Começar 30 dias grátis",
       "confirmSubscription": "Confirmar assinatura",
       "confirmSwitch": "Confirmar troca",
-      "saveCard": "Salvar novo cartão"
+      "saveCard": "Salvar novo cartão",
+      "continueAfterTrial": "Continuar depois do teste"
     },
     "successTitle": {
       "switch": "Troca confirmada!",
@@ -179,7 +180,8 @@
       "trialNoDate": "30 dias grátis. A primeira parcela só é cobrada depois do teste e você pode cancelar antes disso.",
       "switchOn": "Sem cobrança agora. A primeira parcela está prevista para {{date}}, quando termina o período que você já pagou.",
       "switchNoDate": "Sem cobrança agora. A primeira parcela vem quando terminar o período que você já pagou.",
-      "security": "Seus dados vão direto para a Pagar.me com segurança. Nós não armazenamos o número do seu cartão."
+      "security": "Seus dados vão direto para a Pagar.me com segurança. Nós não armazenamos o número do seu cartão.",
+      "reverseTrialOn": "Seu teste do Pro continua. A primeira parcela só é cobrada em {{date}}, no fim do teste, e você pode cancelar antes disso."
     },
     "processing": "Processando...",
     "goToDashboard": "Ir para o painel",
@@ -189,5 +191,107 @@
     "unavailable": "Pagamento indisponível no momento.",
     "network": "Não foi possível validar o cartão. Verifique sua conexão.",
     "declined": "Cartão recusado. Confira os dados ou tente outro cartão."
+  },
+  "reverseTrial": {
+    "welcome": {
+      "title": "Seu workspace está no Pro por 14 dias",
+      "body": "Até {{date}}, use tudo do Pro: portal do cliente, relatórios, financeiro, contratos e a sua equipe.",
+      "noCard": "Sem cartão. No fim, você escolhe se continua.",
+      "start": "Começar a usar",
+      "ok": "Entendi"
+    },
+    "days_one": "{{count}} dia",
+    "days_other": "{{count}} dias",
+    "addCard": "Adicionar cartão",
+    "banner": {
+      "regionLabel": "Teste do Pro",
+      "normalLead": "Pro grátis: faltam {{days}}.",
+      "normalText": "Adicione um cartão para continuar no Pro depois de {{date}}.",
+      "endingLead": "Seu teste do Pro termina em {{days}} ({{date}}).",
+      "endingText": "Sem cartão, o workspace volta para o Free. Nada é apagado.",
+      "lastDayLead": "Seu teste do Pro termina hoje às {{hour}}.",
+      "lastDayText": "Adicione um cartão para não perder o portal, os relatórios e o financeiro.",
+      "cardLead": "Pro garantido.",
+      "cardText": "Primeira cobrança de {{amount}} em {{date}}.",
+      "cardTextNoAmount": "Primeira cobrança em {{date}}.",
+      "viewBilling": "Ver cobrança",
+      "nativeLead": "Pro até {{date}}.",
+      "nativeText": "Faltam {{days}}. Gerencie seu plano pelo site.",
+      "nativeLastDay": "Termina hoje às {{hour}}. Gerencie seu plano pelo site.",
+      "dismissAria": "Ocultar aviso"
+    },
+    "endDialog": {
+      "badge": "Faltam {{days}}",
+      "badgeToday": "Termina hoje",
+      "title": "Continue no Pro depois de {{date}}",
+      "subtitle": "Sem cartão, o workspace volta para o Free nesse dia. Nada é apagado.",
+      "usedTitle": "No teste você usou",
+      "freeTitle": "No Free",
+      "usedClients_one": "{{count}} cliente",
+      "usedClients_other": "{{count}} clientes",
+      "usedHub_one": "{{count}} link do portal",
+      "usedHub_other": "{{count}} links do portal",
+      "usedMembers_one": "{{count}} pessoa na equipe",
+      "usedMembers_other": "{{count}} pessoas na equipe",
+      "freeClients_one": "Cadastra até {{count}} cliente",
+      "freeClients_other": "Cadastra até {{count}} clientes",
+      "freeHub": "Portal pausa 7 dias depois",
+      "freeMembers_one": "Só você na conta",
+      "freeMembers_other": "Até {{count}} pessoas na conta",
+      "freeReports_one": "{{count}} relatório por mês",
+      "freeReports_other": "{{count}} relatórios por mês",
+      "freeNoReports": "Sem relatórios",
+      "price": "{{plan}}: {{amount}} por mês. Primeira cobrança em {{date}}, nada antes disso. Cancele quando quiser.",
+      "primary": "Adicionar cartão e continuar no Pro",
+      "secondary": "Ver outros planos",
+      "later": "Decidir depois",
+      "installments": "Também tem o anual em 12x no cartão, pelo Pagar.me."
+    },
+    "cobranca": {
+      "title": "Teste do Pro sem cartão",
+      "body": "Seu workspace está no {{plan}} até {{date}}. Adicione um cartão para continuar depois dessa data. A primeira cobrança só acontece nesse dia.",
+      "cardAdded": "Pro garantido. A primeira cobrança acontece em {{date}}.",
+      "native": "Pro até {{date}}. Gerencie seu plano pelo site."
+    },
+    "nudge": {
+      "title": "Teste o Pro por 14 dias, sem cartão",
+      "text": "Libere o portal de aprovação, os relatórios, o financeiro, os contratos e a sua equipe. No fim, você escolhe se continua.",
+      "cta": "Testar o Pro",
+      "error": "Não foi possível começar o teste. Tente novamente."
+    },
+    "ended": {
+      "bannerLead": "Seu workspace voltou para o Free em {{date}}. Nada foi apagado.",
+      "bannerHubPausing": "Seus links do portal pausam em {{date}}.",
+      "bannerHubPaused": "Os links do portal estão pausados.",
+      "recover": "Recuperar o Pro",
+      "nativeLead": "Seu workspace está no Free desde {{date}}.",
+      "nativeText": "Nada foi apagado. Gerencie seu plano pelo site.",
+      "dialogTitle": "Seu teste do Pro terminou",
+      "dialogIntro": "O workspace está no Free desde {{date}}. Tudo o que você criou continua aqui. O que muda:",
+      "clientsLead_one": "{{count}} cliente.",
+      "clientsLead_other": "{{count}} clientes.",
+      "clientsText_one": "Continua aqui e editável, mas o Free só cadastra até {{limit}}.",
+      "clientsText_other": "Os {{count}} continuam aqui e editáveis, mas o Free só cadastra até {{limit}}.",
+      "hubLead_one": "{{count}} link do portal.",
+      "hubLead_other": "{{count}} links do portal.",
+      "hubPausing": "Funcionam até {{date}}. Depois seus clientes veem o portal pausado até você voltar para um plano pago.",
+      "hubPaused": "Estão pausados até você voltar para um plano pago.",
+      "membersLead_one": "{{count}} pessoa na equipe.",
+      "membersLead_other": "{{count}} pessoas na equipe.",
+      "membersText": "Continuam com acesso. Convites novos ficam bloqueados.",
+      "modulesText": "Financeiro e contratos ficam só para consulta: você abre e exporta o que criou, mas não edita. Respostas automáticas no Instagram param. Reconectar uma conta acima do limite do Free fica bloqueado.",
+      "reportsText_one": "Relatórios passam para o limite do Free: {{count}} por mês.",
+      "reportsText_other": "Relatórios passam para o limite do Free: {{count}} por mês.",
+      "reportsNone": "Relatórios ficam fora do Free.",
+      "secondary": "Ver planos",
+      "later": "Continuar no Free",
+      "footnote": "Ao voltar para um plano pago, a cobrança é imediata: o teste grátis já foi usado.",
+      "ok": "Entendi"
+    },
+    "readOnly": {
+      "notice": "Só para consulta no Free. Recupere o Pro para editar.",
+      "nativeNotice": "Só para consulta no Free.",
+      "cta": "Recuperar o Pro"
+    }
   }
 }

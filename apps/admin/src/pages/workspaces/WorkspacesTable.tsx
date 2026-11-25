@@ -9,6 +9,7 @@ import {
   statusMeta,
   STATUS_BADGE_VARIANT,
 } from '../../lib/subscription';
+import { isReverseTrial, reverseTrialBadgeLabel } from '../../lib/reverse-trial';
 import { Badge } from '../../components/ui/badge';
 import { RowLink } from '../../components/RowLink';
 import { Skeleton } from '../../components/ui/skeleton';
@@ -59,18 +60,37 @@ export function PlanBadge({ name }: { name: string | null }) {
   );
 }
 
-/** Comp (manual) and demo workspaces say so next to the plan. */
-export function PlanSourceBadge({ source }: { source: string | null | undefined }) {
+/** Comp (manual), demo and reverse-trial workspaces say so next to the plan. */
+export function PlanSourceBadge({
+  source,
+  trialEndsAt,
+}: {
+  source: string | null | undefined;
+  trialEndsAt?: string | null;
+}) {
   if (source === 'demo') return <Badge variant="primary">Demo</Badge>;
   if (source === 'manual') return <Badge variant="info">Comp</Badge>;
+  if (isReverseTrial(source)) {
+    return <Badge variant="success">{reverseTrialBadgeLabel(trialEndsAt)}</Badge>;
+  }
   return null;
+}
+
+/** True when the plan cell has something to show (a plan name or a source badge). */
+export function hasPlanCell(ws: WorkspaceSummary): boolean {
+  return (
+    !!ws.plan_name ||
+    ws.plan_source === 'demo' ||
+    ws.plan_source === 'manual' ||
+    isReverseTrial(ws.plan_source)
+  );
 }
 
 export function PlanCell({ ws }: { ws: WorkspaceSummary }) {
   return (
     <span className="flex items-center gap-1.5 whitespace-nowrap">
       <PlanBadge name={ws.plan_name} />
-      <PlanSourceBadge source={ws.plan_source} />
+      <PlanSourceBadge source={ws.plan_source} trialEndsAt={ws.reverse_trial_ends_at} />
     </span>
   );
 }

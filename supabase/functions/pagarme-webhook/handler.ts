@@ -3,6 +3,7 @@
 // to the shell → 5xx → Pagar.me redelivers (up to 3 attempts, dashboard-configured).
 
 import { getDefaultPlanId } from "../_shared/billing-logic.ts";
+import { downgradeUnpaidReverseTrialConversion } from "../_shared/plan-writer.ts";
 import {
   buildChargeDunningKey,
   canWebhookWrite,
@@ -211,6 +212,19 @@ export function createPagarmeWebhookHandler(deps: PagarmeWebhookDeps) {
     // same stale snapshot). The pin makes the racing write miss the CAS -> 5xx -> redelivery
     // re-reads fresh state and holdDunning then applies. Mirrors the terminal/dunning-advance pins.
     await casWrite(row, subId, result.columns, { observedStatus: row.status });
+    if (source === "charge_paid") {
+      // Teste reverso: a paid charge is the first payment of a subscription bound during the
+      // trial. The SQL function stamps only a workspace with reverse_trial_card_added_at and no
+      // first payment yet, so this is a no-op for everyone else. Error -> 5xx -> redelivery.
+      const { error: firstPaidErr } = await deps.db
+        .rpc("mark_reverse_trial_first_paid", { p_workspace: row.workspace_id })
+        .abortSignal(AbortSignal.timeout(DB_TIMEOUT_MS));
+      if (firstPaidErr) {
+        throw new Error(
+          `mark_reverse_trial_first_paid failed for ${row.workspace_id}: ${firstPaidErr.message}`,
+        );
+      }
+    }
     if (result.planEligible) {
       await grantPlan(row, subId, result.status, result.columns);
       return source === "charge_paid" ? "reconciled:recovered" : "reconciled";
@@ -269,7 +283,16 @@ export function createPagarmeWebhookHandler(deps: PagarmeWebhookDeps) {
       pagarme_dunning_key: key,
       updated_at: now().toISOString(),
     }, { observedStatus: row.status, observedDunningKey: row.pagarme_dunning_key });
-    // past_due keeps the plan (grace, like statusToPlanId) — no plan write here.
+    // past_due keeps the plan (grace, like statusToPlanId) — no plan write here, EXCEPT for a
+    // reverse-trial conversion that never paid, on or after the original trial end: it drops to
+    // Free like a trial without a card (same rule as stripe-webhook's past_due branch).
+    await downgradeUnpaidReverseTrialConversion(
+      deps.db,
+      row.workspace_id,
+      await getDefaultPlanId(deps.db),
+      "pagarme",
+      now(),
+    );
     const stage = selectPagarmeDunningStage(episode.failed_payment_count);
     await deps.notify(row.workspace_id, stage);
     return `dunning:${stage}`;

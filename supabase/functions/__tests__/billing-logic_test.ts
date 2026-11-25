@@ -265,3 +265,80 @@ Deno.test("hasEverSubscribed is false with no row and no demo marker", () => {
   assertEquals(hasEverSubscribed(null, { demo_created_at: null }), false);
   assertEquals(hasEverSubscribed(null, null), false);
 });
+
+// ---- teste reverso: datas do checkout ------------------------------------------------------
+Deno.test("reverse_trial_uses_trial_end", async () => {
+  const { resolveCheckoutTrial } = await import("../_shared/billing-logic.ts");
+  const now = new Date("2026-12-01T12:00:00Z");
+  const ends = "2026-12-10T15:00:00Z";
+  const r = resolveCheckoutTrial(
+    { plan_source: "trial", reverse_trial_ends_at: ends, reverse_trial_started_at: "2026-11-26T15:00:00Z" },
+    null,
+    now,
+  );
+  assertEquals(r, { kind: "reverse", trialEnd: new Date(ends) });
+});
+
+Deno.test("trial_end_floor_48h (ends in 2h -> now + 48h, plus the request margin)", async () => {
+  const { resolveCheckoutTrial, STRIPE_MIN_TRIAL_END_MS } = await import("../_shared/billing-logic.ts");
+  const now = new Date("2026-12-01T12:00:00Z");
+  const r = resolveCheckoutTrial(
+    {
+      plan_source: "trial",
+      reverse_trial_ends_at: "2026-12-01T14:00:00Z",
+      reverse_trial_started_at: "2026-11-17T14:00:00Z",
+    },
+    null,
+    now,
+  );
+  assert(r.kind === "reverse");
+  const H = 3_600_000;
+  assert(STRIPE_MIN_TRIAL_END_MS > 48 * H, "strictly above Stripe's 48h minimum");
+  // end of the current hour + the floor: >= now + 48h10m, <= now + 49h10m
+  assertEquals(r.trialEnd.toISOString(), "2026-12-03T13:10:00.000Z");
+  // stable inside the hour (billing-checkout's idempotency key is bucketed per hour)
+  const later = resolveCheckoutTrial(
+    {
+      plan_source: "trial",
+      reverse_trial_ends_at: "2026-12-01T14:00:00Z",
+      reverse_trial_started_at: "2026-11-17T14:00:00Z",
+    },
+    null,
+    new Date("2026-12-01T12:59:59Z"),
+  );
+  assert(later.kind === "reverse" && later.trialEnd.getTime() === r.trialEnd.getTime());
+  assert(later.trialEnd.getTime() - new Date("2026-12-01T12:59:59Z").getTime() >= 48 * H + 10 * 60_000);
+  // already past (sweep not run yet): still the floor, never the past
+  const past = resolveCheckoutTrial(
+    { plan_source: "trial", reverse_trial_ends_at: "2026-12-01T11:00:00Z", reverse_trial_started_at: "x" },
+    null,
+    now,
+  );
+  assert(past.kind === "reverse" && past.trialEnd.getTime() === r.trialEnd.getTime());
+});
+
+Deno.test("after_reverse_trial_no_trial", async () => {
+  const { resolveCheckoutTrial, hasEverSubscribed } = await import("../_shared/billing-logic.ts");
+  const ws = {
+    plan_source: "system",
+    reverse_trial_ends_at: "2026-11-20T12:00:00Z",
+    reverse_trial_started_at: "2026-11-06T12:00:00Z",
+  };
+  assertEquals(resolveCheckoutTrial(ws, null, new Date("2026-12-01T12:00:00Z")), { kind: "none" });
+  assertEquals(hasEverSubscribed(null, ws), true);
+});
+
+Deno.test("never_trialed_gets_30_days", async () => {
+  const { resolveCheckoutTrial } = await import("../_shared/billing-logic.ts");
+  const ws = { plan_source: "system", reverse_trial_ends_at: null, reverse_trial_started_at: null };
+  assertEquals(resolveCheckoutTrial(ws, null, new Date()), { kind: "days", days: 30 });
+  // a past subscription still blocks the card trial
+  assertEquals(
+    resolveCheckoutTrial(ws, { stripe_subscription_id: "sub_1" }, new Date()),
+    { kind: "none" },
+  );
+  assertEquals(
+    resolveCheckoutTrial({ ...ws, demo_created_at: "2026-01-01" }, null, new Date()),
+    { kind: "none" },
+  );
+});

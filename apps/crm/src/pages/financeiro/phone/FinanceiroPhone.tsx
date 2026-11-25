@@ -31,6 +31,7 @@ import { CardListSkeleton } from '@/components/ui/skeletons';
 import { formatFinancialBRL, type FinancialAccess } from '@/lib/financialAccess';
 import type { Transacao } from '../../../store';
 import { MonthSheet, monthLabel } from './MonthSheet';
+import { ReadOnlyNotice } from '@/components/paywall/ReadOnlyNotice';
 import './financeiroPhone.css';
 
 export type FinanceiroFilter = 'todas' | 'entradas' | 'saidas';
@@ -73,6 +74,8 @@ export interface FinanceiroPhoneProps {
   allSelected: boolean;
   selectedCount: number;
   onBulkConfirm: () => void;
+  /** Ex-reverse-trial workspace on Free: list only, every mutating control hidden. */
+  readOnly?: boolean;
 }
 
 function dayHeader(iso: string, t: TFunction, locale: Locale): string {
@@ -220,6 +223,7 @@ export function FinanceiroPhone(props: FinanceiroPhoneProps) {
     allSelected,
     selectedCount,
     onBulkConfirm,
+    readOnly = false,
   } = props;
   const { t } = useTranslation('finance');
   const dateLocale = useDateFnsLocale();
@@ -247,6 +251,7 @@ export function FinanceiroPhone(props: FinanceiroPhoneProps) {
   };
 
   const rowActions = (tr: Transacao): { swipe: SwipeAction[]; menu: ContextMenuAction[][] } => {
+    if (readOnly) return { swipe: [], menu: [] };
     if (tr.status === 'agendado') {
       return {
         swipe: [
@@ -327,21 +332,31 @@ export function FinanceiroPhone(props: FinanceiroPhoneProps) {
           actions={
             <>
               {searchToggle.button}
-              <button
-                type="button"
-                className="phone-crud-pill-button"
-                onClick={() => onSelectingChange(true)}
-              >
-                {t('phone.select')}
-              </button>
-              <PhoneIconButton
-                label={onRecorrentes ? t('phone.addMenuWithRecurring') : t('phone.addMenu')}
-                variant="ink"
-                aria-haspopup="dialog"
-                onClick={() => setAddOpen(true)}
-              >
-                <Plus aria-hidden="true" />
-              </PhoneIconButton>
+              {readOnly ? (
+                onRecorrentes && (
+                  <button type="button" className="phone-crud-pill-button" onClick={onRecorrentes}>
+                    {t('shared.recurring')}
+                  </button>
+                )
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="phone-crud-pill-button"
+                    onClick={() => onSelectingChange(true)}
+                  >
+                    {t('phone.select')}
+                  </button>
+                  <PhoneIconButton
+                    label={onRecorrentes ? t('phone.addMenuWithRecurring') : t('phone.addMenu')}
+                    variant="ink"
+                    aria-haspopup="dialog"
+                    onClick={() => setAddOpen(true)}
+                  >
+                    <Plus aria-hidden="true" />
+                  </PhoneIconButton>
+                </>
+              )}
             </>
           }
         >
@@ -357,6 +372,7 @@ export function FinanceiroPhone(props: FinanceiroPhoneProps) {
         </PhonePageHeader>
       )}
 
+      {readOnly && <ReadOnlyNotice className="phone-crud-block" />}
       {!selecting && <Summary kpis={kpis} access={canSeeFinancials} />}
       {segmented}
       {!selecting && (
@@ -404,7 +420,7 @@ export function FinanceiroPhone(props: FinanceiroPhoneProps) {
                       </PhoneStatusPill>
                     </>
                   }
-                  onOpen={scheduled ? () => onConfirm(tr) : () => onEdit(tr)}
+                  onOpen={readOnly ? undefined : scheduled ? () => onConfirm(tr) : () => onEdit(tr)}
                   swipeActions={swipe}
                   menuLabel={t('phone.rowActions', { descricao: tr.descricao })}
                   menuSections={menu}
