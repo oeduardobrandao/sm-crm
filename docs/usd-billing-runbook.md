@@ -77,7 +77,10 @@ que estar nos DOIS antes de qualquer `currency_options` entrar num preço live.
 6. Admin: preencher os seis `price_usd*` (29/279, 49/469, 79/759).
 7. Conferir a configuração do portal de cobrança (ver abaixo).
 8. Compra real em USD num workspace interno (`is_internal`) virado para USD, depois reembolso
-   na Stripe e cancelamento da assinatura.
+   na Stripe e cancelamento da assinatura. Use um workspace que nunca chegou a um provedor
+   (crie um novo se preciso): com customer ou assinatura Stripe/Pagar.me na linha de
+   `workspace_subscriptions`, o `set-workspace-currency` responde 409. Depois da compra ele
+   fica em USD para sempre.
 
 ## Stripe: adicionar USD aos seis preços live
 
@@ -135,25 +138,27 @@ quebra a troca de uma assinatura em dólar.
 
 ## Destravar a moeda de um workspace (SQL manual)
 
-```sql
-update public.workspaces set billing_currency_locked_at = null where id = '<workspace_id>';
-```
-
-Só é seguro quando o workspace nunca chegou a um provedor. Confira antes que esta consulta
-volta vazia:
+Só serve para workspace que nunca chegou a um provedor. O `update` abaixo já carrega a regra:
+é um no-op (0 linhas) quando a linha de `workspace_subscriptions` tem customer ou assinatura
+Stripe/Pagar.me.
 
 ```sql
-select workspace_id from public.workspace_subscriptions
- where workspace_id = '<workspace_id>'
-   and (stripe_customer_id is not null or stripe_subscription_id is not null
-     or pagarme_customer_id is not null or pagarme_subscription_id is not null);
+update public.workspaces w
+   set billing_currency_locked_at = null
+ where w.id = '<workspace_id>'
+   and not exists (
+     select 1 from public.workspace_subscriptions s
+      where s.workspace_id = w.id
+        and (s.stripe_customer_id is not null or s.stripe_subscription_id is not null
+          or s.pagarme_customer_id is not null or s.pagarme_subscription_id is not null)
+   );
 ```
 
-Com uma linha dessas, a moeda já está fixada no provedor (o customer Stripe carrega uma moeda;
-Pagar.me é só BRL) e trocar `billing_currency` desalinha a cobrança. Por isso o
-`billing_currency_set` recusa esse workspace mesmo destravado: destravar não basta e não
-contorne com `update` direto em `billing_currency`. Sem linha de provedor, depois de destravar,
-troque a moeda pela ação do Admin (`set-workspace-currency`).
+`UPDATE 0` = o workspace chegou a um provedor: a moeda já está fixada lá (o customer Stripe
+carrega uma moeda; Pagar.me é só BRL) e trocar `billing_currency` desalinha a cobrança. O
+`billing_currency_set` recusa esse workspace de qualquer jeito; não contorne com `update`
+direto em `billing_currency`. `UPDATE 1`: troque a moeda pela ação do Admin
+(`set-workspace-currency`).
 
 ## Rollback
 
