@@ -127,7 +127,9 @@ begin
     raise exception 'lock must stamp billing_currency_locked_at';
   end if;
 
-  perform pg_sleep(0.01);
+  -- now() é constante na transação: fixa um locked_at antigo para provar o COALESCE.
+  update workspaces set billing_currency_locked_at = '2020-01-01T00:00:00Z' where id = v_ws;
+  select billing_currency_locked_at into v_lock1 from workspaces where id = v_ws;
   set local role service_role;
   select billing_currency_lock(v_ws) into v_cur;
   select billing_currency_set(v_ws, 'brl') into v_ok;
@@ -187,8 +189,8 @@ begin
   exception when others then
     get stacked diagnostics v_msg = message_text;
   end;
-  if v_msg is null then
-    raise exception 'billing_currency_set with eur must raise';
+  if v_msg is distinct from 'invalid_billing_currency' then
+    raise exception 'billing_currency_set with eur must raise invalid_billing_currency, got %', v_msg;
   end if;
   select billing_currency into v_cur from workspaces where id = v_br_ws;
   if v_cur <> 'brl' then
