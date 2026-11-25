@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Moeda de cobrança do workspace (migration 20261201000001).
+-- Moeda de cobrança do workspace (migration 20261205000001).
 --
 -- Prova:
 --   1. dono autenticado NÃO muda billing_currency nem billing_currency_locked_at
