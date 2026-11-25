@@ -14,6 +14,7 @@ import { withTimeout } from "./pricing.ts";
 import {
   buildPagarmeDeposits,
   buildStripeDeposits,
+  stripeHasUsd,
   businessToday,
   notConfigured,
   summarize,
@@ -49,10 +50,12 @@ export interface DepositsGateways {
 
 export interface DepositsResponse {
   generated_at: string;
-  /** Every amount in the payload is BRL centavos; Stripe sources are filtered to brl. */
+  /** `summary`, `stripe` and `pagarme` are BRL centavos (Stripe filtered to brl); USD lives only in `stripe_usd`. */
   currency: "brl";
   summary: DepositsSummary;
   stripe: ProviderDeposits;
+  /** Stripe USD money reported on its own, never summed with BRL; null when there is none. */
+  stripe_usd: ProviderDeposits | null;
   pagarme: ProviderDeposits;
 }
 
@@ -315,8 +318,19 @@ async function settleProvider(label: string, run: (() => Promise<ProviderDeposit
 export async function buildDepositsResponse(g: DepositsGateways): Promise<DepositsResponse> {
   const today = g.today ?? businessToday();
   const pagarmeConfigured = !!g.recipientId && g.pagarmeSecretPresent;
+  let stripeUsd: ProviderDeposits | null = null;
   const [stripe, pagarme] = await Promise.all([
-    settleProvider("stripe", g.stripe ? () => g.stripe!.fetchRaw().then((raw) => buildStripeDeposits(raw, today)) : null),
+    settleProvider(
+      "stripe",
+      g.stripe
+        ? () =>
+          g.stripe!.fetchRaw().then((raw) => {
+            const brl = buildStripeDeposits(raw, today);
+            stripeUsd = stripeHasUsd(raw) ? buildStripeDeposits(raw, today, "usd") : null;
+            return brl;
+          })
+        : null,
+    ),
     settleProvider(
       "pagarme",
       pagarmeConfigured ? () => g.pagarme.fetchRaw(g.recipientId!).then((raw) => buildPagarmeDeposits(raw, today)) : null,
@@ -327,6 +341,7 @@ export async function buildDepositsResponse(g: DepositsGateways): Promise<Deposi
     currency: "brl",
     summary: summarize({ stripe, pagarme }),
     stripe,
+    stripe_usd: stripeUsd,
     pagarme,
   };
 }

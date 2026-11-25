@@ -445,7 +445,7 @@ export interface ProviderDeposits {
   error?: 'unavailable';
   /** Pagination hit its cap: `upcoming` is incomplete. */
   truncated: boolean;
-  balance: { available_cents: number; pending_cents: number; currency: 'brl' } | null;
+  balance: { available_cents: number; pending_cents: number; currency: 'brl' | 'usd' } | null;
   meta: Record<string, string | number | boolean | null>;
   upcoming: { next30: DepositDayRow[]; byMonth: DepositMonthRow[] };
   in_transit: { id: string; amount_cents: number; expected_on: string | null; status: string }[];
@@ -463,6 +463,8 @@ export interface DepositsResponse {
     partial: boolean;
   };
   stripe: ProviderDeposits;
+  /** Stripe USD money, never summed with BRL; null when there is none. */
+  stripe_usd?: ProviderDeposits | null;
   pagarme: ProviderDeposits;
 }
 

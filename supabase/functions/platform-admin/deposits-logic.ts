@@ -37,7 +37,7 @@ export interface ProviderDeposits {
   error?: "unavailable";
   /** Pagination hit its cap: `upcoming` is incomplete. */
   truncated: boolean;
-  balance: { available_cents: number; pending_cents: number; currency: "brl" } | null;
+  balance: { available_cents: number; pending_cents: number; currency: "brl" | "usd" } | null;
   /** Provider-specific display facts (Stripe schedule, Pagar.me transfer settings). */
   meta: Record<string, string | number | boolean | null>;
   upcoming: { next30: DayRow[]; byMonth: MonthRow[] };
@@ -350,8 +350,8 @@ const RECENT_PAYOUT_STATUSES = new Set(["paid", "failed", "canceled"]);
  *  Stripe ever left one pending this is what stops it from being silently dropped. */
 const PAYOUT_TXN_TYPES = new Set(["payout"]);
 
-function pickBrlAmount(entries: { amount: number; currency: string }[]): number | null {
-  const hit = entries.find((e) => e.currency?.toLowerCase() === "brl");
+function pickAmount(entries: { amount: number; currency: string }[], currency: "brl" | "usd"): number | null {
+  const hit = entries.find((e) => e.currency?.toLowerCase() === currency);
   return hit ? hit.amount : null;
 }
 
@@ -361,18 +361,32 @@ function sortDayRows(rows: DayRow[]): DayRow[] {
   );
 }
 
-export function buildStripeDeposits(raw: StripeRaw, today: string): ProviderDeposits {
-  const available = pickBrlAmount(raw.balance.available ?? []);
-  const pending = pickBrlAmount(raw.balance.pending ?? []);
+/** True when the raw Stripe data holds any USD money: a balance entry, a payout or a pending
+ *  transaction. Gates the separate `stripe_usd` block (never summed with BRL). */
+export function stripeHasUsd(raw: StripeRaw): boolean {
+  const isUsd = (e: { currency: string }) => e.currency?.toLowerCase() === "usd";
+  return (raw.balance?.available ?? []).some(isUsd) ||
+    (raw.balance?.pending ?? []).some(isUsd) ||
+    (raw.payouts ?? []).some(isUsd) ||
+    (raw.pendingTransactions ?? []).some(isUsd);
+}
+
+export function buildStripeDeposits(
+  raw: StripeRaw,
+  today: string,
+  currency: "brl" | "usd" = "brl",
+): ProviderDeposits {
+  const available = pickAmount(raw.balance.available ?? [], currency);
+  const pending = pickAmount(raw.balance.pending ?? [], currency);
   const balance = available == null && pending == null
     ? null
-    : { available_cents: available ?? 0, pending_cents: pending ?? 0, currency: "brl" as const };
+    : { available_cents: available ?? 0, pending_cents: pending ?? 0, currency };
 
   const rows: DayRow[] = [];
   const recent: ProviderDeposits["recent"] = [];
   const payoutItems: { date: string; net_cents: number; gross_cents: number; fee_cents: number }[] = [];
   for (const p of raw.payouts ?? []) {
-    if (p.currency?.toLowerCase() !== "brl") continue;
+    if (p.currency?.toLowerCase() !== currency) continue;
     const day = toDay(p.arrival_date);
     if (!day) continue;
     if (UPCOMING_PAYOUT_STATUSES.has(p.status)) {
@@ -388,7 +402,7 @@ export function buildStripeDeposits(raw: StripeRaw, today: string): ProviderDepo
   const pendingItems: { date: string; net_cents: number; gross_cents: number; fee_cents: number }[] = [];
   for (const t of raw.pendingTransactions ?? []) {
     if (t.status !== "pending") continue;
-    if (t.currency?.toLowerCase() !== "brl") continue;
+    if (t.currency?.toLowerCase() !== currency) continue;
     if (PAYOUT_TXN_TYPES.has(t.type)) continue;
     const day = toDay(t.available_on);
     if (!day) continue;
