@@ -22,6 +22,14 @@ const plan = (planId: string | null, wasDemo = false, planSource = 'system') => 
   planId,
   planSource,
   wasDemo,
+  reverseTrial: {
+    startedAt: null,
+    endsAt: null,
+    endedAt: null,
+    outcome: null,
+    cardAddedAt: null,
+    firstPaidAt: null,
+  },
 });
 
 const NEVER_SUBSCRIBED = { hasEverSubscribed: false } as never;

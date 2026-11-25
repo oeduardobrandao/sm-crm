@@ -90,6 +90,14 @@ const plan = (planId: string | null, wasDemo = false, planSource = 'system') => 
   planId,
   planSource,
   wasDemo,
+  reverseTrial: {
+    startedAt: null,
+    endsAt: null,
+    endedAt: null,
+    outcome: null,
+    cardAddedAt: null,
+    firstPaidAt: null,
+  },
   trialOfferSeenAt: null,
 });
 

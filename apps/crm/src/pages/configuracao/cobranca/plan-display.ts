@@ -50,8 +50,9 @@ export function canUpgradeTo(
   hasActiveSub: boolean,
   planSource?: string | null,
 ): boolean {
-  // A demo has no subscription, so its own plan is purchasable like any first checkout.
-  if (planSource === 'demo' && planId === currentPlanId) {
+  // A demo has no subscription, so its own plan is purchasable like any first checkout. A
+  // running reverse trial is the same: adding a card for the trial's plan is a first checkout.
+  if ((planSource === 'demo' || planSource === 'trial') && planId === currentPlanId) {
     return !hasActiveSub && planId !== 'free' && !isInternalPlan(planId);
   }
   if (planId === currentPlanId) return false;
@@ -180,7 +181,7 @@ export function planHasReports(p: { rate_report_generations_per_month: number | 
 export function isTrialOfferEligible(
   plan:
     | (Pick<EffectivePlan, 'planId' | 'planSource' | 'wasDemo'> &
-        Partial<Pick<EffectivePlan, 'hasWorkspace'>>)
+        Partial<Pick<EffectivePlan, 'hasWorkspace' | 'reverseTrial'>>)
     | null
     | undefined,
   sub: WorkspaceSubscription | null | undefined,

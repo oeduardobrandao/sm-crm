@@ -24,6 +24,8 @@ import {
   getEffectivePlanWithSource,
   markTrialOfferSeen,
   hasUsedTrial,
+  getReverseTrialOffer,
+  startReverseTrial,
   startPagarmeCheckout,
   cancelPagarmeSubscription,
   updatePagarmeCard,
@@ -346,7 +348,7 @@ describe('billing service', () => {
       const { wsSelect } = mockWorkspaceRow({ plan_id: 'pro', plan_source: 'stripe' });
       await expect(getEffectivePlanId()).resolves.toBe('pro');
       expect(wsSelect).toHaveBeenCalledWith(
-        'plan_id, plan_source, demo_created_at, trial_offer_seen_at',
+        'plan_id, plan_source, demo_created_at, trial_offer_seen_at, reverse_trial_started_at, reverse_trial_ends_at, reverse_trial_ended_at, reverse_trial_outcome, reverse_trial_card_added_at, reverse_trial_first_paid_at',
       );
     });
 
@@ -369,9 +371,17 @@ describe('billing service', () => {
         wasDemo: false,
         trialOfferSeenAt: null,
         hasWorkspace: true,
+        reverseTrial: {
+          startedAt: null,
+          endsAt: null,
+          endedAt: null,
+          outcome: null,
+          cardAddedAt: null,
+          firstPaidAt: null,
+        },
       });
       expect(wsSelect).toHaveBeenCalledWith(
-        'plan_id, plan_source, demo_created_at, trial_offer_seen_at',
+        'plan_id, plan_source, demo_created_at, trial_offer_seen_at, reverse_trial_started_at, reverse_trial_ends_at, reverse_trial_ended_at, reverse_trial_outcome, reverse_trial_card_added_at, reverse_trial_first_paid_at',
       );
     });
 
@@ -383,6 +393,14 @@ describe('billing service', () => {
         wasDemo: false,
         trialOfferSeenAt: null,
         hasWorkspace: false,
+        reverseTrial: {
+          startedAt: null,
+          endsAt: null,
+          endedAt: null,
+          outcome: null,
+          cardAddedAt: null,
+          firstPaidAt: null,
+        },
       });
     });
 
@@ -434,6 +452,92 @@ describe('billing service', () => {
       });
       await expect(getEffectivePlanWithSource()).resolves.toMatchObject({ wasDemo: true });
     });
+    it('fetchEffectivePlan_maps_columns', async () => {
+      mockWorkspaceRow({
+        plan_id: 'pro',
+        plan_source: 'trial',
+        reverse_trial_started_at: '2026-11-24T17:00:00Z',
+        reverse_trial_ends_at: '2026-12-08T17:00:00Z',
+        reverse_trial_ended_at: null,
+        reverse_trial_outcome: null,
+        reverse_trial_card_added_at: '2026-11-30T10:00:00Z',
+        reverse_trial_first_paid_at: null,
+      });
+      await expect(getEffectivePlanWithSource()).resolves.toMatchObject({
+        planId: 'pro',
+        planSource: 'trial',
+        reverseTrial: {
+          startedAt: '2026-11-24T17:00:00Z',
+          endsAt: '2026-12-08T17:00:00Z',
+          endedAt: null,
+          outcome: null,
+          cardAddedAt: '2026-11-30T10:00:00Z',
+          firstPaidAt: null,
+        },
+      });
+    });
+
+    it('maps an unknown outcome to null', async () => {
+      mockWorkspaceRow({ plan_id: null, plan_source: 'system', reverse_trial_outcome: 'weird' });
+      await expect(getEffectivePlanWithSource()).resolves.toMatchObject({
+        reverseTrial: { outcome: null },
+      });
+    });
+  });
+
+  describe('reverse trial RPCs', () => {
+    it('getReverseTrialOffer calls reverse_trial_offer and coerces booleans', async () => {
+      rpc.mockResolvedValue({ data: { enabled: true, eligible: 1, auto: null }, error: null });
+      await expect(getReverseTrialOffer()).resolves.toEqual({
+        enabled: true,
+        eligible: true,
+        auto: false,
+      });
+      expect(rpc).toHaveBeenCalledWith('reverse_trial_offer');
+    });
+
+    it('getReverseTrialOffer accepts a single-row array', async () => {
+      rpc.mockResolvedValue({
+        data: [{ enabled: true, eligible: true, auto: true }],
+        error: null,
+      });
+      await expect(getReverseTrialOffer()).resolves.toEqual({
+        enabled: true,
+        eligible: true,
+        auto: true,
+      });
+    });
+
+    it('getReverseTrialOffer throws on error', async () => {
+      rpc.mockResolvedValue({ data: null, error: { message: 'boom' } });
+      await expect(getReverseTrialOffer()).rejects.toThrow('boom');
+    });
+
+    it('startReverseTrial sends the source and maps ends_at', async () => {
+      rpc.mockResolvedValue({
+        data: { started: true, ends_at: '2026-12-08T17:00:00Z' },
+        error: null,
+      });
+      await expect(startReverseTrial('nudge')).resolves.toEqual({
+        started: true,
+        endsAt: '2026-12-08T17:00:00Z',
+      });
+      expect(rpc).toHaveBeenCalledWith('start_reverse_trial', { p_source: 'nudge' });
+    });
+
+    it('startReverseTrial passes the refusal reason through', async () => {
+      rpc.mockResolvedValue({ data: { started: false, reason: 'not_eligible' }, error: null });
+      await expect(startReverseTrial('signup')).resolves.toEqual({
+        started: false,
+        endsAt: null,
+        reason: 'not_eligible',
+      });
+    });
+
+    it('startReverseTrial throws on error', async () => {
+      rpc.mockResolvedValue({ data: null, error: { message: 'boom' } });
+      await expect(startReverseTrial('signup')).rejects.toThrow('boom');
+    });
   });
 
   describe('markTrialOfferSeen', () => {
@@ -455,6 +559,15 @@ describe('billing service', () => {
     });
     it('is true for hasEverSubscribed alone', () => {
       expect(hasUsedTrial({ hasEverSubscribed: true } as never, { wasDemo: false })).toBe(true);
+    });
+    it('hasUsedTrial_true_after_reverse_trial', () => {
+      expect(
+        hasUsedTrial(null, {
+          wasDemo: false,
+          reverseTrial: { startedAt: '2026-11-24T17:00:00Z' },
+        } as never),
+      ).toBe(true);
+      expect(hasUsedTrial(null, { wasDemo: false, reverseTrial: null } as never)).toBe(false);
     });
     it('is false for neither, including while data is missing', () => {
       expect(hasUsedTrial({ hasEverSubscribed: false } as never, { wasDemo: false })).toBe(false);

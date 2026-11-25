@@ -135,6 +135,14 @@ beforeEach(() => {
     planId: 'free',
     planSource: 'system',
     wasDemo: false,
+    reverseTrial: {
+      startedAt: null,
+      endsAt: null,
+      endedAt: null,
+      outcome: null,
+      cardAddedAt: null,
+      firstPaidAt: null,
+    },
   });
   vi.mocked(startCheckout).mockResolvedValue('https://checkout.stripe.com/abc');
   // UsagePanel is covered by its own test suite; keep it a no-op here (isUnlimited: true).
@@ -229,6 +237,14 @@ describe('CobrancaPage', () => {
         planId: 'pro',
         planSource: 'demo',
         wasDemo: true,
+        reverseTrial: {
+          startedAt: null,
+          endsAt: null,
+          endedAt: null,
+          outcome: null,
+          cardAddedAt: null,
+          firstPaidAt: null,
+        },
       });
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(subscription({}));
     }
@@ -277,6 +293,14 @@ describe('CobrancaPage', () => {
         planId: 'pro',
         planSource: src,
         wasDemo: false,
+        reverseTrial: {
+          startedAt: null,
+          endsAt: null,
+          endedAt: null,
+          outcome: null,
+          cardAddedAt: null,
+          firstPaidAt: null,
+        },
       });
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(subscription({}));
       renderPage();
@@ -289,6 +313,14 @@ describe('CobrancaPage', () => {
         planId: 'free',
         planSource: 'system',
         wasDemo: true,
+        reverseTrial: {
+          startedAt: null,
+          endsAt: null,
+          endedAt: null,
+          outcome: null,
+          cardAddedAt: null,
+          firstPaidAt: null,
+        },
       });
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(subscription({}));
       renderPage();
@@ -821,6 +853,14 @@ describe('CobrancaPage', () => {
         planId: 'pro',
         planSource: 'stripe',
         wasDemo: false,
+        reverseTrial: {
+          startedAt: null,
+          endsAt: null,
+          endedAt: null,
+          outcome: null,
+          cardAddedAt: null,
+          firstPaidAt: null,
+        },
       });
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(MONTHLY_STRIPE_SUB);
       renderPage();
@@ -844,6 +884,14 @@ describe('CobrancaPage', () => {
         planId: 'start',
         planSource: 'stripe',
         wasDemo: false,
+        reverseTrial: {
+          startedAt: null,
+          endsAt: null,
+          endedAt: null,
+          outcome: null,
+          cardAddedAt: null,
+          firstPaidAt: null,
+        },
       });
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(MONTHLY_STRIPE_SUB);
       renderPage();
@@ -865,6 +913,14 @@ describe('CobrancaPage', () => {
         planId: 'pro',
         planSource: 'stripe',
         wasDemo: false,
+        reverseTrial: {
+          startedAt: null,
+          endsAt: null,
+          endedAt: null,
+          outcome: null,
+          cardAddedAt: null,
+          firstPaidAt: null,
+        },
       });
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(MONTHLY_STRIPE_SUB);
       renderPage();
@@ -889,6 +945,14 @@ describe('CobrancaPage', () => {
         planId: 'pro',
         planSource: 'manual',
         wasDemo: false,
+        reverseTrial: {
+          startedAt: null,
+          endsAt: null,
+          endedAt: null,
+          outcome: null,
+          cardAddedAt: null,
+          firstPaidAt: null,
+        },
       });
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(MONTHLY_STRIPE_SUB);
       renderPage();
@@ -909,6 +973,14 @@ describe('CobrancaPage', () => {
         planId: 'pro',
         planSource: 'stripe',
         wasDemo: false,
+        reverseTrial: {
+          startedAt: null,
+          endsAt: null,
+          endedAt: null,
+          outcome: null,
+          cardAddedAt: null,
+          firstPaidAt: null,
+        },
       });
       vi.mocked(getWorkspaceSubscription).mockResolvedValue(MONTHLY_STRIPE_SUB);
       renderPage();
@@ -927,6 +999,14 @@ describe('CobrancaPage', () => {
         planId: 'pro',
         planSource: 'stripe',
         wasDemo: false,
+        reverseTrial: {
+          startedAt: null,
+          endsAt: null,
+          endedAt: null,
+          outcome: null,
+          cardAddedAt: null,
+          firstPaidAt: null,
+        },
       });
 
       // 1) Já está no anual: billingInterval 'year' desqualifica o switch.
