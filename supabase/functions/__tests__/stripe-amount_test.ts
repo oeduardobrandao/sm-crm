@@ -2,6 +2,7 @@ import { assert, assertEquals } from "./assert.ts";
 import {
   extractCoupon,
   fetchStripeAmount,
+  STRIPE_AMOUNT_EXPAND,
   stripeAmountFromSubscription,
   type StripeClient,
 } from "../_shared/stripe-amount.ts";
@@ -111,4 +112,90 @@ Deno.test("stripeAmountFromSubscription: no coupon, interval falls back when pri
   assertEquals(amt.gross_cents, null);
   assertEquals(amt.interval, "year");
   assertEquals(amt.discount_label, null);
+});
+
+const dualPrice = {
+  unit_amount: 9990,
+  currency: "brl",
+  currency_options: { brl: { unit_amount: 9990 }, usd: { unit_amount: 2900 } },
+  recurring: { interval: "month" },
+};
+const dualSub = (currency: string | undefined, extra: Record<string, unknown> = {}) => ({
+  ...(currency ? { currency } : {}),
+  items: { data: [{ quantity: 1, price: dualPrice }] },
+  ...extra,
+});
+
+Deno.test("usd subscription uses the currency option", () => {
+  const amt = stripeAmountFromSubscription(dualSub("usd"), null);
+  assertEquals(amt.amount_cents, 2900);
+  assertEquals(amt.currency, "usd");
+  assertEquals(amt.gross_cents, null);
+});
+
+Deno.test("brl subscription unchanged", () => {
+  const amt = stripeAmountFromSubscription(dualSub("brl"), null);
+  assertEquals(amt.amount_cents, 9990);
+  assertEquals(amt.currency, "brl");
+});
+
+Deno.test("usd with 100% percent coupon", () => {
+  const amt = stripeAmountFromSubscription(
+    dualSub("usd", { discounts: [{ coupon: { id: "F", percent_off: 100 } }] }),
+    null,
+  );
+  assertEquals(amt.amount_cents, 0);
+  assertEquals(amt.gross_cents, 2900);
+  assertEquals(amt.currency, "usd");
+});
+
+Deno.test("usd with brl amount_off coupon is ignored", () => {
+  const amt = stripeAmountFromSubscription(
+    dualSub("usd", { discounts: [{ coupon: { id: "X", amount_off: 1000, currency: "brl" } }] }),
+    null,
+  );
+  assertEquals(amt.amount_cents, 2900);
+  assertEquals(amt.discount_label, null);
+});
+
+Deno.test("usd with amount_off currency option", () => {
+  const amt = stripeAmountFromSubscription(
+    dualSub("usd", {
+      discounts: [
+        {
+          coupon: {
+            id: "Y",
+            amount_off: 1000,
+            currency: "brl",
+            currency_options: { usd: { amount_off: 500 } },
+          },
+        },
+      ],
+    }),
+    null,
+  );
+  assertEquals(amt.amount_cents, 2400);
+});
+
+Deno.test("missing sub.currency falls back to price.currency", () => {
+  const amt = stripeAmountFromSubscription(dualSub(undefined), null);
+  assertEquals(amt.currency, "brl");
+  assertEquals(amt.amount_cents, 9990);
+});
+
+Deno.test("fetchStripeAmount requests currency_options", async () => {
+  const seen: string[][] = [];
+  const stripe: StripeClient = {
+    subscriptions: {
+      retrieve: (_id, params) => {
+        seen.push(params.expand);
+        if (params.expand.includes("discounts")) return Promise.reject(new Error("x"));
+        return Promise.resolve(dualSub("usd"));
+      },
+    },
+  };
+  const amt = await fetchStripeAmount(stripe, "sub_u", null);
+  assertEquals(seen[0], STRIPE_AMOUNT_EXPAND);
+  assert(seen[1].includes("items.data.price.currency_options"));
+  assertEquals(amt.amount_cents, 2900);
 });

@@ -11,7 +11,19 @@ export type CouponLike = {
   name?: string | null;
   percent_off?: number | null;
   amount_off?: number | null;
+  currency?: string | null;
+  currency_options?: Record<string, { amount_off?: number | null }> | null;
 };
+
+export const STRIPE_AMOUNT_EXPAND = [
+  "items.data.price",
+  "items.data.price.currency_options",
+  "discounts",
+];
+export const STRIPE_LIST_AMOUNT_EXPAND = [
+  "data.discounts",
+  "data.items.data.price.currency_options",
+];
 
 /** Reads the active coupon off a subscription (handles both `discounts[]` and legacy `discount`). */
 export function extractCoupon(sub: unknown): CouponLike | null {
@@ -92,16 +104,30 @@ export function stripeAmountFromSubscription(
 ): StripeAmount {
   const s = sub as {
     livemode?: boolean;
+    currency?: string | null;
     items?: {
       data?: Array<{
         quantity?: number;
-        price?: { unit_amount?: number | null; currency?: string; recurring?: { interval?: string } };
+        price?: {
+          unit_amount?: number | null;
+          currency?: string;
+          currency_options?: Record<string, { unit_amount?: number | null }> | null;
+          recurring?: { interval?: string };
+        };
       }>;
     };
   };
   const item = s.items?.data?.[0];
   const qty = item?.quantity ?? 1;
-  const gross = (item?.price?.unit_amount ?? 0) * qty;
+  const currency = (s.currency ?? item?.price?.currency ?? "brl").toLowerCase();
+  const optionAmount = item?.price?.currency_options?.[currency]?.unit_amount;
+  const unit =
+    typeof optionAmount === "number"
+      ? optionAmount
+      : currency === (item?.price?.currency ?? "brl").toLowerCase()
+        ? (item?.price?.unit_amount ?? 0)
+        : 0;
+  const gross = unit * qty;
   const coupon = extractCoupon(sub);
   let net = gross;
   let discountLabel: string | null = null;
@@ -109,15 +135,27 @@ export function stripeAmountFromSubscription(
     if (typeof coupon.percent_off === "number" && coupon.percent_off > 0) {
       net = Math.round(gross * (1 - coupon.percent_off / 100));
       discountLabel = `${coupon.name ?? coupon.id} −${trimPercent(coupon.percent_off)}%`;
-    } else if (typeof coupon.amount_off === "number" && coupon.amount_off > 0) {
-      net = Math.max(0, gross - coupon.amount_off);
-      discountLabel = coupon.name ?? coupon.id;
+    } else {
+      // amount_off is denominated in the coupon's currency (or a per-currency option).
+      const option = coupon.currency_options?.[currency]?.amount_off;
+      const off =
+        typeof option === "number"
+          ? option
+          : !coupon.currency || coupon.currency.toLowerCase() === currency
+            ? coupon.amount_off
+            : null;
+      if (typeof off === "number" && off > 0) {
+        net = Math.max(0, gross - off);
+        discountLabel = coupon.name ?? coupon.id;
+      } else if (typeof coupon.amount_off === "number" && coupon.amount_off > 0) {
+        console.warn("[stripe-amount] amount_off coupon skipped: currency mismatch");
+      }
     }
   }
   return {
     amount_cents: net,
     gross_cents: net !== gross ? gross : null,
-    currency: item?.price?.currency ?? "brl",
+    currency,
     interval: item?.price?.recurring?.interval ?? fallbackInterval,
     discount_label: discountLabel,
     livemode: s.livemode ?? true,
@@ -138,14 +176,14 @@ export async function fetchStripeAmount(
   try {
     sub = await stripe.subscriptions.retrieve(
       subscriptionId,
-      { expand: ["items.data.price", "discounts"] },
+      { expand: STRIPE_AMOUNT_EXPAND },
       { timeout: STRIPE_TIMEOUT_MS },
     );
   } catch (_e) {
     // Some API versions reject expanding `discounts`; retry with price only.
     sub = await stripe.subscriptions.retrieve(
       subscriptionId,
-      { expand: ["items.data.price"] },
+      { expand: ["items.data.price", "items.data.price.currency_options"] },
       { timeout: STRIPE_TIMEOUT_MS },
     );
   }

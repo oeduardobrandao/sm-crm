@@ -6,7 +6,11 @@ import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { fetchAllRows } from "../_shared/paginate.ts";
 import { pagarmeFetch } from "../_shared/pagarme.ts";
 import { loadStripe } from "../_shared/stripe-loader.ts";
-import { STRIPE_TIMEOUT_MS, stripeAmountFromSubscription } from "../_shared/stripe-amount.ts";
+import {
+  STRIPE_LIST_AMOUNT_EXPAND,
+  STRIPE_TIMEOUT_MS,
+  stripeAmountFromSubscription,
+} from "../_shared/stripe-amount.ts";
 import { fetchInternalWorkspaceIdsOrThrow } from "../_shared/internal-workspaces.ts";
 import { type SnapshotRow, writeSnapshot } from "../_shared/metrics-snapshot.ts";
 import { saoPauloDate } from "../_shared/sao-paulo-date.ts";
@@ -143,7 +147,7 @@ async function listStripeSubscriptions(): Promise<StripeSubLite[]> {
   for (let page = 0; page < STRIPE_MAX_PAGES; page++) {
     const res = await withTimeout(
       stripe.subscriptions.list(
-        { status: "all", limit: 100, expand: ["data.discounts"], ...(startingAfter ? { starting_after: startingAfter } : {}) },
+        { status: "all", limit: 100, expand: STRIPE_LIST_AMOUNT_EXPAND, ...(startingAfter ? { starting_after: startingAfter } : {}) },
         { timeout: STRIPE_TIMEOUT_MS },
       ),
       STRIPE_TIMEOUT_MS,
