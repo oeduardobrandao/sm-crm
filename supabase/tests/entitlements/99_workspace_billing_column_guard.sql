@@ -13,7 +13,8 @@
 --   3. service_role muda o plano direto, grant_pagarme_plan (DEFINER, como o
 --      webhook) muda o plano, e mark_trial_offer_seen() chamado pelo dono
 --      autenticado ainda grava trial_offer_seen_at (DEFINER, auth.uid() setado);
---   4. authenticated não insere em workspace_plan_overrides.
+--   4. authenticated não tem grant em workspace_plan_overrides e, mesmo com o
+--      grant que o ACL padrão hospedado daria, a RLS recusa ler, alterar e inserir.
 --
 -- et_grant_hosted_parity exclui workspace_plan_overrides: o REVOKE dela é o que
 -- está sob teste.
@@ -23,6 +24,7 @@ select et_grant_hosted_parity(array['workspace_plan_overrides']);
 do $$
 declare
   v_ws     uuid;
+  v_ws2    uuid;
   v_owner  uuid := gen_random_uuid();
   v_admin  uuid := gen_random_uuid();
   v_actor  uuid;
@@ -190,6 +192,44 @@ begin
   end if;
   if not (select relrowsecurity from pg_class where oid = 'public.workspace_plan_overrides'::regclass) then
     raise exception 'workspace_plan_overrides must have RLS enabled';
+  end if;
+  if has_table_privilege('authenticated', 'public.workspace_plan_overrides', 'INSERT')
+     or has_table_privilege('anon', 'public.workspace_plan_overrides', 'INSERT') then
+    raise exception 'anon/authenticated must not hold INSERT on workspace_plan_overrides';
+  end if;
+
+  -- 4b. Mesmo que um ACL padrão devolva o grant (como o do Supabase hospedado
+  -- faz em tabela nova), a RLS sem policy segura: insert recusado e leitura
+  -- vazia, inclusive da linha que a service role gravou.
+  v_ws2 := et_make_workspace('free');
+  insert into workspace_plan_overrides (workspace_id, plan_id) values (v_ws, 'free');
+  grant all on table public.workspace_plan_overrides to anon, authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  select count(*) into v_n from workspace_plan_overrides;
+  update workspace_plan_overrides set feature_overrides = '{"feature_mcp": true}'::jsonb
+   where workspace_id = v_ws;
+  get diagnostics v_rows = row_count;
+  v_state := null;
+  begin
+    insert into workspace_plan_overrides (workspace_id, plan_id, feature_overrides)
+      values (v_ws2, 'max', '{"feature_mcp": true}'::jsonb);
+  exception when insufficient_privilege then
+    v_state := '42501';
+  end;
+  reset role;
+  if v_n <> 0 then
+    raise exception 'authenticated read % override rows despite RLS', v_n;
+  end if;
+  if v_rows <> 0 then
+    raise exception 'authenticated updated % override rows despite RLS', v_rows;
+  end if;
+  if v_state is distinct from '42501' then
+    raise exception 'authenticated insert into workspace_plan_overrides must be refused by RLS';
+  end if;
+  if effective_plan_feature(v_ws2, 'feature_mcp') then
+    raise exception 'override granted feature_mcp';
   end if;
 
   raise notice 'workspace billing column guard: ok';
