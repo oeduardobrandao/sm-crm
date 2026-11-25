@@ -122,6 +122,12 @@ New nullable columns on `workspaces`:
 | `reverse_trial_ended_at timestamptz` | When it actually ended. |
 | `reverse_trial_outcome text` | `converted`, `downgraded` or `ended_by_admin` (check constraint). |
 | `reverse_trial_card_added_at timestamptz` | When a paid subscription was first bound during the trial (funnel). |
+| `reverse_trial_first_paid_at timestamptz` | First successful payment of that subscription (Stripe `invoice.paid` with amount > 0, Pagar.me first paid charge). `ever_subscribed_at` cannot serve: it is written when the subscription binds, not when money arrives. |
+
+Timestamps are append-only. `reverse_trial_outcome` records how the trial ended and is rewritten
+only in the two cases Part 4 names (a late webhook for a checkout opened during the trial, and
+reverting a never-paid conversion inside the original window). A win-back months later never
+rewrites it; "paid later" is derived from subscriptions.
 
 The `plan_source` check constraint gains `'trial'`. While the trial runs: `plan_id =
 reverse_trial_plan_id`, `plan_source = 'trial'`.
@@ -149,7 +155,16 @@ All of:
   other workspace that ever subscribed or ever had a reverse trial (same shape as the nurture
   RPC's per-person rule).
 - The kill switch is on: a `reverse_trial_enabled` setting the function reads, changeable
-  without a deploy. Off means nobody new starts; running trials continue to their end.
+  without a deploy, holding `{enabled, enabled_at}`. Off means nobody new starts; running trials
+  continue to their end.
+- For the automatic path only (`p_source = 'signup'`): the workspace was created at or after
+  `enabled_at`. This is what keeps the ~70 existing Free workspaces on Free until their owner
+  clicks the card (opt-in, product owner's decision).
+
+The CRM cannot call the service-role function, so it reads one owner-callable function,
+`reverse_trial_offer() returns jsonb` (`{enabled, eligible, auto}` for the active workspace and
+the caller), which drives the start hook, the nudge card and the in-app copy. The nudge card
+shows only when `eligible`, so nobody is offered a trial they would be refused.
 
 ### Start paths
 
@@ -163,20 +178,30 @@ All of:
     start call must not inherit that gate. Starting the trial is not a purchase (no price, no
     payment UI), so `ProtectedRoute` calls the RPC on native as well, and the native welcome
     dialog is text only.
-  - **Refused or failed.** If the RPC answers "not eligible" (for example the person already used
-    a trial on another workspace), the existing card-first `/comecar` logic applies unchanged
-    (`isTrialOfferEligible` already excludes used trials, so most such owners see nothing). If
-    the RPC errors, fail open: no redirect, no retry loop, try again on the next visit.
+  - **Refused or failed.** With the switch on there is no automatic redirect to `/comecar` at
+    all. If the start is refused (for example the person already used a trial on another
+    workspace), the owner lands on Free with nothing automatic; pricing and Cobrança stay
+    reachable. If the RPC errors, fail open: no redirect, no retry loop, try again on the next
+    visit.
 - **Existing Free workspace (opt-in).** `TrialNudgeCard` becomes "Teste o Pro por 14 dias, sem
-  cartão" with one button that calls the same RPC, under the same eligibility.
-- **Landing intent** (`?plan=…&interval=…`): unchanged, goes straight to checkout with today's
-  30-day card trial. A checkout from intent never starts a reverse trial.
+  cartão" with one button that calls `start_reverse_trial('nudge')`, shown only when
+  `reverse_trial_offer().eligible`.
+- **Landing intent** (`?plan=…&interval=…`): unchanged. The intent visit lands on `/comecar`
+  (exempt from the start hook) and auto-starts checkout with today's 30-day card trial. If the
+  person comes back to the app without paying, the start hook runs on their next app page and
+  the reverse trial starts then. *(My call: an abandoned intent checkout is exactly the person
+  this feature is for.)*
 
-`start_reverse_trial()` (SECURITY DEFINER, `authenticated`): re-checks eligibility under a row
-lock on the workspace, writes the columns, sets `plan_id/plan_source`, stamps
-`profiles.reverse_trial_used_at` and `trial_offer_seen_at` (so the old redirect stays inert),
-and returns the end date. Idempotent: a second call returns the running trial. Generic errors
-only.
+`start_reverse_trial(p_source text)` (SECURITY DEFINER, `authenticated`, `p_source in
+('signup','nudge')`): re-checks eligibility under a row lock on the workspace, writes the
+columns, sets `plan_id/plan_source`, stamps `profiles.reverse_trial_used_at` and
+`trial_offer_seen_at` (so the old redirect stays inert), and returns the end date. Idempotent: a
+second call returns the running trial. Generic errors only.
+
+**Repeat trials with a new email**: accepted risk. Each trial needs a new confirmed email, a new
+workspace and a 14-day wait before it ends on Free, and the per-person rule closes the cheap
+path (another workspace on the same login). The Admin funnel shows trial starts per day, so a
+spike is visible. No device or card fingerprinting this round.
 
 ### `/comecar` after this ships
 
@@ -185,7 +210,7 @@ only.
   pay. During a reverse trial its copy says the first charge is on the trial end date. After a
   reverse trial it drops "Pedimos o cartão agora, mas nada é cobrado nos primeiros 30 dias",
   because the charge is immediate.
-- `useTrialOfferRedirect` stops redirecting while the kill switch is on. With the switch off it
+- `useTrialOfferRedirect` never redirects while the kill switch is on. With the switch off it
   works as today, so the card-first flow is the fallback.
 
 ## Part 3: during the trial
@@ -217,8 +242,10 @@ primary owner, idempotency keyed by workspace and `reverse_trial_ends_at`):
   pause on {data + 7}, add a card to get Pro back.
 - `reverse_trial_hub_pausing`, the day before the Hub pause, only if the workspace has active
   Hub links.
-- The existing welcome email: for workspaces in a reverse trial, replace the "teste grátis de 30
-  dias" block with "Seu workspace está no Pro até {data}".
+- The existing welcome email can go out before the first app visit starts the trial, so its
+  variant keys on the offer, not on `plan_source`: when the switch is on and the workspace would
+  qualify for the automatic start, replace the "teste grátis de 30 dias" block with "Ao entrar,
+  seu workspace fica no Pro por 14 dias, sem cartão."
 
 **iOS app** (`isNativeApp()`, `apps/mobile/DECISIONS.md` D5): the banner shows the days left and
 the end date with no button, price or link ("Pro até {data}. Gerencie seu plano pelo site."). No
@@ -227,7 +254,9 @@ end-of-trial modal. The welcome dialog and the downgrade notice are text only.
 ## Part 4: card added during the trial
 
 "Adicionar cartão" opens the existing plan picker preselected on Pro monthly, with Start, Max
-and the 12x path one click away.
+and the 12x path one click away. It must not use the `?plan=…&interval=…` intent URL, which
+auto-starts checkout (`ComecarPage` `parsePlanIntent`); it uses `/comecar?recomendado=pro`, a
+parameter the intent parser ignores.
 
 - **Stripe**: `billing-checkout` sends `subscription_data.trial_end = max(reverse_trial_ends_at,
   now + 48h)` instead of `trial_period_days` while the workspace is in a reverse trial.
@@ -244,22 +273,29 @@ and the 12x path one click away.
   and `grant_pagarme_plan` gets the same branch. Rules:
   - convert on `trial` → paid plan, `plan_source = stripe|pagarme`, `reverse_trial_ended_at`,
     `outcome = 'converted'`, `reverse_trial_card_added_at`.
-  - convert on a workspace the sweep already downgraded (a late webhook) → the paid plan is
-    written, `outcome` is rewritten to `converted` (the one allowed rewrite), the Hub pause no
-    longer applies, and any `reverse_trial_ended` / `hub_pausing` email not yet claimed is
-    skipped. An email already sent stays sent; that window is under an hour.
+  - convert on a workspace the sweep already downgraded, for a subscription created before
+    `reverse_trial_ended_at` (a late webhook for a checkout opened during the trial) → the paid
+    plan is written, `outcome` is rewritten to `converted`, and any `reverse_trial_ended` /
+    `hub_pausing` email not yet claimed is skipped. An email already sent stays sent; that
+    window is under an hour. A subscription created after the trial ended is a normal paid
+    write: `outcome` stays `downgraded` and the Hub pause lifts because the plan is no longer
+    Free.
   - `end_reverse_trial` re-checks under the lock that no paid subscription is in force (status
     `active`/`trialing` with a provider id) and does nothing if one is.
   Choosing Start or Max is a normal subscribed write: the plan changes at once, the first charge
   is still on the trial end date.
-- **Card added, then no first payment.** If the subscription created during the trial is
-  cancelled, or its first charge fails (`past_due`, which `stripe-webhook` already treats as a
-  fallback to Free at `index.ts:294`), before any successful payment, the workspace is treated as
-  a downgraded trial: `outcome` becomes `downgraded`, `reverse_trial_ended_at` is the fallback
-  time, and the downgrade banner, dialog, `reverse_trial_ended` email and Hub pause all apply.
-  After the first successful payment it is an ordinary paying customer and follows today's
-  churn path. *(My call: otherwise adding a card and cancelling would be a way around the Hub
-  pause.)*
+- **Card added, then no first payment** (`reverse_trial_first_paid_at` still null):
+  - Cancelled **before the original `reverse_trial_ends_at`**: the workspace goes back to the
+    trial until that date (`plan_source = 'trial'`, `ended_at` and `outcome` cleared, by
+    `revert_reverse_trial_conversion`), so cancelling never costs the owner trial days (Goal 3).
+    The sweep then ends it on the original date as usual.
+  - Cancelled, or first charge failed (`past_due`, which `stripe-webhook` already treats as a
+    fallback to Free at `index.ts:294`), **on or after that date**: treated as a downgraded
+    trial: `outcome = 'downgraded'`, `reverse_trial_ended_at` = the fallback time, and the
+    downgrade banner, dialog, `reverse_trial_ended` email and Hub pause all apply.
+  After the first successful payment it is an ordinary paying customer and follows today's churn
+  path. *(My call, both branches: otherwise adding a card and cancelling would either cost trial
+  days or skip the Hub pause.)*
 - **Admin extensions.** Admin may change `reverse_trial_ends_at` only while `plan_source =
   'trial'`. Once a subscription is bound the trial is over and the provider's first-charge date
   is the truth, so there is nothing to extend. A Checkout session already open keeps the
@@ -302,10 +338,13 @@ now()` it calls `end_reverse_trial(ws)` (Part 4), which sets `plan_id = default`
   flag. For an ex-trial workspace (`reverse_trial_outcome = 'downgraded'`, still without the
   flag) the route opens in a read-only mode instead: lists, details and the existing exports
   work; every create, edit, delete and status action is hidden, with a banner "Só para consulta
-  no Free. Recupere o Pro para editar." The database enforces it too: `enforce_plan_feature`
+  no Free. Recupere o Pro para editar." The database enforces edits too: `enforce_plan_feature`
   triggers on those modules' tables (`transacoes`, `contratos` and the tables their screens
-  write) gain `before update or delete`, so a Free workspace cannot write them through the API
-  either. The builder lists each module's tables and RPCs (Financeiro v1 screens; v2 is off on
+  write) gain `before update`, skipped when `auth.uid()` is null (service role, crons, the
+  Financeiro v2 legacy-sync triggers) and when `pg_trigger_depth() > 1`. Not on delete: deleting
+  a client or workspace cascades into these tables, and a delete guard would break that for every
+  Free workspace, churned payers included. The UI hides delete; the API can still delete, which
+  is accepted (it loses the user's own data, it grants nothing). The builder lists each module's tables and RPCs (Financeiro v1 screens; v2 is off on
   Pro) and checks the change does not affect Pro workspaces. Other Free workspaces keep today's
   locked screen.
 - **Automatic Instagram DM replies stop** (product owner's decision): `instagram-webhook` and
@@ -415,8 +454,8 @@ already taken. Reserve `20261130000001` (schema and functions) and `202611300000
 schedule); renumber above main's tail again right before opening the PR.
 
 1. Migration `…01` (additive): columns, `'trial'` in the check, `reverse_trial_eligible`,
-   `start_reverse_trial`, `convert_reverse_trial`, `end_reverse_trial`, `hub_workspace_paused`,
-   the kill switch (off), the read-only `before update or delete` plan triggers on the
+   `start_reverse_trial`, `reverse_trial_offer`, `convert_reverse_trial`, `revert_reverse_trial_conversion`, `end_reverse_trial`, `hub_workspace_paused`,
+   the kill switch (off), the read-only `before update` plan triggers on the
    Financeiro and Contratos tables, the nurture, Loops, Crisp and Admin RPC changes,
    `grant_pagarme_plan`.
 2. Edge functions: `reverse-trial-cron` (`--no-verify-jwt`), `billing-checkout`,

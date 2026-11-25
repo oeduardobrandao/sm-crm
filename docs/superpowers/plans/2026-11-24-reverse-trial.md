@@ -43,9 +43,9 @@
 - Test: `supabase/tests/entitlements/70_reverse_trial.sql`
 
 **Interfaces:**
-- Produces: columns `workspaces.reverse_trial_started_at|ends_at|plan_id|ended_at|outcome|card_added_at`, `profiles.reverse_trial_used_at`; table `platform_settings(key text primary key, value jsonb)` row `reverse_trial_enabled = false` (reuse an existing settings table if the builder finds one); `reverse_trial_eligible(p_workspace uuid, p_user uuid) returns boolean` (service_role + used internally); `start_reverse_trial() returns jsonb` (`authenticated`; `{started: bool, ends_at timestamptz, reason?: 'not_eligible'|'disabled'}`, active workspace from `get_my_conta_id()`).
+- Produces: columns `workspaces.reverse_trial_started_at|ends_at|plan_id|ended_at|outcome|card_added_at|first_paid_at`, `profiles.reverse_trial_used_at`; table `platform_settings(key text primary key, value jsonb)` row `reverse_trial_enabled = {"enabled": false, "enabled_at": null}` (reuse an existing settings table if the builder finds one); `reverse_trial_eligible(p_workspace uuid, p_user uuid, p_source text) returns boolean` (service_role; `signup` also requires `workspaces.created_at >= enabled_at`); `reverse_trial_offer() returns jsonb` (`authenticated`; `{enabled, eligible, auto}` for the active workspace); `start_reverse_trial(p_source text) returns jsonb` (`authenticated`; `p_source in ('signup','nudge')`; `{started: bool, ends_at timestamptz, reason?: 'not_eligible'|'disabled'}`, active workspace from `get_my_conta_id()`).
 
-- [ ] **Step 1: Write the failing SQL suite** with cases: `new_owner_eligible`, `invited_member_not_eligible`, `manual_comp_not_eligible`, `demo_not_eligible`, `ever_subscribed_not_eligible` (each of the four `paid_ws` arms), `second_workspace_same_person_not_eligible`, `disabled_switch_returns_disabled`, `start_sets_plan_pro_source_trial_ends_14d`, `start_is_idempotent` (second call returns same `ends_at`), `start_stamps_profile_and_offer_seen`, `owner_cannot_update_reverse_trial_columns` (direct UPDATE as authenticated fails or is a no-op). Use `_helpers.sql` and `et_grant_hosted_parity()`.
+- [ ] **Step 1: Write the failing SQL suite** with cases: `new_owner_eligible`, `invited_member_not_eligible`, `manual_comp_not_eligible`, `demo_not_eligible`, `ever_subscribed_not_eligible` (each of the four `paid_ws` arms), `second_workspace_same_person_not_eligible`, `disabled_switch_returns_disabled`, `existing_free_workspace_not_auto_eligible` (created before `enabled_at`: `signup` refused, `nudge` allowed), `offer_reports_eligible_and_auto`, `start_sets_plan_pro_source_trial_ends_14d`, `start_is_idempotent` (second call returns same `ends_at`), `start_stamps_profile_and_offer_seen`, `owner_cannot_update_reverse_trial_columns` and `owner_cannot_update_profile_reverse_trial_used_at` (direct UPDATE as authenticated fails or is a no-op). Use `_helpers.sql` and `et_grant_hosted_parity()`.
 - [ ] **Step 2: Run** `bash scripts/test-entitlements.sh 70_reverse_trial` — expect FAIL (functions missing).
 - [ ] **Step 3: Write the migration**: columns, outcome check, `'trial'` added to `workspaces_plan_source_check` (copy the constraint list from `20261030000001`), settings row, both functions with a `for update` lock on the workspace in `start_reverse_trial`, grants. Confirm the owner can still `select` the new columns (no column allowlist on `workspaces`).
 - [ ] **Step 4: Run** the suite — expect PASS.
@@ -58,9 +58,9 @@
 - Test: `supabase/tests/entitlements/70_reverse_trial.sql`
 
 **Interfaces:**
-- Produces (service_role only): `convert_reverse_trial(p_workspace uuid, p_plan text, p_source text) returns text` (`'converted' | 'rewritten_late' | 'not_trial'`); `end_reverse_trial(p_workspace uuid, p_outcome text default 'downgraded') returns boolean` (false when a paid sub is in force or not a trial); `mark_reverse_trial_unpaid(p_workspace uuid) returns boolean` (converted-but-never-paid → `downgraded`, `ended_at = now()`); `hub_workspace_paused(p_conta uuid) returns boolean` (`outcome = 'downgraded'` and `now() >= ended_at + interval '7 days'` and effective plan is the default plan); `grant_pagarme_plan` branches to `convert_reverse_trial` when the workspace is `trial` or `downgraded`-from-trial.
+- Produces (service_role only): `convert_reverse_trial(p_workspace uuid, p_plan text, p_source text) returns text` (`'converted' | 'rewritten_late' | 'not_trial'`); `end_reverse_trial(p_workspace uuid, p_outcome text default 'downgraded') returns boolean` (false when a paid sub is in force or not a trial); `mark_reverse_trial_unpaid(p_workspace uuid) returns boolean` (converted, `first_paid_at` null, now ≥ original `ends_at` → `downgraded`, `ended_at = now()`); `revert_reverse_trial_conversion(p_workspace uuid) returns boolean` (converted, `first_paid_at` null, now < original `ends_at` → back to `trial`, `ended_at`/`outcome` cleared, `card_added_at` kept); `mark_reverse_trial_first_paid(p_workspace uuid) returns void` (sets `first_paid_at` once); `hub_workspace_paused(p_conta uuid) returns boolean` (`outcome = 'downgraded'` and `now() >= ended_at + interval '7 days'` and effective plan is the default plan); `grant_pagarme_plan` branches to `convert_reverse_trial` when the workspace is `trial` or `downgraded`-from-trial.
 
-- [ ] **Step 1: Add failing cases**: `convert_from_trial`, `late_convert_after_downgrade` (outcome rewritten to `converted`, `hub_workspace_paused` false), `end_noop_when_paid_sub_active`, `end_sets_system_free_downgraded`, `end_by_admin_no_pause`, `pause_false_before_7_days`, `pause_true_after_7_days`, `pause_false_after_upgrade`, `unpaid_conversion_marked_downgraded`, `grant_pagarme_converts_trial`.
+- [ ] **Step 1: Add failing cases**: `convert_from_trial`, `late_convert_after_downgrade` (subscription created before `ended_at`: outcome rewritten to `converted`, `hub_workspace_paused` false), `winback_after_downgrade_keeps_outcome` (subscription created after `ended_at`: outcome stays `downgraded`, pause false because plan is paid), `revert_conversion_inside_window`, `first_paid_set_once`, `end_noop_when_paid_sub_active`, `end_sets_system_free_downgraded`, `end_by_admin_no_pause`, `pause_false_before_7_days`, `pause_true_after_7_days`, `pause_false_after_upgrade`, `unpaid_conversion_marked_downgraded`, `grant_pagarme_converts_trial`.
 - [ ] **Step 2: Run** — expect FAIL.
 - [ ] **Step 3: Implement** the four functions and the `grant_pagarme_plan` branch, all locking the workspace row; "paid sub in force" = `workspace_subscriptions.status in ('active','trialing')` with a provider subscription id.
 - [ ] **Step 4: Run** — expect PASS.
@@ -73,11 +73,11 @@
 - Test: `supabase/tests/entitlements/70_reverse_trial.sql`
 
 **Interfaces:**
-- Produces: `enforce_plan_feature` triggers `before update or delete` (in addition to the insert ones) on `transacoes`, `contratos` and every other table the Financeiro v1 and Contratos screens write (builder lists them from `apps/crm/src/store/` and the pages; record the list in the migration comment).
+- Produces: `enforce_plan_feature` triggers `before update` (in addition to the insert ones; skipped when `auth.uid()` is null or `pg_trigger_depth() > 1`; no delete trigger, because client and workspace deletes cascade into these tables) on `transacoes`, `contratos` and every other table the Financeiro v1 and Contratos screens write (builder lists them from `apps/crm/src/store/` and the pages; record the list in the migration comment).
 
-- [ ] **Step 1: Add failing cases**: `free_workspace_cannot_update_contrato`, `free_workspace_cannot_delete_transacao`, `pro_workspace_can_update_contrato`, `free_workspace_can_select_contratos`.
+- [ ] **Step 1: Add failing cases**: `free_workspace_cannot_update_contrato`, `free_workspace_cannot_update_transacao`, `pro_workspace_can_update_contrato`, `free_workspace_can_select_contratos`, `deleting_client_with_contratos_on_free_still_cascades`, `service_role_update_on_free_allowed`.
 - [ ] **Step 2: Run** — expect FAIL.
-- [ ] **Step 3: Implement** the triggers (reuse `enforce_plan_feature('feature_contracts'|'feature_financial', 'direct', 'conta_id')`; for DELETE use `OLD` — add a variant or extend the function to read `OLD` when `TG_OP = 'DELETE'`).
+- [ ] **Step 3: Implement** a wrapper trigger function `enforce_plan_feature_on_update()` that returns NEW early when `auth.uid() is null` or `pg_trigger_depth() > 1`, else delegates to the `enforce_plan_feature` check with the same arguments.
 - [ ] **Step 4: Run** the whole entitlements suite (`bash scripts/test-entitlements.sh`) — expect PASS, including existing financeiro suites.
 - [ ] **Step 5: Commit** `feat(billing): financeiro e contratos só leitura sem o plano`.
 
@@ -99,14 +99,14 @@
 ### Task 5: Plan writer and webhooks
 
 **Files:**
-- Modify: `supabase/functions/_shared/plan-writer.ts`, `supabase/functions/stripe-webhook/index.ts`, `supabase/functions/pagarme-subscription/handler.ts`, `supabase/functions/pagarme-checkout/handler.ts` (~170, ~620)
+- Modify: `supabase/functions/_shared/plan-writer.ts`, `supabase/functions/stripe-webhook/index.ts`, `supabase/functions/pagarme-webhook/*`, `supabase/functions/pagarme-subscription/handler.ts`, `supabase/functions/pagarme-checkout/handler.ts` (~170, ~620)
 - Test: `supabase/functions/__tests__/plan-writer_test.ts`
 
 **Interfaces:**
 - Consumes: Task 2 SQL functions.
-- Produces: `writeWorkspacePlan(svc, ws, planId, source, kind)` unchanged signature; reads `plan_source, reverse_trial_outcome, reverse_trial_card_added_at`; `subscribed` on `trial` or downgraded-trial → `rpc('convert_reverse_trial')`; `fallback` on `trial` → no-op; `fallback` when `outcome = 'converted'` and the subscription never paid → write default plan then `rpc('mark_reverse_trial_unpaid')`. "Never paid" = no `ever_subscribed_at`-style first-payment marker; builder picks the existing field that the webhooks set on first `invoice.paid` / Pagar.me first charge and names it here in the PR.
+- Produces: `writeWorkspacePlan(svc, ws, planId, source, kind)` unchanged signature; reads `plan_source, reverse_trial_outcome, reverse_trial_card_added_at`; `subscribed` on `trial` or downgraded-trial → `rpc('convert_reverse_trial')`; `fallback` on `trial` → no-op; `fallback` when `outcome = 'converted'` and `reverse_trial_first_paid_at` is null → `rpc('revert_reverse_trial_conversion')` if now < original `ends_at`, else write default plan then `rpc('mark_reverse_trial_unpaid')`. `stripe-webhook` (`invoice.paid`, amount > 0) and `pagarme-webhook` (first paid charge) call `rpc('mark_reverse_trial_first_paid')` for workspaces with `reverse_trial_card_added_at` set. (`ever_subscribed_at` is written at bind, not at payment, so it cannot serve.)
 
-- [ ] **Step 1: Write failing tests**: `subscribed_on_trial_calls_convert`, `fallback_on_trial_is_noop`, `fallback_on_never_paid_trial_conversion_marks_downgraded`, `fallback_on_paid_customer_unchanged`, `manual_still_never_overridden`.
+- [ ] **Step 1: Write failing tests**: `subscribed_on_trial_calls_convert`, `fallback_on_trial_is_noop`, `fallback_on_never_paid_trial_conversion_marks_downgraded` (after original end), `cancel_inside_window_reverts_to_trial`, `invoice_paid_marks_first_paid`, `fallback_on_paid_customer_unchanged`, `manual_still_never_overridden`.
 - [ ] **Step 2: Run** `deno test supabase/functions/__tests__/plan-writer_test.ts --no-check` — expect FAIL.
 - [ ] **Step 3: Implement**; in `pagarme-checkout` treat `trial` like Free for the switch gate.
 - [ ] **Step 4: Run** the test, then `npm run check:functions` — expect PASS.
@@ -169,6 +169,7 @@
 **Interfaces:**
 - Consumes: `effectivePlanFeature(db, contaId, 'feature_instagram_automation')` from `_shared/entitlements-rpc.ts`.
 
+- [ ] **Step 0: Confirm** neither function checks the plan today (`grep -rn feature_instagram_automation supabase/functions/instagram-webhook supabase/functions/instagram-automation-cron` was empty on 2026-11-24); if a check exists, reduce this task to tests.
 - [ ] **Step 1: Failing tests**: `webhook_skips_send_when_feature_off`, `cron_skips_workspace_when_feature_off`, `rules_untouched_when_feature_off`.
 - [ ] **Step 2: Run** — expect FAIL.
 - [ ] **Step 3: Implement** the check right before each send; log at info, no error.
@@ -183,9 +184,9 @@
 - Test: `supabase/functions/__tests__/lifecycle-emails_test.ts`, `lifecycle-email-cron_test.ts`, nurture tests
 
 **Interfaces:**
-- Produces: `email_type`s `reverse_trial_ending` (3 days before end, running trial), `reverse_trial_ended` (outcome downgraded, not yet sent for this `ended_at`), `reverse_trial_hub_pausing` (day before pause, workspace has active Hub tokens); idempotency `reverse_trial/<type>/<ws>/<ends_at|ended_at>`; welcome email variant for `plan_source = 'trial'`; nurture a3 variant "Recupere o Pro" when `ex_reverse_trial`; trial-reminder cutoff logs info when the workspace has `reverse_trial_card_added_at`.
+- Produces: `email_type`s `reverse_trial_ending` (3 days before end, running trial), `reverse_trial_ended` (outcome downgraded, not yet sent for this `ended_at`), `reverse_trial_hub_pausing` (day before pause, workspace has active Hub tokens); idempotency `reverse_trial/<type>/<ws>/<ends_at|ended_at>`; welcome email variant when the switch is on and the workspace qualifies for the automatic start (keyed on the offer, not on `plan_source`, since the email can send before the first app visit); nurture a3 variant "Recupere o Pro" when `ex_reverse_trial`; trial-reminder cutoff logs info when the workspace has `reverse_trial_card_added_at`.
 
-- [ ] **Step 1: Failing tests**: one builder test per email (subject, date in pt-BR, add-card link to `/configuracao/cobranca`, no em dash), `ended_email_states_pause_date`, `hub_pausing_only_with_tokens`, `welcome_trial_variant_no_30_dias`, `nurture_a3_ex_trial_variant`, `skip_ended_email_after_late_convert`.
+- [ ] **Step 1: Failing tests**: one builder test per email (subject, date in pt-BR, add-card link to `/configuracao/cobranca`, no em dash), `ended_email_states_pause_date`, `hub_pausing_only_with_tokens`, `welcome_offer_variant_before_trial_started`, `nurture_a3_ex_trial_variant`, `skip_ended_email_after_late_convert`.
 - [ ] **Step 2: Run** — expect FAIL.
 - [ ] **Step 3: Implement** using the existing ledger claim/deliver pattern and `tags` for `email-classify`.
 - [ ] **Step 4: Run** tests and `npm run check:functions` — expect PASS.
@@ -199,7 +200,7 @@
 - Test: `apps/crm/src/services/__tests__/billing.test.ts`, `apps/crm/src/lib/__tests__/reverseTrial.test.ts`
 
 **Interfaces:**
-- Produces: `EffectivePlan` gains `reverseTrial: { startedAt: string|null; endsAt: string|null; endedAt: string|null; outcome: 'converted'|'downgraded'|'ended_by_admin'|null; cardAddedAt: string|null }`; `startReverseTrial(): Promise<{ started: boolean; endsAt: string | null; reason?: 'not_eligible' | 'disabled' }>`; `getReverseTrialEnabled(): Promise<boolean>`; `reverseTrialPhase(now: Date, endsAt: string): { phase: 'normal'|'ending'|'last_day'|'ended'; daysLeft: number }` (normal ≥4 days, ending 1–3, last_day same São Paulo date, rounding down); `hubPauseDate(endedAt: string): Date`; `hasUsedTrial` true when `reverseTrial.startedAt`.
+- Produces: `EffectivePlan` gains `reverseTrial: { startedAt: string|null; endsAt: string|null; endedAt: string|null; outcome: 'converted'|'downgraded'|'ended_by_admin'|null; cardAddedAt: string|null }`; `startReverseTrial(source: 'signup' | 'nudge'): Promise<{ started: boolean; endsAt: string | null; reason?: 'not_eligible' | 'disabled' }>`; `getReverseTrialOffer(): Promise<{ enabled: boolean; eligible: boolean; auto: boolean }>` (query key `['billing','reverse-trial-offer']`); `reverseTrialPhase(now: Date, endsAt: string): { phase: 'normal'|'ending'|'last_day'|'ended'; daysLeft: number }` (normal ≥4 days, ending 1–3, last_day same São Paulo date, rounding down); `hubPauseDate(endedAt: string): Date`; `hasUsedTrial` true when `reverseTrial.startedAt`.
 
 - [ ] **Step 1: Failing tests**: `phase_normal_10_days`, `phase_ending_3_days`, `phase_last_day_sao_paulo` (23:30 UTC case), `days_left_monotonic`, `hasUsedTrial_true_after_reverse_trial`, `fetchEffectivePlan_maps_columns`.
 - [ ] **Step 2: Run** `npx vitest run apps/crm/src/lib/__tests__/reverseTrial.test.ts apps/crm/src/services/__tests__/billing.test.ts` — expect FAIL.
@@ -216,9 +217,9 @@
 
 **Interfaces:**
 - Consumes: Task 11.
-- Produces: `useReverseTrialStart(pathname): { pending: boolean }` — owner, switch on, workspace eligible-looking (Free, no `reverseTrial.startedAt`): calls `startReverseTrial` once per mount, invalidates `['billing']`, opens the welcome dialog on `started`; runs on native too; never blocks rendering for more than the existing `pending` contract; error → no retry this mount. `useTrialOfferRedirect` returns no redirect when the switch is on.
+- Produces: `useReverseTrialStart(pathname): { pending: boolean }` — owner, path not in `TRIAL_OFFER_EXEMPT_PREFIXES` (so `/comecar` intent checkouts run first), `getReverseTrialOffer().auto` true: calls `startReverseTrial('signup')` once per mount, invalidates `['billing']`, opens the welcome dialog on `started`; runs on native too; never blocks rendering for more than the existing `pending` contract; error → no retry this mount. `useTrialOfferRedirect` returns no redirect when the switch is on.
 
-- [ ] **Step 1: Failing tests**: `starts_once_for_new_owner`, `runs_on_native`, `agent_never_starts`, `not_eligible_falls_back_to_offer_logic`, `rpc_error_no_loop`, `redirect_off_when_switch_on`.
+- [ ] **Step 1: Failing tests**: `starts_once_for_new_owner`, `runs_on_native`, `agent_never_starts`, `existing_free_owner_not_started` (offer `auto` false), `not_on_comecar_intent_path`, `not_eligible_no_redirect`, `rpc_error_no_loop`, `redirect_off_when_switch_on`.
 - [ ] **Step 2: Run** — expect FAIL.
 - [ ] **Step 3: Implement**; dialog copy "Seu workspace está no Pro por 14 dias" + end date + "Sem cartão. No fim, você escolhe se continua."; native: same text, no CTA. Fire `reverse_trial_started {source:'signup'}`.
 - [ ] **Step 4: Run** tests — expect PASS.
@@ -233,9 +234,9 @@
 
 **Interfaces:**
 - Consumes: `reverseTrialPhase`, `startReverseTrial`, existing `beginCheckout`.
-- Produces: banner copy exactly as spec Part 3 for each phase; dismiss (normal phase only) in `sessionStorage` with try/catch; end dialog once per session in `ending`/`last_day`, owner only; "Adicionar cartão" opens `/comecar?plan=pro&interval=month&from=reverse_trial`; `TrialNudgeCard` opt-in copy "Teste o Pro por 14 dias, sem cartão" calling `startReverseTrial` (`source:'nudge'`); `/comecar` copy per Part 2; events `reverse_trial_banner_viewed` (once/day), `reverse_trial_add_card_clicked {surface}`, `checkout_started` + `reverse_trial`, `days_left`.
+- Produces: banner copy exactly as spec Part 3 for each phase; dismiss (normal phase only) in `sessionStorage` with try/catch; end dialog once per session in `ending`/`last_day`, owner only; "Adicionar cartão" opens `/comecar?recomendado=pro` (never the `plan`/`interval` intent params, which auto-start checkout); `ComecarPage` reads `recomendado` only to preselect the picker; `TrialNudgeCard` opt-in copy "Teste o Pro por 14 dias, sem cartão", shown only when `getReverseTrialOffer().eligible`, calling `startReverseTrial('nudge')`; `/comecar` copy per Part 2; events `reverse_trial_banner_viewed` (once/day), `reverse_trial_add_card_clicked {surface}`, `checkout_started` + `reverse_trial`, `days_left`.
 
-- [ ] **Step 1: Failing tests**: `banner_normal_copy_and_dismiss`, `banner_ending_not_dismissible`, `banner_card_added_shows_amount_date`, `banner_hidden_for_agent`, `banner_native_no_button_no_price`, `end_dialog_once_per_session`, `end_dialog_never_on_native`, `nudge_starts_trial`, `comecar_copy_during_trial_says_charge_on_end_date`.
+- [ ] **Step 1: Failing tests**: `banner_normal_copy_and_dismiss`, `banner_ending_not_dismissible`, `banner_card_added_shows_amount_date`, `banner_hidden_for_agent`, `banner_native_no_button_no_price`, `end_dialog_once_per_session`, `end_dialog_never_on_native`, `nudge_starts_trial`, `nudge_hidden_when_not_eligible`, `add_card_link_does_not_autostart_checkout`, `comecar_copy_during_trial_says_charge_on_end_date`.
 - [ ] **Step 2: Run** — expect FAIL.
 - [ ] **Step 3: Implement** matching the mockups; CSS in `app.css` (signed-in only), fixed elements follow the shell rules in `DESIGN_SYSTEM.md`.
 - [ ] **Step 4: Run** tests, `npx tsc -p apps/crm/tsconfig.json --noEmit`; verify in the Browser pane (desktop, phone shell, dark mode) with a seed workspace in a trial.
