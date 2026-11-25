@@ -40,8 +40,10 @@ que estar nos DOIS antes de qualquer `currency_options` entrar num preço live.
    `20261205000002_usd_billing_rpcs.sql` (renumeradas; confira a ponta de `main` antes do PR
    e renumere se ela andou). O `ALTER TABLE` em `workspaces` pode estourar o `lock_timeout`
    de 5 s no `db push`: rode de novo. Staging recebe as mesmas migrations e functions.
-2. `billing-checkout` em prod e em staging (`--no-verify-jwt` não se aplica: ele verifica o
-   JWT).
+2. `billing-checkout` em prod e em staging. O `supabase/config.toml` já define
+   `verify_jwt = false` para ele e a function confere o JWT do usuário sozinha
+   (`svc.auth.getUser`); faça o deploy como o do `pagarme-checkout`, com
+   `--no-verify-jwt` (o config.toml governa do mesmo jeito).
 3. Demais functions:
    - `stripe-webhook`, `pagarme-checkout`, `pagarme-subscription`, `metrics-snapshot-cron`,
      `lifecycle-email-cron`
@@ -52,9 +54,20 @@ que estar nos DOIS antes de qualquer `currency_options` entrar num preço live.
      `equipe-chat-media`, `mcp-keys`, `mcp-oauth-consent`, `paywall-report`, `platform-admin`,
      `workspace-limits`
    - `mcp-admin` (blocos USD do dashboard)
-   - Use `--no-verify-jwt` nas que tratam a própria auth (`affiliate-payout-cron`,
-     `lifecycle-email-cron`, `metrics-snapshot-cron`, `stripe-webhook`, `affiliate-public`,
-     como já é o padrão delas).
+
+   Flags de deploy (conferidas contra `supabase/config.toml` e o cabeçalho de cada
+   `index.ts`):
+   - COM `--no-verify-jwt`: `mcp-admin` (sem entrada no config.toml; o cabeçalho manda o
+     flag, a function faz a própria auth).
+   - Já com `verify_jwt = false` no config.toml (use o flag mesmo assim, como no resto do
+     repo): `billing-checkout`, `stripe-webhook`, `pagarme-checkout`, `pagarme-subscription`,
+     `metrics-snapshot-cron`, `lifecycle-email-cron`, `affiliate-public`,
+     `affiliate-payout-cron`, `platform-admin`, `automation-media`, `equipe-chat-media`,
+     `paywall-report`, `workspace-limits`.
+   - SEM o flag (verificação de JWT do gateway ligada): `mcp-keys` e `mcp-oauth-consent`
+     (os cabeçalhos dizem explicitamente), e `data-import` (sem entrada no config.toml nem
+     instrução de flag: segue o padrão do gateway).
+
 4. Merge do frontend.
 5. Stripe `currency_options` (ver abaixo), só com aprovação explícita do dono.
 6. Admin: preencher os seis `price_usd*` (29/279, 49/469, 79/759).
@@ -74,7 +87,13 @@ cópias em modo teste (sem `--live`): `currency: 'usd'` mostra o valor em dólar
 | Pro   | 4900                  | `price_1TP7vHRiNt9jHv2Z7gKaMT6i` | 46900                | `price_1TP7vHRiNt9jHv2ZI6q361GL` |
 | Max   | 7900                  | `price_1TP7x7RiNt9jHv2Z7Jt3MjRP` | 75900                | `price_1TP7x7RiNt9jHv2ZOih72LqG` |
 
-Antes de cada um, confira o preço e o `tax_behavior`:
+Primeiro confirme os ids no banco (devem bater com a tabela acima):
+
+```sql
+select id, stripe_price_id, stripe_price_id_annual from plans where id in ('start','pro','max');
+```
+
+Depois, para cada preço, confira o `tax_behavior`:
 
 ```bash
 stripe prices retrieve --live price_1TP7roRiNt9jHv2Z9a50L6PS
@@ -95,16 +114,13 @@ stripe prices update --live price_1TP7x7RiNt9jHv2Z7Jt3MjRP -d "currency_options[
 stripe prices update --live price_1TP7x7RiNt9jHv2ZOih72LqG -d "currency_options[usd][unit_amount]=75900"
 ```
 
-Verifique cada um (o retrieve com `items.data.price.currency_options` funciona; o `list` com
+Verifique cada um com um retrieve do preço usando `-d "expand[]=currency_options"` (o retrieve com `items.data.price.currency_options` funciona; o `list` com
 expand `data.items.data.price.currency_options` é recusado pela Stripe por passar de 4
 níveis, e o código já busca preço por id):
 
 ```bash
 stripe prices retrieve --live <id> -d "expand[]=currency_options"
 ```
-
-Os IDs vêm de `plans.stripe_price_id` / `stripe_price_id_annual`; confira que ainda batem
-antes de rodar.
 
 ## Portal de cobrança
 
