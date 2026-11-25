@@ -61,6 +61,30 @@ vi.mock('../../../services/analytics', () => ({
   getReportDownloadUrl: vi.fn(),
   getClientRateBaseline: vi.fn(),
   getStoriesAnalytics: vi.fn(),
+  getAccountHealth: vi.fn(),
+  getPostAnalyticsById: vi.fn(),
+}));
+
+// The card has its own suite; here only where the phone mounts it and what "Ver o post" does.
+vi.mock('../health/AccountHealthCard', () => ({
+  AccountHealthCard: ({
+    health,
+    layout = 'desktop',
+    onOpenPost,
+  }: {
+    health: { bestPost: { id: string } | null } | null | undefined;
+    layout?: string;
+    onOpenPost: (postId: string) => void;
+  }) =>
+    health ? (
+      <section aria-label="Seu Instagram está indo bem?" data-layout={layout}>
+        {health.bestPost && (
+          <button type="button" onClick={() => onOpenPost(health.bestPost!.id)}>
+            Ver o post
+          </button>
+        )}
+      </section>
+    ) : null,
 }));
 
 vi.mock('../../../services/reportDocs', () => ({
@@ -127,9 +151,11 @@ import {
   getAnalyticsOverview,
   getAudienceDemographics,
   getBestPostingTimes,
+  getAccountHealth,
   getClientRateBaseline,
   getClientReports,
   getFollowerHistory,
+  getPostAnalyticsById,
   getPostsAnalytics,
   getStoriesAnalytics,
   getTags,
@@ -274,6 +300,62 @@ describe('AnalyticsContaPage (phone)', () => {
     });
     vi.mocked(getBestPostingTimes).mockResolvedValue(null);
     vi.mocked(getStoriesAnalytics).mockResolvedValue(null);
+    vi.mocked(getAccountHealth).mockResolvedValue(null);
+    vi.mocked(getPostAnalyticsById).mockResolvedValue(null);
+  });
+
+  it('mounts the health card in the phone layout, before the KPI strip', async () => {
+    vi.mocked(getAccountHealth).mockResolvedValue({
+      bestPost: { id: 'post-1', ratio: 1.4 },
+    } as never);
+    const { container } = renderPage();
+    await ready();
+    const card = await screen.findByRole('region', { name: 'Seu Instagram está indo bem?' });
+    expect(card).toHaveAttribute('data-layout', 'phone');
+    expect(getAccountHealth).toHaveBeenCalledTimes(1);
+    const strip = container.querySelector('.phone-stat-grid--scroll') as HTMLElement;
+    expect(card.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('"Ver o post" opens the post sheet for a post in the list', async () => {
+    vi.mocked(getAccountHealth).mockResolvedValue({
+      bestPost: { id: 'post-2', ratio: 1.4 },
+    } as never);
+    renderPage();
+    await ready();
+    await screen.findByRole('list', { name: 'Performance de conteúdo' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver o post' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Métricas do post' });
+    expect(within(sheet).getByText('Reel de bastidores')).toBeInTheDocument();
+    expect(getPostAnalyticsById).not.toHaveBeenCalled();
+  });
+
+  it('"Ver o post" fetches a post outside the list and opens it in the sheet', async () => {
+    vi.mocked(getAccountHealth).mockResolvedValue({
+      bestPost: { id: 'post-old', ratio: 1.4 },
+    } as never);
+    vi.mocked(getPostAnalyticsById).mockResolvedValue(
+      post({ id: 'post-old', instagram_post_id: 'ig-old', caption: 'Post antigo do mês passado' }),
+    );
+    renderPage();
+    await ready();
+    await screen.findByRole('list', { name: 'Performance de conteúdo' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver o post' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Métricas do post' });
+    expect(getPostAnalyticsById).toHaveBeenCalledWith(42, 'post-old');
+    expect(within(sheet).getByText('Post antigo do mês passado')).toBeInTheDocument();
+
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Fechar' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('a failed health query leaves no card and the page renders', async () => {
+    vi.mocked(getAccountHealth).mockRejectedValue(new Error('rpc failed'));
+    const { container } = renderPage();
+    await ready();
+    await waitFor(() => expect(getAccountHealth).toHaveBeenCalled());
+    expect(screen.queryByRole('region', { name: 'Seu Instagram está indo bem?' })).toBeNull();
+    expect(container.querySelector('.phone-stat-grid--scroll')).not.toBeNull();
   });
 
   it('renders the nav bar, identity and KPI strip instead of the desktop header', async () => {

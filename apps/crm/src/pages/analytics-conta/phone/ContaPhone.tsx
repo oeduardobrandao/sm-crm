@@ -20,8 +20,11 @@ import { Cell, GroupedList } from '@/components/mobile/GroupedList';
 import { ActionSheet } from '@/components/mobile/ActionSheet';
 import { BottomSheet } from '@/components/mobile/BottomSheet';
 import { PhoneConfirmSheet } from '@/components/mobile/PhoneConfirmSheet';
+import { toast } from 'sonner';
 import {
   getAccountAIAnalysis,
+  getPostAnalyticsById,
+  type AccountHealth,
   type AudienceDemographics,
   type BestPostingTimes,
   type PostAnalytics,
@@ -43,6 +46,7 @@ import { AccountCommentsCard } from '../comments/AccountCommentsCard';
 import { AIAnalysisPhone, useAIAnalysis } from '../../analytics/phone/AIAnalysisPhone';
 import { PeriodSegmented } from '../../analytics/phone/PeriodControl';
 import { NewTagSheet, PostDetailSheet } from './PostDetailSheet';
+import { AccountHealthCard } from '../health/AccountHealthCard';
 import {
   BaselineSection,
   BestTimesSection,
@@ -195,6 +199,9 @@ export interface ContaPhoneProps {
   baseline: Baseline | null;
   /** Rate distributions for the post sheet's Engajamento tab. */
   dists?: RateDistributions;
+  /** The page's account-health read (one query, shared with desktop); null hides the card. */
+  health: AccountHealth | null | undefined;
+  healthLoading: boolean;
   /** The client analytics shell's tab control, rendered under the identity. */
   tabs?: ReactNode;
 }
@@ -241,12 +248,16 @@ export function ContaPhone(props: ContaPhoneProps) {
     stories,
     baseline,
     dists,
+    health,
+    healthLoading,
     tabs,
   } = props;
 
   const [sortOpen, setSortOpen] = useState(false);
   const sortButtonRef = useRef<HTMLButtonElement>(null);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+  // The health card's best post when it is outside the loaded list (fetched by id).
+  const [fetchedPost, setFetchedPost] = useState<PostAnalytics | null>(null);
   const [newTagOpen, setNewTagOpen] = useState(false);
   const [tagToRemove, setTagToRemove] = useState<PostTag | null>(null);
   const [section, setSection] = useState<SectionKey | null>(null);
@@ -257,10 +268,27 @@ export function ContaPhone(props: ContaPhoneProps) {
   }, [section]);
 
   // Derived from the live list so tag toggles (which refetch the posts) show at once.
-  const selectedPost = useMemo(
-    () => (selectedPostId === null ? null : (posts.find((p) => p.id === selectedPostId) ?? null)),
-    [posts, selectedPostId],
-  );
+  const selectedPost = useMemo(() => {
+    if (selectedPostId === null) return null;
+    const listed = posts.find((p) => p.id === selectedPostId);
+    if (listed) return listed;
+    return fetchedPost?.id === selectedPostId ? fetchedPost : null;
+  }, [posts, selectedPostId, fetchedPost]);
+
+  const openHealthPost = async (postId: string) => {
+    if (posts.some((p) => p.id === postId)) {
+      setSelectedPostId(postId);
+      return;
+    }
+    try {
+      const fetched = await getPostAnalyticsById(clientId, postId);
+      if (!fetched) return;
+      setFetchedPost(fetched);
+      setSelectedPostId(fetched.id);
+    } catch {
+      toast.error('Não foi possível abrir o post.');
+    }
+  };
 
   const ai = useAIAnalysis(
     useCallback(async () => {
@@ -420,6 +448,13 @@ export function ContaPhone(props: ContaPhoneProps) {
         }}
       />
       {periodStart && <p className="phone-an-period__custom">Último mês: {periodTag}</p>}
+
+      <AccountHealthCard
+        health={health}
+        isLoading={healthLoading}
+        onOpenPost={(postId) => void openHealthPost(postId)}
+        layout="phone"
+      />
 
       {/* Wide touch screens: two columns (analyticsPhone.css). */}
       <div className="phone-an-pair phone-an-stack">

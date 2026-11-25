@@ -132,6 +132,30 @@ vi.mock('../../../services/analytics', () => ({
   getAccountAIAnalysis: accountAIMock,
   upsertManualFollowerCount: vi.fn(),
   getClientRateBaseline: vi.fn(),
+  getAccountHealth: vi.fn(),
+  getPostAnalyticsById: vi.fn(),
+}));
+
+// The card has its own suite; here only where the page mounts it and what "Ver o post" does.
+vi.mock('../health/AccountHealthCard', () => ({
+  AccountHealthCard: ({
+    health,
+    layout = 'desktop',
+    onOpenPost,
+  }: {
+    health: { bestPost: { id: string } | null } | null | undefined;
+    layout?: string;
+    onOpenPost: (postId: string) => void;
+  }) =>
+    health ? (
+      <section aria-label="Seu Instagram está indo bem?" data-layout={layout}>
+        {health.bestPost && (
+          <button type="button" onClick={() => onOpenPost(health.bestPost!.id)}>
+            Ver o post
+          </button>
+        )}
+      </section>
+    ) : null,
 }));
 
 // The dialog has its own suite; here we only care whether the page opens it.
@@ -311,6 +335,7 @@ import {
   getPostsAnalytics,
   getAnalyticsOverview,
   getClientRateBaseline,
+  getPostAnalyticsById,
 } from '../../../services/analytics';
 import { getClientes, getCurrentWorkspace } from '../../../store';
 import { getInstagramSummary, syncInstagramData } from '../../../services/instagram';
@@ -330,6 +355,7 @@ const mockedGetBestPostingTimes = vi.mocked(getBestPostingTimes);
 const mockedGetCurrentWorkspace = vi.mocked(getCurrentWorkspace);
 const mockedGetAccountAIAnalysis = vi.mocked(getAccountAIAnalysis);
 const mockedGetClientRateBaseline = vi.mocked(getClientRateBaseline);
+const mockedGetPostAnalyticsById = vi.mocked(getPostAnalyticsById);
 
 function resetQueryState() {
   for (const key of Object.keys(queryState)) delete queryState[key];
@@ -536,6 +562,8 @@ beforeEach(() => {
   mockedGetCurrentWorkspace.mockReset();
   mockedGetAccountAIAnalysis.mockReset();
   mockedGetClientRateBaseline.mockReset();
+  mockedGetPostAnalyticsById.mockReset();
+  mockedGetPostAnalyticsById.mockResolvedValue(null);
   chartCalls.length = 0;
 
   mockedGetClientes.mockResolvedValue([{ id: 42, nome: 'Clinica Aurora' }]);
@@ -1337,6 +1365,108 @@ describe('AnalyticsContaPage', () => {
     fireEvent.click(reachHeader);
     expect(reachColumn()).toEqual(['600', '640', '732']);
     expect(reachHeader.textContent).toBe('Alcance ↑');
+  });
+});
+
+describe('AnalyticsContaPage: Seu Instagram está indo bem?', () => {
+  const HEALTH_NAME = 'Seu Instagram está indo bem?';
+  const healthWithBest = (id: string) => ({ bestPost: { id, ratio: 1.43 } });
+
+  it('mounts the health card right before the KPI grid', () => {
+    seedCommonAnalyticsData();
+    queryState['ig-account-health'] = { data: healthWithBest('post-1') };
+    const { container } = render(<AnalyticsContaPage />);
+
+    const card = screen.getByRole('region', { name: HEALTH_NAME });
+    expect(card).toHaveAttribute('data-layout', 'desktop');
+    const firstKpi = container.querySelector('.kpi-card, .phone-stat-tile') as HTMLElement;
+    expect(card.compareDocumentPosition(firstKpi) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('a failed health query hides the card and leaves the page intact', () => {
+    seedCommonAnalyticsData();
+    queryState['ig-account-health'] = {
+      data: healthWithBest('post-1'),
+      error: new Error('rpc failed'),
+    };
+    const { container } = render(<AnalyticsContaPage />);
+
+    expect(screen.queryByRole('region', { name: HEALTH_NAME })).toBeNull();
+    expect(container.querySelector('.kpi-card, .phone-stat-tile')).not.toBeNull();
+    expect(screen.getByRole('region', { name: 'Melhores Posts' })).toBeInTheDocument();
+  });
+
+  it('"Ver o post" opens a post already in the list without fetching it', () => {
+    seedCommonAnalyticsData();
+    queryState['ig-account-health'] = { data: healthWithBest('post-1') };
+    render(<AnalyticsContaPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver o post' }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText('Métricas do post')).toBeInTheDocument();
+    expect(mockedGetPostAnalyticsById).not.toHaveBeenCalled();
+  });
+
+  it('"Ver o post" fetches a post outside the list by id and keeps the dialog open', async () => {
+    const { posts } = seedCommonAnalyticsData();
+    queryState['ig-account-health'] = { data: healthWithBest('post-old') };
+    mockedGetPostAnalyticsById.mockResolvedValue({
+      ...posts[0],
+      id: 'post-old',
+      caption: 'Post antigo fora do período',
+    } as never);
+    const { rerender } = render(<AnalyticsContaPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver o post' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(mockedGetPostAnalyticsById).toHaveBeenCalledWith(42, 'post-old');
+    expect(within(dialog).getByText('Métricas do post')).toBeInTheDocument();
+    expect(within(dialog).getAllByText(/Post antigo fora do período/).length).toBeGreaterThan(0);
+
+    // The settled list never contains it: the dialog must not close itself.
+    rerender(<AnalyticsContaPage />);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(toastErrorMock).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByText('mock-fechar-dialog'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('"Ver o post" does nothing visible when the post no longer exists', async () => {
+    seedCommonAnalyticsData();
+    queryState['ig-account-health'] = { data: healthWithBest('post-gone') };
+    render(<AnalyticsContaPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver o post' }));
+    await waitFor(() => expect(mockedGetPostAnalyticsById).toHaveBeenCalledWith(42, 'post-gone'));
+    await Promise.resolve();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(toastErrorMock).not.toHaveBeenCalled();
+  });
+
+  it('"Ver o post" shows a toast when fetching the post fails', async () => {
+    seedCommonAnalyticsData();
+    queryState['ig-account-health'] = { data: healthWithBest('post-old') };
+    mockedGetPostAnalyticsById.mockRejectedValue(new Error('network'));
+    render(<AnalyticsContaPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver o post' }));
+    await waitFor(() =>
+      expect(toastErrorMock).toHaveBeenCalledWith('Não foi possível abrir o post.'),
+    );
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('Sincronizar Dados invalidates the health query', async () => {
+    seedCommonAnalyticsData();
+    render(<AnalyticsContaPage />);
+    fireEvent.click(screen.getByTitle('Sincronizar Dados'));
+
+    await waitFor(() =>
+      expect(queryClientMock.invalidateQueries).toHaveBeenCalledWith({
+        queryKey: ['ig-account-health', 42],
+      }),
+    );
   });
 });
 
