@@ -146,6 +146,27 @@ Deno.test("melhor post sem a linha do post: ratio com permalink e miniatura nulo
   assertEquals(snap?.best_post, { ratio: 2, permalink: null, thumbnail_url: null });
 });
 
+Deno.test("melhor post de outra conta não é lido: frase sem link nem miniatura", async () => {
+  const { db } = makeDb({
+    metrics: { ...METRICS, best_post_id: "p-uuid", best_post_ratio: 2 },
+    post: { id: "p-uuid", instagram_account_id: "outra", instagram_post_id: "ig9", permalink: "https://instagram.com/p/y", thumbnail_url: null },
+  });
+  const snap = await loadInstagramHealth(db, deps(), "a1", AS_OF, 9274);
+  assertEquals(snap?.best_post, { ratio: 2, permalink: null, thumbnail_url: null });
+});
+
+Deno.test("janela de seguidores em dias UTC: corte de madrugada UTC usa o dia UTC anterior", async () => {
+  // 01:00Z de 25/11 ainda é 24/11 em São Paulo; a linha datada 25/11 (dia UTC do corte) fica de fora.
+  const { db } = makeDb({
+    history: [
+      { instagram_account_id: "a1", date: "2026-11-25", follower_count: 9999 },
+      { instagram_account_id: "a1", date: "2026-11-24", follower_count: 9200 },
+    ],
+  });
+  const snap = await loadInstagramHealth(db, deps(), "a1", "2026-11-25T01:00:00.000Z", 9274);
+  assertEquals(snap?.followers, 9200);
+});
+
 Deno.test("erro na RPC devolve null sem lançar", async () => {
   const { db } = makeDb({ metricsError: true });
   const orig = console.error;

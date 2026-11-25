@@ -52,7 +52,10 @@ export async function loadInstagramHealth(
 ): Promise<InstagramHealthSnapshot | null> {
   try {
     const asOfMs = Date.parse(asOfIso);
-    // Seguidores no corte: último dia fechado antes dele, até 7 dias para trás.
+    // Seguidores no corte: último dia fechado antes dele, até 7 dias para trás. Os gravadores do
+    // histórico (instagram-sync-cron, instagram-integration, backfill) datam a linha pelo dia UTC
+    // (toISOString), então a linha de `as_of - 1 dia` em UTC foi gravada inteira antes do corte e a
+    // do próprio dia do corte, que ainda pode ser sobrescrita depois dele, nunca entra.
     const upper = ymd(asOfMs - DAY_MS);
     const lower = ymd(asOfMs - DAY_MS - FOLLOWER_LOOKBACK_DAYS * DAY_MS);
     const histRes = await db.from("instagram_follower_history").select("date, follower_count")
@@ -89,7 +92,7 @@ export async function loadInstagramHealth(
     const ratio = num(m.best_post_ratio);
     if (m.best_post_id && ratio !== null) {
       const pRes = await db.from("instagram_posts").select("instagram_post_id, permalink, thumbnail_url")
-        .eq("id", m.best_post_id).maybeSingle();
+        .eq("id", m.best_post_id).eq("instagram_account_id", accountId).maybeSingle();
       if (pRes.error) throw pRes.error;
       const post = pRes.data;
       let thumb: string | null = null;
