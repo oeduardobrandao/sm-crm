@@ -1,6 +1,7 @@
 import { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { effectivePlanFeature } from "./entitlements-rpc.ts";
 import { appBaseUrl } from "./app-url.ts";
+import { hubWorkspacePaused } from "./hub-token.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -26,7 +27,9 @@ export function buildHubUrl(baseUrl: string, slug: string | null, token: string 
  * string — so the failure mode is the status quo (no button) rather than a link that errors in
  * front of the agency's own client.
  *
- * Mirrors resolveHubToken's gates: an unexpired, active token AND feature_hub_portal on the plan.
+ * Mirrors resolveHubToken's gates: an unexpired, active token, a workspace whose Hub is not paused
+ * (reverse trial ended, hub_workspace_paused; a failing check reads as not paused) AND
+ * feature_hub_portal on the plan.
  * Ordered newest-first rather than maybeSingle() on the bare filter, because nothing in the schema
  * stops a client from holding more than one token row.
  */
@@ -53,6 +56,8 @@ export async function resolveHubUrl(
       .maybeSingle();
     const token = (tok as { token: string | null } | null)?.token ?? null;
     if (!token) return "";
+
+    if (await hubWorkspacePaused(svc, contaId)) return "";
 
     const featureOn = await effectivePlanFeature(svc, contaId, "feature_hub_portal");
     if (!featureOn) return "";

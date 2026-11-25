@@ -17,6 +17,10 @@ interface HubBootstrapHandlerDeps {
   /** Client-login session renewal. Same contract as touchToken: MUST NOT throw. */
   touchSession: (sessionHash: string) => Promise<void>;
   rateLimit: (db: DbClient, key: string, max: number, windowSeconds: number) => Promise<boolean>;
+  /** `hub_paused_viewed`, keyed on the workspace id only (no client or person).
+   *  Best-effort and fire-and-forget (EdgeRuntime.waitUntil in index.ts); a throw
+   *  here never changes the paused answer. */
+  trackPaused?: (contaId: string) => void;
 }
 
 const NEUTRAL_HUB_THEME = {
@@ -104,8 +108,17 @@ export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
 
     // Pass conta.id as expectedContaId to preserve the slug<->token binding:
     // a token from workspace A must never be served under workspace B's slug.
-    const access = await resolveHubAccess(db as any, req, token, deps.now(), conta.id);
+    // conta.name doubles as the agency name of a paused answer (403 hub_paused,
+    // which the Hub renders as PortalPausado).
+    const access = await resolveHubAccess(db as any, req, token, deps.now(), conta.id, conta.name ?? null);
     if (!access.ok) {
+      if (access.reason === "paused") {
+        try {
+          deps.trackPaused?.(conta.id);
+        } catch {
+          // Measurement only.
+        }
+      }
       if (access.reason === "login_required") {
         // Workspace data only (the login screen's look): nothing about the
         // client, and `clientes` is not queried before access is granted.

@@ -61,21 +61,24 @@ async function resolveLink(
   if (!conta) return { ok: false, response: json({ error: "Workspace não encontrado." }, 404) };
   if (!conta.hub_enabled) return { ok: false, response: json({ error: "Hub desativado." }, 403) };
 
-  let hubToken;
+  let resolved;
   try {
     // deno-lint-ignore no-explicit-any
-    hubToken = await resolveHubToken(db as any, token, deps.now(), conta.id);
+    resolved = await resolveHubToken(db as any, token, deps.now(), conta.id, conta.name ?? null);
   } catch (err) {
     console.error("[hub-auth] token resolution failed", errorCode(err));
     return { ok: false, response: json(INTERNAL, 500) };
   }
-  if (!hubToken) {
+  if (!resolved.ok) {
+    // Paused (reverse trial ended): same 403 hub_paused body as every hub-*
+    // function, answered before any code is issued or any limit is debited.
+    const agencyName = resolved.reason === "paused" ? resolved.agencyName : undefined;
     return {
       ok: false,
-      response: await hubAccessDenied("invalid", { db, req, json, rateLimit: deps.rateLimit }),
+      response: await hubAccessDenied(resolved.reason, { db, req, json, rateLimit: deps.rateLimit }, agencyName),
     };
   }
-  return { ok: true, workspace: conta as Workspace, clienteId: hubToken.cliente_id };
+  return { ok: true, workspace: conta as Workspace, clienteId: resolved.token.cliente_id };
 }
 
 export function createHubAuthHandler(deps: HubAuthDeps) {

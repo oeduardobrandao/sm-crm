@@ -158,14 +158,15 @@ Deno.test("a throwing touchToken must NOT break the client's portal", async () =
 
 Deno.test("post-auth lookups run alongside touchToken, not behind it", async () => {
   const db = makeDb({ cliente_id: 15, conta_id: "ws-1", is_active: true });
-  // resolveHubToken's feature_hub_portal check is RPC #1, hub_access_context
-  // #2; the six plan features the bootstrap serves are #3-#8.
+  // resolveHubToken's hub_workspace_paused check is RPC #1, its
+  // feature_hub_portal check #2, hub_access_context #3; the six plan features
+  // the bootstrap serves are #4-#9.
   let rpcCalls = 0;
   let allFeaturesStarted!: () => void;
   const featuresStarted = new Promise<void>((resolve) => (allFeaturesStarted = resolve));
   const rpc = db.rpc;
   db.rpc = async (fn: string) => {
-    if (++rpcCalls === 8) allFeaturesStarted();
+    if (++rpcCalls === 9) allFeaturesStarted();
     return await rpc(fn);
   };
 
@@ -195,7 +196,7 @@ Deno.test("post-auth lookups run alongside touchToken, not behind it", async () 
   clearTimeout(timer);
   assertEquals(res.status, 200);
   assertEquals(touchWaitedOut, false);
-  assertEquals(rpcCalls, 8);
+  assertEquals(rpcCalls, 9);
 });
 
 Deno.test("feature_mensagens reflects the effective_plan_feature RPC result", async () => {
@@ -620,6 +621,74 @@ Deno.test("gated link without session -> 401 login_required carrying nothing abo
   assert(!db.tables.includes("clientes"), "clientes must not be queried before access is granted");
 });
 
+Deno.test("paused workspace -> 403 hub_paused with the agency name, nothing about the client, session kept", async () => {
+  const db = makeDb(GATED_TOKEN_ROW, { nome: "Vanessa" }, null, { require_login: true, person: PERSON });
+  const base = db.rpc;
+  const rpcs: string[] = [];
+  db.rpc = async (fn: string) => {
+    rpcs.push(fn);
+    return fn === "hub_workspace_paused" ? { data: true, error: null } : await base(fn);
+  };
+  let limited = 0;
+  const touches = { token: [] as string[], session: [] as string[] };
+  const tracked: string[] = [];
+  const handler = createHubBootstrapHandler({
+    buildCorsHeaders: cors,
+    createDb: () => db as any,
+    now: () => NOW,
+    touchToken: async (t: string) => { touches.token.push(t); },
+    touchSession: async (h: string) => { touches.session.push(h); },
+    rateLimit: async () => { limited++; return true; },
+    trackPaused: (contaId: string) => { tracked.push(contaId); },
+  });
+  const res = await handler(
+    new Request(`https://x/?workspace=dk-marketing-medico&token=${TOKEN}`, {
+      method: "GET",
+      headers: { "x-hub-session": "live-session" },
+    }),
+  );
+  assertEquals(res.status, 403);
+  assertEquals(await res.json(), { error: "Portal pausado.", code: "hub_paused", agency_name: "WS" });
+  assertEquals(rpcs, ["hub_workspace_paused"]);
+  assertEquals(limited, 0);
+  assertEquals(touches, { token: [], session: [] });
+  assert(!db.tables.includes("clientes"));
+  // The name came from the slug lookup: no second workspaces read.
+  assertEquals(db.tables.filter((t) => t === "workspaces").length, 1);
+  // hub_paused_viewed: keyed on the workspace only.
+  assertEquals(tracked, ["ws-1"]);
+});
+
+Deno.test("hub_paused_viewed: a throwing tracker never breaks the paused answer; invalid links are not tracked", async () => {
+  const pausedDb = makeDb(GATED_TOKEN_ROW);
+  const base = pausedDb.rpc;
+  pausedDb.rpc = async (fn: string) =>
+    fn === "hub_workspace_paused" ? { data: true, error: null } : await base(fn);
+  const throwing = createHubBootstrapHandler({
+    buildCorsHeaders: cors,
+    createDb: () => pausedDb as any,
+    now: () => NOW,
+    touchToken: async () => {},
+    touchSession: async () => {},
+    rateLimit: async () => true,
+    trackPaused: () => { throw new Error("posthog down"); },
+  });
+  assertEquals((await throwing(req())).status, 403);
+
+  const tracked: string[] = [];
+  const invalid = createHubBootstrapHandler({
+    buildCorsHeaders: cors,
+    createDb: () => makeDb(null) as any,
+    now: () => NOW,
+    touchToken: async () => {},
+    touchSession: async () => {},
+    rateLimit: async () => true,
+    trackPaused: (contaId: string) => { tracked.push(contaId); },
+  });
+  assertEquals((await invalid(req())).status, 404);
+  assertEquals(tracked, []);
+});
+
 Deno.test("gated link in an unentitled workspace -> login hub_theme is NEUTRAL_HUB_THEME", async () => {
   const db = {
     ...makeDb(GATED_TOKEN_ROW, undefined, null, { require_login: true, person: null }),
@@ -681,7 +750,7 @@ Deno.test("access read failure -> 500 with a generic body", async () => {
   db.rpc = async (fn: string) =>
     fn === "hub_access_context"
       ? { data: null, error: { message: "boom detail" } } as any
-      : { data: true, error: null };
+      : { data: fn !== "hub_workspace_paused", error: null };
   const orig = console.error;
   console.error = () => {};
   try {
