@@ -905,3 +905,55 @@ Deno.test("instagram-automation-cron: purge apaga processed_at IS NOT NULL e rec
   assert(hasModifier(purgeCalls[0], "not", ["processed_at", "is", null]));
   assert(hasModifier(purgeCalls[0], "lt", ["received_at", cutoff]));
 });
+
+// ═══════════════ Plano sem automação (teste reverso, Task 9) ═══════════════
+
+Deno.test("cron_skips_workspace_when_feature_off: retry de workspace sem o plano -> skipped, sem DM, automação intacta", async () => {
+  const db = createSupabaseQueryMock();
+  db.queueRpc("fail_ineligible_automation_sends", { data: 0, error: null });
+  db.queueRpc("sweep_pending_instagram_automation_links", { data: 0, error: null });
+  db.queue("instagram_comment_automations", "select", { data: [], error: null }); // fase 4 (alvo órfão), vazia
+  db.queue("instagram_webhook_events", "select", { data: [], error: null });
+  db.queueRpc("claim_retryable_automation_sends", {
+    data: [claimedSendFixture({ media_id: MEDIA_ID })],
+    error: null,
+  });
+  db.queue("instagram_comment_automations", "select", {
+    data: {
+      ativo: true,
+      dm_message: "msg",
+      public_reply: null,
+      client_id: CLIENT_ID,
+      ig_media_id: MEDIA_ID,
+      workflow_post_id: null,
+    },
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", { data: { id: ACCOUNT_ROW_ID }, error: null }); // aptidão
+  db.queueRpc("effective_plan_feature", { data: false, error: null });
+  db.queue("instagram_automation_sends", "update", { data: null, error: null });
+  db.queue("instagram_comment_automations", "select", { data: [], error: null }); // fase 7 (re-check), vazia
+  db.queue("instagram_webhook_events", "delete", { data: null, error: null });
+
+  // fetchFn/decryptToken continuam `unreachable`: nenhuma DM pode sair aqui.
+  const handler = createInstagramAutomationCronHandler(baseDeps(db));
+  const response = await handler(
+    new Request("https://example.test/instagram-automation-cron", {
+      headers: { "x-cron-secret": CRON_SECRET },
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(await readJson(response), { ok: true, failed: 0 });
+
+  const gate = rpcCallsFor(db, "effective_plan_feature");
+  assertEquals(gate.length, 1);
+  assertEquals(gate[0].payload, { ws_id: CONTA_ID, feature_key: "feature_instagram_automation" });
+  const sendUpdates = callsFor(db, "instagram_automation_sends", "update");
+  assertEquals(sendUpdates.length, 1);
+  assertEquals(sendUpdates[0].payload, { status: "skipped", skip_reason: "plan_feature_off" });
+  assert(hasModifier(sendUpdates[0], "eq", ["id", SEND_ID]));
+  assertEquals(rpcCallsFor(db, "mark_automation_dm_sent").length, 0);
+  assertEquals(callsFor(db, "instagram_comment_automations", "update").length, 0);
+  assertEquals(callsFor(db, "cron_failures", "insert").length, 0);
+});
