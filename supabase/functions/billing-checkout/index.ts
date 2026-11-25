@@ -5,10 +5,9 @@ import {
   buildCheckoutIdempotencyKey,
   resolveCheckoutSource,
   resolveReturnPaths,
-  resolveTrialDays,
 } from "../_shared/trial.ts";
 import { isWorkspaceOwner } from "../_shared/workspace-role.ts";
-import { hasEverSubscribed, pendingPagarmeAttemptBlocksCheckout, quarantinedAttemptBlocksCheckout } from "../_shared/billing-logic.ts";
+import { pendingPagarmeAttemptBlocksCheckout, quarantinedAttemptBlocksCheckout, resolveCheckoutTrial } from "../_shared/billing-logic.ts";
 import { crossProviderCheckoutBlocked } from "../_shared/pagarme-logic.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -84,9 +83,12 @@ Deno.serve(async (req: Request) => {
       return json({ error: "Internal server error" }, 500, headers);
     }
 
-    // Ex-demo workspaces never get the trial; fail closed if the read fails.
+    // Ex-demo workspaces never get the trial; fail closed if the read fails. The reverse-trial
+    // columns decide the trial end (resolveCheckoutTrial).
     const { data: trialWs, error: trialWsErr } = await svc
-      .from("workspaces").select("demo_created_at").eq("id", workspaceId)
+      .from("workspaces")
+      .select("demo_created_at, plan_source, reverse_trial_ends_at, reverse_trial_started_at")
+      .eq("id", workspaceId)
       .abortSignal(AbortSignal.timeout(10_000)).single();
     if (trialWsErr) {
       console.error("[billing-checkout] workspace read failed:", trialWsErr.message);
@@ -183,8 +185,9 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Every workspace that has never subscribed gets the trial. No code, no gate.
-    const trialDays = resolveTrialDays(hasEverSubscribed(subRow, trialWs));
+    // Running reverse trial: first charge on its end date (trial_end, >= Stripe's 48h minimum).
+    // Reverse trial used or any earlier subscription: no trial. Otherwise the 30-day card trial.
+    const trial = resolveCheckoutTrial(trialWs, subRow, new Date());
     const source = resolveCheckoutSource(body.source);
     const returnPaths = resolveReturnPaths(source);
 
@@ -196,7 +199,11 @@ Deno.serve(async (req: Request) => {
       line_items: [{ price: priceId, quantity: 1 }],
       subscription_data: {
         metadata: { workspace_id: workspaceId, plan_id: planId },
-        ...(trialDays ? { trial_period_days: trialDays } : {}),
+        ...(trial.kind === "reverse"
+          ? { trial_end: Math.floor(trial.trialEnd.getTime() / 1000) }
+          : trial.kind === "days"
+          ? { trial_period_days: trial.days }
+          : {}),
       },
       // Stripe's own promo box stays open for any real future coupon.
       allow_promotion_codes: true,

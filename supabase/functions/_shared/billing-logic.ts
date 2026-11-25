@@ -61,13 +61,63 @@ export function hasEverSubscribed(
     }
     | null
     | undefined,
-  // An ex-demo workspace (Admin-created demo that was later converted) never gets a trial.
-  workspace?: { demo_created_at?: string | null } | null,
+  // An ex-demo workspace (Admin-created demo that was later converted) never gets a trial,
+  // and neither does one that already had a reverse trial (14 days of Pro without a card):
+  // that was its trial, so a later checkout charges at once.
+  workspace?: { demo_created_at?: string | null; reverse_trial_started_at?: string | null } | null,
 ): boolean {
   return Boolean(
     row?.ever_subscribed_at || row?.stripe_subscription_id || row?.pagarme_subscription_id ||
-      workspace?.demo_created_at,
+      workspace?.demo_created_at || workspace?.reverse_trial_started_at,
   );
+}
+
+/**
+ * Stripe Checkout's `subscription_data.trial_end` "has to be at least 48 hours in the future"
+ * (https://docs.stripe.com/api/checkout/sessions/create, subscription_data.trial_end). Stripe
+ * measures it when the request arrives, so the floor carries a 10-minute margin over the 48h:
+ * a value computed as exactly now + 48h would already be under it by request time.
+ */
+export const STRIPE_MIN_TRIAL_END_MS = 48 * 3600 * 1000 + 10 * 60 * 1000;
+
+/** Card trial length for a workspace that never had any trial (landing intent path). */
+const CARD_TRIAL_DAYS = 30;
+
+export type CheckoutTrial =
+  | { kind: "reverse"; trialEnd: Date }
+  | { kind: "days"; days: number }
+  | { kind: "none" };
+
+/**
+ * Trial for a new checkout (spec 2026-11-24-reverse-trial-design.md, Part 4):
+ *   - running reverse trial (plan_source 'trial'): no second trial on top; the first charge is
+ *     on the trial end date, floored to Stripe's minimum (a last-day card gets up to ~2 extra
+ *     days of Pro, accepted by the spec; see the floor comment for the extra hour);
+ *   - reverse trial already used, or any previous subscription / ex-demo: no trial;
+ *   - never had one: the 30-day card trial.
+ */
+export function resolveCheckoutTrial(
+  ws: {
+    plan_source?: string | null;
+    reverse_trial_ends_at?: string | null;
+    reverse_trial_started_at?: string | null;
+    demo_created_at?: string | null;
+  } | null | undefined,
+  sub: Parameters<typeof hasEverSubscribed>[0],
+  now: Date,
+): CheckoutTrial {
+  if (ws?.plan_source === "trial" && ws.reverse_trial_ends_at) {
+    const ends = new Date(ws.reverse_trial_ends_at);
+    // The floor is anchored to the END of the current hour, not to `now`: billing-checkout's
+    // idempotency key is bucketed per hour, and reusing a key with a different trial_end is an
+    // idempotency_error at Stripe. So within one hour two requests send the same value, always
+    // at least STRIPE_MIN_TRIAL_END_MS (and at most one hour more) after `now`.
+    const hourEnd = (Math.floor(now.getTime() / 3_600_000) + 1) * 3_600_000;
+    const floor = new Date(hourEnd + STRIPE_MIN_TRIAL_END_MS);
+    return { kind: "reverse", trialEnd: ends.getTime() > floor.getTime() ? ends : floor };
+  }
+  if (hasEverSubscribed(sub, ws)) return { kind: "none" };
+  return { kind: "days", days: CARD_TRIAL_DAYS };
 }
 
 /**

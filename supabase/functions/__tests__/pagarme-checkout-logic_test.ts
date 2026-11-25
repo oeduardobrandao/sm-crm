@@ -388,3 +388,33 @@ Deno.test("mapGatewayFailure: 401/403/429 are OUR problem, never user-blame copy
     }
   }
 });
+
+Deno.test("pagarme_start_at_is_trial_end_date", async () => {
+  const { resolveCheckoutStartAt } = await import("../pagarme-checkout/logic.ts");
+  const now = new Date("2026-12-01T12:00:00Z");
+  // reverse trial: the trial end date, ceil to UTC midnight (as resolveStartAt)
+  assertEquals(
+    resolveCheckoutStartAt(
+      { kind: "reverse", trialEnd: new Date("2026-12-10T15:00:00Z") },
+      "2026-12-10T15:00:00Z",
+      now,
+    ),
+    "2026-12-11",
+  );
+  assertEquals(
+    resolveCheckoutStartAt(
+      { kind: "reverse", trialEnd: new Date("2026-12-10T00:00:00Z") },
+      "2026-12-10T00:00:00Z",
+      now,
+    ),
+    "2026-12-10",
+  );
+  // an end already past never yields a past date
+  assertEquals(
+    resolveCheckoutStartAt({ kind: "reverse", trialEnd: now }, "2026-11-30T10:00:00Z", now),
+    "2026-12-02",
+  );
+  // card trial and no trial keep the old behaviour
+  assertEquals(resolveCheckoutStartAt({ kind: "days", days: 30 }, null, now), "2027-01-01");
+  assertEquals(resolveCheckoutStartAt({ kind: "none" }, null, now), undefined);
+});
