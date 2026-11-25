@@ -46,11 +46,12 @@ begin
   end loop;
 end $$;
 
--- Estado limpo do bloco: nenhuma conta pré-existente elegível, mercado vazio.
+-- Estado limpo do bloco: nenhuma conta pré-existente elegível, mercado e referências vazios.
 create or replace function pg_temp.pb_reset(p_mesaas boolean) returns void language plpgsql as $$
 begin
   update instagram_accounts set last_synced_at = null where last_synced_at is not null;
   delete from ig_peer_benchmarks_mercado where true;
+  delete from ig_peer_benchmarks where true;  -- a cópia do seed feita pela migration
   update platform_settings set value = jsonb_build_object('enabled', p_mesaas)
    where key = 'ig_peer_benchmarks_mesaas';
   assert found, 'chave ig_peer_benchmarks_mesaas existe';
@@ -311,6 +312,7 @@ begin
   -- valores 0.01..0.29 + o da linha mais recente (0.6): p99 = 0.29 + 0.71 × 0.31 = 0.5101
   -- (com a mais antiga, 0.5, daria 0.4391)
   assert abs(r.cuts[99] - 0.5101) < 1e-9, 'fica a linha mais recente: p99 0.5101, veio ' || r.cuts[99];
+  raise notice 'PASS 99_ig_peer_benchmarks dedup conta uma vez';
 end $$;
 rollback;
 
