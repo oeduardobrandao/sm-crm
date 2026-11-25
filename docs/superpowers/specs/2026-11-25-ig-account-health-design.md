@@ -174,8 +174,9 @@ Barra: trilho com tique no 50, preenchimento até o percentil na cor do tom, mar
   à frente de X% das contas do seu tamanho". Linha de destaque: frase da métrica de maior percentil
   ("Seu engajamento é 1,93% por post; em contas do seu tamanho é 0,20%.").
 - Grade 2×2 de métricas (1 coluna no phone shell).
-- Rodapé: fonte `mesaas` → "*Comparado com 344 contas do seu tamanho no Mesaas (de 5 mil a 20 mil
-  seguidores)."; fonte `mercado` → "*Referência de mercado para contas de 5 mil a 20 mil seguidores."
+- Rodapé: fonte `mesaas` → "*Comparado com mais de 300 contas do seu tamanho no Mesaas (de 5 mil a 20
+  mil seguidores)." O número é o `sample_size` arredondado para baixo à centena (abaixo de 100, à
+  dezena: "mais de 30"), para não expor quantas contas o Mesaas tem por faixa."; fonte `mercado` → "*Referência de mercado para contas de 5 mil a 20 mil seguidores."
   Fontes mistas na mesma faixa: cada cartão de métrica marca a sua (`*` Mesaas, `†` mercado) e o rodapé
   tem as duas linhas. Com Mesaas em métricas diferentes, o número de contas citado é o menor `sample_size`.
 - Na fonte `mercado` os textos dizem "à frente de cerca de X%".
@@ -198,8 +199,18 @@ crítico, como o baseline). Conta desconectada: segue o estado da página.
 Dados agregados entre agências. Piso n ≥ 30 por faixa e métrica; só cortes percentis saem do banco.
 A Política de Privacidade hoje promete, na seção de redes sociais, que esses dados são usados "somente
 para mostrar o desempenho da conta ao seu workspace". Essa frase tem de ser **reescrita** (não só
-complementada) para incluir o uso agregado e anônimo em referências de comparação. A redação final é
-aprovação do usuário. A chave `ig_peer_benchmarks_mesaas` só liga depois dessa política no ar; até lá o
+complementada) para incluir o uso agregado e anônimo em referências de comparação. Decisão do usuário:
+basta reescrever a política, sem opt-out. O parágrafo (`PoliticaPage.tsx`, seção de redes sociais) vale
+também para Google, cujo Uso Limitado não admite esse uso, então o texto novo cita só o Instagram:
+
+> Usamos esses dados para mostrar o desempenho da conta ao seu workspace e para publicar na conta
+> conectada o conteúdo que você ou o seu cliente aprovou e agendou no Mesaas. As métricas de contas do
+> Instagram conectadas também entram, de forma agregada e anônima, no cálculo de referências de
+> comparação por tamanho de conta (por exemplo, a taxa de engajamento típica de contas de 5 mil a 20 mil
+> seguidores). Uma referência só aparece quando reúne pelo menos 30 contas e nunca identifica uma conta,
+> um cliente ou uma agência. Não vendemos esses dados nem os usamos para publicidade.
+
+Atualizar a data de "Última atualização" da política. A chave `ig_peer_benchmarks_mesaas` só liga depois dessa política no ar; até lá o
 produto funciona só com mercado.
 
 ### Testes
@@ -229,6 +240,6 @@ travessão em copy).
 
 ## Chamadas minhas (não decididas pelo usuário)
 
-Faixas, definições das 4 métricas e janelas, cálculo em SQL, persistir `media_product_type`, posto
+Faixas, definições das 4 métricas e janelas, rodapé com contagem arredondada, cálculo em SQL, persistir `media_product_type`, posto
 médio para empates, piso de 30, limiares dos vereditos, média simples no
 veredito geral, posição no topo da visão geral, sem flag de plano, frase na Política de Privacidade.
