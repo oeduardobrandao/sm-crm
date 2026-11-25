@@ -52,8 +52,8 @@ Deno.test("validateLayout rejeita mais de 200 blocos e ids duplicados", () => {
   assert(!validateLayout(layout([block({ id: "x" }), block({ id: "x" })])).ok);
 });
 
-Deno.test("catálogo tem os 56 tipos (28 + 13 tiktok_* + section + 14 gbp_*)", () => {
-  assertEquals(BLOCK_TYPES.length, 56);
+Deno.test("catálogo tem os 57 tipos (29 + 13 tiktok_* + section + 14 gbp_*)", () => {
+  assertEquals(BLOCK_TYPES.length, 57);
   assert((BLOCK_TYPES as readonly string[]).includes("section"));
   assert((BLOCK_TYPES as readonly string[]).includes("image"));
   assert((BLOCK_TYPES as readonly string[]).includes("kpi_follows"));
@@ -219,7 +219,7 @@ Deno.test("blockPlatform: partição de BLOCK_TYPES fixada por nome", () => {
     "kpi_website_clicks", "kpi_follows",
     "chart_followers", "chart_formats", "chart_best_times",
     "audience_gender", "audience_age", "audience_cities", "audience_countries",
-    "top_posts", "post_list", "tags_table",
+    "top_posts", "post_list", "tags_table", "account_health",
   ];
   const NEUTRAL = [
     "cover", "section_header", "divider", "text", "ai_summary", "ai_recommendations",
