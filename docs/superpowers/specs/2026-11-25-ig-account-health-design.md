@@ -124,11 +124,13 @@ seguidores (relatórios de engajamento por tier de seguidores, frequência de po
 proporção de formatos). O builder pesquisa e registra **cada fonte e ano num comentário da migration**.
 Onde a fonte só dá mediana (ou mediana + quartis), os 99 cortes são interpolados numa log-normal
 ajustada a esses pontos (para `reels_share`, numa distribuição limitada a 0..1); o comentário diz que é
-estimativa. **Só se semeia uma métrica quando a fonte mede a mesma coisa** que a nossa definição (ou
-quando a conversão é exata, ex.: frequência semanal × 30/7). Fonte com definição diferente (ex.:
-engajamento incluindo saves, ou por alcance em vez de seguidores) não entra: a linha fica sem seed.
+estimativa. Decisão do usuário (2026-11-25, depois de a pesquisa não achar fonte com definição
+idêntica): **usa-se a fonte pública mais próxima** de cada (faixa, métrica), mesmo com definição um pouco
+diferente (ex.: engajamento que inclui saves, frequência por semana convertida para 30 dias). O
+comentário de cada linha registra fonte, ano e a diferença de definição; nada de número inventado. O
+produto rotula esses números como estimativa (ver Rodapé).
 
-Sem fonte crível e equivalente para uma (faixa, métrica): a linha de mercado **não é semeada** (nada de corte
+Sem nenhuma fonte pública para uma (faixa, métrica): a linha de mercado **não é semeada** (nada de corte
 inventado). `ig_peer_benchmarks` não tem a linha até o Mesaas chegar a 30 contas; o cartão daquela
 métrica mostra o valor "Você" sem veredito e o texto "Ainda sem referência para contas do seu tamanho",
 e a métrica fica fora do veredito geral. Expectativa realista: com ~150 contas conectadas hoje, a maior
@@ -176,7 +178,7 @@ Barra: trilho com tique no 50, preenchimento até o percentil na cor do tom, mar
 - Grade 2×2 de métricas (1 coluna no phone shell).
 - Rodapé: fonte `mesaas` → "*Comparado com mais de 300 contas do seu tamanho no Mesaas (de 5 mil a 20
   mil seguidores)." O número é o `sample_size` arredondado para baixo à centena (abaixo de 100, à
-  dezena: "mais de 30"), para não expor quantas contas o Mesaas tem por faixa."; fonte `mercado` → "*Referência de mercado para contas de 5 mil a 20 mil seguidores."
+  dezena: "mais de 30"), para não expor quantas contas o Mesaas tem por faixa."; fonte `mercado` → "†Estimativa de mercado para contas de 5 mil a 20 mil seguidores, a partir de estudos públicos com métricas parecidas."
   Fontes mistas na mesma faixa: cada cartão de métrica marca a sua (`*` Mesaas, `†` mercado) e o rodapé
   tem as duas linhas. Com Mesaas em métricas diferentes, o número de contas citado é o menor `sample_size`.
 - Na fonte `mercado` os textos dizem "à frente de cerca de X%".
