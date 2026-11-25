@@ -18,6 +18,7 @@ import { useGuideProgress, type GuideView } from './useGuideProgress';
 import { shouldAutoOpenGuide, guideAutoOpenState, type GuideAutoOpenState } from './guideGating';
 import { requiredSignals } from './guideContent';
 import { loadGuideProgress } from './guideStorage';
+import { useReverseTrialHold } from '../layout/reverseTrialHold';
 
 export type GuideOpenSource = 'auto' | 'pill' | 'sidebar' | 'mobile_nav';
 
@@ -48,6 +49,7 @@ export function GuideProvider({ children }: { children: ReactNode }) {
   const isOwner = useIsWorkspaceOwner();
   const { hasFeature, limits } = useEntitlements();
   const location = useLocation();
+  const held = useReverseTrialHold();
 
   const contaId = profile?.conta_id ?? null;
 
@@ -106,6 +108,7 @@ export function GuideProvider({ children }: { children: ReactNode }) {
     if (autoOpenTried.current || isOpen) return;
     const ok = shouldAutoOpenGuide({
       authLoading: loading,
+      held,
       isOwner,
       pathname: location.pathname,
       progress: view.progress,
@@ -118,6 +121,7 @@ export function GuideProvider({ children }: { children: ReactNode }) {
     open('auto');
   }, [
     loading,
+    held,
     isOwner,
     location.pathname,
     view,
@@ -160,6 +164,7 @@ export function GuideProvider({ children }: { children: ReactNode }) {
 
   const autoOpen = guideAutoOpenState({
     authLoading: loading,
+    held,
     isOwner,
     opened: isOpen,
     progress: view.progress,

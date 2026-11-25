@@ -8,13 +8,15 @@ import type { GuideProgress } from './guideStorage';
  */
 export function shouldAutoOpenGuide(i: {
   authLoading: boolean;
+  /** The reverse trial welcome is pending or open (reverseTrialHold.ts): wait for it. */
+  held?: boolean;
   isOwner: boolean;
   pathname: string;
   progress: GuideProgress;
   clientes: { status: string; count: number };
   workflows: { status: string; count: number };
 }): boolean {
-  if (i.authLoading || !i.isOwner) return false;
+  if (i.authLoading || !i.isOwner || i.held) return false;
   if (i.pathname !== '/dashboard') return false;
   if (i.progress.autoOpenedAt || i.progress.dismissedAt || i.progress.concludedAt) return false;
   if (i.clientes.status !== 'success' || i.workflows.status !== 'success') return false;
@@ -32,6 +34,7 @@ export type GuideAutoOpenState = 'unknown' | 'no' | 'yes';
  */
 export function guideAutoOpenState(i: {
   authLoading: boolean;
+  held?: boolean;
   isOwner: boolean;
   opened: boolean;
   progress: GuideProgress;
@@ -39,7 +42,7 @@ export function guideAutoOpenState(i: {
   workflows: { status: string; count: number };
 }): GuideAutoOpenState {
   if (i.opened) return 'yes';
-  if (i.authLoading) return 'unknown';
+  if (i.authLoading || i.held) return 'unknown';
   if (!i.isOwner) return 'no';
   if (i.progress.autoOpenedAt || i.progress.dismissedAt || i.progress.concludedAt) return 'no';
   if (i.clientes.status === 'error' || i.workflows.status === 'error') return 'no';

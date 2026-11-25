@@ -95,3 +95,17 @@ describe('guideAutoOpenState', () => {
     ).toBe('no');
   });
 });
+
+describe('teste reverso: o guia espera a boas-vindas', () => {
+  it('não abre enquanto o início do teste ou a boas-vindas estão pendentes', () => {
+    expect(shouldAutoOpenGuide({ ...OK, held: true })).toBe(false);
+    expect(shouldAutoOpenGuide({ ...OK, held: false })).toBe(true);
+  });
+
+  it('avisa "unknown" aos popups enquanto espera, e "yes" depois', () => {
+    const base = { ...OK, opened: false };
+    expect(guideAutoOpenState({ ...base, held: true })).toBe('unknown');
+    expect(guideAutoOpenState({ ...base, held: false })).toBe('yes');
+    expect(guideAutoOpenState({ ...base, held: true, opened: true })).toBe('yes');
+  });
+});

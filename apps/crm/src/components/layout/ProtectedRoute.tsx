@@ -12,6 +12,7 @@ import { isLayoutGuardedPath } from './AppLayout';
 import { useTrialOfferRedirect } from './useTrialOfferRedirect';
 import { useReverseTrialStart } from './useReverseTrialStart';
 import { ReverseTrialWelcomeDialog } from '@/components/billing/ReverseTrialWelcomeDialog';
+import { ReverseTrialHoldContext } from './reverseTrialHold';
 import { useReadOnlyGrandfather } from '@/components/paywall/useReadOnlyGrandfather';
 
 const FEATURE_GATED: Record<string, { flag: string; label: string }> = {
@@ -167,12 +168,14 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
   if (trialOffer.redirect) return <Navigate to="/comecar" replace />;
 
   return (
-    <>
+    <ReverseTrialHoldContext.Provider
+      value={reverseTrial.pending || reverseTrial.welcomeEndsAt !== null}
+    >
       {children}
       <ReverseTrialWelcomeDialog
         endsAt={reverseTrial.welcomeEndsAt}
         onClose={reverseTrial.dismissWelcome}
       />
-    </>
+    </ReverseTrialHoldContext.Provider>
   );
 }
