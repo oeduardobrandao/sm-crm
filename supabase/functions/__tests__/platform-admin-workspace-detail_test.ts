@@ -293,3 +293,22 @@ Deno.test("handleGetWorkspace: selects and returns the reverse_trial_* columns (
     assert(sel.includes(col), `${col} must be selected`);
   }
 });
+
+Deno.test("catalog fallback: a USD workspace reads the USD price and reports usd", async () => {
+  const { db } = makeFakeDb({
+    workspace_subscriptions: [{
+      data: { ...PAGARME_ROW, provider: "stripe", pagarme_subscription_id: null, installments: null, amount_cents: null, currency: null, amount_interval: null, billing_interval: "month" },
+      error: null,
+    }],
+    plans: [
+      { data: { name: "Pro" }, error: null },
+      { data: { price_brl: 9900, price_brl_annual: null, price_usd: 4900, price_usd_annual: null }, error: null },
+    ],
+    workspaces: [{ data: { billing_currency: "usd" }, error: null }],
+  });
+  const info = await buildSubscriptionDetail(db as never, "w1");
+  assert(info);
+  assertEquals(info.amount_cents, 4900);
+  assertEquals(info.currency, "usd");
+  assertEquals(info.amount_source, "catalog");
+});

@@ -257,7 +257,13 @@ export async function buildSubscriptionDetail(
       info.discount_label = (row.discount_label as string | null) ?? null;
       info.amount_source = "pagarme";
     } else {
-      await applyCatalogFallback(svc, info, row.plan_id ?? null, row.billing_interval ?? null);
+      await applyCatalogFallback(
+        svc,
+        info,
+        row.plan_id ?? null,
+        row.billing_interval ?? null,
+        workspaceId,
+      );
     }
     return attachPagarmeLive(
       info,
@@ -316,7 +322,13 @@ export async function buildSubscriptionDetail(
     }
   }
 
-  return applyCatalogFallback(svc, info, row.plan_id ?? null, row.billing_interval ?? null);
+  return applyCatalogFallback(
+    svc,
+    info,
+    row.plan_id ?? null,
+    row.billing_interval ?? null,
+    workspaceId,
+  );
 }
 
 /**
@@ -365,6 +377,7 @@ async function attachPagarmeLive<
 /** Fills amount from the plan's list price when neither mirror nor live fetch produced one. */
 export async function applyCatalogFallback<
   T extends {
+    provider?: string;
     amount_cents: number | null;
     currency: string | null;
     amount_source: "stripe" | "pagarme" | "catalog" | null;
@@ -374,17 +387,36 @@ export async function applyCatalogFallback<
   info: T,
   planId: string | null,
   billingInterval: string | null,
+  workspaceId?: string,
 ): Promise<T> {
   if (!planId) return info;
   const { data: plan } = await svc
     .from("plans")
-    .select("price_brl, price_brl_annual")
+    .select("price_brl, price_brl_annual, price_usd, price_usd_annual")
     .eq("id", planId)
     .single();
-  const cents = billingInterval === "year" ? plan?.price_brl_annual : plan?.price_brl;
+  // A USD workspace reads the USD catalog column and never falls back to the BRL price.
+  // A Pagar.me row is always reais.
+  let currency: "brl" | "usd" = "brl";
+  if (workspaceId && info.provider !== "pagarme") {
+    const { data: ws } = await svc
+      .from("workspaces")
+      .select("billing_currency")
+      .eq("id", workspaceId)
+      .maybeSingle();
+    if (ws?.billing_currency === "usd") currency = "usd";
+  }
+  const cents =
+    currency === "usd"
+      ? billingInterval === "year"
+        ? plan?.price_usd_annual
+        : plan?.price_usd
+      : billingInterval === "year"
+        ? plan?.price_brl_annual
+        : plan?.price_brl;
   if (cents != null) {
     info.amount_cents = cents as number;
-    info.currency = "brl";
+    info.currency = currency;
     info.amount_source = "catalog";
   }
   return info;

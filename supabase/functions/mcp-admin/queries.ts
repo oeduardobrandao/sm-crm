@@ -359,6 +359,8 @@ export async function getDashboard(d: Deps) {
   const plans = await handlerJson(plansRes, "Plano");
   const mrr = await handlerJson(mrrRes, "MRR");
   const trials = await handlerJson(trialsRes, "Trials");
+  const mrrUsd = (mrr.usd ?? {}) as Record<string, unknown>;
+  const trialsUsd = (trials.usd ?? {}) as Record<string, unknown>;
   // Só agregados: os arrays workspaces/trials trazem contato dos donos e ficam de fora.
   return {
     totals: {
@@ -370,7 +372,22 @@ export async function getDashboard(d: Deps) {
       instagram_accounts_active: Number(ws.total_instagram_accounts_active ?? 0),
       active_plans: ((plans.plans ?? []) as unknown[]).length,
     },
-    mrr: { mrr_cents: Number(mrr.mrr_cents ?? 0), paying_count: Number(mrr.paying_count ?? 0) },
-    trials: { trial_mrr_cents: Number(trials.trial_mrr_cents ?? 0), trial_count: Number(trials.trial_count ?? 0) },
+    // Totais de topo são só em reais; dólar vem separado em `usd` (nunca somado ao BRL).
+    mrr: {
+      mrr_cents: Number(mrr.mrr_cents ?? 0),
+      paying_count: Number(mrr.paying_count ?? 0),
+      usd: {
+        mrr_cents: Number(mrrUsd.mrr_cents ?? 0),
+        paying_count: Number(mrrUsd.paying_count ?? 0),
+      },
+    },
+    trials: {
+      trial_mrr_cents: Number(trials.trial_mrr_cents ?? 0),
+      trial_count: Number(trials.trial_count ?? 0),
+      usd: {
+        trial_mrr_cents: Number(trialsUsd.trial_mrr_cents ?? 0),
+        trial_count: Number(trialsUsd.trial_count ?? 0),
+      },
+    },
   };
 }
