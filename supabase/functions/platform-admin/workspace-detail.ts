@@ -39,6 +39,9 @@ export interface SubscriptionDetailOpts {
   pagarme?: PagarmeDetailGateway;
   /** Injected in tests; `undefined` means read PAGARME_DASHBOARD_BASE from the env. */
   pagarmeDashboardBase?: string | null;
+  /** workspaces.billing_currency as the caller already read it (catalog fallback column).
+   * Omitted means brl. */
+  billingCurrency?: "brl" | "usd";
 }
 
 export async function handleGetWorkspace(
@@ -135,7 +138,10 @@ export async function handleGetWorkspace(
     }
   }
 
-  const subscription = await buildSubscriptionDetail(svc, workspace_id, opts);
+  const subscription = await buildSubscriptionDetail(svc, workspace_id, {
+    ...opts,
+    billingCurrency: (ws as { billing_currency?: string | null }).billing_currency === "usd" ? "usd" : "brl",
+  });
   const affiliate = await loadWorkspaceAffiliate(svc, workspace_id);
 
   const { storage_used_bytes: storageUsed, ...rest } = ws;
@@ -263,7 +269,7 @@ export async function buildSubscriptionDetail(
         info,
         row.plan_id ?? null,
         row.billing_interval ?? null,
-        workspaceId,
+        opts.billingCurrency ?? "brl",
       );
     }
     return attachPagarmeLive(
@@ -328,7 +334,7 @@ export async function buildSubscriptionDetail(
     info,
     row.plan_id ?? null,
     row.billing_interval ?? null,
-    workspaceId,
+    opts.billingCurrency ?? "brl",
   );
 }
 
@@ -388,7 +394,7 @@ export async function applyCatalogFallback<
   info: T,
   planId: string | null,
   billingInterval: string | null,
-  workspaceId?: string,
+  billingCurrency: "brl" | "usd",
 ): Promise<T> {
   if (!planId) return info;
   const { data: plan } = await svc
@@ -397,16 +403,10 @@ export async function applyCatalogFallback<
     .eq("id", planId)
     .single();
   // A USD workspace reads the USD catalog column and never falls back to the BRL price.
-  // A Pagar.me row is always reais.
-  let currency: "brl" | "usd" = "brl";
-  if (workspaceId && info.provider !== "pagarme") {
-    const { data: ws } = await svc
-      .from("workspaces")
-      .select("billing_currency")
-      .eq("id", workspaceId)
-      .maybeSingle();
-    if (ws?.billing_currency === "usd") currency = "usd";
-  }
+  // A Pagar.me row is always reais. The currency comes from the caller's workspaces read
+  // (handleGetWorkspace), never from a second read here.
+  const currency: "brl" | "usd" =
+    billingCurrency === "usd" && info.provider !== "pagarme" ? "usd" : "brl";
   const cents =
     currency === "usd"
       ? billingInterval === "year"
