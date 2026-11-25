@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- `as_of` = `period.effectiveEnd` + 1 dia, meia-noite UTC; janelas de 30 e 90 dias terminam em `as_of` (exclusivo).
+- `as_of = min(period.endExclusive, instante da geração)`; janelas de 30 e 90 dias terminam em `as_of` (exclusivo). Seguidores no corte são o denominador do engajamento e a faixa.
 - Campo `instagram_health` é **opcional** no snapshot; `version: 1` não muda; snapshot antigo sem o campo = bloco sem dado.
 - O tipo `account_health` não tem prefixo (é Instagram para o trigger e para `blockPlatform`); nenhuma migration de `validate_report_layout`.
 - Bloco só tamanho `full`; fora do layout padrão.
@@ -37,16 +37,17 @@
 - Modify: `supabase/tests/entitlements/99_ig_account_health_metrics.sql`
 
 **Interfaces:**
-- Produces: `public.ig_account_health_metrics(p_account_id uuid, p_as_of timestamptz)` com o mesmo retorno da de 1 argumento; a de 1 argumento vira `select * from ig_account_health_metrics(p_account_id, now())`. EXECUTE: `authenticated`, `service_role`; revogado de `public`, `anon`.
+- Produces: `public.ig_account_health_metrics(p_account_id uuid, p_as_of timestamptz, p_followers int)` com o mesmo retorno da de 1 argumento (`p_followers` nulo = `follower_count` atual, é o denominador do engajamento); a de 1 argumento vira `select * from ig_account_health_metrics(p_account_id, now(), null)`. EXECUTE: `authenticated`, `service_role`; revogado de `public`, `anon`.
 
 - [ ] **Step 1: Testes falhando** (acrescentar à suite existente):
   - posts de feed em `2026-09-05` e `2026-09-20` e um em `2026-10-10`; `p_as_of = '2026-10-01'` → `posts_30d = 2`; com `now()` (1 argumento) o de outubro também entra nas janelas certas.
   - um post em `2026-06-15` fica fora dos 90 dias de `as_of = '2026-10-01'` e dentro dos de `'2026-09-10'`.
   - melhor post respeita `as_of` (o de outubro não é melhor post de setembro).
   - a versão de 1 argumento dá o mesmo resultado de `p_as_of = now()` na fixture existente.
-  - `anon` sem EXECUTE na de 2 argumentos; `service_role` com.
+  - `p_followers = 5000` com mediana 100 → `engagement_rate = 0.02`, mesmo com `follower_count` 10000.
+  - `anon` sem EXECUTE na de 3 argumentos; `service_role` com.
 - [ ] **Step 2:** `npm run test:db` (stack local própria; nunca a porta de outro worktree, conferir `docker ps`) → FAIL.
-- [ ] **Step 3:** Migration: `create or replace` da de 2 argumentos (corpo da atual trocando `now()` por `p_as_of` e filtrando `posted_at < p_as_of`), depois a de 1 argumento delegando. Grants.
+- [ ] **Step 3:** Migration: `create or replace` da de 2 argumentos (corpo da atual trocando `now()` por `p_as_of`, filtrando `posted_at < p_as_of` e usando `coalesce(p_followers, follower_count)`), depois a de 1 argumento delegando. Grants.
 - [ ] **Step 4:** `npm run test:db` → PASS (as suites da RPC e do refresh seguem verdes).
 - [ ] **Step 5:** Commit `feat(db): métricas de saúde do Instagram ancoradas numa data`.
 
@@ -87,13 +88,14 @@
 - Consumes: Task 1 (RPC de 2 argumentos), Task 2 (`InstagramHealthSnapshot`).
 - Produces: `export async function loadInstagramHealth(db: Db, deps: SnapshotDeps, accountId: string, effectiveEnd: string): Promise<InstagramHealthSnapshot | null>`.
 
-Regras (spec §Snapshot): `as_of` = `effectiveEnd` + 1 dia (ISO `YYYY-MM-DD`); seguidores = `instagram_follower_history.follower_count` com `date <= effectiveEnd` mais recente dentro de 7 dias, senão `instagram_accounts.follower_count`; faixa e métricas por `db.rpc`/consulta à função de 2 argumentos (service role: `select * from ig_account_health_metrics($1,$2)` via `.rpc('ig_account_health_metrics', { p_account_id, p_as_of })`); benchmarks = linhas de `ig_peer_benchmarks` da faixa, convertidas como em `getAccountHealth` (numérico string → number, só arrays de 99); melhor post = `instagram_posts` por `best_post_id` (`permalink`, `thumbnail_url` passada por `cachePostThumbnail` como os top posts); qualquer erro → `null` + `console.error('[report-docs] instagram_health', ...)` sem detalhe ao cliente.
+Regras (spec §Snapshot): `as_of` = o ISO recebido; seguidores = `instagram_follower_history.follower_count` com `date <= (as_of − 1 dia)` mais recente dentro de 7 dias, senão `instagram_accounts.follower_count`; faixa por esse número e métricas por `.rpc('ig_account_health_metrics', { p_account_id, p_as_of, p_followers })`; benchmarks = linhas de `ig_peer_benchmarks` da faixa, convertidas como em `getAccountHealth` (numérico string → number, só arrays de 99); melhor post = busca própria de `instagram_posts` por `best_post_id` (`instagram_post_id`, `permalink`, `thumbnail_url`), miniatura por `cachePostThumbnail(deps, accountId, instagram_post_id, thumbnail_url)` e `null` se o resultado ainda for `isEphemeralInstagramUrl`; qualquer erro → `null` + `console.error('[report-docs] instagram_health', ...)` sem detalhe ao cliente.
 
 - [ ] **Step 1: Testes Deno falhando** em `health-section.test.ts` com o `createSupabaseQueryMock` já usado nos testes de `report-docs`:
-  - `effectiveEnd '2026-09-30'` → chama a RPC com `p_as_of '2026-10-01'` e devolve `as_of '2026-10-01'`.
+  - `asOfIso '2026-10-01T03:00:00.000Z'` → RPC chamada com esse `p_as_of` e com `p_followers` igual ao seguidor do histórico.
   - histórico de seguidores em `2026-09-28` (9100) e conta com 9274 → `followers 9100`, `band '5k_20k'`; sem histórico → 9274.
   - benchmarks com `cuts` em string viram number; linha com 98 cortes some.
-  - `best_post_id` nulo → `best_post null`; com id → `permalink` e thumbnail cacheada.
+  - `best_post_id` nulo → `best_post null`; com id → `permalink` e thumbnail cacheada; cache que devolve URL efêmera → `thumbnail_url null`.
+  - `snapshot-source`: mês corrente usa o instante da geração como corte, mês fechado usa `endExclusive`.
   - RPC com erro → `null`.
   - `snapshot.test`/`refresh.test`: Instagram desconectado no refresh preserva o `instagram_health` congelado; `emptyInstagramSection().instagram_health === null`.
 - [ ] **Step 2:** `deno test --no-check supabase/functions/report-docs/ supabase/functions/_shared/report-docs/` → FAIL.

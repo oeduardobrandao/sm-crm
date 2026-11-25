@@ -27,9 +27,11 @@ tamanho, no mês do relatório.
 
 ### Banco
 
-- Nova sobrecarga `ig_account_health_metrics(p_account_id uuid, p_as_of timestamptz)`: mesmas
-  definições, com as janelas de 30 e 90 dias terminando em `p_as_of` (exclusivo) em vez de `now()`.
-  A versão de 1 argumento passa a chamar a de 2 com `now()` (comportamento do cartão do CRM igual).
+- Nova sobrecarga `ig_account_health_metrics(p_account_id uuid, p_as_of timestamptz, p_followers int)`:
+  mesmas definições, com as janelas de 30 e 90 dias terminando em `p_as_of` (exclusivo; só posts com
+  `posted_at < p_as_of`) e o denominador do engajamento = `p_followers` (nulo = `follower_count`
+  atual). A versão de 1 argumento passa a chamar a de 3 com `now()` e nulo (cartão do CRM igual).
+  Revisão Codex: sem o parâmetro de seguidores, relatório antigo dividiria pelo seguidor de hoje.
 - EXECUTE da sobrecarga: `service_role` (o `report-docs` usa service role) e `authenticated` (mesma
   regra da de 1 argumento); `anon` não. Migration nova acima de `20261201000003`.
 
@@ -48,17 +50,23 @@ instagram_health?: {
 } | null
 ```
 
-- `as_of` = `period.effectiveEnd + 1 dia` (mês fechado: dia 1 do mês seguinte; mês corrente: dia
-  seguinte à geração). Janelas: posts em 30 dias = 30 dias antes de `as_of`; 90 dias idem.
-- `followers` = `instagram_follower_history` no `period.effectiveEnd` (ou a data anterior mais
-  próxima dentro de 7 dias); sem histórico, `instagram_accounts.follower_count`. A faixa sai desse
-  número (`ig_follower_band`).
+- Corte único: `as_of = min(period.endExclusive, instante da geração)` (o mesmo `endExclusive` da
+  janela do mês que o relatório já usa; mês corrente = instante da geração, nada depois dele entra).
+  `instagram_health.as_of` guarda esse ISO. Janelas: 30 e 90 dias antes de `as_of`.
+- `followers` = `instagram_follower_history` na data de `as_of − 1 dia` (ou a data anterior mais
+  próxima dentro de 7 dias); sem histórico, `instagram_accounts.follower_count`. Esse número é o
+  denominador do engajamento (`p_followers`) **e** a faixa (`ig_follower_band`).
 - Benchmarks = as linhas de `ig_peer_benchmarks` da faixa no momento da geração.
-- Melhor post: `permalink` e thumbnail do post `best_post_id`, com a thumbnail cacheada pelo mesmo
-  `cachePostThumbnail` que o snapshot já usa (URL estável).
+- Melhor post: busca única de `instagram_posts` por `best_post_id` (`instagram_post_id`, `permalink`,
+  `thumbnail_url`), fora da seleção de top posts (o melhor por curtidas + comentários pode não estar
+  nela). A miniatura passa por `cachePostThumbnail(deps, accountId, instagram_post_id, thumbnail_url)`;
+  se o resultado ainda for URL efêmera do CDN (`isEphemeralInstagramUrl`, ex.: download falhou), grava
+  `thumbnail_url: null` (bloco mostra a frase sem miniatura), nunca uma URL que expira.
 - Falha nessa leitura não derruba a geração: `instagram_health = null` e log interno (como as
   demais seções opcionais). Instagram desconectado: `null`.
-- "Atualizar dados" (`refresh.ts`) recalcula igual.
+- "Atualizar dados" (`refresh.ts`) recalcula igual. `"instagram_health"` entra em
+  `INSTAGRAM_SECTION_KEYS` e `emptyInstagramSection()` o zera: Instagram desconectado no refresh
+  preserva o valor congelado, como as demais chaves Instagram.
 
 ### Bloco (`packages/report-blocks`)
 
@@ -68,6 +76,11 @@ instagram_health?: {
   `platform: 'instagram'`), no `BlockRenderer`, em `data-presence.ts` (tem dado quando
   `instagram_health` existe e há ao menos uma métrica com valor e referência) e em `widgetIcons.ts`.
 - Tamanho: só `full`. Fora do layout padrão.
+- Sem dado (snapshot antigo sem o campo, `instagram_health` nulo, `band` nulo ou nenhuma métrica com
+  valor e referência): `blockHasData` é false **e** o componente retorna `null`. O `BlockRenderer`
+  instancia o componente sempre, então o `null` do componente é o que o esconde no Hub e no PDF; no
+  editor o `SectionFrame` já mostra o placeholder padrão de bloco sem dado quando `blockHasData` é
+  false.
 - Visual com o tema do relatório (`rb-*`, `--rb-accent`, fontes do relatório), não com o CSS do CRM:
   mesmo conteúdo e copy do cartão (veredito geral, barra, resumo, linha de destaque, grade 2×2,
   rodapé com fonte, melhor post), em uma coluna no viewer estreito do Hub. Cores de veredito fixas
