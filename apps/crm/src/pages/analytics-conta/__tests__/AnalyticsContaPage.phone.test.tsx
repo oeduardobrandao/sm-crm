@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -347,6 +347,33 @@ describe('AnalyticsContaPage (phone)', () => {
 
     fireEvent.click(within(sheet).getByRole('button', { name: 'Fechar' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('"Ver o post" opens nothing when the post no longer exists', async () => {
+    vi.mocked(getAccountHealth).mockResolvedValue({
+      bestPost: { id: 'post-gone', ratio: 1.4 },
+    } as never);
+    renderPage();
+    await ready();
+    await screen.findByRole('list', { name: 'Performance de conteúdo' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver o post' }));
+    await waitFor(() => expect(getPostAnalyticsById).toHaveBeenCalledWith(42, 'post-gone'));
+    await act(async () => {});
+    expect(screen.queryByRole('dialog', { name: 'Métricas do post' })).toBeNull();
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('"Ver o post" shows a toast when fetching the post fails', async () => {
+    vi.mocked(getAccountHealth).mockResolvedValue({
+      bestPost: { id: 'post-old', ratio: 1.4 },
+    } as never);
+    vi.mocked(getPostAnalyticsById).mockRejectedValue(new Error('network'));
+    renderPage();
+    await ready();
+    await screen.findByRole('list', { name: 'Performance de conteúdo' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver o post' }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Não foi possível abrir o post.'));
+    expect(screen.queryByRole('dialog', { name: 'Métricas do post' })).toBeNull();
   });
 
   it('a failed health query leaves no card and the page renders', async () => {

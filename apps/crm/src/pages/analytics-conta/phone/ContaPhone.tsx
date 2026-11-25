@@ -275,18 +275,27 @@ export function ContaPhone(props: ContaPhoneProps) {
     return fetchedPost?.id === selectedPostId ? fetchedPost : null;
   }, [posts, selectedPostId, fetchedPost]);
 
+  // Bumped on every open and close: a by-id fetch that resolves after another open or a close
+  // is stale and must not take over the sheet (nor toast its error).
+  const openRequestRef = useRef(0);
+  const selectPost = (postId: string | null) => {
+    openRequestRef.current += 1;
+    setSelectedPostId(postId);
+  };
+
   const openHealthPost = async (postId: string) => {
     if (posts.some((p) => p.id === postId)) {
-      setSelectedPostId(postId);
+      selectPost(postId);
       return;
     }
+    const request = ++openRequestRef.current;
     try {
       const fetched = await getPostAnalyticsById(clientId, postId);
-      if (!fetched) return;
+      if (request !== openRequestRef.current || !fetched) return;
       setFetchedPost(fetched);
       setSelectedPostId(fetched.id);
     } catch {
-      toast.error('Não foi possível abrir o post.');
+      if (request === openRequestRef.current) toast.error('Não foi possível abrir o post.');
     }
   };
 
@@ -317,7 +326,7 @@ export function ContaPhone(props: ContaPhoneProps) {
     mediaType: post.media_type,
     title: post.caption || 'Sem legenda',
     meta: `${format(new Date(post.posted_at), "d 'de' MMM", { locale: ptBR })} · ${mediaTypeLabel(post.media_type)}`,
-    onSelect: () => setSelectedPostId(post.id),
+    onSelect: () => selectPost(post.id),
     metrics: (
       <>
         <span>
@@ -470,7 +479,7 @@ export function ContaPhone(props: ContaPhoneProps) {
         posts={rankedPosts.slice(0, 5)}
         tone="best"
         titleOf={(p) => p.caption || 'Sem legenda'}
-        onSelect={(p) => setSelectedPostId(p.id)}
+        onSelect={(p) => selectPost(p.id)}
         onSeeMore={rankedPosts.length > 5 ? () => drawer.open('best') : undefined}
       />
       <RankedPostStrip
@@ -479,7 +488,7 @@ export function ContaPhone(props: ContaPhoneProps) {
         posts={matureRankedPosts.slice(0, 5)}
         tone="worst"
         titleOf={(p) => p.caption || 'Sem legenda'}
-        onSelect={(p) => setSelectedPostId(p.id)}
+        onSelect={(p) => selectPost(p.id)}
         onSeeMore={matureRankedPosts.length > 5 ? () => drawer.open('worst') : undefined}
       />
 
@@ -518,7 +527,7 @@ export function ContaPhone(props: ContaPhoneProps) {
                   value={<span className="phone-an-row-value">{postSortValue(p, sort.col)}</span>}
                   chevron
                   aria-haspopup="dialog"
-                  onClick={() => setSelectedPostId(p.id)}
+                  onClick={() => selectPost(p.id)}
                 />
               ))}
               {posts.length > 5 && (
@@ -657,7 +666,7 @@ export function ContaPhone(props: ContaPhoneProps) {
         clientId={clientId}
         post={selectedPost}
         onOpenChange={(open) => {
-          if (!open) setSelectedPostId(null);
+          if (!open) selectPost(null);
         }}
         tags={tags}
         onToggleTag={onToggleTag}

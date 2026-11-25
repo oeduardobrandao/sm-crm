@@ -929,6 +929,9 @@ function AnalyticsContent({
   // A post opened by id from the health card that may sit outside the loaded list: the
   // close-when-missing effect below must leave it open.
   const [fetchedPostId, setFetchedPostId] = useState<string | null>(null);
+  // Bumped on every open and close: a by-id fetch that resolves after another open or a close
+  // is stale and must not take over the dialog (nor toast its error).
+  const openRequestRef = useRef(0);
   const openerRef = useRef<HTMLElement | null>(null);
   const commentsAiEnabled = useWorkspaceLimits().features?.feature_instagram_comments_ai === true;
   const [syncing, setSyncing] = useState(false);
@@ -1024,6 +1027,7 @@ function AnalyticsContent({
   const openPost = posts.find((p) => p.id === openPostId) ?? null;
   const dialogPost = openPostId === null ? null : (openPost ?? heldPost);
   const openPostMetrics: OpenPostHandler = (post, opener) => {
+    openRequestRef.current += 1;
     openerRef.current = opener;
     setFetchedPostId(null);
     setHeldPost(post);
@@ -1032,6 +1036,7 @@ function AnalyticsContent({
   // The health card's best post can be older than the loaded period: open it from the list
   // when it is there, otherwise fetch it by id and hold it.
   const openHealthPost = async (postId: string) => {
+    const request = ++openRequestRef.current;
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const listed = posts.find((p) => p.id === postId);
     if (listed) {
@@ -1043,13 +1048,13 @@ function AnalyticsContent({
     }
     try {
       const fetched = await getPostAnalyticsById(clientId, postId);
-      if (!fetched) return;
+      if (request !== openRequestRef.current || !fetched) return;
       openerRef.current = opener;
       setFetchedPostId(fetched.id);
       setHeldPost(fetched);
       setOpenPostId(fetched.id);
     } catch {
-      toast.error('Não foi possível abrir o post.');
+      if (request === openRequestRef.current) toast.error('Não foi possível abrir o post.');
     }
   };
   // Close only once the list has settled without the post (a sync removed it). A key change
@@ -1063,6 +1068,7 @@ function AnalyticsContent({
       postsSettled &&
       !postsFetching
     ) {
+      openRequestRef.current += 1;
       setOpenPostId(null);
       setHeldPost(null);
     }
@@ -2337,6 +2343,7 @@ function AnalyticsContent({
         post={dialogPost}
         onOpenChange={(o) => {
           if (!o) {
+            openRequestRef.current += 1;
             setOpenPostId(null);
             setHeldPost(null);
             setFetchedPostId(null);

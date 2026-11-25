@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import i18n from 'i18next';
@@ -1455,6 +1455,66 @@ describe('AnalyticsContaPage: Seu Instagram está indo bem?', () => {
       expect(toastErrorMock).toHaveBeenCalledWith('Não foi possível abrir o post.'),
     );
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('ignores a by-id fetch that resolves after another post was opened or the dialog closed', async () => {
+    const { posts } = seedCommonAnalyticsData();
+    queryState['ig-account-health'] = { data: healthWithBest('post-old') };
+    let resolveFetch: (value: unknown) => void = () => {};
+    mockedGetPostAnalyticsById.mockReturnValue(
+      new Promise((resolve) => {
+        resolveFetch = resolve;
+      }) as never,
+    );
+    render(<AnalyticsContaPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver o post' }));
+    expect(mockedGetPostAnalyticsById).toHaveBeenCalledWith(42, 'post-old');
+
+    // Another post opened while the fetch is pending.
+    const best = screen.getByRole('region', { name: 'Melhores Posts' });
+    fireEvent.click(
+      within(best).getByRole('button', {
+        name: 'Ver métricas: Post em reels com alta performance',
+      }),
+    );
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).queryByText(/Post antigo fora do período/)).toBeNull();
+
+    // ...and closed again before the stale response lands.
+    fireEvent.click(within(dialog).getByText('mock-fechar-dialog'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveFetch({ ...posts[0], id: 'post-old', caption: 'Post antigo fora do período' });
+    });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Post antigo fora do período/)).toBeNull();
+  });
+
+  it('a stale by-id fetch that fails shows no toast', async () => {
+    seedCommonAnalyticsData();
+    queryState['ig-account-health'] = { data: healthWithBest('post-old') };
+    let rejectFetch: (err: unknown) => void = () => {};
+    mockedGetPostAnalyticsById.mockReturnValue(
+      new Promise((_, reject) => {
+        rejectFetch = reject;
+      }) as never,
+    );
+    render(<AnalyticsContaPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver o post' }));
+    const best = screen.getByRole('region', { name: 'Melhores Posts' });
+    fireEvent.click(
+      within(best).getByRole('button', {
+        name: 'Ver métricas: Post em reels com alta performance',
+      }),
+    );
+    await act(async () => {
+      rejectFetch(new Error('network'));
+    });
+    expect(toastErrorMock).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
   it('Sincronizar Dados invalidates the health query', async () => {
