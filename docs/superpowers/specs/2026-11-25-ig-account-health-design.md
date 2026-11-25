@@ -245,3 +245,21 @@ travessão em copy).
 Faixas, definições das 4 métricas e janelas, rodapé com contagem arredondada, cálculo em SQL, persistir `media_product_type`, posto
 médio para empates, piso de 30, limiares dos vereditos, média simples no
 veredito geral, posição no topo da visão geral, sem flag de plano, frase na Política de Privacidade.
+
+## Decisões depois da aprovação (2026-11-25)
+
+- Seed de mercado: 19 linhas, todas estimativa (fonte, ano e diferença de definição no comentário de
+  cada linha). Engajamento usa quartis da fonte; posts em 30 dias, views de reels e reels no feed usam
+  mediana (ou média convertida em mediana) da fonte com **spread assumido** (log-normal sigma 0,6/0,8,
+  logit-normal 0,8). `lt1k / engagement_rate` ficou **sem seed** por decisão do usuário (a fonte
+  divide por impressões, outra escala).
+- "Melhor post" só aparece com razão ≥ 1x. "1 post" no singular. Com uma métrica só, o resumo diz
+  "Pela métrica disponível, …".
+- `ig_account_health_metrics` tem EXECUTE para `authenticated` (a RPC SECURITY INVOKER precisa); a RLS
+  continua valendo e há teste de outro workspace.
+- Conta desconectada: a RPC devolve o objeto com métricas nulas (não `null`); o cartão mostra o vazio.
+- **Pré-condição para ligar `ig_peer_benchmarks_mesaas`:** agências podem gravar as próprias linhas de
+  `instagram_accounts`/`instagram_posts`, então uma agência conseguiria envenenar a referência
+  compartilhada. Antes de ligar a chave, o refresh tem de usar só dados escritos pelo sync (ex.: coluna
+  ou trigger que marque escrita fora do service role e exclua a conta). Exposição: com n = 30, os 99
+  cortes revelam os 30 valores ordenados; aceito (sem identificação, números públicos no Instagram).
