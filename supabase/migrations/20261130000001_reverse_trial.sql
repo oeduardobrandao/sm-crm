@@ -571,13 +571,33 @@ begin
     return 0;
   end if;
 
-  select w.plan_source, w.reverse_trial_outcome into v_ws
+  select w.plan_source, w.reverse_trial_outcome, w.reverse_trial_first_paid_at into v_ws
     from public.workspaces w where w.id = p_workspace;
   if (v_ws.plan_source = 'trial' or v_ws.reverse_trial_outcome = 'downgraded')
      and p_status in ('active', 'trialing') then
     if public.convert_reverse_trial(p_workspace, p_plan, 'pagarme') <> 'not_trial' then
       return 1;
     end if;
+  end if;
+
+  -- Assinatura vinculada no teste que caiu antes de qualquer pagamento (mesma regra do
+  -- writeWorkspacePlan): antes do fim original volta ao teste; depois, plano padrao e o
+  -- teste conta como derrubado.
+  if v_ws.plan_source is distinct from 'manual'
+     and v_ws.reverse_trial_outcome = 'converted'
+     and v_ws.reverse_trial_first_paid_at is null
+     and p_status not in ('active', 'trialing')
+     and p_plan = (select id from public.plans where is_default limit 1) then
+    if public.revert_reverse_trial_conversion(p_workspace) then
+      return 1;
+    end if;
+    update public.workspaces w
+       set plan_id = p_plan,
+           plan_source = 'pagarme'
+     where w.id = p_workspace;
+    get diagnostics v_written = row_count;
+    perform public.mark_reverse_trial_unpaid(p_workspace);
+    return v_written;
   end if;
 
   update public.workspaces w

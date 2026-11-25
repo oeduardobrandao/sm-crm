@@ -761,3 +761,19 @@ Deno.test("22. row with plan_id null: CRITICAL logged, no plans/workspaces write
   assertEquals(findPlanGrant(events), undefined, "no plan_id -> the grant RPC must never fire");
   assert(messages.some((m) => m.includes("CRITICAL")), "expected a CRITICAL log for the missing plan_id");
 });
+
+Deno.test("teste reverso: charge.paid stamps the first payment; subscription.updated does not", async () => {
+  const paid = run("charge.paid", { invoice: { subscription_id: SUB } }, {
+    subRow: { ...baseRow, status: "trialing" },
+  });
+  await paid.result;
+  const mark = paid.events.find((e) => e.table === "rpc:mark_reverse_trial_first_paid");
+  assert(mark, "charge.paid must call mark_reverse_trial_first_paid");
+
+  const updated = run("subscription.updated", { id: SUB }, { subRow: { ...baseRow } });
+  await updated.result;
+  assertEquals(
+    updated.events.some((e) => e.table === "rpc:mark_reverse_trial_first_paid"),
+    false,
+  );
+});

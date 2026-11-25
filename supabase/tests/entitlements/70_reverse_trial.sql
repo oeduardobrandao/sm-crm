@@ -578,6 +578,35 @@ begin;
   end $$;
 rollback;
 
+-- 2.6b grant_pagarme_plan: cancel of a never-paid conversion reverts inside the window,
+--      marks downgraded after it
+begin;
+  do $$
+  declare f record; w record; n int;
+  begin
+    select * into f from et_rt_trial();
+    insert into workspace_subscriptions (workspace_id, status, pagarme_subscription_id, provider)
+      values (f.workspace_id, 'active', 'pg_' || f.workspace_id, 'pagarme');
+    perform grant_pagarme_plan(f.workspace_id, 'pro', 'pg_' || f.workspace_id, 'active');
+    update workspace_subscriptions set status = 'canceled' where workspace_id = f.workspace_id;
+    n := grant_pagarme_plan(f.workspace_id, 'free', 'pg_' || f.workspace_id, 'canceled');
+    select * into w from workspaces where id = f.workspace_id;
+    if n <> 1 or w.plan_source <> 'trial' or w.plan_id <> 'pro' or w.reverse_trial_outcome is not null then
+      raise exception 'grant_pagarme cancel inside window: % %', n, row_to_json(w);
+    end if;
+
+    update workspace_subscriptions set status = 'active' where workspace_id = f.workspace_id;
+    perform grant_pagarme_plan(f.workspace_id, 'pro', 'pg_' || f.workspace_id, 'active');
+    update workspaces set reverse_trial_ends_at = now() - interval '1 minute' where id = f.workspace_id;
+    update workspace_subscriptions set status = 'canceled' where workspace_id = f.workspace_id;
+    n := grant_pagarme_plan(f.workspace_id, 'free', 'pg_' || f.workspace_id, 'canceled');
+    select * into w from workspaces where id = f.workspace_id;
+    if n <> 1 or w.plan_id <> 'free' or w.reverse_trial_outcome <> 'downgraded' or w.reverse_trial_ended_at <> now() then
+      raise exception 'grant_pagarme cancel after end: % %', n, row_to_json(w);
+    end if;
+  end $$;
+rollback;
+
 -- 2.7 grants
 begin;
   do $$
