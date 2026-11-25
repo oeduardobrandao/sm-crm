@@ -2,18 +2,23 @@
  * Lógica pura do cartão "Saúde do Instagram": percentis contra contas do mesmo
  * tamanho, vereditos, rótulos de faixa e formatação das métricas.
  * Sem React e sem acesso a dados; o servidor entrega os cortes e a faixa.
+ * Compartilhada entre o CRM (cartão da Analytics) e o bloco do relatório.
  */
+import type {
+  BenchmarkSource,
+  FollowerBand,
+  HealthMetricKey,
+  InstagramHealthSnapshot,
+  PeerBenchmark,
+} from '../../supabase/functions/_shared/report-docs/health-types';
 
-export type HealthMetricKey = 'engagement_rate' | 'posts_30d' | 'reel_views' | 'reels_share';
-export type FollowerBand = 'lt1k' | '1k_5k' | '5k_20k' | '20k_100k' | '100k_plus';
-export type BenchmarkSource = 'mercado' | 'mesaas';
-
-export interface PeerBenchmark {
-  metric: HealthMetricKey;
-  source: BenchmarkSource;
-  sample_size: number | null;
-  cuts: number[];
-}
+export type {
+  BenchmarkSource,
+  FollowerBand,
+  HealthMetricKey,
+  InstagramHealthSnapshot,
+  PeerBenchmark,
+};
 
 export type VerdictTone = 'great' | 'good' | 'avg' | 'bad' | 'worst';
 

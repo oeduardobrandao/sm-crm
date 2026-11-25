@@ -11,7 +11,7 @@ import {
   type HealthMetricKey,
   type PeerBenchmark,
   type VerdictTone,
-} from '@/lib/ig-account-health';
+} from '@mesaas/report-blocks/health';
 import type { AccountHealth } from '@/services/analytics';
 import { HealthBar } from './HealthBar';
 

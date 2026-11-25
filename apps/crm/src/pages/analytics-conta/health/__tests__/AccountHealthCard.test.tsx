@@ -5,7 +5,7 @@ import {
   type BenchmarkSource,
   type HealthMetricKey,
   type PeerBenchmark,
-} from '@/lib/ig-account-health';
+} from '@mesaas/report-blocks/health';
 import type { AccountHealth } from '@/services/analytics';
 import { AccountHealthCard, highlightLine } from '../AccountHealthCard';
 
