@@ -8,6 +8,7 @@ import {
   listPlans,
   setWorkspacePlan,
   unsetWorkspacePlan,
+  endReverseTrial,
   resendDemoAccess,
   setWorkspaceOverrides,
   clearWorkspaceOverrides,
@@ -30,9 +31,15 @@ import { useIsPhone } from '../hooks/useIsPhone';
 import { WorkspaceDetailPhone } from './workspace-detail/WorkspaceDetailPhone';
 import { WorkspaceDetailDesktop } from './workspace-detail/WorkspaceDetailDesktop';
 import { OverridesSheets } from './workspace-detail/OverridesSheets';
+import { ExtendTrialDialog } from './workspace-detail/ExtendTrialDialog';
+import { isReverseTrial } from '../lib/reverse-trial';
 import type { WorkspaceDetailViewProps } from './workspace-detail/types';
 
 const DISCARD_EDITS_WARNING = 'Descartar as alterações não salvas?';
+const COMP_TRIAL_WARNING =
+  'Este workspace está no teste sem cartão. Mudar o plano encerra o teste agora (encerrado pelo admin) e aplica o plano escolhido como comp. Continuar?';
+const END_TRIAL_WARNING =
+  'Encerrar o teste sem cartão agora? O workspace volta ao Free na hora, sem pausa do Hub. Não dá para reiniciar o teste depois.';
 
 type WorkspaceData = Awaited<ReturnType<typeof getWorkspace>>;
 
@@ -129,6 +136,7 @@ export default function WorkspaceDetailPage() {
   const [noteDraft, setNoteDraft] = useState('');
   const [selectedPlanId, setSelectedPlanId] = useState('');
   const [openPanel, setOpenPanel] = useState<'limits' | 'features' | null>(null);
+  const [extendOpen, setExtendOpen] = useState(false);
 
   useEffect(() => {
     if (data) {
@@ -221,6 +229,19 @@ export default function WorkspaceDetailPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const endTrialMutation = useMutation({
+    mutationFn: () => endReverseTrial(id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'workspaces'] });
+      toast.success('Teste encerrado. Workspace voltou ao Free');
+    },
+    onError: (err: Error) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id] });
+      toast.error(err.message);
+    },
+  });
+
   const resendMutation = useMutation({
     mutationFn: () => resendDemoAccess(id!),
     onSuccess: () => toast.success('Acesso reenviado'),
@@ -278,11 +299,22 @@ export default function WorkspaceDetailPage() {
     plan,
     selectedPlanId,
     onPlanChange: (planId) => {
+      // Confirm before touching the Select: cancelling must leave it on the current plan.
+      if (isReverseTrial(data.workspace.plan_source) && !window.confirm(COMP_TRIAL_WARNING)) {
+        return;
+      }
       setSelectedPlanId(planId);
       setPlanMutation.mutate(planId);
     },
     onUnsetComp: () => unsetMutation.mutate(),
     unsetPending: unsetMutation.isPending,
+    onExtendTrial: () => setExtendOpen(true),
+    onEndTrial: () => {
+      if (!endTrialMutation.isPending && window.confirm(END_TRIAL_WARNING)) {
+        endTrialMutation.mutate();
+      }
+    },
+    endTrialPending: endTrialMutation.isPending,
     onResendAccess: () => resendMutation.mutate(),
     resendPending: resendMutation.isPending,
     notes: {
@@ -347,6 +379,17 @@ export default function WorkspaceDetailPage() {
         onClear={() => clearMutation.mutate()}
         clearPending={clearMutation.isPending}
       />
+      {isReverseTrial(data.workspace.plan_source) &&
+      data.workspace.reverse_trial_started_at &&
+      data.workspace.reverse_trial_ends_at ? (
+        <ExtendTrialDialog
+          workspaceId={id!}
+          startedAt={data.workspace.reverse_trial_started_at}
+          endsAt={data.workspace.reverse_trial_ends_at}
+          open={extendOpen}
+          onOpenChange={setExtendOpen}
+        />
+      ) : null}
     </>
   );
 }

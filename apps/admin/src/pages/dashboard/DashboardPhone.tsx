@@ -10,6 +10,7 @@ import { KpiGrid, KpiTile } from '../../components/shell/KpiTile';
 import { cn } from '../../lib/utils';
 import { RiskCard } from './RiskCard';
 import { ChurnCard } from './ChurnCard';
+import { ReverseTrialFunnelCard } from './ReverseTrialFunnelCard';
 import { activity, trialEndInfo, relativeCreated, type DashboardPhoneProps } from './shared';
 
 function ListSkeleton() {
@@ -40,7 +41,15 @@ const toneClass = {
   muted: 'text-muted-foreground',
 } as const;
 
-export function DashboardPhone({ kpis, risk, churn, mrr, trials, recent }: DashboardPhoneProps) {
+export function DashboardPhone({
+  kpis,
+  risk,
+  churn,
+  funnel,
+  mrr,
+  trials,
+  recent,
+}: DashboardPhoneProps) {
   const [showAllPaying, setShowAllPaying] = useState(false);
   const mrrData = mrr.data;
   const payingRows = mrrData?.workspaces ?? [];
@@ -72,6 +81,8 @@ export function DashboardPhone({ kpis, risk, churn, mrr, trials, recent }: Dashb
       <RiskCard {...risk} phone />
 
       <ChurnCard {...churn} phone />
+
+      <ReverseTrialFunnelCard {...funnel} phone />
 
       {mrr.loading ? (
         <GroupMessage header={payingHeader}>

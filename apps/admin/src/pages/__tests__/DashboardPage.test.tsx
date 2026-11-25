@@ -9,10 +9,12 @@ vi.mock('../../lib/api', () => ({
   getMrr: vi.fn(),
   getTrials: vi.fn(),
   getChurned: vi.fn(),
+  getReverseTrialFunnel: vi.fn(),
 }));
 
 import {
   getChurned,
+  getReverseTrialFunnel,
   getMrr,
   getTrials,
   listWorkspaces,
@@ -104,6 +106,7 @@ beforeEach(() => {
   vi.mocked(getMrr).mockReturnValue(new Promise(() => {}) as never);
   vi.mocked(getTrials).mockReturnValue(new Promise(() => {}) as never);
   vi.mocked(getChurned).mockReturnValue(new Promise(() => {}) as never);
+  vi.mocked(getReverseTrialFunnel).mockReturnValue(new Promise(() => {}) as never);
 });
 
 function renderPage() {
@@ -381,6 +384,47 @@ describe('DashboardPage churn card', () => {
       await card.findByText('Não foi possível carregar os cancelamentos.'),
     ).toBeInTheDocument();
     consoleErrorSpy.mockRestore();
+  });
+});
+
+describe('DashboardPage reverse trial funnel', () => {
+  it('shows the five stages as a share of the trials started', async () => {
+    vi.mocked(getReverseTrialFunnel).mockResolvedValue({
+      started: 20,
+      running: 6,
+      matured_d7: 16,
+      activated_d7: 12,
+      card_added: 4,
+      paid: 2,
+      downgraded: 9,
+      ended_by_admin: 1,
+    });
+    renderPage();
+    const card = within(await screen.findByTestId('reverse-trial-funnel'));
+    expect(await card.findByText('Começaram')).toBeInTheDocument();
+    expect(card.getByText('20 · 100%')).toBeInTheDocument();
+    expect(card.getByText('Ativaram até o 7º dia')).toBeInTheDocument();
+    expect(card.getByText('12 · 60%')).toBeInTheDocument();
+    expect(card.getByText('4 · 20%')).toBeInTheDocument();
+    expect(card.getByText('2 · 10%')).toBeInTheDocument();
+    expect(card.getByText('9 · 45%')).toBeInTheDocument();
+    expect(card.getByText(/6 em andamento/)).toBeInTheDocument();
+  });
+
+  it('says so when no trial started yet', async () => {
+    vi.mocked(getReverseTrialFunnel).mockResolvedValue({
+      started: 0,
+      running: 0,
+      matured_d7: 0,
+      activated_d7: 0,
+      card_added: 0,
+      paid: 0,
+      downgraded: 0,
+      ended_by_admin: 0,
+    });
+    renderPage();
+    const card = within(await screen.findByTestId('reverse-trial-funnel'));
+    expect(await card.findByText('Nenhum teste sem cartão começou ainda.')).toBeInTheDocument();
   });
 });
 

@@ -25,8 +25,12 @@ export interface WorkspaceSummary {
   member_count: number;
   client_count: number;
   plan_name: string | null;
-  /** 'manual' (comp) and 'demo' get a badge in the plan cell. */
+  /** 'manual' (comp), 'demo' and 'trial' (teste sem cartão) get a badge in the plan cell. */
   plan_source: string | null;
+  /** Reverse trial end (admin_list_workspaces); absent on an older payload. */
+  reverse_trial_ends_at?: string | null;
+  /** converted | downgraded | ended_by_admin once the reverse trial ended. */
+  reverse_trial_outcome?: string | null;
   has_overrides: boolean;
   subscription: SubscriptionSummary | null;
 }
@@ -40,6 +44,13 @@ export interface WorkspaceDetail {
     plan_source?: string;
     /** Set when the Admin created the workspace as a demo account. */
     demo_created_at?: string | null;
+    /** Reverse trial (14 dias do Pro sem cartão); absent until platform-admin is redeployed. */
+    reverse_trial_started_at?: string | null;
+    reverse_trial_ends_at?: string | null;
+    reverse_trial_ended_at?: string | null;
+    reverse_trial_outcome?: string | null;
+    reverse_trial_card_added_at?: string | null;
+    reverse_trial_first_paid_at?: string | null;
   };
   affiliate?: { id: string; name: string; code: string } | null;
   owner: MemberInfo | null;
@@ -641,6 +652,39 @@ export function unsetWorkspacePlan(workspace_id: string) {
   return adminApi<{ message: string; plan_source: string }>('unset-workspace-plan', {
     workspace_id,
   });
+}
+
+/** Moves the reverse trial end. Only while plan_source = 'trial'; 409 not_in_trial otherwise. */
+export function extendReverseTrial(workspace_id: string, ends_at: string) {
+  return adminApi<{ message: string; ends_at: string }>('extend-reverse-trial', {
+    workspace_id,
+    ends_at,
+  });
+}
+
+/** Ends the reverse trial now (outcome ended_by_admin, no Hub pause). */
+export function endReverseTrial(workspace_id: string) {
+  return adminApi<{ message: string }>('end-reverse-trial', { workspace_id });
+}
+
+/** Dashboard funnel of the reverse trial, read from the reverse_trial_* columns. */
+export interface ReverseTrialFunnel {
+  started: number;
+  /** Still in the trial right now. */
+  running: number;
+  /** Started at least 7 days ago. */
+  matured_d7: number;
+  /** At least one client and one post within 7 days of the start. */
+  activated_d7: number;
+  card_added: number;
+  /** Paid after the first charge. */
+  paid: number;
+  downgraded: number;
+  ended_by_admin: number;
+}
+
+export function getReverseTrialFunnel() {
+  return adminApi<ReverseTrialFunnel>('get-reverse-trial-funnel');
 }
 
 export function createDemoWorkspace(p: {

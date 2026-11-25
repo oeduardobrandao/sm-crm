@@ -7,6 +7,11 @@ import { FEATURE_FLAG_KEYS, type McpKeyRow, type OAuthGrantRow } from '../../lib
 import { hasSubscription, providerLabel } from '../../lib/subscription';
 import { sanitizeExternalUrl } from '../../lib/security';
 import { getPlanColor } from '../../lib/plan-colors';
+import {
+  isReverseTrial,
+  reverseTrialBadgeLabel,
+  reverseTrialOutcomeLabel,
+} from '../../lib/reverse-trial';
 import { PageHeader } from '../../components/PageHeader';
 import { KpiGrid } from '../../components/shell/KpiTile';
 import { AffiliateRow } from './AffiliateRow';
@@ -48,6 +53,8 @@ export function WorkspaceDetailPhone(props: WorkspaceDetailViewProps) {
   const links = dashboardLinks(data);
   const created = new Date(data.workspace.created_at).toLocaleDateString('pt-BR');
   const planColor = data.plan ? getPlanColor(data.plan.name) : null;
+  const inTrial = isReverseTrial(data.workspace.plan_source);
+  const trialOutcome = reverseTrialOutcomeLabel(data.workspace.reverse_trial_outcome);
 
   return (
     <div className="min-w-0 pb-4">
@@ -75,6 +82,16 @@ export function WorkspaceDetailPhone(props: WorkspaceDetailViewProps) {
             <br />
             {data.owner?.telefone ? `${data.owner.telefone} · ` : ''}criado em {created}
           </p>
+          {inTrial || trialOutcome ? (
+            <p className="mt-1.5 flex flex-wrap gap-1.5">
+              {inTrial && (
+                <Badge variant="success">
+                  {reverseTrialBadgeLabel(data.workspace.reverse_trial_ends_at)}
+                </Badge>
+              )}
+              {trialOutcome && <Badge variant="neutral">{trialOutcome}</Badge>}
+            </p>
+          ) : null}
         </div>
       </div>
 
@@ -97,6 +114,15 @@ export function WorkspaceDetailPhone(props: WorkspaceDetailViewProps) {
             destructive
             disabled={props.unsetPending}
             onClick={props.onUnsetComp}
+          />
+        )}
+        {inTrial && <Cell label="Estender teste" onClick={props.onExtendTrial} />}
+        {inTrial && (
+          <Cell
+            label="Encerrar agora"
+            destructive
+            disabled={props.endTrialPending}
+            onClick={props.onEndTrial}
           />
         )}
         {data.workspace.demo_created_at && (

@@ -6,6 +6,11 @@ import { SegmentedControl } from '@mesaas/ios-kit';
 import { statusMeta, STATUS_BADGE_VARIANT, hasSubscription } from '../../lib/subscription';
 import { sanitizeExternalUrl } from '../../lib/security';
 import { PLAN_TEXT_CLASS, getPlanColor } from '../../lib/plan-colors';
+import {
+  isReverseTrial,
+  reverseTrialBadgeLabel,
+  reverseTrialOutcomeLabel,
+} from '../../lib/reverse-trial';
 import type { McpKeyRow, OAuthGrantRow } from '../../lib/api';
 import { PageHeader } from '../../components/PageHeader';
 import { WorkspaceAvatar } from '../../components/WorkspaceAvatar';
@@ -55,6 +60,7 @@ export function WorkspaceDetailDesktop(props: WorkspaceDetailViewProps) {
   const status = hasSubscription(sub) ? statusMeta(sub.status) : null;
   const overrides = props.resourceOverrideCount + props.featureOverrideCount;
   const planColor = data.plan ? getPlanColor(data.plan.name) : null;
+  const trialOutcome = reverseTrialOutcomeLabel(data.workspace.reverse_trial_outcome);
 
   const actions = (
     <>
@@ -95,6 +101,16 @@ export function WorkspaceDetailDesktop(props: WorkspaceDetailViewProps) {
             ? 'Encerrar demo'
             : 'Remover comp (voltar à cobrança)'}
         </Button>
+      )}
+      {isReverseTrial(data.workspace.plan_source) && (
+        <>
+          <Button variant="secondary" onClick={props.onExtendTrial}>
+            Estender teste
+          </Button>
+          <Button variant="secondary" onClick={props.onEndTrial} disabled={props.endTrialPending}>
+            Encerrar agora
+          </Button>
+        </>
       )}
       {data.workspace.demo_created_at && (
         <Button variant="secondary" onClick={props.onResendAccess} disabled={props.resendPending}>
@@ -148,6 +164,12 @@ export function WorkspaceDetailDesktop(props: WorkspaceDetailViewProps) {
             {status && <Badge variant={STATUS_BADGE_VARIANT[status.tone]}>{status.label}</Badge>}
             {data.workspace.plan_source === 'manual' && <Badge variant="info">Comp</Badge>}
             {data.workspace.plan_source === 'demo' && <Badge variant="primary">Demo</Badge>}
+            {isReverseTrial(data.workspace.plan_source) && (
+              <Badge variant="success">
+                {reverseTrialBadgeLabel(data.workspace.reverse_trial_ends_at)}
+              </Badge>
+            )}
+            {trialOutcome && <Badge variant="neutral">{trialOutcome}</Badge>}
             {overrides > 0 && <Badge variant="primary">Overrides</Badge>}
           </div>
           <SegmentedControl
