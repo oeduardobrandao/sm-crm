@@ -37,6 +37,9 @@ export interface FormState {
   // so the field doesn't reformat on every keystroke.
   price_brl_input: string;
   price_brl_annual_input: string;
+  // Same treatment for the USD catalog prices (dollars while editing, cents on submit).
+  price_usd_input: string;
+  price_usd_annual_input: string;
   stripe_product_id: string;
   stripe_price_id: string;
   stripe_price_id_annual: string;
@@ -57,6 +60,8 @@ export function emptyFormState(): FormState {
     sort_order: null,
     price_brl_input: '',
     price_brl_annual_input: '',
+    price_usd_input: '',
+    price_usd_annual_input: '',
     stripe_product_id: '',
     stripe_price_id: '',
     stripe_price_id_annual: '',
@@ -83,6 +88,8 @@ export function planToForm(plan: Plan): FormState {
     sort_order: plan.sort_order ?? null,
     price_brl_input: centavosToReais(plan.price_brl),
     price_brl_annual_input: centavosToReais(plan.price_brl_annual),
+    price_usd_input: centavosToReais(plan.price_usd),
+    price_usd_annual_input: centavosToReais(plan.price_usd_annual),
     stripe_product_id: plan.stripe_product_id ?? '',
     stripe_price_id: plan.stripe_price_id ?? '',
     stripe_price_id_annual: plan.stripe_price_id_annual ?? '',
@@ -99,6 +106,8 @@ export function formToPayload(form: FormState): Record<string, unknown> {
     is_active: form.is_active,
     price_brl: reaisToCentavos(form.price_brl_input),
     price_brl_annual: reaisToCentavos(form.price_brl_annual_input),
+    price_usd: reaisToCentavos(form.price_usd_input),
+    price_usd_annual: reaisToCentavos(form.price_usd_annual_input),
     stripe_product_id: form.stripe_product_id || null,
     stripe_price_id: form.stripe_price_id || null,
     stripe_price_id_annual: form.stripe_price_id_annual || null,

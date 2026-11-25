@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Cell, GroupedList, SegmentedControl } from '@mesaas/ios-kit';
 import type { ChurnedSummary, EndedKind } from '../../lib/api';
-import { formatMoney } from '../../lib/subscription';
+import { formatMoney, usdSegment } from '../../lib/subscription';
 import { workspaceDetailPath } from '../../lib/routes';
 import { cn } from '../../lib/utils';
 import { Badge } from '../../components/ui/badge';
@@ -67,7 +67,7 @@ export function ChurnCard({ data, loading, error, retry, now, phone, className }
 
   const title = 'Cancelados';
   const subtitle = data
-    ? `${data.churn_count} ${data.churn_count === 1 ? 'cancelou' : 'cancelaram'} · ${formatMoney(data.lost_mrr_cents, data.currency)}/mês perdidos · ${data.trial_expired_count} ${data.trial_expired_count === 1 ? 'teste encerrado' : 'testes encerrados'} · ${data.window_days} dias`
+    ? `${data.churn_count} ${data.churn_count === 1 ? 'cancelou' : 'cancelaram'} · ${formatMoney(data.lost_mrr_cents, data.currency)}${usdSegment(data.usd)}/mês perdidos · ${data.trial_expired_count} ${data.trial_expired_count === 1 ? 'teste encerrado' : 'testes encerrados'} · ${data.window_days} dias`
     : null;
   const emptyText =
     view === 'churn'
@@ -96,7 +96,7 @@ export function ChurnCard({ data, loading, error, retry, now, phone, className }
 
   const meta = (r: (typeof all)[number]) =>
     r.kind === 'churn' && r.monthly_cents != null
-      ? `${r.plan_name ?? 'Sem plano'} · ${formatMoney(r.monthly_cents, data?.currency)}/mês`
+      ? `${r.plan_name ?? 'Sem plano'} · ${formatMoney(r.monthly_cents, r.currency ?? data?.currency)}/mês`
       : (r.plan_name ?? 'Sem plano');
 
   if (phone) {

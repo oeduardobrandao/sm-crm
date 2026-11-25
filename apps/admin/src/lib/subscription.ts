@@ -193,6 +193,24 @@ export function intervalSuffix(interval: string | null | undefined): string {
   return INTERVAL_SUFFIX[interval] ?? '';
 }
 
+/** " · US$ 49,00" for a USD headline segment, or '' when there is no USD money. */
+export function usdSegment(
+  usd:
+    | {
+        mrr_cents?: number;
+        paying_count?: number;
+        trial_mrr_cents?: number;
+        trial_count?: number;
+        lost_mrr_cents?: number;
+      }
+    | undefined,
+): string {
+  const cents = usd?.mrr_cents ?? usd?.trial_mrr_cents ?? usd?.lost_mrr_cents ?? 0;
+  if (cents <= 0) return '';
+  const count = usd?.paying_count ?? usd?.trial_count;
+  return ` · ${count != null ? `${count} em USD · ` : ''}${formatMoney(cents, 'usd')}`;
+}
+
 /** centavos → "R$ 1.234,56". Returns "—" for null. currency defaults to BRL. */
 export function formatMoney(cents: number | null | undefined, currency?: string | null): string {
   if (cents == null) return '—';

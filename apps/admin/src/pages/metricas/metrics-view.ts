@@ -130,8 +130,21 @@ export function movementNet(m: MetricsMonth): number {
 }
 
 /** "+R$ 760,00" for gains; losses and zero come out of formatMoney as is. */
-export function signedMoney(cents: number): string {
-  return `${cents > 0 ? '+' : ''}${formatMoney(cents, 'brl')}`;
+export function signedMoney(cents: number, currency = 'brl'): string {
+  return `${cents > 0 ? '+' : ''}${formatMoney(cents, currency)}`;
+}
+
+export type MetricsCurrency = 'brl' | 'usd';
+
+/** USD history is worth a block only when some month has a non-zero figure. */
+export function hasUsdHistory(months: MetricsMonth[] | undefined): boolean {
+  return (months ?? []).some(
+    (m) =>
+      !m.missing &&
+      ((m.mrr_cents ?? 0) !== 0 ||
+        (m.paying_count ?? 0) !== 0 ||
+        (m.movements != null && MOVEMENT_KEYS.some((k) => m.movements![k] !== 0))),
+  );
 }
 
 export type RevenueMode = 'provider' | 'plan';

@@ -137,6 +137,22 @@ export function PlanFormFields({
                 className={FIELD}
               />
             </Field>
+            <Field label="Preço mensal (USD)">
+              <Input
+                {...text('price_usd_input')}
+                inputMode="decimal"
+                placeholder="29.00"
+                className={FIELD}
+              />
+            </Field>
+            <Field label="Preço anual (USD)">
+              <Input
+                {...text('price_usd_annual_input')}
+                inputMode="decimal"
+                placeholder="290.00"
+                className={FIELD}
+              />
+            </Field>
           </Grid>
         </Section>
 
@@ -249,6 +265,14 @@ export function PlanFormFields({
             inputMode: 'decimal',
             placeholder: '94.90',
           }}
+        />
+        <FormRow
+          label="Preço mensal (USD)"
+          input={{ ...text('price_usd_input'), inputMode: 'decimal', placeholder: '29.00' }}
+        />
+        <FormRow
+          label="Preço anual (USD)"
+          input={{ ...text('price_usd_annual_input'), inputMode: 'decimal', placeholder: '290.00' }}
         />
         <FormRow
           label="Ordem"

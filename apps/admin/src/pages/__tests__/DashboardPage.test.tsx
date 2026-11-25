@@ -428,6 +428,59 @@ describe('DashboardPage reverse trial funnel', () => {
   });
 });
 
+describe('DashboardPage USD', () => {
+  const payer = (over: Record<string, unknown>) => ({
+    workspace_id: 'w',
+    name: 'W',
+    plan_name: 'Pro',
+    status: 'active',
+    interval: 'month',
+    discount_label: null,
+    amount_source: 'stripe',
+    owner_name: null,
+    owner_email: null,
+    owner_telefone: null,
+    owner_marketing_opt_in: false,
+    created_at: null,
+    last_activity_at: null,
+    ...over,
+  });
+
+  it('formats each paying row in its own currency and adds a USD segment to the MRR tile', async () => {
+    vi.mocked(getMrr).mockResolvedValue({
+      mrr_cents: 9700,
+      paying_count: 1,
+      currency: 'brl',
+      usd: { mrr_cents: 4900, paying_count: 1 },
+      workspaces: [
+        payer({ workspace_id: 'br', name: 'Brasil Ltda', monthly_cents: 9700, currency: 'brl' }),
+        payer({ workspace_id: 'us', name: 'Acme Inc', monthly_cents: 4900, currency: 'usd' }),
+      ],
+    } as never);
+    renderPage();
+    const us = await screen.findByRole('link', { name: 'Acme Inc' });
+    expect(us.closest('tr')!.textContent).toContain('US$');
+    expect(us.closest('tr')!.textContent).toContain('49,00');
+    const br = screen.getByRole('link', { name: 'Brasil Ltda' });
+    expect(br.closest('tr')!.textContent).toContain('R$');
+    expect(kpiCard('MRR').textContent).toContain('US$');
+    expect(kpiCard('Pagantes').textContent).toContain('1');
+  });
+
+  it('adds no USD segment when there is no USD money', async () => {
+    vi.mocked(getMrr).mockResolvedValue({
+      mrr_cents: 9700,
+      paying_count: 1,
+      currency: 'brl',
+      usd: { mrr_cents: 0, paying_count: 0 },
+      workspaces: [],
+    } as never);
+    renderPage();
+    await waitFor(() => expect(kpiCard('MRR').textContent).toContain('97,00'));
+    expect(kpiCard('MRR').textContent).not.toContain('US$');
+  });
+});
+
 describe('DashboardPage tile links', () => {
   it('links the MRR, Pagantes and MRR projetado tiles to the Métricas MRR section', async () => {
     renderPage();

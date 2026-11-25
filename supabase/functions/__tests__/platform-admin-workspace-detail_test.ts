@@ -312,3 +312,24 @@ Deno.test("catalog fallback: a USD workspace reads the USD price and reports usd
   assertEquals(info.currency, "usd");
   assertEquals(info.amount_source, "catalog");
 });
+
+Deno.test("handleGetWorkspace: selects and returns billing_currency (brl when unset)", async () => {
+  const { handleGetWorkspace } = await import("../platform-admin/workspace-detail.ts");
+  const run = async (billing_currency: unknown) => {
+    const { db, calls } = makeFakeDb({
+      workspaces: [{
+        data: { id: "w1", name: "X", logo_url: null, created_at: "t", plan_id: "pro", plan_source: "stripe", storage_used_bytes: 0, billing_currency },
+        error: null,
+      }],
+      workspace_members: [{ data: [], error: null }],
+      workspace_subscriptions: [{ data: null, error: null }],
+    });
+    const res = await handleGetWorkspace(db as never, { workspace_id: "w1" }, {}, { readOnly: true });
+    const sel = String(calls.find((c) => c.table === "workspaces" && c.method === "select")?.args[0]);
+    return { body: await res.json(), sel };
+  };
+  const usd = await run("usd");
+  assertEquals(usd.body.workspace.billing_currency, "usd");
+  assert(usd.sel.includes("billing_currency"), "billing_currency must be selected");
+  assertEquals((await run(undefined)).body.workspace.billing_currency, "brl");
+});

@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { listWorkspaces, getMrr, getTrials, getChurned, getReverseTrialFunnel } from '../lib/api';
-import { formatMoney } from '../lib/subscription';
+import { formatMoney, usdSegment } from '../lib/subscription';
 import { toCSV, downloadCSV } from '../lib/csv-export';
 import { useIsPhone } from '../hooks/useIsPhone';
 import { metricasPath } from '../lib/routes';
@@ -145,14 +145,16 @@ export default function DashboardPage() {
     {
       label: 'MRR',
       value: kpiMoney(mrrData?.mrr_cents ?? null),
-      sub: mrrData ? `${mrrData.paying_count} pagantes` : undefined,
+      sub: mrrData ? `${mrrData.paying_count} pagantes${usdSegment(mrrData.usd)}` : undefined,
       loading: mrrLoading,
       to: `${metricasPath()}#mrr`,
     },
     {
       label: 'Testes',
       value: kpiMoney(trialMrrCents),
-      sub: trialsData ? `${trialsData.trial_count} em teste` : undefined,
+      sub: trialsData
+        ? `${trialsData.trial_count} em teste${usdSegment(trialsData.usd)}`
+        : undefined,
       loading: trialsLoading,
     },
     {

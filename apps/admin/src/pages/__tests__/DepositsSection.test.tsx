@@ -143,6 +143,33 @@ describe('DepositsSection', () => {
     expect(within(pagarme).getByText('R$ 40,00')).toBeInTheDocument();
   });
 
+  it('has no USD card when stripe_usd is null or absent', async () => {
+    vi.mocked(getDeposits).mockResolvedValue({ ...RESPONSE, stripe_usd: null });
+    renderSection();
+    await screen.findByTestId('deposits-card-stripe');
+    expect(screen.queryByTestId('deposits-card-stripe-usd')).not.toBeInTheDocument();
+  });
+
+  it('shows a separate Stripe (USD) card in dollars and never mixes it into the BRL totals', async () => {
+    vi.mocked(getDeposits).mockResolvedValue({
+      ...RESPONSE,
+      stripe_usd: provider({
+        balance: { available_cents: 4900, pending_cents: 9800, currency: 'usd' },
+        recent: [{ id: 'po_usd', date: '2026-09-23', amount_cents: 2900, status: 'paid' }],
+      }),
+    });
+    renderSection();
+    const card = await screen.findByTestId('deposits-card-stripe-usd');
+    expect(within(card).getByText('Stripe (USD)')).toBeInTheDocument();
+    expect(within(card).getByText('US$ 49,00')).toBeInTheDocument();
+    expect(within(card).getByText('US$ 98,00')).toBeInTheDocument();
+    expect(within(card).getByText('US$ 29,00')).toBeInTheDocument();
+    // The BRL summary strip is untouched.
+    expect(
+      within(screen.getByTestId('deposits-summary')).getByText('R$ 2.935,00'),
+    ).toBeInTheDocument();
+  });
+
   it('a payout row exposes gross and fee through visually hidden text next to the amount', async () => {
     vi.mocked(getDeposits).mockResolvedValue(RESPONSE);
     renderSection();

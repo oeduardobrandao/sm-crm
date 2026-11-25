@@ -9,6 +9,7 @@ import {
   movementSeries,
   prevCalendarMonth,
   signedMoney,
+  type MetricsCurrency,
 } from './metrics-view';
 import { formatMonth } from './deposits-view';
 import { ChurnLineChart, MovementBarChart } from './charts';
@@ -21,19 +22,26 @@ function ChartCard({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function MovementPhone({ months }: { months: MetricsMonth[] }) {
+export function MovementPhone({
+  months,
+  currency = 'brl',
+}: {
+  months: MetricsMonth[];
+  currency?: MetricsCurrency;
+}) {
+  const usdTag = currency === 'usd' ? ' (USD)' : '';
   const rows = useMemo(() => [...movementSeries(months).months].reverse(), [months]);
   return (
     <div className="phone-kit">
-      <h2 className="phone-group__header">Movimento do MRR</h2>
+      <h2 className="phone-group__header">{`Movimento do MRR${usdTag}`}</h2>
       <ChartCard>
-        <MovementBarChart months={months} compact />
+        <MovementBarChart months={months} currency={currency} compact />
       </ChartCard>
-      <h2 className="phone-group__header">Churn</h2>
+      <h2 className="phone-group__header">{`Churn${usdTag}`}</h2>
       <ChartCard>
         <ChurnLineChart months={months} compact />
       </ChartCard>
-      <GroupedList header="Por mês">
+      <GroupedList header={`Por mês${usdTag}`}>
         {rows.map((m) => {
           const net = movementNet(m);
           const since =
@@ -53,7 +61,7 @@ export function MovementPhone({ months }: { months: MetricsMonth[] }) {
                     net < 0 && 'text-destructive',
                   )}
                 >
-                  {signedMoney(net)}
+                  {signedMoney(net, currency)}
                 </span>
               }
             />

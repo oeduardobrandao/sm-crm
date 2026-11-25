@@ -55,7 +55,7 @@ export async function handleGetWorkspace(
   const { data: ws, error } = await svc
     .from("workspaces")
     .select(
-      "id, name, logo_url, created_at, plan_id, plan_source, demo_created_at, storage_used_bytes, reverse_trial_started_at, reverse_trial_ends_at, reverse_trial_ended_at, reverse_trial_outcome, reverse_trial_card_added_at, reverse_trial_first_paid_at",
+      "id, name, logo_url, created_at, plan_id, plan_source, demo_created_at, storage_used_bytes, reverse_trial_started_at, reverse_trial_ends_at, reverse_trial_ended_at, reverse_trial_outcome, reverse_trial_card_added_at, reverse_trial_first_paid_at, billing_currency",
     )
     .eq("id", workspace_id)
     .single();
@@ -146,6 +146,7 @@ export async function handleGetWorkspace(
   const workspace = {
     ...rest,
     demo_created_at: orNull("demo_created_at"),
+    billing_currency: r.billing_currency === "usd" ? "usd" : "brl",
     reverse_trial_started_at: orNull("reverse_trial_started_at"),
     reverse_trial_ends_at: orNull("reverse_trial_ends_at"),
     reverse_trial_ended_at: orNull("reverse_trial_ended_at"),

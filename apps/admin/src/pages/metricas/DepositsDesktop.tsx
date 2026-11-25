@@ -125,6 +125,18 @@ export function DepositsDesktop({
                 </div>
               ))
             : null}
+        {data?.stripe_usd ? (
+          <div data-testid="deposits-card-stripe-usd">
+            <GlassPanel title="Stripe (USD)" flush>
+              <ProviderBody
+                provider="stripe"
+                deposits={data.stripe_usd}
+                onRetry={refetch}
+                currency="usd"
+              />
+            </GlassPanel>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -202,10 +214,12 @@ function ProviderBody({
   provider,
   deposits,
   onRetry,
+  currency = 'brl',
 }: {
   provider: DepositProvider;
   deposits: ProviderDeposits;
   onRetry: () => void;
+  currency?: string;
 }) {
   if (!deposits.configured) {
     return (
@@ -245,8 +259,8 @@ function ProviderBody({
       ) : null}
       {balance ? (
         <dl className="grid grid-cols-2 gap-3">
-          <Field label="Disponível" value={formatMoney(balance.available_cents)} />
-          <Field label="A compensar" value={formatMoney(balance.pending_cents)} />
+          <Field label="Disponível" value={formatMoney(balance.available_cents, currency)} />
+          <Field label="A compensar" value={formatMoney(balance.pending_cents, currency)} />
         </dl>
       ) : null}
 
@@ -257,7 +271,7 @@ function ProviderBody({
           <ul className="divide-y divide-border">
             {upcoming.next30.map((row) => (
               // date is unique per kind after groupByDay on both sources
-              <DayRowItem key={`${row.kind}-${row.date}`} row={row} />
+              <DayRowItem key={`${row.kind}-${row.date}`} row={row} currency={currency} />
             ))}
           </ul>
         )}
@@ -267,7 +281,7 @@ function ProviderBody({
         <Block title="Meses seguintes">
           <ul className="divide-y divide-border">
             {upcoming.byMonth.map((m) => (
-              <MonthRowItem key={m.month} row={m} />
+              <MonthRowItem key={m.month} row={m} currency={currency} />
             ))}
           </ul>
         </Block>
@@ -287,7 +301,9 @@ function ProviderBody({
                     <Badge variant={badge.variant} size="sm">
                       {badge.label}
                     </Badge>
-                    <span className="font-medium tabular-nums">{formatMoney(t.amount_cents)}</span>
+                    <span className="font-medium tabular-nums">
+                      {formatMoney(t.amount_cents, currency)}
+                    </span>
                   </span>
                 </li>
               );
@@ -308,7 +324,9 @@ function ProviderBody({
                     <Badge variant={badge.variant} size="sm">
                       {badge.label}
                     </Badge>
-                    <span className="font-medium tabular-nums">{formatMoney(r.amount_cents)}</span>
+                    <span className="font-medium tabular-nums">
+                      {formatMoney(r.amount_cents, currency)}
+                    </span>
                   </span>
                 </li>
               );
@@ -320,7 +338,7 @@ function ProviderBody({
   );
 }
 
-function DayRowItem({ row }: { row: DepositDayRow }) {
+function DayRowItem({ row, currency }: { row: DepositDayRow; currency: string }) {
   return (
     <li className="flex items-center justify-between gap-3 py-2 text-sm">
       <span className="flex flex-col">
@@ -331,12 +349,17 @@ function DayRowItem({ row }: { row: DepositDayRow }) {
             : `${row.count} ${row.count === 1 ? 'item' : 'itens'}`}
         </span>
       </span>
-      <NetAmount net={row.net_cents} gross={row.gross_cents} fee={row.fee_cents} />
+      <NetAmount
+        net={row.net_cents}
+        gross={row.gross_cents}
+        fee={row.fee_cents}
+        currency={currency}
+      />
     </li>
   );
 }
 
-function MonthRowItem({ row }: { row: DepositMonthRow }) {
+function MonthRowItem({ row, currency }: { row: DepositMonthRow; currency: string }) {
   return (
     <li className="flex items-center justify-between gap-3 py-2 text-sm">
       <span className="flex flex-col">
@@ -345,21 +368,36 @@ function MonthRowItem({ row }: { row: DepositMonthRow }) {
           {row.count} {row.count === 1 ? 'item' : 'itens'}
         </span>
       </span>
-      <NetAmount net={row.net_cents} gross={row.gross_cents} fee={row.fee_cents} />
+      <NetAmount
+        net={row.net_cents}
+        gross={row.gross_cents}
+        fee={row.fee_cents}
+        currency={currency}
+      />
     </li>
   );
 }
 
 /** Net in the row; gross and fee behind a tooltip, and in visually hidden text so screen readers
  *  get it too (an aria-label on a plain, non-interactive span is ignored by most screen readers). */
-function NetAmount({ net, gross, fee }: { net: number; gross: number; fee: number }) {
-  const detail = `Bruto ${formatMoney(gross)}, taxas ${formatMoney(fee)}`;
+function NetAmount({
+  net,
+  gross,
+  fee,
+  currency,
+}: {
+  net: number;
+  gross: number;
+  fee: number;
+  currency: string;
+}) {
+  const detail = `Bruto ${formatMoney(gross, currency)}, taxas ${formatMoney(fee, currency)}`;
   return (
     <TooltipProvider delayDuration={200}>
       <Tooltip>
         <TooltipTrigger asChild>
           <span className="cursor-help font-medium tabular-nums">
-            {formatMoney(net)}
+            {formatMoney(net, currency)}
             <span className="sr-only">, {detail}</span>
           </span>
         </TooltipTrigger>

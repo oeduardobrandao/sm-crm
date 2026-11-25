@@ -122,7 +122,7 @@ export function RiskCard({ trials, pending, now, phone = false, className }: Ris
   const trialItems: RiskRow[] = endingSoon.slice(0, MAX_ROWS).map((t) => ({
     key: t.workspace_id,
     name: t.name,
-    meta: `${t.plan_name ?? 'Sem plano'} · ${formatMoney(t.monthly_cents)}/mês · ${describeActivity(t.last_activity_at, t.created_at ?? now.toISOString(), now).label}`,
+    meta: `${t.plan_name ?? 'Sem plano'} · ${formatMoney(t.monthly_cents, t.currency)}/mês · ${describeActivity(t.last_activity_at, t.created_at ?? now.toISOString(), now).label}`,
     right: trialDeadlineLabel(t.trial_ends_at!, now),
     tone: 'warning',
     to: workspaceDetailPath(t.workspace_id),
