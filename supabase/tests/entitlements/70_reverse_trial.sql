@@ -694,7 +694,231 @@ begin;
   end $$;
 rollback;
 
--- @@TASK4@@
+-- ===================== Task 4: RPCs que separam por plano =====================
+-- 4.1 nurture_skips_running_trial, nurture_flags_ex_trial
+begin;
+  select et_grant_hosted_parity();
+  do $$
+  declare f record; r record; n int; v_t timestamptz := '2026-11-10 13:00:00+00';
+  begin
+    select * into f from et_rt_owner();
+    update auth.users set created_at = v_t - interval '4 days' where id = f.user_id;
+    select count(*) into n from get_nurture_candidates(v_t) c where c.workspace_id = f.workspace_id;
+    if n <> 1 then raise exception 'nurture fixture: % rows, expected 1', n; end if;
+    select * into r from get_nurture_candidates(v_t) c where c.workspace_id = f.workspace_id;
+    if r.ex_reverse_trial then raise exception 'nurture: plain free flagged ex trial'; end if;
+
+    update workspaces set plan_id = 'pro', plan_source = 'trial', reverse_trial_plan_id = 'pro',
+                          reverse_trial_started_at = now(), reverse_trial_ends_at = now() + interval '14 days'
+     where id = f.workspace_id;
+    select count(*) into n from get_nurture_candidates(v_t) c where c.workspace_id = f.workspace_id;
+    if n <> 0 then raise exception 'nurture_skips_running_trial: % rows', n; end if;
+
+    perform end_reverse_trial(f.workspace_id);
+    select * into r from get_nurture_candidates(v_t) c where c.workspace_id = f.workspace_id;
+    if r.workspace_id is null or not r.ex_reverse_trial then
+      raise exception 'nurture_flags_ex_trial: %', row_to_json(r);
+    end if;
+  end $$;
+rollback;
+
+-- 4.2 welcome reverse_trial_offer, trial reminder reverse_trial_conversion
+begin;
+  select et_grant_hosted_parity();
+  do $$
+  declare f record; r record;
+  begin
+    select * into f from et_rt_owner();
+    select * into r from get_welcome_email_candidates() c where c.user_id = f.user_id;
+    if r.user_id is null or r.reverse_trial_offer then
+      raise exception 'welcome offer with switch off: %', row_to_json(r);
+    end if;
+    perform et_rt_switch_on();
+    select * into r from get_welcome_email_candidates() c where c.user_id = f.user_id;
+    if not r.reverse_trial_offer then raise exception 'welcome_offer_variant_before_trial_started'; end if;
+    -- trial already started by the first visit: still the 14-day variant
+    update workspaces set plan_id = 'pro', plan_source = 'trial', reverse_trial_plan_id = 'pro',
+                          reverse_trial_started_at = now(), reverse_trial_ends_at = now() + interval '14 days'
+     where id = f.workspace_id;
+    select * into r from get_welcome_email_candidates() c where c.user_id = f.user_id;
+    if not r.reverse_trial_offer then raise exception 'welcome offer after start'; end if;
+
+    insert into workspace_subscriptions (workspace_id, status, stripe_subscription_id, provider,
+                                         current_period_end, plan_id)
+      values (f.workspace_id, 'trialing', 'sub_' || f.workspace_id, 'stripe', now() + interval '5 days', 'pro');
+    select * into r from get_trial_reminder_candidates() c where c.workspace_id = f.workspace_id;
+    if r.workspace_id is null or r.reverse_trial_conversion then
+      raise exception 'trial reminder before conversion: %', row_to_json(r);
+    end if;
+    perform convert_reverse_trial(f.workspace_id, 'pro', 'stripe');
+    select * into r from get_trial_reminder_candidates() c where c.workspace_id = f.workspace_id;
+    if not r.reverse_trial_conversion then raise exception 'trial reminder reverse_trial_conversion'; end if;
+  end $$;
+rollback;
+
+-- 4.3 admin_list_filter_teste_sem_cartao
+begin;
+  do $$
+  declare f record; g record; v jsonb;
+  begin
+    select * into f from et_rt_trial();
+    select * into g from et_rt_owner();
+    update workspaces set name = 'ET rt list A' where id = f.workspace_id;
+    update workspaces set name = 'ET rt list B' where id = g.workspace_id;
+    execute 'set local role service_role';
+    v := admin_list_workspaces('ET rt list', null, 0, 50, null, 'teste_sem_cartao');
+    execute 'reset role';
+    if (v ->> 'total')::int <> 1 or (v -> 'workspaces' -> 0 ->> 'id')::uuid <> f.workspace_id then
+      raise exception 'admin_list_filter_teste_sem_cartao: %', v;
+    end if;
+    if (v -> 'workspaces' -> 0 ->> 'reverse_trial_ends_at')::timestamptz <> now() + interval '13 days'
+       or not (v -> 'workspaces' -> 0) ? 'reverse_trial_outcome' then
+      raise exception 'admin_list keys: %', v -> 'workspaces' -> 0;
+    end if;
+    execute 'set local role service_role';
+    v := admin_list_workspaces('ET rt list', null, 0, 50, null, 'teste_sem_cartao,sem_assinatura');
+    execute 'reset role';
+    if (v ->> 'total')::int <> 2 then raise exception 'admin_list multi status: %', v ->> 'total'; end if;
+  end $$;
+rollback;
+
+-- 4.4 Loops and Crisp segment running trials on their own
+begin;
+  select et_grant_hosted_parity();
+  do $$
+  declare f record; r record;
+  begin
+    select * into f from et_rt_trial();
+    update profiles set marketing_opt_in = true where id = f.user_id;
+    select * into r from get_loops_trait_candidates() c where c.user_id = f.user_id;
+    if not r.any_reverse_trial or r.any_free or r.reverse_trial_ends_at <> now() + interval '13 days' then
+      raise exception 'loops traits: %', row_to_json(r);
+    end if;
+    select * into r from get_crisp_sync_candidates() c where c.user_id = f.user_id;
+    if not ('teste_sem_cartao' = any(r.segments)) or 'pagante' = any(r.segments)
+       or 'trial' = any(r.segments) or 'free' = any(r.segments)
+       or r.reverse_trial_ends_at <> to_char((now() + interval '13 days') at time zone 'America/Sao_Paulo', 'YYYY-MM-DD') then
+      raise exception 'crisp segments: %', row_to_json(r);
+    end if;
+    perform end_reverse_trial(f.workspace_id);
+    select * into r from get_crisp_sync_candidates() c where c.user_id = f.user_id;
+    if 'teste_sem_cartao' = any(r.segments) or not ('free' = any(r.segments)) or r.reverse_trial_ends_at is not null then
+      raise exception 'crisp segments after downgrade: %', row_to_json(r);
+    end if;
+  end $$;
+rollback;
+
+-- 4.5 reverse_trial_ending + ledger by ref_at
+begin;
+  do $$
+  declare f record; r record; n int;
+  begin
+    select * into f from et_rt_trial('12 days', '2 days');
+    select * into r from get_reverse_trial_email_candidates() c where c.workspace_id = f.workspace_id;
+    if r.email_type <> 'reverse_trial_ending' or r.ref_at <> now() + interval '2 days'
+       or r.user_id <> f.user_id or r.plan_name <> 'Pro'
+       or r.price_cents <> (select price_brl from plans where id = 'pro')
+       or r.attempts <> 0 or r.hub_pause_at is not null or r.email <> f.user_id || '@et.test' then
+      raise exception 'ending: %', row_to_json(r);
+    end if;
+    update workspaces set reverse_trial_ends_at = now() + interval '4 days' where id = f.workspace_id;
+    select count(*) into n from get_reverse_trial_email_candidates() c where c.workspace_id = f.workspace_id;
+    if n <> 0 then raise exception 'ending: candidate 4 days before the end'; end if;
+    update workspaces set reverse_trial_ends_at = now() + interval '2 days' where id = f.workspace_id;
+    insert into lifecycle_emails (email_type, workspace_id, sent_at, delivered_at, attempts, ref_at)
+      values ('reverse_trial_ending', f.workspace_id, now(), now(), 1, now() + interval '2 days');
+    select count(*) into n from get_reverse_trial_email_candidates() c where c.workspace_id = f.workspace_id;
+    if n <> 0 then raise exception 'ending: delivered row not skipped'; end if;
+    update workspaces set reverse_trial_ends_at = now() + interval '3 days' where id = f.workspace_id;
+    select * into r from get_reverse_trial_email_candidates() c where c.workspace_id = f.workspace_id;
+    if r.email_type is distinct from 'reverse_trial_ending' or r.attempts <> 0 then
+      raise exception 'ending: moved ref_at not a candidate again: %', row_to_json(r);
+    end if;
+  end $$;
+rollback;
+
+-- 4.6 reverse_trial_ended (states the pause date), skip_ended_email_after_late_convert
+begin;
+  do $$
+  declare f record; r record; n int;
+  begin
+    select * into f from et_rt_trial('14 days', '-1 minute');
+    insert into checkout_attempts (workspace_id, stripe_session_id, plan_id, created_at)
+      values (f.workspace_id, 'cs_' || f.workspace_id, 'pro', now() - interval '1 hour');
+    perform end_reverse_trial(f.workspace_id);
+    select * into r from get_reverse_trial_email_candidates() c where c.workspace_id = f.workspace_id;
+    if r.email_type is distinct from 'reverse_trial_ended' or r.ref_at <> now()
+       or r.ended_at <> now() or r.hub_pause_at <> now() + interval '7 days' then
+      raise exception 'ended: %', row_to_json(r);
+    end if;
+    perform convert_reverse_trial(f.workspace_id, 'pro', 'stripe');
+    select count(*) into n from get_reverse_trial_email_candidates() c where c.workspace_id = f.workspace_id;
+    if n <> 0 then raise exception 'skip_ended_email_after_late_convert: % rows', n; end if;
+  end $$;
+rollback;
+
+-- 4.7 hub_pausing_only_with_tokens, ended email stops at the pause
+begin;
+  select et_grant_hosted_parity();
+  do $$
+  declare f record; r record; n int; v_cli bigint;
+  begin
+    select * into f from et_rt_trial('14 days', '-1 minute');
+    perform end_reverse_trial(f.workspace_id);
+    insert into lifecycle_emails (email_type, workspace_id, sent_at, delivered_at, attempts, ref_at)
+      select 'reverse_trial_ended', f.workspace_id, now(), now(), 1, reverse_trial_ended_at
+        from workspaces where id = f.workspace_id;
+    update workspaces set reverse_trial_ended_at = now() - interval '6 days 2 hours' where id = f.workspace_id;
+    -- no Hub link: nothing (ended row's ref_at moved with ended_at, so the ended email is due
+    -- again in this artificial setup; only hub_pausing is asserted)
+    select count(*) into n from get_reverse_trial_email_candidates() c
+     where c.workspace_id = f.workspace_id and c.email_type = 'reverse_trial_hub_pausing';
+    if n <> 0 then raise exception 'hub_pausing_only_with_tokens: sent without tokens'; end if;
+
+    update workspaces set plan_id = 'pro' where id = f.workspace_id;
+    insert into clientes (user_id, conta_id, nome, sigla, cor)
+      values (f.user_id, f.workspace_id, 'Cliente', 'C', '#000') returning id into v_cli;
+    insert into client_hub_tokens (cliente_id, conta_id) values (v_cli, f.workspace_id);
+    update workspaces set plan_id = 'free' where id = f.workspace_id;
+    select * into r from get_reverse_trial_email_candidates() c
+     where c.workspace_id = f.workspace_id and c.email_type = 'reverse_trial_hub_pausing';
+    if r.workspace_id is null or r.ref_at <> now() - interval '6 days 2 hours' + interval '7 days' then
+      raise exception 'hub_pausing: %', row_to_json(r);
+    end if;
+    -- inactive token: nothing
+    update client_hub_tokens set is_active = false where conta_id = f.workspace_id;
+    select count(*) into n from get_reverse_trial_email_candidates() c
+     where c.workspace_id = f.workspace_id and c.email_type = 'reverse_trial_hub_pausing';
+    if n <> 0 then raise exception 'hub_pausing: inactive token counted'; end if;
+
+    -- after the pause: neither ended nor hub_pausing
+    update client_hub_tokens set is_active = true where conta_id = f.workspace_id;
+    update workspaces set reverse_trial_ended_at = now() - interval '7 days' where id = f.workspace_id;
+    select count(*) into n from get_reverse_trial_email_candidates() c where c.workspace_id = f.workspace_id;
+    if n <> 0 then raise exception 'emails after the pause: % rows', n; end if;
+  end $$;
+rollback;
+
+-- 4.8 grants of the redefined and new service-role RPCs
+begin;
+  do $$
+  declare fn text;
+  begin
+    foreach fn in array array[
+      'get_nurture_candidates(timestamptz)', 'get_welcome_email_candidates()',
+      'get_trial_reminder_candidates()', 'get_loops_trait_candidates()',
+      'get_crisp_sync_candidates()', 'get_reverse_trial_email_candidates(timestamptz)',
+      'admin_list_workspaces(text,text,int,int,timestamptz,text,boolean,text,timestamptz,text,text)'
+    ] loop
+      if has_function_privilege('authenticated', 'public.' || fn, 'EXECUTE')
+         or has_function_privilege('anon', 'public.' || fn, 'EXECUTE')
+         or not has_function_privilege('service_role', 'public.' || fn, 'EXECUTE') then
+        raise exception 'grants: % has wrong EXECUTE grants', fn;
+      end if;
+    end loop;
+  end $$;
+rollback;
+
 
 drop function if exists et_rt_owner();
 drop function if exists et_rt_switch_on(timestamptz);

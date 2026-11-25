@@ -48,6 +48,11 @@ begin
   assert (v_result ->> 'total')::int = 2,
     format('omitting p_as_of must see both workspaces, got total=%s', v_result ->> 'total');
 
+  -- v10 (teste reverso): every row carries reverse_trial_ends_at and reverse_trial_outcome.
+  assert ((v_result -> 'workspaces') -> 0) ? 'reverse_trial_ends_at'
+     and ((v_result -> 'workspaces') -> 0) ? 'reverse_trial_outcome',
+    'workspace rows must carry reverse_trial_ends_at and reverse_trial_outcome';
+
   raise notice 'PASS 69_admin_list_workspaces_snapshot';
 end $$;
 rollback;

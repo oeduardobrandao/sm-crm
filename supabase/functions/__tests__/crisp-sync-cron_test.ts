@@ -508,3 +508,12 @@ Deno.test("an RPC error is reported and does not throw", async () => {
   assertEquals(result.failed, 1);
   assertEquals(calls.reported.length, 1);
 });
+
+Deno.test("reverse trial: own managed segment and end date in data", async () => {
+  const { buildData, MANAGED_SEGMENTS } = await import("../crisp-sync-cron/handler.ts");
+  assert(MANAGED_SEGMENTS.includes("teste_sem_cartao"));
+  assertEquals(mergeSegments(["teste_sem_cartao", "vip"], ["owner"]), ["vip", "owner"]);
+  const data = buildData({ ...CANDIDATE, reverse_trial_ends_at: "2026-12-08" }, null);
+  assertEquals(data.teste_sem_cartao_ate, "2026-12-08");
+  assertEquals(buildData(CANDIDATE, null).teste_sem_cartao_ate, "");
+});

@@ -87,6 +87,9 @@ interface TraitRow {
   days_since_signup: number;
   workspace_count: number;
   any_free: boolean;
+  /** Dono de algum workspace em teste reverso (Pro sem cartão) em andamento. */
+  any_reverse_trial?: boolean;
+  reverse_trial_ends_at?: string | null;
 }
 
 interface DeletionRow {
@@ -285,6 +288,9 @@ export async function runLoopsSyncCron(
             daysSinceSignup: c.days_since_signup,
             workspaceCount: c.workspace_count,
             anyFree: c.any_free,
+            // Segmento próprio: um teste reverso não é cliente pagante do Pro.
+            anyReverseTrial: c.any_reverse_trial ?? false,
+            reverseTrialEndsAt: c.reverse_trial_ends_at ? c.reverse_trial_ends_at.slice(0, 10) : "",
           },
         });
         traitsSynced++;
