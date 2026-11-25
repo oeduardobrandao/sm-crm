@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../../lib/supabase');
 
 import * as supabaseModule from '../../lib/supabase';
+import { buildRateDistributions } from '../../lib/ig-rates';
 import { getAccountHealth, getPostAnalyticsById } from '../analytics';
 
 type Resp = { data?: unknown; error?: unknown };
@@ -140,6 +141,41 @@ describe('getPostAnalyticsById', () => {
     expect(post!.views).toBe(200);
     expect(post!.ig_score).toBeNull();
     expect(post!.tags).toEqual([{ id: 't1', tag_name: 'x', color: '#fff' }]);
+  });
+
+  it('computes the IG Score when given the client distributions', async () => {
+    mocked.__queueSupabaseResult('instagram_accounts', 'select', {
+      data: { id: 1, client_id: 7 },
+      error: null,
+    });
+    const row = {
+      id: 'p1',
+      media_type: 'REEL',
+      reach: 100,
+      impressions: 200,
+      likes: 8,
+      comments: 1,
+      saved: 1,
+      shares: 2,
+      unavailable_metrics: [],
+    };
+    mocked.__queueSupabaseResult('instagram_posts', 'select', { data: row, error: null });
+    mocked.__queueSupabaseResult('instagram_post_tag_assignments', 'select', {
+      data: [],
+      error: null,
+    });
+    const peers = Array.from({ length: 8 }, (_, i) => ({
+      ...row,
+      id: `peer-${i}`,
+      likes: 2 + i,
+      comments: i % 3,
+      saved: i % 4,
+      shares: i % 5,
+    }));
+
+    const post = await getPostAnalyticsById(7, 'p1', buildRateDistributions(peers));
+    expect(post).not.toBeNull();
+    expect(post!.ig_score).not.toBeNull();
   });
 
   it('returns null when the post is not found', async () => {

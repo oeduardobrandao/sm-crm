@@ -977,8 +977,9 @@ function AnalyticsContent({
     staleTime: 3_600_000,
     retry: false,
   });
-  // Non-critical: a failed read hides the card and leaves the rest of the page alone.
-  const health = healthQuery.error ? null : healthQuery.data;
+  // Non-critical: a failed first read hides the card and leaves the rest of the page alone;
+  // a failed background refetch keeps the card already shown.
+  const health = healthQuery.data ?? (healthQuery.error ? null : undefined);
   const postsKey = [
     'analytics-posts',
     clientId,
@@ -1047,8 +1048,12 @@ function AnalyticsContent({
       return;
     }
     try {
-      const fetched = await getPostAnalyticsById(clientId, postId);
-      if (request !== openRequestRef.current || !fetched) return;
+      const fetched = await getPostAnalyticsById(clientId, postId, baselineQuery.data?.dists);
+      if (request !== openRequestRef.current) return;
+      if (!fetched) {
+        toast.error('Não foi possível abrir o post.');
+        return;
+      }
       openerRef.current = opener;
       setFetchedPostId(fetched.id);
       setHeldPost(fetched);

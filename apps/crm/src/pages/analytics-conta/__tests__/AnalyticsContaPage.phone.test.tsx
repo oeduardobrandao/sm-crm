@@ -334,6 +334,12 @@ describe('AnalyticsContaPage (phone)', () => {
     vi.mocked(getAccountHealth).mockResolvedValue({
       bestPost: { id: 'post-old', ratio: 1.4 },
     } as never);
+    const dists = { overall: {}, byFormat: {} };
+    vi.mocked(getClientRateBaseline).mockResolvedValue({
+      sampleSize: 0,
+      dists,
+      baseline: { sample_size: 0 },
+    } as never);
     vi.mocked(getPostAnalyticsById).mockResolvedValue(
       post({ id: 'post-old', instagram_post_id: 'ig-old', caption: 'Post antigo do mês passado' }),
     );
@@ -342,14 +348,15 @@ describe('AnalyticsContaPage (phone)', () => {
     await screen.findByRole('list', { name: 'Performance de conteúdo' });
     fireEvent.click(await screen.findByRole('button', { name: 'Ver o post' }));
     const sheet = await screen.findByRole('dialog', { name: 'Métricas do post' });
-    expect(getPostAnalyticsById).toHaveBeenCalledWith(42, 'post-old');
+    // The client's distributions go along, so the post gets its IG Score.
+    expect(getPostAnalyticsById).toHaveBeenCalledWith(42, 'post-old', dists);
     expect(within(sheet).getByText('Post antigo do mês passado')).toBeInTheDocument();
 
     fireEvent.click(within(sheet).getByRole('button', { name: 'Fechar' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
-  it('"Ver o post" opens nothing when the post no longer exists', async () => {
+  it('"Ver o post" shows a toast when the post no longer exists', async () => {
     vi.mocked(getAccountHealth).mockResolvedValue({
       bestPost: { id: 'post-gone', ratio: 1.4 },
     } as never);
@@ -357,10 +364,74 @@ describe('AnalyticsContaPage (phone)', () => {
     await ready();
     await screen.findByRole('list', { name: 'Performance de conteúdo' });
     fireEvent.click(await screen.findByRole('button', { name: 'Ver o post' }));
-    await waitFor(() => expect(getPostAnalyticsById).toHaveBeenCalledWith(42, 'post-gone'));
-    await act(async () => {});
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Não foi possível abrir o post.'));
+    expect(getPostAnalyticsById).toHaveBeenCalledWith(42, 'post-gone', undefined);
     expect(screen.queryByRole('dialog', { name: 'Métricas do post' })).toBeNull();
-    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('a tag toggle refreshes a post opened by id', async () => {
+    vi.mocked(getAccountHealth).mockResolvedValue({
+      bestPost: { id: 'post-old', ratio: 1.4 },
+    } as never);
+    vi.mocked(assignTagToPost).mockResolvedValue(undefined as never);
+    vi.mocked(getPostAnalyticsById)
+      .mockResolvedValueOnce(post({ id: 'post-old', caption: 'Post antigo', tags: [] }))
+      .mockResolvedValueOnce(post({ id: 'post-old', caption: 'Post antigo', tags: [TAG] }));
+    renderPage();
+    await ready();
+    await screen.findByRole('list', { name: 'Performance de conteúdo' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver o post' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Métricas do post' });
+    const tag = within(sheet).getByRole('button', { name: 'Educativo' });
+    expect(tag).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(tag);
+    await waitFor(() => expect(assignTagToPost).toHaveBeenCalledWith('post-old', 9));
+    await waitFor(() => expect(getPostAnalyticsById).toHaveBeenCalledTimes(2));
+    expect(getPostAnalyticsById).toHaveBeenLastCalledWith(42, 'post-old', undefined);
+    await waitFor(() =>
+      expect(within(sheet).getByRole('button', { name: 'Educativo' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      ),
+    );
+  });
+
+  it('a tag-toggle refresh that lands after the post was reopened is ignored', async () => {
+    vi.mocked(getAccountHealth).mockResolvedValue({
+      bestPost: { id: 'post-old', ratio: 1.4 },
+    } as never);
+    vi.mocked(assignTagToPost).mockResolvedValue(undefined as never);
+    let resolveRefresh: (value: unknown) => void = () => {};
+    vi.mocked(getPostAnalyticsById)
+      .mockResolvedValueOnce(post({ id: 'post-old', caption: 'Post antigo', tags: [] }))
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveRefresh = resolve;
+        }) as never,
+      )
+      .mockResolvedValueOnce(post({ id: 'post-old', caption: 'Post antigo', tags: [] }));
+    renderPage();
+    await ready();
+    await screen.findByRole('list', { name: 'Performance de conteúdo' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver o post' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Métricas do post' });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Educativo' }));
+    await waitFor(() => expect(getPostAnalyticsById).toHaveBeenCalledTimes(2));
+
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Fechar' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    // Reopened (a fresh by-id fetch) before the stale refresh lands: it must not win.
+    fireEvent.click(screen.getByRole('button', { name: 'Ver o post' }));
+    const reopened = await screen.findByRole('dialog', { name: 'Métricas do post' });
+    expect(getPostAnalyticsById).toHaveBeenCalledTimes(3);
+    await act(async () => {
+      resolveRefresh(post({ id: 'post-old', caption: 'Post antigo', tags: [TAG] }));
+    });
+    expect(within(reopened).getByRole('button', { name: 'Educativo' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
   });
 
   it('"Ver o post" shows a toast when fetching the post fails', async () => {

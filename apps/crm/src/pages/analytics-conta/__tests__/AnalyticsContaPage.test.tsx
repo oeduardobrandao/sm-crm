@@ -1385,15 +1385,24 @@ describe('AnalyticsContaPage: Seu Instagram está indo bem?', () => {
 
   it('a failed health query hides the card and leaves the page intact', () => {
     seedCommonAnalyticsData();
-    queryState['ig-account-health'] = {
-      data: healthWithBest('post-1'),
-      error: new Error('rpc failed'),
-    };
+    queryState['ig-account-health'] = { data: undefined, error: new Error('rpc failed') };
     const { container } = render(<AnalyticsContaPage />);
 
     expect(screen.queryByRole('region', { name: HEALTH_NAME })).toBeNull();
     expect(container.querySelector('.kpi-card, .phone-stat-tile')).not.toBeNull();
     expect(screen.getByRole('region', { name: 'Melhores Posts' })).toBeInTheDocument();
+  });
+
+  it('a failed refetch keeps the card already shown', () => {
+    seedCommonAnalyticsData();
+    queryState['ig-account-health'] = {
+      data: healthWithBest('post-1'),
+      error: new Error('rpc failed'),
+    };
+    render(<AnalyticsContaPage />);
+
+    expect(screen.getByRole('region', { name: HEALTH_NAME })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ver o post' })).toBeInTheDocument();
   });
 
   it('"Ver o post" opens a post already in the list without fetching it', () => {
@@ -1409,6 +1418,10 @@ describe('AnalyticsContaPage: Seu Instagram está indo bem?', () => {
 
   it('"Ver o post" fetches a post outside the list by id and keeps the dialog open', async () => {
     const { posts } = seedCommonAnalyticsData();
+    const dists = { overall: {}, byFormat: {} };
+    queryState['client-rate-baseline'] = {
+      data: { sampleSize: 0, dists, baseline: { sample_size: 0 } },
+    };
     queryState['ig-account-health'] = { data: healthWithBest('post-old') };
     mockedGetPostAnalyticsById.mockResolvedValue({
       ...posts[0],
@@ -1419,7 +1432,8 @@ describe('AnalyticsContaPage: Seu Instagram está indo bem?', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Ver o post' }));
     const dialog = await screen.findByRole('dialog');
-    expect(mockedGetPostAnalyticsById).toHaveBeenCalledWith(42, 'post-old');
+    // The baseline's distributions go along, so the post gets its IG Score.
+    expect(mockedGetPostAnalyticsById).toHaveBeenCalledWith(42, 'post-old', dists);
     expect(within(dialog).getByText('Métricas do post')).toBeInTheDocument();
     expect(within(dialog).getAllByText(/Post antigo fora do período/).length).toBeGreaterThan(0);
 
@@ -1432,16 +1446,43 @@ describe('AnalyticsContaPage: Seu Instagram está indo bem?', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('"Ver o post" does nothing visible when the post no longer exists', async () => {
+  it('"Ver o post" shows a toast when the post no longer exists', async () => {
     seedCommonAnalyticsData();
     queryState['ig-account-health'] = { data: healthWithBest('post-gone') };
+    mockedGetPostAnalyticsById.mockResolvedValue(null);
     render(<AnalyticsContaPage />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Ver o post' }));
-    await waitFor(() => expect(mockedGetPostAnalyticsById).toHaveBeenCalledWith(42, 'post-gone'));
-    await Promise.resolve();
+    await waitFor(() =>
+      expect(toastErrorMock).toHaveBeenCalledWith('Não foi possível abrir o post.'),
+    );
+    expect(mockedGetPostAnalyticsById).toHaveBeenCalledWith(42, 'post-gone', undefined);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('a stale by-id fetch that finds nothing shows no toast', async () => {
+    seedCommonAnalyticsData();
+    queryState['ig-account-health'] = { data: healthWithBest('post-gone') };
+    let resolveFetch: (value: unknown) => void = () => {};
+    mockedGetPostAnalyticsById.mockReturnValue(
+      new Promise((resolve) => {
+        resolveFetch = resolve;
+      }) as never,
+    );
+    render(<AnalyticsContaPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver o post' }));
+    const best = screen.getByRole('region', { name: 'Melhores Posts' });
+    fireEvent.click(
+      within(best).getByRole('button', {
+        name: 'Ver métricas: Post em reels com alta performance',
+      }),
+    );
+    await act(async () => {
+      resolveFetch(null);
+    });
     expect(toastErrorMock).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
   it('"Ver o post" shows a toast when fetching the post fails', async () => {
@@ -1469,7 +1510,7 @@ describe('AnalyticsContaPage: Seu Instagram está indo bem?', () => {
     render(<AnalyticsContaPage />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Ver o post' }));
-    expect(mockedGetPostAnalyticsById).toHaveBeenCalledWith(42, 'post-old');
+    expect(mockedGetPostAnalyticsById).toHaveBeenCalledWith(42, 'post-old', undefined);
 
     // Another post opened while the fetch is pending.
     const best = screen.getByRole('region', { name: 'Melhores Posts' });

@@ -290,12 +290,32 @@ export function ContaPhone(props: ContaPhoneProps) {
     }
     const request = ++openRequestRef.current;
     try {
-      const fetched = await getPostAnalyticsById(clientId, postId);
-      if (request !== openRequestRef.current || !fetched) return;
+      const fetched = await getPostAnalyticsById(clientId, postId, dists);
+      if (request !== openRequestRef.current) return;
+      if (!fetched) {
+        toast.error('Não foi possível abrir o post.');
+        return;
+      }
       setFetchedPost(fetched);
       setSelectedPostId(fetched.id);
     } catch {
       if (request === openRequestRef.current) toast.error('Não foi possível abrir o post.');
+    }
+  };
+
+  // A post fetched by id is not in the list, so the list refetch after a tag toggle does not
+  // reach it: fetch it again, unless the user has moved on meanwhile.
+  const toggleTag = async (post: PostAnalytics, tag: PostTag, assigned: boolean) => {
+    await onToggleTag(post, tag, assigned);
+    if (fetchedPost === null || post.id !== fetchedPost.id || selectedPostId !== post.id) return;
+    if (posts.some((p) => p.id === post.id)) return;
+    const request = openRequestRef.current;
+    try {
+      const refreshed = await getPostAnalyticsById(clientId, post.id, dists);
+      if (request !== openRequestRef.current || !refreshed) return;
+      setFetchedPost(refreshed);
+    } catch {
+      // The toggle itself succeeded; the sheet keeps the previous copy.
     }
   };
 
@@ -669,7 +689,7 @@ export function ContaPhone(props: ContaPhoneProps) {
           if (!open) selectPost(null);
         }}
         tags={tags}
-        onToggleTag={onToggleTag}
+        onToggleTag={toggleTag}
         onNewTag={() => setNewTagOpen(true)}
         dists={dists}
       />

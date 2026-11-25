@@ -876,6 +876,7 @@ export async function getClientRateBaseline(
 export async function getPostAnalyticsById(
   clientId: number,
   postId: string,
+  dists?: RateDistributions,
 ): Promise<PostAnalytics | null> {
   const account = await getAccountByClientId(clientId);
   const { data: post, error } = await supabase
@@ -887,7 +888,7 @@ export async function getPostAnalyticsById(
   if (error) throw error;
   if (!post) return null;
   const tagMap = await loadPostTags([post.id]);
-  return mapPostRow(post, tagMap[post.id] || []);
+  return mapPostRow(post, tagMap[post.id] || [], dists);
 }
 
 export interface AccountHealth {
