@@ -53,12 +53,12 @@ const ratioFormatter = new Intl.NumberFormat('pt-BR', {
   maximumFractionDigits: 1,
 });
 
-function highlightLine(key: HealthMetricKey, v: string, p: string): string {
+export function highlightLine(key: HealthMetricKey, v: string, p: string): string {
   switch (key) {
     case 'engagement_rate':
       return `Seu engajamento é ${v} por post; em contas do seu tamanho é ${p}.`;
     case 'posts_30d':
-      return `Você publicou ${v} posts em 30 dias; contas do seu tamanho publicam ${p}.`;
+      return `Você publicou ${v} ${v === '1' ? 'post' : 'posts'} em 30 dias; contas do seu tamanho publicam ${p}.`;
     case 'reel_views':
       return `Seus reels têm ${v} visualizações; em contas do seu tamanho, ${p}.`;
     case 'reels_share':
@@ -263,7 +263,7 @@ export function AccountHealthCard({
         {sources.has('mercado') && (
           <p className="ig-health-fine">{`†Estimativa de mercado para contas ${bandLabel(band)}, a partir de estudos públicos com métricas parecidas.`}</p>
         )}
-        {best && (
+        {best && best.ratio >= 1 && (
           <p className="ig-health-best">
             {`Seu melhor post dos últimos 30 dias teve ${ratioFormatter.format(best.ratio)}x o resultado normal da sua conta.`}{' '}
             <button

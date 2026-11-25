@@ -7,7 +7,7 @@ import {
   type PeerBenchmark,
 } from '@/lib/ig-account-health';
 import type { AccountHealth } from '@/services/analytics';
-import { AccountHealthCard } from '../AccountHealthCard';
+import { AccountHealthCard, highlightLine } from '../AccountHealthCard';
 
 /**
  * 99 cortes (p1..p99) estritamente crescentes, lineares por trechos, que passam por
@@ -297,6 +297,25 @@ describe('AccountHealthCard', () => {
     renderCard(makeHealth({}, { bestPost: null }));
     expect(screen.queryByText(/melhor post/)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Ver o post' })).not.toBeInTheDocument();
+  });
+
+  it('omits the best post line when the best post is under 1x the normal', () => {
+    renderCard(makeHealth({}, { bestPost: { id: 'post-uuid', ratio: 0.8 } }));
+    expect(screen.queryByText(/melhor post/)).not.toBeInTheDocument();
+  });
+
+  it('shows the best post line at exactly 1x', () => {
+    renderCard(makeHealth({}, { bestPost: { id: 'post-uuid', ratio: 1 } }));
+    expect(screen.getByText(/teve 1,0x o resultado normal/)).toBeInTheDocument();
+  });
+
+  it('uses the singular for one post in the highlight line', () => {
+    expect(highlightLine('posts_30d', '1', '12')).toBe(
+      'Você publicou 1 post em 30 dias; contas do seu tamanho publicam 12.',
+    );
+    expect(highlightLine('posts_30d', '8', '12')).toBe(
+      'Você publicou 8 posts em 30 dias; contas do seu tamanho publicam 12.',
+    );
   });
 
   it('renders a skeleton while loading', () => {

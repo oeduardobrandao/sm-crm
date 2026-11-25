@@ -47,14 +47,10 @@ grant select, insert, update, delete on public.ig_peer_benchmarks_mercado to ser
 -- a cópia para ig_peer_benchmarks roda depois, no passo 5.
 -- -------------------------------------------------------------
 -- ===== SEED DE MERCADO (início) =====
+-- lt1k / engagement_rate fica sem seed de propósito (decisão do usuário, 2026-11-25): a única
+-- fonte (Buffer 0-1K) divide por impressões e conta salvamentos, outra escala que a nossa
+-- (por seguidores). Sem linha, o cartão mostra "Ainda sem referência" até haver amostra Mesaas.
 insert into public.ig_peer_benchmarks_mercado (band, metric, cuts, computed_at, source_note) values
-  -- lt1k / engagement_rate
-  -- fonte: Buffer, What Is A Good Instagram Engagement Rate? (2025), https://buffer.com/resources/instagram-engagement-rate/
-  -- diferença de definição: Buffer: (curtidas+comentários+salvamentos) ÷ impressões, estatística por faixa sem rótulo (tratada como mediana); faixa 0-1K = lt1k
-  -- cortes: mediana 5,2%; sigma 1,379 emprestado do IQFluence 1K-10K (quartis); cortes limitados a 1,0
-  -- escala diferente das linhas 1k_5k em diante: Buffer divide por impressões, o IQFluence por seguidores;
-  -- o salto entre lt1k e 1k_5k vem da troca de fonte, não de uma diferença real entre as faixas
-  ('lt1k', 'engagement_rate', '{0.00210171,0.00306093,0.00388553,0.00464924,0.00537988,0.00609156,0.00679262,0.00748854,0.00818316,0.00887938,0.00957945,0.0102852,0.0109982,0.0117197,0.012451,0.0131931,0.013947,0.0147136,0.015494,0.0162889,0.0170992,0.0179257,0.0187694,0.0196311,0.0205116,0.0214118,0.0223327,0.0232752,0.0242403,0.025229,0.0262422,0.0272811,0.0283469,0.0294406,0.0305636,0.0317172,0.0329026,0.0341214,0.0353751,0.0366652,0.0379935,0.0393617,0.0407717,0.0422256,0.0437255,0.0452737,0.0468725,0.0485247,0.0502328,0.052,0.0538293,0.0557242,0.0576884,0.0597257,0.0618403,0.0640369,0.0663205,0.0686962,0.0711701,0.0737484,0.076438,0.0792464,0.0821819,0.0852535,0.0884711,0.0918458,0.0953897,0.0991162,0.10304,0.107178,0.11155,0.116175,0.121078,0.126285,0.131828,0.137741,0.144064,0.150845,0.158136,0.166003,0.174519,0.183775,0.193877,0.204956,0.217172,0.230723,0.245859,0.262902,0.282271,0.304526,0.330435,0.361085,0.398079,0.443893,0.502613,0.581601,0.695916,0.883391,1.0}'::numeric[], '2026-11-25'::timestamptz, 'Buffer 0-1K: inclui salvamentos e divide por impressões, não por seguidores'),
   -- lt1k / posts_30d
   -- fonte: Later, How Often to Post on Instagram (dados jan-out/2023, publicado mar/2025), https://later.com/blog/how-often-post-to-instagram/
   -- diferença de definição: Later: média de posts de feed por semana (2/3/5) nas faixas 0-10K, 10K-100K, 100K-500K, contas que publicam pelo Later, dados de 2023; convertida ×30/7. faixas da fonte cruzam as nossas: interpolação linear em log10(seguidores) entre os pontos médios geométricos das faixas da fonte; faixa nossa fora do intervalo recebe os valores da faixa da ponta
