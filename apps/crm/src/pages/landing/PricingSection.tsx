@@ -162,12 +162,10 @@ export function PricingSection() {
         <div className="section-head reveal">
           <h2>Comece pequeno e cresça sem trocar de ferramenta.</h2>
           <p>
-            Teste qualquer plano pago por 30 dias e só pague se continuar. Sem fidelidade, cancele
-            quando quiser.
+            Crie sua conta e use o Pro por 14 dias, sem cartão. Se preferir escolher o plano agora,
+            os planos pagos têm 30 dias grátis com cartão. Sem fidelidade, cancele quando quiser.
           </p>
-          <div className="pricing-promo-note">
-            30 dias grátis em qualquer plano pago. Sem cupom. Cancele quando quiser.
-          </div>
+          <div className="pricing-promo-note">14 dias de Pro grátis, sem cartão. Sem cupom.</div>
         </div>
 
         <div className="pricing-toggle-row reveal">
@@ -262,7 +260,7 @@ export function PricingSection() {
                       : ' '}
                   </div>
                   {!isFree && trialOffered && (
-                    <div className="plan-trial-note">30 dias grátis para começar</div>
+                    <div className="plan-trial-note">30 dias grátis com cartão</div>
                   )}
                   <div className="plan-tag">{marketing.description}</div>
                   <div className="plan-limits-line">

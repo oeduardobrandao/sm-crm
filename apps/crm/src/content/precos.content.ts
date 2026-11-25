@@ -1,6 +1,6 @@
 export const PRECOS = {
   h1: 'Planos e preços do Mesaas',
-  sub: 'Teste qualquer plano pago por 30 dias. O Free não pede cartão. Mude de plano quando quiser, sem fidelidade e sem multa de cancelamento.',
+  sub: '14 dias de Pro grátis, sem cartão. Prefere escolher o plano agora? Os planos pagos têm 30 dias grátis com cartão. Mude de plano quando quiser, sem fidelidade e sem multa de cancelamento.',
   plans: [
     { name: 'Free', description: 'Para conhecer a plataforma.' },
     { name: 'Start', description: 'Para freelancers montando a carteira.' },
