@@ -1185,5 +1185,38 @@ Deno.test("nurture_a3_ex_trial_variant: ex-trial a3 goes out as Recupere o Pro w
   assertEquals(nurtureSent[0].subject, "Recupere o Pro no Mesaas");
   assertEquals(nurtureSent[0].tags, { type: "nurture_a3_ex_trial" });
   assertEquals(nurtureSent[0].idempotencyKey, "nurture_a3/ws-a3");
-  assert(nurtureSent[0].html.includes("/configuracao/cobranca"));
+  assert(nurtureSent[0].html.includes("/comecar?recomendado=pro"));
+});
+
+Deno.test("nurture ex-trial b1-b3 carry the _ex_trial tag; other steps and non-ex rows keep nurture_<step>", async () => {
+  const mkC = (ws: string, step: string, ex?: boolean) => ({
+    user_id: `u-${ws}`,
+    workspace_id: ws,
+    email: `${ws}@x.test`,
+    step,
+    ...(ex === undefined ? {} : { ex_reverse_trial: ex }),
+  });
+  const db = makeFakeDb({
+    nurtureCandidates: [
+      mkC("w-b1", "b1", true),
+      mkC("w-b2", "b2", true),
+      mkC("w-b3", "b3", true),
+      mkC("w-b4", "b4", true),
+      mkC("w-a2", "a2", true),
+      mkC("w-b1p", "b1", false),
+    ],
+  });
+  const { deps, nurtureSent } = makeDeps(db, { nurtureEnabled: true });
+  await runLifecycleEmailCron(deps);
+  assertEquals(nurtureSent.map((m) => [m.idempotencyKey, m.tags.type]), [
+    ["nurture_b1/w-b1", "nurture_b1_ex_trial"],
+    ["nurture_b2/w-b2", "nurture_b2_ex_trial"],
+    ["nurture_b3/w-b3", "nurture_b3_ex_trial"],
+    ["nurture_b4/w-b4", "nurture_b4"],
+    ["nurture_a2/w-a2", "nurture_a2"],
+    ["nurture_b1/w-b1p", "nurture_b1"],
+  ]);
+  for (const m of nurtureSent.slice(0, 3)) {
+    assert(!/grátis/i.test(m.html) && m.html.includes("/comecar?recomendado=pro"), m.idempotencyKey);
+  }
 });

@@ -15,7 +15,12 @@ import {
   trialReminderSubject,
   WELCOME_SUBJECT,
 } from "./lifecycle-emails.ts";
-import { NURTURE_A3_EX_TRIAL_SUBJECT, NURTURE_STEPS, nurtureSubject } from "./nurture-emails.ts";
+import {
+  NURTURE_A3_EX_TRIAL_SUBJECT,
+  NURTURE_B1_EX_TRIAL_SUBJECT,
+  NURTURE_STEPS,
+  nurtureSubject,
+} from "./nurture-emails.ts";
 import { REPORT_FROM_ADDRESS } from "./report-template/email.ts";
 
 export type EmailCategory =
@@ -56,6 +61,9 @@ export const EMAIL_TYPES: Record<string, EmailCategory> = {
   nurture_a3: "ciclo_de_vida",
   nurture_a3_b1: "ciclo_de_vida",
   nurture_a3_ex_trial: "ciclo_de_vida",
+  nurture_b1_ex_trial: "ciclo_de_vida",
+  nurture_b2_ex_trial: "ciclo_de_vida",
+  nurture_b3_ex_trial: "ciclo_de_vida",
   nurture_a4: "ciclo_de_vida",
   nurture_b1: "ciclo_de_vida",
   nurture_b2: "ciclo_de_vida",
@@ -140,6 +148,8 @@ const FOUNDER_SUBJECTS: SubjectMatcher[] = [
   exact("reverse_trial_hub_pausing", REVERSE_TRIAL_HUB_PAUSING_SUBJECT),
   ...nurtureMatchers(),
   exact("nurture_a3_ex_trial", NURTURE_A3_EX_TRIAL_SUBJECT),
+  // b2/b3 keep their subjects, so untagged ex-trial copies classify as nurture_b2/b3.
+  exact("nurture_b1_ex_trial", NURTURE_B1_EX_TRIAL_SUBJECT),
   sentinelMatcher("instagram_connect", CONNECT_LINK_SUBJECT),
   exact("instagram_connected", CONNECTED_NOTICE_SUBJECT),
 ];

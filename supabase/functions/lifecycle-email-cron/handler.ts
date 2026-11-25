@@ -20,7 +20,7 @@ import {
   REVERSE_TRIAL_EMAIL_TYPES,
   type ReverseTrialEmailType,
 } from "../_shared/lifecycle-emails.ts";
-import { buildNurtureEmail, NURTURE_SAMPLE, type NurtureStep } from "../_shared/nurture-emails.ts";
+import { buildNurtureEmail, NURTURE_SAMPLE, type NurtureStep, nurtureTagType } from "../_shared/nurture-emails.ts";
 
 interface DbResult<T> {
   data: T | null;
@@ -650,14 +650,13 @@ export async function runLifecycleEmailCron(
             whatsappUrl: deps.whatsappUrl,
             exReverseTrial: c.ex_reverse_trial === true,
           });
-          const exTrialA3 = step === "a3" && c.ex_reverse_trial === true;
           await deps.sendNurture({
             to,
             subject,
             html,
             idempotencyKey: `nurture_${step}/${c.workspace_id}`,
             headers: unsubHeaders(unsub.oneClick),
-            tags: { type: exTrialA3 ? "nurture_a3_ex_trial" : `nurture_${step}` },
+            tags: { type: nurtureTagType(step, c.ex_reverse_trial) },
           });
           await markNurtureDelivered(deps, c.workspace_id, step, nowIso);
           nurtureSent++;

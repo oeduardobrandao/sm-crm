@@ -56,8 +56,27 @@ export const NURTURE_SAMPLE: Omit<NurtureEmailInput, "step" | "appBaseUrl" | "un
 };
 
 export function nurtureUtm(appBaseUrl: string, path: string, step: NurtureStep): string {
-  return `${appBaseUrl.replace(/\/+$/, "")}${path}?utm_source=email&utm_medium=nurture&utm_campaign=nurture_${step}`;
+  const sep = path.includes("?") ? "&" : "?";
+  return `${appBaseUrl.replace(/\/+$/, "")}${path}${sep}utm_source=email&utm_medium=nurture&utm_campaign=nurture_${step}`;
 }
+
+/**
+ * Steps that pitch the 30-day card trial. For an ex-reverse-trial workspace
+ * (its trial is used up) each becomes a "Recupere o Pro" variant: no free
+ * trial, no 30 days, immediate charge, link to /comecar?recomendado=pro.
+ */
+export const NURTURE_EX_TRIAL_STEPS: readonly NurtureStep[] = ["a3", "b1", "b2", "b3"];
+
+export function isExTrialVariant(step: NurtureStep, exReverseTrial: boolean | null | undefined): boolean {
+  return exReverseTrial === true && NURTURE_EX_TRIAL_STEPS.includes(step);
+}
+
+/** Resend `type` tag of a nurture email: `nurture_<step>`, or `nurture_<step>_ex_trial` for the variant. */
+export function nurtureTagType(step: NurtureStep, exReverseTrial: boolean | null | undefined): string {
+  return isExTrialVariant(step, exReverseTrial) ? `nurture_${step}_ex_trial` : `nurture_${step}`;
+}
+
+const RECOVER_PATH = "/comecar?recomendado=pro";
 
 const FOOTER_SENTENCE = "Você recebeu este e-mail porque criou uma conta no Mesaas. Não quer mais receber dicas?";
 
@@ -98,6 +117,14 @@ const SHOT_ALT = {
 
 const shot = (key: keyof typeof NURTURE_SHOTS) => screenshot(NURTURE_SHOTS[key], SHOT_ALT[key]);
 
+// The reverse trial is used up, so subscribing charges at once.
+const recoverFine = () =>
+  paragraph(
+    "Como o seu teste do Pro já foi usado, a assinatura começa na hora: a primeira cobrança é feita ao assinar, e dá pra cancelar quando quiser.",
+    "small",
+    "14px 0 0",
+  );
+
 const trialFine = () =>
   paragraph(
     "O teste pede um cartão, mas você só é cobrado no fim dos 30 dias se continuar. Eu te aviso por e-mail antes da cobrança, e dá pra cancelar em dois cliques.",
@@ -107,6 +134,8 @@ const trialFine = () =>
 
 /** Subject of the a3 variant for ex-reverse-trial workspaces. Shared with the e-mail classifier. */
 export const NURTURE_A3_EX_TRIAL_SUBJECT = "Recupere o Pro no Mesaas";
+/** Subject of the b1 variant for ex-reverse-trial workspaces (distinct from a3 for the classifier). */
+export const NURTURE_B1_EX_TRIAL_SUBJECT = "Recupere o Pro para a sua agência";
 
 /** Subject line of a nurture step (sanitized). Shared with the e-mail classifier. */
 export function nurtureSubject(step: NurtureStep, p: { clientCount: number; exReverseTrial?: boolean }): string {
@@ -124,6 +153,10 @@ export function nurtureSubject(step: NurtureStep, p: { clientCount: number; exRe
       subject = p.exReverseTrial ? NURTURE_A3_EX_TRIAL_SUBJECT : "Teste tudo do Mesaas por 30 dias";
       break;
     case "b1": {
+      if (p.exReverseTrial) {
+        subject = NURTURE_B1_EX_TRIAL_SUBJECT;
+        break;
+      }
       const n = Number.isFinite(p.clientCount) ? Math.max(0, Math.floor(p.clientCount)) : 0;
       subject = n === 0
         ? "Teste tudo do Mesaas por 30 dias"
@@ -210,7 +243,7 @@ export function buildNurtureEmail(p: NurtureEmailInput): { subject: string; html
             "Com o Pro de volta, você recupera o portal do cliente, a equipe e os relatórios, e os links do portal voltam a abrir.",
           ) +
           shot("hub") +
-          proGrid() + spacer(8) + button(u("/configuracao/cobranca"), "Recuperar o Pro"),
+          proGrid() + spacer(8) + button(u(RECOVER_PATH), "Recuperar o Pro") + recoverFine(),
           paragraphHtml(
             "Ficou alguma dúvida sobre o plano? É só <strong>responder este e-mail</strong>.",
             "body",
@@ -255,13 +288,31 @@ export function buildNurtureEmail(p: NurtureEmailInput): { subject: string; html
     case "b1": {
       const n = Number.isFinite(p.clientCount) ? Math.max(0, Math.floor(p.clientCount)) : 0;
       const atLimit = n >= 2;
-      preheader = atLimit ? "Seu Free parou em 2 clientes. O teste libera tudo." : "O teste libera tudo do Mesaas por 30 dias.";
-      eyebrow = "Teste grátis";
+      const exTrial = p.exReverseTrial === true;
+      preheader = exTrial
+        ? (atLimit ? "Seu Free parou em 2 clientes. O Pro libera o resto." : "O Pro libera o portal do cliente, a equipe e os relatórios.")
+        : (atLimit ? "Seu Free parou em 2 clientes. O teste libera tudo." : "O teste libera tudo do Mesaas por 30 dias.");
+      eyebrow = exTrial ? "Recupere o Pro" : "Teste grátis";
       // No article before user-supplied names: "a Meu Workspace", "o Ana" read wrong.
       const ws = nurtureWorkspaceName(p.workspaceName);
       const b1Heading = ws
         ? (p.firstName ? `${p.firstName}, ${ws} já está no Mesaas.` : `${ws} já está no Mesaas.`)
         : (p.firstName ? `${p.firstName}, sua agência já está no Mesaas.` : "Sua agência já está no Mesaas.");
+      if (exTrial) {
+        sections = [
+          heading(b1Heading) +
+          paragraph(
+            atLimit
+              ? `Você já cadastrou ${n} clientes, e esse é o limite do plano Free. Com o Pro de volta, você segue crescendo e recupera o portal do cliente, a equipe e os relatórios.`
+              : "Você já cadastrou seu primeiro cliente. Com o Pro de volta, você recupera o portal do cliente, a equipe e os relatórios.",
+          ) +
+          shot("hub") +
+          proGrid() + spacer(8) + button(u(RECOVER_PATH), "Recuperar o Pro") + recoverFine(),
+          paragraphHtml("Ficou alguma dúvida sobre o plano? É só <strong>responder este e-mail</strong>.", "body", "0 0 18px") +
+          signature(),
+        ];
+        break;
+      }
       sections = [
         heading(b1Heading) +
         paragraph(
@@ -289,8 +340,15 @@ export function buildNurtureEmail(p: NurtureEmailInput): { subject: string; html
           "Esse é o Hub do cliente. Ele vem com a sua marca, e cada aprovação já atualiza o status do post no seu kanban.",
         ) +
         shot("aprovar"),
-        callout("O Hub, a equipe e o Instagram fazem parte do teste grátis de 30 dias."),
-        button(u("/comecar"), "Testar o Hub com meu cliente") + spacer(24) + signature(),
+        ...(p.exReverseTrial
+          ? [
+            callout("O Hub, a equipe e o Instagram fazem parte do Pro."),
+            button(u(RECOVER_PATH), "Recuperar o Pro") + recoverFine() + spacer(18) + signature(),
+          ]
+          : [
+            callout("O Hub, a equipe e o Instagram fazem parte do teste grátis de 30 dias."),
+            button(u("/comecar"), "Testar o Hub com meu cliente") + spacer(24) + signature(),
+          ]),
       ];
       break;
     }
@@ -304,11 +362,15 @@ export function buildNurtureEmail(p: NurtureEmailInput): { subject: string; html
         ) +
         paragraph(
           p.hasInstagram
-            ? "O Instagram de um cliente seu já está conectado, então as métricas já estão sendo atualizadas sozinhas. No teste, o relatório em PDF com a sua marca sai pronto todo mês."
+            ? `O Instagram de um cliente seu já está conectado, então as métricas já estão sendo atualizadas sozinhas. ${
+              p.exReverseTrial ? "No Pro" : "No teste"
+            }, o relatório em PDF com a sua marca sai pronto todo mês.`
             : "Você conecta o Instagram do cliente uma vez e as métricas passam a ser atualizadas sozinhas, com os melhores horários para postar.",
         ) +
         shot("relatorios"),
-        button(u("/comecar"), "Começar meu teste grátis") + trialFine() + spacer(18) + signature(),
+        (p.exReverseTrial
+          ? button(u(RECOVER_PATH), "Recuperar o Pro") + recoverFine()
+          : button(u("/comecar"), "Começar meu teste grátis") + trialFine()) + spacer(18) + signature(),
       ];
       break;
     case "b4":

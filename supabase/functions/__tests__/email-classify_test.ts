@@ -147,7 +147,17 @@ Deno.test("PII_EVENTS e tagValue", () => {
 // ─── Teste reverso (Task 10) ────────────────────────────────────────────────
 
 Deno.test("teste reverso: tags novas classificam como ciclo de vida", () => {
-  for (const type of ["reverse_trial_ending", "reverse_trial_ended", "reverse_trial_hub_pausing", "nurture_a3_ex_trial"]) {
+  for (
+    const type of [
+      "reverse_trial_ending",
+      "reverse_trial_ended",
+      "reverse_trial_hub_pausing",
+      "nurture_a3_ex_trial",
+      "nurture_b1_ex_trial",
+      "nurture_b2_ex_trial",
+      "nurture_b3_ex_trial",
+    ]
+  ) {
     assertEquals(classifyEmail({ tags: { type }, from: EDUARDO, subject: "x" }), { category: "ciclo_de_vida", type });
   }
 });
@@ -176,6 +186,18 @@ Deno.test("teste reverso: assuntos dos builders casam sem tag (eduardo@)", () =>
     exReverseTrial: true,
   });
   assertEquals(classifyEmail({ from: EDUARDO, subject }).type, "nurture_a3_ex_trial");
+  for (const clientCount of [0, 3]) {
+    const b1 = buildNurtureEmail({
+      ...NURTURE_SAMPLE,
+      clientCount,
+      step: "b1",
+      appBaseUrl: "https://x.test",
+      unsubUrl: "https://x.test/u",
+      whatsappUrl: null,
+      exReverseTrial: true,
+    });
+    assertEquals(classifyEmail({ from: EDUARDO, subject: b1.subject }).type, "nurture_b1_ex_trial", `b1 n=${clientCount}`);
+  }
   // The card-trial reminder keeps its own type.
   const reminder = buildTrialReminderEmail({
     firstName: null,
