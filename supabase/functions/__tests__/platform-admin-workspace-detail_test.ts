@@ -293,3 +293,87 @@ Deno.test("handleGetWorkspace: selects and returns the reverse_trial_* columns (
     assert(sel.includes(col), `${col} must be selected`);
   }
 });
+
+Deno.test("catalog fallback: a USD workspace reads the USD price and reports usd", async () => {
+  const { db, calls } = makeFakeDb({
+    workspace_subscriptions: [{
+      data: { ...PAGARME_ROW, provider: "stripe", pagarme_subscription_id: null, installments: null, amount_cents: null, currency: null, amount_interval: null, billing_interval: "month" },
+      error: null,
+    }],
+    plans: [
+      { data: { name: "Pro" }, error: null },
+      { data: { price_brl: 9900, price_brl_annual: null, price_usd: 4900, price_usd_annual: null }, error: null },
+    ],
+  });
+  const info = await buildSubscriptionDetail(db as never, "w1", { billingCurrency: "usd" });
+  assert(info);
+  assertEquals(info.amount_cents, 4900);
+  assertEquals(info.currency, "usd");
+  assertEquals(info.amount_source, "catalog");
+  // The caller already read workspaces.billing_currency: no second (unchecked) read here.
+  assertEquals(calls.filter((c) => c.table === "workspaces").length, 0);
+});
+
+Deno.test("catalog fallback: no billingCurrency passed means brl, without reading workspaces", async () => {
+  const { db, calls } = makeFakeDb({
+    workspace_subscriptions: [{
+      data: { ...PAGARME_ROW, provider: "stripe", pagarme_subscription_id: null, installments: null, amount_cents: null, currency: null, amount_interval: null, billing_interval: "month" },
+      error: null,
+    }],
+    plans: [
+      { data: { name: "Pro" }, error: null },
+      { data: { price_brl: 9900, price_brl_annual: null, price_usd: 4900, price_usd_annual: null }, error: null },
+    ],
+  });
+  const info = await buildSubscriptionDetail(db as never, "w1");
+  assert(info);
+  assertEquals(info.amount_cents, 9900);
+  assertEquals(info.currency, "brl");
+  assertEquals(calls.filter((c) => c.table === "workspaces").length, 0);
+});
+
+Deno.test("handleGetWorkspace: passes its billing_currency down to the catalog fallback (one workspaces read)", async () => {
+  const { handleGetWorkspace } = await import("../platform-admin/workspace-detail.ts");
+  const { db, calls } = makeFakeDb({
+    workspaces: [{
+      data: { id: "w1", name: "X", logo_url: null, created_at: "t", plan_id: "pro", plan_source: "stripe", storage_used_bytes: 0, billing_currency: "usd" },
+      error: null,
+    }],
+    workspace_members: [{ data: [], error: null }],
+    workspace_subscriptions: [{
+      data: { ...PAGARME_ROW, provider: "stripe", pagarme_subscription_id: null, installments: null, amount_cents: null, currency: null, amount_interval: null, billing_interval: "month", plan_id: "pro" },
+      error: null,
+    }],
+    plans: [
+      { data: { id: "pro", name: "Pro" }, error: null },
+      { data: { name: "Pro" }, error: null },
+      { data: { price_brl: 9900, price_brl_annual: null, price_usd: 4900, price_usd_annual: null }, error: null },
+    ],
+  });
+  const res = await handleGetWorkspace(db as never, { workspace_id: "w1" }, {}, { readOnly: true });
+  const body = await res.json();
+  assertEquals(body.subscription.amount_cents, 4900);
+  assertEquals(body.subscription.currency, "usd");
+  assertEquals(calls.filter((c) => c.table === "workspaces" && c.method === "from").length, 1);
+});
+
+Deno.test("handleGetWorkspace: selects and returns billing_currency (brl when unset)", async () => {
+  const { handleGetWorkspace } = await import("../platform-admin/workspace-detail.ts");
+  const run = async (billing_currency: unknown) => {
+    const { db, calls } = makeFakeDb({
+      workspaces: [{
+        data: { id: "w1", name: "X", logo_url: null, created_at: "t", plan_id: "pro", plan_source: "stripe", storage_used_bytes: 0, billing_currency },
+        error: null,
+      }],
+      workspace_members: [{ data: [], error: null }],
+      workspace_subscriptions: [{ data: null, error: null }],
+    });
+    const res = await handleGetWorkspace(db as never, { workspace_id: "w1" }, {}, { readOnly: true });
+    const sel = String(calls.find((c) => c.table === "workspaces" && c.method === "select")?.args[0]);
+    return { body: await res.json(), sel };
+  };
+  const usd = await run("usd");
+  assertEquals(usd.body.workspace.billing_currency, "usd");
+  assert(usd.sel.includes("billing_currency"), "billing_currency must be selected");
+  assertEquals((await run(undefined)).body.workspace.billing_currency, "brl");
+});

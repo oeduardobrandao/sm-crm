@@ -6,8 +6,15 @@ const HEADERS = { "Content-Type": "application/json" };
 
 function makeFakeSvc(rows: {
   subscriptions: Record<string, unknown>[];
-  workspaces: Array<{ id: string; name: string; created_at?: string }>;
-  plans: Array<{ id: string; name: string; price_brl: number | null; price_brl_annual: number | null }>;
+  workspaces: Array<{ id: string; name: string; created_at?: string; billing_currency?: string }>;
+  plans: Array<{
+    id: string;
+    name: string;
+    price_brl: number | null;
+    price_brl_annual: number | null;
+    price_usd?: number | null;
+    price_usd_annual?: number | null;
+  }>;
   lastActivity?: Array<{ workspace_id: string; last_activity_at: string | null }>;
 }) {
   // workspace_subscriptions is read via fetchAllRows: .in()/.eq() -> .order() -> .range(from, to).
@@ -179,4 +186,67 @@ Deno.test("handleGetTrials excludes internal workspaces", async () => {
   const body = await res.json();
   assertEquals(body.trial_count, 1);
   assertEquals(body.trials[0].workspace_id, "ws-1");
+});
+
+const mixedSub = (id: string, currency: "brl" | "usd", amount: number) => ({
+  workspace_id: id, provider: "stripe", status: "active", plan_id: "pro", billing_interval: "month",
+  stripe_subscription_id: null, amount_cents: amount, currency, amount_interval: "month", discount_label: null,
+});
+const mixedWorkspaces = [
+  { id: "ws-brl", name: "Real", billing_currency: "brl" },
+  { id: "ws-usd", name: "Dollar", billing_currency: "usd" },
+];
+const mixedPlans = [
+  { id: "pro", name: "Pro", price_brl: 9900, price_brl_annual: null, price_usd: 4900, price_usd_annual: null },
+];
+
+Deno.test("handleGetMrr never adds USD cents into the BRL total", async () => {
+  const svc = makeFakeSvc({
+    subscriptions: [mixedSub("ws-brl", "brl", 9900), mixedSub("ws-usd", "usd", 4900)],
+    workspaces: mixedWorkspaces,
+    plans: mixedPlans,
+  });
+  const res = await handleGetMrr(svc, HEADERS, fakeFetchOwnerContacts, () => Promise.resolve(new Set()));
+  const body = await res.json();
+  assertEquals(body.mrr_cents, 9900);
+  assertEquals(body.paying_count, 1);
+  assertEquals(body.currency, "brl");
+  assertEquals(body.usd, { mrr_cents: 4900, paying_count: 1 });
+  const byId = Object.fromEntries(
+    body.workspaces.map((w: { workspace_id: string; currency: string }) => [w.workspace_id, w.currency]),
+  );
+  assertEquals(byId, { "ws-brl": "brl", "ws-usd": "usd" });
+});
+
+Deno.test("handleGetMrr: BRL-only input gets a zeroed usd block", async () => {
+  const svc = makeFakeSvc({
+    subscriptions: [mixedSub("ws-brl", "brl", 9900)],
+    workspaces: mixedWorkspaces,
+    plans: mixedPlans,
+  });
+  const body = await (await handleGetMrr(svc, HEADERS, fakeFetchOwnerContacts, () => Promise.resolve(new Set()))).json();
+  assertEquals(body.mrr_cents, 9900);
+  assertEquals(body.usd, { mrr_cents: 0, paying_count: 0 });
+});
+
+Deno.test("handleGetTrials keeps trial MRR BRL-only and sums USD apart", async () => {
+  const trial = (id: string, currency: "brl" | "usd", amount: number) => ({
+    workspace_id: id, provider: "stripe", plan_id: "pro", billing_interval: "month", stripe_subscription_id: null,
+    current_period_end: "2026-10-01T00:00:00Z", amount_cents: amount, currency, amount_interval: "month", discount_label: null,
+  });
+  const svc = makeFakeSvc({
+    subscriptions: [trial("ws-brl", "brl", 9900), trial("ws-usd", "usd", 4900)],
+    workspaces: mixedWorkspaces,
+    plans: mixedPlans,
+  });
+  const body = await (await handleGetTrials(svc, HEADERS, fakeFetchOwnerContacts, () => Promise.resolve(new Set()))).json();
+  assertEquals(body.trial_mrr_cents, 9900);
+  assertEquals(body.trial_count, 1);
+  assertEquals(body.currency, "brl");
+  assertEquals(body.usd, { trial_mrr_cents: 4900, trial_count: 1 });
+  assertEquals(body.trials.length, 2);
+  assertEquals(
+    body.trials.map((t: { currency: string }) => t.currency).sort(),
+    ["brl", "usd"],
+  );
 });

@@ -150,7 +150,7 @@ describe('billing service', () => {
 
     await expect(listActivePlans()).resolves.toEqual([pro]);
     expect(select).toHaveBeenCalledWith(
-      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, storage_quota_bytes, feature_hub_portal, feature_analytics_reports, feature_brand_customization, max_hub_tokens, rate_report_generations_per_month, feature_instagram_ai, feature_auto_sync_cron, feature_leads, feature_financial, feature_contracts, feature_agenda, feature_mensagens, feature_team_chat, feature_instagram_automation, feature_briefing_audio, pagarme_12x_enabled, pagarme_installment_cents',
+      'id, name, price_brl, price_brl_annual, price_usd, price_usd_annual, sort_order, max_clients, max_team_members, storage_quota_bytes, feature_hub_portal, feature_analytics_reports, feature_brand_customization, max_hub_tokens, rate_report_generations_per_month, feature_instagram_ai, feature_auto_sync_cron, feature_leads, feature_financial, feature_contracts, feature_agenda, feature_mensagens, feature_team_chat, feature_instagram_automation, feature_briefing_audio, pagarme_12x_enabled, pagarme_installment_cents',
     );
   });
 
@@ -267,7 +267,7 @@ describe('billing service', () => {
     expect(result).not.toHaveProperty('pagarme_subscription_id');
     expect(result).not.toHaveProperty('ever_subscribed_at');
     expect(subSelect).toHaveBeenCalledWith(
-      'status, plan_id, current_period_end, cancel_at_period_end, past_due_since, next_payment_attempt, provider, installments, billing_interval, stripe_subscription_id, pagarme_subscription_id, ever_subscribed_at, switched_from_stripe_subscription_id',
+      'status, plan_id, current_period_end, cancel_at_period_end, past_due_since, next_payment_attempt, provider, installments, billing_interval, stripe_subscription_id, pagarme_subscription_id, ever_subscribed_at, switched_from_stripe_subscription_id, currency',
     );
   });
 
@@ -281,6 +281,13 @@ describe('billing service', () => {
     expect(sub?.billingInterval).toBe('month');
     expect(sub?.switchScheduled).toBe(true);
     expect(sub as object).not.toHaveProperty('switched_from_stripe_subscription_id');
+  });
+
+  it('exposes the subscription currency, null on a legacy row', async () => {
+    mockSubscriptionRow({ ...baseSubscriptionRow, currency: 'usd' });
+    expect((await getWorkspaceSubscription())?.currency).toBe('usd');
+    mockSubscriptionRow({ ...baseSubscriptionRow });
+    expect((await getWorkspaceSubscription())?.currency).toBeNull();
   });
 
   it('switchScheduled false quando o marker é null', async () => {
@@ -348,7 +355,7 @@ describe('billing service', () => {
       const { wsSelect } = mockWorkspaceRow({ plan_id: 'pro', plan_source: 'stripe' });
       await expect(getEffectivePlanId()).resolves.toBe('pro');
       expect(wsSelect).toHaveBeenCalledWith(
-        'plan_id, plan_source, demo_created_at, trial_offer_seen_at, reverse_trial_started_at, reverse_trial_ends_at, reverse_trial_ended_at, reverse_trial_outcome, reverse_trial_card_added_at, reverse_trial_first_paid_at',
+        'plan_id, plan_source, demo_created_at, trial_offer_seen_at, reverse_trial_started_at, reverse_trial_ends_at, reverse_trial_ended_at, reverse_trial_outcome, reverse_trial_card_added_at, reverse_trial_first_paid_at, billing_currency',
       );
     });
 
@@ -379,9 +386,10 @@ describe('billing service', () => {
           cardAddedAt: null,
           firstPaidAt: null,
         },
+        billingCurrency: 'brl',
       });
       expect(wsSelect).toHaveBeenCalledWith(
-        'plan_id, plan_source, demo_created_at, trial_offer_seen_at, reverse_trial_started_at, reverse_trial_ends_at, reverse_trial_ended_at, reverse_trial_outcome, reverse_trial_card_added_at, reverse_trial_first_paid_at',
+        'plan_id, plan_source, demo_created_at, trial_offer_seen_at, reverse_trial_started_at, reverse_trial_ends_at, reverse_trial_ended_at, reverse_trial_outcome, reverse_trial_card_added_at, reverse_trial_first_paid_at, billing_currency',
       );
     });
 
@@ -401,6 +409,7 @@ describe('billing service', () => {
           cardAddedAt: null,
           firstPaidAt: null,
         },
+        billingCurrency: 'brl',
       });
     });
 
@@ -474,6 +483,24 @@ describe('billing service', () => {
           cardAddedAt: '2026-11-30T10:00:00Z',
           firstPaidAt: null,
         },
+      });
+    });
+
+    it('exposes billingCurrency from workspaces.billing_currency', async () => {
+      mockWorkspaceRow({ plan_id: 'pro', plan_source: 'stripe', billing_currency: 'usd' });
+      await expect(getEffectivePlanWithSource()).resolves.toMatchObject({
+        billingCurrency: 'usd',
+      });
+    });
+
+    it('reads a null or unknown billing_currency as brl', async () => {
+      mockWorkspaceRow({ plan_id: 'pro', plan_source: 'stripe', billing_currency: null });
+      await expect(getEffectivePlanWithSource()).resolves.toMatchObject({
+        billingCurrency: 'brl',
+      });
+      mockWorkspaceRow({ plan_id: 'pro', plan_source: 'stripe', billing_currency: 'eur' });
+      await expect(getEffectivePlanWithSource()).resolves.toMatchObject({
+        billingCurrency: 'brl',
       });
     });
 

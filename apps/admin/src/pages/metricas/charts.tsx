@@ -12,7 +12,8 @@ function shortMonth(month: string): string {
     .replace('.', '');
 }
 
-const money = (raw: unknown) => formatMoney(Math.round(Number(raw ?? 0) * 100), 'brl');
+const money = (raw: unknown, currency = 'brl') =>
+  formatMoney(Math.round(Number(raw ?? 0) * 100), currency);
 
 /** Month axis ticks: the long label on desktop, "set" on phones (the tooltip keeps the long one). */
 function xTicks(
@@ -34,6 +35,8 @@ function xTicks(
 
 interface ChartProps {
   months: MetricsMonth[];
+  /** Currency of the figures (tooltips); default brl. */
+  currency?: string;
   /** Phone: short month ticks, legend at the bottom. */
   compact?: boolean;
 }
@@ -41,6 +44,7 @@ interface ChartProps {
 export function MrrChart({
   months,
   mode,
+  currency = 'brl',
   compact = false,
 }: ChartProps & { mode: 'provider' | 'plan' }) {
   useIsDark(); // subscribes to theme flips so the tokens below re-resolve on re-render
@@ -88,7 +92,7 @@ export function MrrChart({
           tooltip: {
             ...theme.tooltip,
             callbacks: {
-              label: (ctx) => `${ctx.dataset.label}: ${money(ctx.raw)}`,
+              label: (ctx) => `${ctx.dataset.label}: ${money(ctx.raw, currency)}`,
               footer: (items) =>
                 months[items[0]?.dataIndex ?? -1]?.source === 'backfill' ? BACKFILL_NOTE : '',
             },
@@ -99,7 +103,7 @@ export function MrrChart({
   );
 }
 
-export function MovementBarChart({ months, compact = false }: ChartProps) {
+export function MovementBarChart({ months, currency = 'brl', compact = false }: ChartProps) {
   useIsDark();
   const theme = getAdminChartTheme();
   const s = useMemo(() => movementSeries(months), [months]);
@@ -136,7 +140,7 @@ export function MovementBarChart({ months, compact = false }: ChartProps) {
           },
           tooltip: {
             ...theme.tooltip,
-            callbacks: { label: (ctx) => `${ctx.dataset.label}: ${money(ctx.raw)}` },
+            callbacks: { label: (ctx) => `${ctx.dataset.label}: ${money(ctx.raw, currency)}` },
           },
         },
       }}

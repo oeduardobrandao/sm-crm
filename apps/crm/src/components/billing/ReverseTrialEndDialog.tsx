@@ -16,12 +16,8 @@ import { useWorkspaceUsage } from '@/hooks/useWorkspaceUsage';
 import { captureEvent } from '@/lib/analytics';
 import { ADD_CARD_PATH, formatTrialDate } from '@/lib/reverseTrial';
 import { isPagarme12xEnabled } from '@/lib/pagarme-gate';
+import { formatPlanPrice, planMonthlyCents, type BillingCurrency } from '@/lib/planPrice';
 import { isNativeApp } from '@/native/platform';
-
-/** plans.price_brl is stored in centavos. */
-export function formatCentavosBRL(centavos: number): string {
-  return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
 
 export interface ReverseTrialEndDialogProps {
   open: boolean;
@@ -29,6 +25,8 @@ export interface ReverseTrialEndDialogProps {
   endsAt: string;
   planId: string;
   daysLeft: number;
+  /** The workspace's billing currency (default BRL). */
+  currency?: BillingCurrency;
 }
 
 /**
@@ -42,6 +40,7 @@ export function ReverseTrialEndDialog({
   endsAt,
   planId,
   daysLeft,
+  currency = 'brl',
 }: ReverseTrialEndDialogProps) {
   const { t } = useTranslation('billing');
   const { data: plans } = useQuery({
@@ -51,6 +50,7 @@ export function ReverseTrialEndDialog({
   });
   const { usage } = useWorkspaceUsage();
   const trialPlan = plans?.find((p) => p.id === planId);
+  const trialPrice = trialPlan ? planMonthlyCents(trialPlan, currency) : null;
   const free = plans?.find((p) => p.id === 'free');
   const date = formatTrialDate(endsAt);
   const days = t('reverseTrial.days', { count: daysLeft });
@@ -130,11 +130,11 @@ export function ReverseTrialEndDialog({
           </div>
         )}
 
-        {trialPlan?.price_brl ? (
+        {trialPlan && trialPrice ? (
           <p className="text-sm text-muted-foreground">
             {t('reverseTrial.endDialog.price', {
               plan: trialPlan.name,
-              amount: formatCentavosBRL(trialPlan.price_brl),
+              amount: formatPlanPrice(trialPrice, currency),
               date,
             })}
           </p>
@@ -161,7 +161,7 @@ export function ReverseTrialEndDialog({
             {t('reverseTrial.endDialog.later')}
           </button>
         </DialogFooter>
-        {trialPlan && isPagarme12xEnabled(trialPlan) ? (
+        {trialPlan && isPagarme12xEnabled(trialPlan, currency) ? (
           <p className="text-xs text-muted-foreground">
             {t('reverseTrial.endDialog.installments')}
           </p>

@@ -21,6 +21,8 @@ export interface StripeSubLite {
   price_id: string | null;
   amount_cents: number | null; // net of the coupon it carries today
   interval: string | null;
+  /** Currency of amount_cents (stripeAmountFromSubscription); missing -> brl. */
+  currency: "brl" | "usd";
 }
 
 export interface PagarmeSubLite {
@@ -111,6 +113,7 @@ interface Candidate {
   monthly_cents: number;
   /** A price was resolved (possibly 0, e.g. a 100% coupon). False -> `unpriced`. */
   priced: boolean;
+  currency: "brl" | "usd";
 }
 
 export function buildBackfill(input: {
@@ -148,6 +151,7 @@ export function buildBackfill(input: {
       billing_interval: interval,
       monthly_cents: toMonthlyCents(interval, s.amount_cents) ?? 0,
       priced: s.amount_cents != null,
+      currency: s.currency === "usd" ? "usd" : "brl",
     });
   }
 
@@ -175,6 +179,7 @@ export function buildBackfill(input: {
       billing_interval: interval,
       monthly_cents: toMonthlyCents(interval, price) ?? 0,
       priced: price != null,
+      currency: "brl", // Pagar.me bills only in reais
     });
   }
 
@@ -213,6 +218,7 @@ export function buildBackfill(input: {
         monthly_cents: pick.c.monthly_cents,
         amount_source: pick.c.priced ? "backfill" : "unpriced",
         provider_switch: pagarme.length > 0 && hasStripe,
+        currency: pick.c.currency,
       });
     }
     return { date, rows };

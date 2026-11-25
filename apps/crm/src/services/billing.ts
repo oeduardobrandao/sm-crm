@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import type { ReverseTrialOutcome, ReverseTrialState } from '../lib/reverseTrial';
+import { toBillingCurrency, type BillingCurrency } from '../lib/planPrice';
 
 export type { ReverseTrialState } from '../lib/reverseTrial';
 
@@ -10,6 +11,9 @@ export interface BillingPlan {
   name: string;
   price_brl: number | null;
   price_brl_annual: number | null;
+  /** USD prices in cents, charged to a `billing_currency = 'usd'` workspace. Null = not set. */
+  price_usd: number | null;
+  price_usd_annual: number | null;
   sort_order: number;
   max_clients: number | null;
   max_team_members: number | null;
@@ -81,6 +85,8 @@ export interface WorkspaceSubscription {
   billingInterval: string | null;
   /** True enquanto a linha carrega uma troca mensal→12x agendada (janela do switch). */
   switchScheduled: boolean;
+  /** `workspace_subscriptions.currency` ('brl' | 'usd'), mirror of the charge. Null = legacy row. */
+  currency: string | null;
   /**
    * True once the workspace has ever held a Stripe or Pagar.me subscription — the
    * trial eligibility flag. The raw stripe_subscription_id / pagarme_subscription_id
@@ -124,7 +130,7 @@ export async function listActivePlans(): Promise<BillingPlan[]> {
   const { data, error } = await supabase
     .from('plans')
     .select(
-      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, storage_quota_bytes, feature_hub_portal, feature_analytics_reports, feature_brand_customization, max_hub_tokens, rate_report_generations_per_month, feature_instagram_ai, feature_auto_sync_cron, feature_leads, feature_financial, feature_contracts, feature_agenda, feature_mensagens, feature_team_chat, feature_instagram_automation, feature_briefing_audio, pagarme_12x_enabled, pagarme_installment_cents',
+      'id, name, price_brl, price_brl_annual, price_usd, price_usd_annual, sort_order, max_clients, max_team_members, storage_quota_bytes, feature_hub_portal, feature_analytics_reports, feature_brand_customization, max_hub_tokens, rate_report_generations_per_month, feature_instagram_ai, feature_auto_sync_cron, feature_leads, feature_financial, feature_contracts, feature_agenda, feature_mensagens, feature_team_chat, feature_instagram_automation, feature_briefing_audio, pagarme_12x_enabled, pagarme_installment_cents',
     )
     .eq('is_active', true)
     .order('sort_order', { ascending: true });
@@ -172,6 +178,8 @@ export interface EffectivePlan {
   hasWorkspace: boolean;
   /** `workspaces.reverse_trial_*`: the reverse trial's history. All null = never had one. */
   reverseTrial: ReverseTrialState;
+  /** `workspaces.billing_currency`: the currency prices are shown and charged in. */
+  billingCurrency: BillingCurrency;
 }
 
 const EMPTY_REVERSE_TRIAL: ReverseTrialState = {
@@ -190,6 +198,7 @@ const NO_WORKSPACE: EffectivePlan = {
   trialOfferSeenAt: null,
   hasWorkspace: false,
   reverseTrial: EMPTY_REVERSE_TRIAL,
+  billingCurrency: 'brl',
 };
 
 const REVERSE_TRIAL_OUTCOMES = new Set<ReverseTrialOutcome>([
@@ -239,7 +248,7 @@ async function fetchEffectivePlan(): Promise<EffectivePlan> {
   const { data, error } = await supabase
     .from('workspaces')
     .select(
-      'plan_id, plan_source, demo_created_at, trial_offer_seen_at, reverse_trial_started_at, reverse_trial_ends_at, reverse_trial_ended_at, reverse_trial_outcome, reverse_trial_card_added_at, reverse_trial_first_paid_at',
+      'plan_id, plan_source, demo_created_at, trial_offer_seen_at, reverse_trial_started_at, reverse_trial_ends_at, reverse_trial_ended_at, reverse_trial_outcome, reverse_trial_card_added_at, reverse_trial_first_paid_at, billing_currency',
     )
     .eq('id', profile.conta_id)
     .maybeSingle();
@@ -261,6 +270,7 @@ async function fetchEffectivePlan(): Promise<EffectivePlan> {
       cardAddedAt: str(data.reverse_trial_card_added_at),
       firstPaidAt: str(data.reverse_trial_first_paid_at),
     },
+    billingCurrency: toBillingCurrency(data.billing_currency),
   };
 }
 
@@ -353,7 +363,7 @@ export async function getWorkspaceSubscription(): Promise<WorkspaceSubscription 
   const { data, error } = await supabase
     .from('workspace_subscriptions')
     .select(
-      'status, plan_id, current_period_end, cancel_at_period_end, past_due_since, next_payment_attempt, provider, installments, billing_interval, stripe_subscription_id, pagarme_subscription_id, ever_subscribed_at, switched_from_stripe_subscription_id',
+      'status, plan_id, current_period_end, cancel_at_period_end, past_due_since, next_payment_attempt, provider, installments, billing_interval, stripe_subscription_id, pagarme_subscription_id, ever_subscribed_at, switched_from_stripe_subscription_id, currency',
     )
     .eq('workspace_id', profile.conta_id)
     .maybeSingle();
@@ -370,12 +380,18 @@ export async function getWorkspaceSubscription(): Promise<WorkspaceSubscription 
   return {
     ...(rest as Omit<
       WorkspaceSubscription,
-      'hasEverSubscribed' | 'provider' | 'installments' | 'billingInterval' | 'switchScheduled'
+      | 'hasEverSubscribed'
+      | 'provider'
+      | 'installments'
+      | 'billingInterval'
+      | 'switchScheduled'
+      | 'currency'
     >),
     provider: (rest.provider as string | null) ?? null,
     installments: (rest.installments as number | null) ?? null,
     billingInterval: (billingInterval as string | null) ?? null,
     switchScheduled: Boolean(switchedFromStripeSubscriptionId),
+    currency: (rest.currency as string | null) ?? null,
     hasEverSubscribed: Boolean(stripeSubscriptionId || pagarmeSubscriptionId || everSubscribedAt),
   };
 }

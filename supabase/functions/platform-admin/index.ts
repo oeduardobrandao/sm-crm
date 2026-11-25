@@ -65,6 +65,7 @@ import {
 import { createStreamDirectUpload, deleteStreamVideo, getStreamVideo, isStreamCleanupEnabled } from "../_shared/stream.ts";
 import { createDemoWorkspace, type DemoDeps, resendDemoAccess } from "./demo-workspace.ts";
 import { handleSetWorkspaceAffiliate } from "./workspace-affiliate.ts";
+import { handleSetWorkspaceCurrency } from "./workspace-currency.ts";
 import { handleAddWorkspaceNote, handleDeleteWorkspaceNote, handleListWorkspaceNotes } from "./workspace-notes.ts";
 import { findAuthUserByEmail } from "../_shared/invite-actions.ts";
 import { sendDemoAccessEmail } from "../_shared/invite-email.ts";
@@ -182,6 +183,8 @@ Deno.serve(async (req: Request) => {
         const r = await createDemoWorkspace(demoDeps(svc), body, { adminId: admin.id, userId: user.id });
         return new Response(JSON.stringify(r.body), { status: r.status, headers });
       }
+      case "set-workspace-currency":
+        return await handleSetWorkspaceCurrency(svc, body, user.id, headers);
       case "set-workspace-affiliate":
         return await handleSetWorkspaceAffiliate(svc, body, user.id, headers);
       case "resend-demo-access": {

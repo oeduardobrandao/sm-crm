@@ -179,6 +179,8 @@ interface TrialReminderCandidate {
   // A reverse-trial conversion (card added during the 14-day Pro). Optional
   // for the pre-migration RPC.
   reverse_trial_conversion?: boolean | null;
+  // Currency of amount_cents. Optional for the pre-migration RPC (reads as brl).
+  currency?: string | null;
 }
 
 interface ReverseTrialCandidate {
@@ -196,6 +198,8 @@ interface ReverseTrialCandidate {
   plan_name: string | null;
   price_cents: number | null;
   attempts: number;
+  // Optional for the pre-migration RPC (reads as brl).
+  currency?: string | null;
 }
 
 function isReverseTrialType(t: string): t is ReverseTrialEmailType {
@@ -487,7 +491,7 @@ export async function runLifecycleEmailCron(
             );
           }
         }
-        const firstCharge = formatFirstCharge(c);
+        const firstCharge = formatFirstCharge({ ...c, currency: c.currency ?? "brl" });
         if (firstCharge === null) {
           console.warn(
             `[lifecycle-email-cron] trial-reminder:no-amount workspace ${c.workspace_id}`,
@@ -561,6 +565,7 @@ export async function runLifecycleEmailCron(
           workspaceName: c.workspace_name,
           planName: c.plan_name,
           priceCents: c.price_cents,
+          currency: c.currency ?? "brl",
           endsAt: c.ends_at,
           endedAt: c.ended_at,
           hubPauseAt: c.hub_pause_at,

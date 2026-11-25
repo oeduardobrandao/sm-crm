@@ -1,5 +1,5 @@
 import { assertEquals } from "./assert.ts";
-import { classifyEnded, handleGetChurned } from "../platform-admin/churn.ts";
+import { classifyEnded, endedCurrency, handleGetChurned } from "../platform-admin/churn.ts";
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 
 const HEADERS = { "Content-Type": "application/json" };
@@ -79,6 +79,7 @@ function makeFakeSvc(rows: {
                   { id: "ws-a", name: "Alfa", created_at: "2026-09-01T00:00:00Z" },
                   { id: "ws-b", name: "Beta", created_at: "2026-09-02T00:00:00Z" },
                   { id: "ws-int", name: "Interno", created_at: "2026-09-03T00:00:00Z" },
+                  { id: "ws-usd", name: "Dollar", created_at: "2026-09-04T00:00:00Z" },
                 ],
                 error: null,
               }),
@@ -141,4 +142,39 @@ Deno.test("handleGetChurned classifies, sorts newest first, totals lost MRR and 
   assertEquals(body.churn_count, 1);
   assertEquals(body.trial_expired_count, 1);
   assertEquals(body.lost_mrr_cents, 13990);
+});
+
+Deno.test("endedCurrency: latest active snapshot wins, else the mirror row, default BRL", () => {
+  assertEquals(
+    endedCurrency({ currency: "brl" }, [{ ...snap("active", "2026-10-01", 4900), currency: "usd" }]),
+    "usd",
+  );
+  assertEquals(endedCurrency({ currency: "usd" }, []), "usd");
+  assertEquals(endedCurrency({}, []), "brl");
+});
+
+Deno.test("handleGetChurned splits lost MRR by currency and tags each row", async () => {
+  const sub = (id: string, currency: string, amount: number) => ({
+    workspace_id: id, status: "canceled", plan_id: "pro", billing_interval: "month",
+    amount_cents: amount, amount_interval: "month", currency, ever_subscribed_at: null,
+    updated_at: "2026-11-01T00:00:00Z",
+  });
+  const svc = makeFakeSvc({
+    subscriptions: [sub("ws-a", "brl", 9900), sub("ws-usd", "usd", 4900)],
+    snapshots: [
+      { workspace_id: "ws-a", snapshot_date: "2026-10-01", status: "active", monthly_cents: 9900, currency: "brl" },
+      { workspace_id: "ws-usd", snapshot_date: "2026-10-01", status: "active", monthly_cents: 4900, currency: "usd" },
+    ],
+  });
+  const body = await (
+    await handleGetChurned(svc, HEADERS, new Date("2026-11-06T00:00:00Z"), async () => new Map(), async () => new Set())
+  ).json();
+  assertEquals(body.lost_mrr_cents, 9900);
+  assertEquals(body.churn_count, 1);
+  assertEquals(body.currency, "brl");
+  assertEquals(body.usd, { lost_mrr_cents: 4900, churn_count: 1 });
+  const byId = Object.fromEntries(
+    body.workspaces.map((w: { workspace_id: string; currency: string }) => [w.workspace_id, w.currency]),
+  );
+  assertEquals(byId, { "ws-a": "brl", "ws-usd": "usd" });
 });

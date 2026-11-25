@@ -5,6 +5,7 @@ import { ExternalLink } from 'lucide-react';
 import { SegmentedControl } from '@mesaas/ios-kit';
 import { statusMeta, STATUS_BADGE_VARIANT, hasSubscription } from '../../lib/subscription';
 import { sanitizeExternalUrl } from '../../lib/security';
+import { WorkspaceCurrencyControl } from './WorkspaceCurrencyControl';
 import { PLAN_TEXT_CLASS, getPlanColor } from '../../lib/plan-colors';
 import {
   isReverseTrial,
@@ -95,6 +96,10 @@ export function WorkspaceDetailDesktop(props: WorkspaceDetailViewProps) {
           ))}
         </SelectContent>
       </Select>
+      <WorkspaceCurrencyControl
+        workspaceId={workspaceId}
+        currency={data.workspace.billing_currency ?? 'brl'}
+      />
       {(data.workspace.plan_source === 'manual' || data.workspace.plan_source === 'demo') && (
         <Button variant="secondary" onClick={props.onUnsetComp} disabled={props.unsetPending}>
           {data.workspace.plan_source === 'demo'

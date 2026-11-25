@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Cell, GroupedList, SegmentedControl } from '@mesaas/ios-kit';
 import type { ChurnedSummary, EndedKind } from '../../lib/api';
-import { formatMoney } from '../../lib/subscription';
+import { formatMoney, totalCount, usdSegment } from '../../lib/subscription';
 import { workspaceDetailPath } from '../../lib/routes';
 import { cn } from '../../lib/utils';
 import { Badge } from '../../components/ui/badge';
@@ -63,11 +63,12 @@ export function ChurnCard({ data, loading, error, retry, now, phone, className }
   const rows = filterEnded(all, view);
   const shown = rows.slice(0, MAX_ROWS);
   const more = rows.length - shown.length;
+  const churnTotal = totalCount(data?.churn_count, data?.usd?.churn_count);
   const count = (n: number | undefined) => (loading || error ? '…' : (n ?? 0));
 
   const title = 'Cancelados';
   const subtitle = data
-    ? `${data.churn_count} ${data.churn_count === 1 ? 'cancelou' : 'cancelaram'} · ${formatMoney(data.lost_mrr_cents, data.currency)}/mês perdidos · ${data.trial_expired_count} ${data.trial_expired_count === 1 ? 'teste encerrado' : 'testes encerrados'} · ${data.window_days} dias`
+    ? `${churnTotal} ${churnTotal === 1 ? 'cancelou' : 'cancelaram'} · ${formatMoney(data.lost_mrr_cents, data.currency)}${usdSegment(data.usd)}/mês perdidos · ${data.trial_expired_count} ${data.trial_expired_count === 1 ? 'teste encerrado' : 'testes encerrados'} · ${data.window_days} dias`
     : null;
   const emptyText =
     view === 'churn'
@@ -81,7 +82,7 @@ export function ChurnCard({ data, loading, error, retry, now, phone, className }
     <SegmentedControl
       options={[
         { value: 'todos', label: 'Todos' },
-        { value: 'churn', label: phone ? `Cancelou · ${count(data?.churn_count)}` : 'Cancelou' },
+        { value: 'churn', label: phone ? `Cancelou · ${count(churnTotal)}` : 'Cancelou' },
         {
           value: 'trial_expired',
           label: phone ? `Teste · ${count(data?.trial_expired_count)}` : 'Fim do teste',
@@ -96,7 +97,7 @@ export function ChurnCard({ data, loading, error, retry, now, phone, className }
 
   const meta = (r: (typeof all)[number]) =>
     r.kind === 'churn' && r.monthly_cents != null
-      ? `${r.plan_name ?? 'Sem plano'} · ${formatMoney(r.monthly_cents, data?.currency)}/mês`
+      ? `${r.plan_name ?? 'Sem plano'} · ${formatMoney(r.monthly_cents, r.currency ?? data?.currency)}/mês`
       : (r.plan_name ?? 'Sem plano');
 
   if (phone) {

@@ -1,6 +1,12 @@
 import { useState, type ReactNode } from 'react';
 import { Cell, GroupedList } from '@mesaas/ios-kit';
-import { formatMoney, intervalLabel, statusMeta } from '../../lib/subscription';
+import {
+  formatMoney,
+  intervalLabel,
+  statusMeta,
+  totalCount,
+  usdSegment,
+} from '../../lib/subscription';
 import { workspaceDetailPath } from '../../lib/routes';
 import { ACTIVITY_TONE_CLASS } from '../workspace-activity';
 import { Skeleton } from '../../components/ui/skeleton';
@@ -56,10 +62,10 @@ export function DashboardPhone({
   const trialsData = trials.data;
   const payingHeader = mrr.loading
     ? 'Workspaces pagantes'
-    : `Workspaces pagantes · ${mrrData?.paying_count ?? 0} · ${formatMoney(mrrData?.mrr_cents ?? null, mrrData?.currency)}/mês`;
+    : `Workspaces pagantes · ${totalCount(mrrData?.paying_count, mrrData?.usd?.paying_count)} · ${formatMoney(mrrData?.mrr_cents ?? null, mrrData?.currency)}/mês${usdSegment(mrrData?.usd)}`;
   const trialsHeader = trials.loading
     ? 'Testes'
-    : `Testes · ${trialsData?.trial_count ?? 0} · ${formatMoney(trials.mrrCents, trials.currency)}/mês`;
+    : `Testes · ${totalCount(trialsData?.trial_count, trialsData?.usd?.trial_count)} · ${formatMoney(trials.mrrCents, trials.currency)}/mês${usdSegment(trialsData?.usd)}`;
 
   return (
     <div className="pb-4">
@@ -109,7 +115,7 @@ export function DashboardPhone({
                     <span className={ACTIVITY_TONE_CLASS[a.tone]}>Ativo: {a.label}</span>
                   </>
                 }
-                value={formatMoney(ws.monthly_cents, mrrData?.currency)}
+                value={formatMoney(ws.monthly_cents, ws.currency ?? mrrData?.currency)}
                 to={workspaceDetailPath(ws.workspace_id)}
               />
             );
@@ -151,7 +157,7 @@ export function DashboardPhone({
                 value={
                   <span className="flex flex-col items-end leading-tight">
                     <span className="text-foreground">
-                      {formatMoney(ws.monthly_cents, trials.currency)}
+                      {formatMoney(ws.monthly_cents, ws.currency ?? trials.currency)}
                     </span>
                     <span className="text-xs">
                       {endLabel}

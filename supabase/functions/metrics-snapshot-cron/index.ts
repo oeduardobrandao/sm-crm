@@ -72,19 +72,34 @@ async function loadPricedRows(): Promise<PricedSnapshotSource[]> {
     },
     (r) => r.workspace_id,
   );
+  // The workspace's billing currency picks the catalog column when the mirror is empty, so a USD
+  // workspace is never priced (and snapshotted) at its BRL catalog price.
+  const currencyByWs = new Map<string, "brl" | "usd">();
+  for (const ids of chunk(rows.map((r) => r.workspace_id))) {
+    const { data, error } = await svc.from("workspaces").select("id, billing_currency").in("id", ids);
+    if (error) throw error;
+    for (const w of data ?? []) currencyByWs.set(w.id, w.billing_currency === "usd" ? "usd" : "brl");
+  }
   const planIds = [...new Set(rows.map((r) => r.plan_id).filter(Boolean))] as string[];
   const planById = new Map<string, PlanMeta>();
   for (const ids of chunk(planIds)) {
     const { data, error } = await svc
       .from("plans")
-      .select("id, name, price_brl, price_brl_annual")
+      .select("id, name, price_brl, price_brl_annual, price_usd, price_usd_annual")
       .in("id", ids);
     if (error) throw error;
     for (const p of data ?? []) {
-      planById.set(p.id, { name: p.name, price_brl: p.price_brl ?? null, price_brl_annual: p.price_brl_annual ?? null });
+      planById.set(p.id, {
+        name: p.name,
+        price_brl: p.price_brl ?? null,
+        price_brl_annual: p.price_brl_annual ?? null,
+        price_usd: p.price_usd ?? null,
+        price_usd_annual: p.price_usd_annual ?? null,
+      });
     }
   }
-  const priced = await priceSubscriptionRows(svc, rows, new Map(), planById);
+  const priceable = rows.map((r) => ({ ...r, workspace_currency: currencyByWs.get(r.workspace_id) ?? "brl" }));
+  const priced = await priceSubscriptionRows(svc, priceable, new Map(), planById);
   return priced.map((r) => ({
     workspace_id: r.workspace_id,
     provider: r.provider,
@@ -95,6 +110,7 @@ async function loadPricedRows(): Promise<PricedSnapshotSource[]> {
     amount_cents: r.amount_cents,
     amount_source: r.amount_source,
     switched_from_stripe_subscription_id: r.switched_from_stripe_subscription_id,
+    currency: r.currency,
   }));
 }
 

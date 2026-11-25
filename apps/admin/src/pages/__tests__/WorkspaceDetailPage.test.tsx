@@ -6,6 +6,7 @@ vi.mock('../../lib/api', async (importOriginal) => ({
   getWorkspace: vi.fn(),
   listPlans: vi.fn(),
   setWorkspacePlan: vi.fn(),
+  setWorkspaceCurrency: vi.fn(),
   unsetWorkspacePlan: vi.fn(),
   resendDemoAccess: vi.fn(),
   setWorkspaceOverrides: vi.fn(),
@@ -34,8 +35,10 @@ import {
   resendDemoAccess,
   revokeMcpKey,
   setWorkspaceOverrides,
+  setWorkspaceCurrency,
   setWorkspacePlan,
   unsetWorkspacePlan,
+  type AdminApiError,
 } from '../../lib/api';
 import { WORKSPACE, primeApi, renderPage } from './workspace-detail-fixture';
 
@@ -307,5 +310,42 @@ describe('WorkspaceDetailPage demo account (desktop)', () => {
     );
     await waitFor(() => expect(box.value).toBe(''));
     expect(setWorkspaceOverrides).not.toHaveBeenCalled();
+  });
+});
+
+describe('WorkspaceDetailPage billing currency', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    primeApi();
+  });
+
+  it('shows "Moeda de cobrança" on BRL by default and switches to USD', async () => {
+    vi.mocked(setWorkspaceCurrency).mockResolvedValue({ ok: true });
+    renderPage();
+    const group = await screen.findByRole('radiogroup', { name: 'Moeda de cobrança' });
+    expect(within(group).getByRole('radio', { name: 'BRL' })).toBeChecked();
+    fireEvent.click(within(group).getByRole('radio', { name: 'USD' }));
+    await waitFor(() => expect(setWorkspaceCurrency).toHaveBeenCalledWith('ws1', 'usd'));
+  });
+
+  it('reads USD from the workspace payload', async () => {
+    vi.mocked(getWorkspace).mockResolvedValue({
+      ...WORKSPACE,
+      workspace: { ...WORKSPACE.workspace, billing_currency: 'usd' },
+    });
+    renderPage();
+    const group = await screen.findByRole('radiogroup', { name: 'Moeda de cobrança' });
+    expect(within(group).getByRole('radio', { name: 'USD' })).toBeChecked();
+  });
+
+  it('locks the switch with the hint when the server answers 409 currency_locked', async () => {
+    const err = Object.assign(new Error('currency_locked'), { status: 409 }) as AdminApiError;
+    vi.mocked(setWorkspaceCurrency).mockRejectedValue(err);
+    renderPage();
+    const group = await screen.findByRole('radiogroup', { name: 'Moeda de cobrança' });
+    fireEvent.click(within(group).getByRole('radio', { name: 'USD' }));
+    expect(await screen.findByText('Travada após o primeiro checkout')).toBeInTheDocument();
+    expect(within(group).getByRole('radio', { name: 'USD' })).toBeDisabled();
+    expect(within(group).getByRole('radio', { name: 'BRL' })).toBeDisabled();
   });
 });

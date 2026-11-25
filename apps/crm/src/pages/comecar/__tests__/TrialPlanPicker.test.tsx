@@ -140,6 +140,22 @@ describe('TrialPlanPicker', () => {
     ).toBeInTheDocument();
   });
 
+  it('shows the price in dollars for a USD workspace', () => {
+    const usd = catalog.map((p) =>
+      p.id === 'pro' ? { ...p, price_usd: 4900, price_usd_annual: 49000 } : p,
+    );
+    renderPicker({ plans: usd, currency: 'usd' });
+    expect(
+      screen.getByText(
+        (_c, node) =>
+          node?.tagName === 'P' &&
+          (node.textContent ?? '')
+            .replace(/\s+/g, ' ')
+            .startsWith('$0 hoje. Primeira cobrança de $49.00/mês por volta de 26 de novembro'),
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('keeps Free one click away and opens the full plan list', () => {
     const { props } = renderPicker();
     fireEvent.click(screen.getByRole('button', { name: 'Continuar no Free' }));

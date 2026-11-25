@@ -19,6 +19,7 @@ Deno.test("mirror-priced row is used directly, no live fetch needed", () => {
   );
   assertEquals(r, {
     amount_cents: 9900,
+    currency: "brl",
     interval: "month",
     discount_label: null,
     amount_source: "stripe",
@@ -130,6 +131,7 @@ Deno.test("pagarme mirror-priced row labels amount_source pagarme, no live fetch
   );
   assertEquals(r, {
     amount_cents: 95900,
+    currency: "brl",
     interval: "year",
     discount_label: null,
     amount_source: "pagarme",
@@ -171,4 +173,117 @@ Deno.test("null provider (legacy row) keeps stripe semantics", () => {
     PRO,
   );
   assertEquals(r.amount_source, "stripe");
+});
+
+const PRO_USD = { name: "Pro", price_brl: 12900, price_brl_annual: 99000, price_usd: 4900, price_usd_annual: 46800 };
+
+Deno.test("USD workspace with no mirror amount prices monthly Pro from the USD catalog", () => {
+  const r = resolveMirrorAmount(
+    {
+      provider: "stripe",
+      amount_cents: null,
+      currency: null,
+      amount_interval: null,
+      discount_label: null,
+      billing_interval: "month",
+      stripe_subscription_id: null,
+      workspace_currency: "usd",
+    },
+    PRO_USD,
+  );
+  assertEquals(r, {
+    amount_cents: 4900,
+    currency: "usd",
+    interval: "month",
+    discount_label: null,
+    amount_source: "catalog",
+    needsLiveFetch: false,
+  });
+});
+
+Deno.test("USD workspace annual catalog uses price_usd_annual; missing USD price stays unpriced", () => {
+  const base = {
+    provider: "stripe",
+    amount_cents: null,
+    currency: null,
+    amount_interval: null,
+    discount_label: null,
+    stripe_subscription_id: null,
+    workspace_currency: "usd" as const,
+  };
+  const annual = resolveMirrorAmount({ ...base, billing_interval: "year" }, PRO_USD);
+  assertEquals(annual.amount_cents, 46800);
+  assertEquals(annual.currency, "usd");
+  // Never falls back to the BRL price for a USD workspace: that would mix currencies.
+  const noUsd = resolveMirrorAmount({ ...base, billing_interval: "month" }, { ...PRO_USD, price_usd: null });
+  assertEquals(noUsd.amount_cents, null);
+  assertEquals(noUsd.amount_source, null);
+  assertEquals(noUsd.currency, "usd");
+});
+
+Deno.test("mirror amount keeps the mirror currency", () => {
+  const r = resolveMirrorAmount(
+    {
+      provider: "stripe",
+      amount_cents: 4900,
+      currency: "usd",
+      amount_interval: "month",
+      discount_label: null,
+      billing_interval: "month",
+      stripe_subscription_id: "sub_us",
+      workspace_currency: "usd",
+    },
+    PRO_USD,
+  );
+  assertEquals(r.amount_cents, 4900);
+  assertEquals(r.currency, "usd");
+  assertEquals(r.amount_source, "stripe");
+});
+
+Deno.test("BRL workspace catalog fallback reports currency brl", () => {
+  const r = resolveMirrorAmount(
+    {
+      provider: "stripe",
+      amount_cents: null,
+      currency: null,
+      amount_interval: null,
+      discount_label: null,
+      billing_interval: "month",
+      stripe_subscription_id: null,
+      workspace_currency: "brl",
+    },
+    PRO_USD,
+  );
+  assertEquals(r.amount_cents, 12900);
+  assertEquals(r.currency, "brl");
+});
+
+Deno.test("priceSubscriptionRows carries the resolved currency", async () => {
+  const db = {
+    from: () => {
+      throw new Error("unexpected db call");
+    },
+  } as unknown as SupabaseClient;
+  const priced = await priceSubscriptionRows(
+    db,
+    [
+      {
+        workspace_id: "ws-us",
+        status: "active",
+        plan_id: "pro",
+        billing_interval: "month",
+        stripe_subscription_id: null,
+        provider: "stripe",
+        amount_cents: null,
+        currency: null,
+        amount_interval: null,
+        discount_label: null,
+        workspace_currency: "usd",
+      },
+    ],
+    new Map(),
+    new Map([["pro", PRO_USD]]),
+  );
+  assertEquals(priced[0].amount_cents, 4900);
+  assertEquals(priced[0].currency, "usd");
 });

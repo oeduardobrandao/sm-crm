@@ -73,11 +73,16 @@ export function buildCheckoutIdempotencyKey(
   // or nothing), and it can change inside the hour (reverse-trial cron, Admin end-now or
   // extension): without it the same key would carry different parameters and Stripe would
   // answer idempotency_error for the rest of the hour.
-  trialTag = "",
+  // Pass "" for no tag.
+  trialTag: string,
+  // Billing currency pinned on the session (workspaces.billing_currency). It is a request
+  // parameter like the others, so it is always part of the key. Required: a default would let
+  // a new call site silently key a USD session as BRL.
+  currency: "brl" | "usd",
 ): string {
   const bucket = Math.floor(nowMs / 3_600_000);
   const base = `co_${workspaceId}_${planId}_${interval}_${source}_${bucket}`;
-  return trialTag ? `${base}_${trialTag}` : base;
+  return trialTag ? `${base}_${trialTag}_${currency}` : `${base}_${currency}`;
 }
 
 /** Short, stable tag of a checkout's trial parameters, for buildCheckoutIdempotencyKey. */

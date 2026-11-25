@@ -25,6 +25,7 @@ export interface EndedSubRow {
   billing_interval: string | null;
   amount_cents: number | null;
   amount_interval: string | null;
+  currency?: string | null;
   ever_subscribed_at: string | null;
   updated_at: string;
 }
@@ -34,6 +35,8 @@ export interface SnapshotLite {
   snapshot_date: string;
   status: string | null;
   monthly_cents: number | null;
+  /** Currency the snapshot's monthly_cents is in (column default 'brl'). */
+  currency?: string | null;
 }
 
 /**
@@ -44,7 +47,10 @@ export interface SnapshotLite {
  * whose first charge fails to `past_due`, never `active`.
  */
 export function classifyEnded(
-  sub: Pick<EndedSubRow, "ever_subscribed_at" | "amount_cents" | "amount_interval" | "billing_interval">,
+  sub: Pick<
+    EndedSubRow,
+    "ever_subscribed_at" | "amount_cents" | "amount_interval" | "billing_interval" | "currency"
+  >,
   snapshots: SnapshotLite[],
 ): { kind: EndedKind; monthly_cents: number | null } {
   const active = snapshots
@@ -66,6 +72,21 @@ export function classifyEnded(
 }
 
 /**
+ * Currency of the `monthly_cents` classifyEnded reports: the latest active snapshot's when that
+ * is what priced it, otherwise the mirror row's. Anything that is not 'usd' is BRL.
+ */
+export function endedCurrency(
+  sub: Pick<EndedSubRow, "currency">,
+  snapshots: SnapshotLite[],
+): "brl" | "usd" {
+  const active = snapshots
+    .filter((s) => s.status === "active")
+    .sort((a, b) => (a.snapshot_date < b.snapshot_date ? 1 : -1));
+  const code = active.length > 0 ? active[0].currency : sub.currency;
+  return code === "usd" ? "usd" : "brl";
+}
+
+/**
  * Workspaces whose subscription ended in the last CHURN_WINDOW_DAYS, newest first, each
  * classified as churn / trial_expired / unknown. Internal (demo/seed) workspaces are excluded,
  * like the MRR and trials lists.
@@ -82,7 +103,7 @@ export async function handleGetChurned(
     svc
       .from("workspace_subscriptions")
       .select(
-        "workspace_id, status, plan_id, billing_interval, amount_cents, amount_interval, ever_subscribed_at, updated_at",
+        "workspace_id, status, plan_id, billing_interval, amount_cents, amount_interval, currency, ever_subscribed_at, updated_at",
       )
       .in("status", [...ENDED_STATUSES])
       .gte("updated_at", since)
@@ -108,7 +129,7 @@ export async function handleGetChurned(
     const snaps = await fetchAllRows<SnapshotLite>((from, to) =>
       svc
         .from("workspace_subscription_snapshots")
-        .select("workspace_id, snapshot_date, status, monthly_cents")
+        .select("workspace_id, snapshot_date, status, monthly_cents, currency")
         .in("workspace_id", ids)
         .in("status", ["active", "trialing"])
         .order("workspace_id", { ascending: true })
@@ -139,7 +160,9 @@ export async function handleGetChurned(
 
   const workspaces = rows
     .map((r) => {
-      const { kind, monthly_cents } = classifyEnded(r, snapsByWs.get(r.workspace_id) ?? []);
+      const snaps = snapsByWs.get(r.workspace_id) ?? [];
+      const { kind, monthly_cents } = classifyEnded(r, snaps);
+      const currency = endedCurrency(r, snaps);
       const ws = wsById.get(r.workspace_id);
       const owner = ownerContacts.get(r.workspace_id);
       return {
@@ -149,6 +172,7 @@ export async function handleGetChurned(
         kind,
         ended_at: r.updated_at,
         monthly_cents,
+        currency,
         created_at: ws?.created_at ?? null,
         last_activity_at: lastActivityByWs.get(r.workspace_id) ?? null,
         owner_name: owner?.name ?? null,
@@ -159,7 +183,9 @@ export async function handleGetChurned(
     })
     .sort((a, b) => (a.ended_at < b.ended_at ? 1 : a.ended_at > b.ended_at ? -1 : 0));
 
-  const churned = workspaces.filter((w) => w.kind === "churn");
+  // Top-level totals are BRL-only; USD churn is summed apart in `usd`.
+  const churned = workspaces.filter((w) => w.kind === "churn" && w.currency !== "usd");
+  const churnedUsd = workspaces.filter((w) => w.kind === "churn" && w.currency === "usd");
   return new Response(
     JSON.stringify({
       workspaces,
@@ -168,6 +194,10 @@ export async function handleGetChurned(
       lost_mrr_cents: churned.reduce((sum, w) => sum + (w.monthly_cents ?? 0), 0),
       window_days: CHURN_WINDOW_DAYS,
       currency: "brl",
+      usd: {
+        lost_mrr_cents: churnedUsd.reduce((sum, w) => sum + (w.monthly_cents ?? 0), 0),
+        churn_count: churnedUsd.length,
+      },
     }),
     { status: 200, headers },
   );

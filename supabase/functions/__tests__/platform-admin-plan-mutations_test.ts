@@ -550,3 +550,52 @@ Deno.test("update-plan: boolean-only flip is rejected when installment is config
   assertEquals(res.status, 400);
   assertEquals(calls.some((c) => c.table === "plans" && c.method === "update"), false);
 });
+
+Deno.test("update-plan persists price_usd and price_usd_annual (integers or null)", async () => {
+  const { db, calls } = makeFakeDb({
+    plans: [{ data: { id: "pro", price_usd: 2900, price_usd_annual: null }, error: null }],
+  });
+  const res = await handleUpdatePlan(
+    db as unknown as SupabaseClient,
+    { action: "update-plan", plan_id: "pro", price_usd: 2900, price_usd_annual: null },
+    HEADERS,
+  );
+  assertEquals(res.status, 200);
+  const payload = lastPayload(calls, "plans", "update");
+  assertEquals(payload?.price_usd, 2900);
+  assertEquals(payload?.price_usd_annual, null);
+});
+
+Deno.test("create-plan persists price_usd and price_usd_annual", async () => {
+  const { db, calls } = makeFakeDb({ plans: [{ data: { id: "new" }, error: null }] });
+  const res = await handleCreatePlan(
+    db as unknown as SupabaseClient,
+    { action: "create-plan", name: "Novo", price_usd: 1900, price_usd_annual: 19000 },
+    HEADERS,
+  );
+  assertEquals(res.status, 201);
+  const payload = lastPayload(calls, "plans", "insert");
+  assertEquals(payload?.price_usd, 1900);
+  assertEquals(payload?.price_usd_annual, 19000);
+});
+
+Deno.test("plan save rejects negative, fractional or non-numeric USD prices with 400", async () => {
+  for (const bad of [-1, 12.5, "29", NaN]) {
+    for (const field of ["price_usd", "price_usd_annual"]) {
+      const { db, calls } = makeFakeDb({ plans: [] });
+      const upd = await handleUpdatePlan(
+        db as unknown as SupabaseClient,
+        { action: "update-plan", plan_id: "pro", [field]: bad },
+        HEADERS,
+      );
+      assertEquals(upd.status, 400);
+      const cre = await handleCreatePlan(
+        db as unknown as SupabaseClient,
+        { action: "create-plan", name: "X", [field]: bad },
+        HEADERS,
+      );
+      assertEquals(cre.status, 400);
+      assertEquals(calls.filter((c) => c.method === "update" || c.method === "insert").length, 0);
+    }
+  }
+});

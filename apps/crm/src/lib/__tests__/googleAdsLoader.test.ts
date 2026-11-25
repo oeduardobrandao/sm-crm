@@ -179,4 +179,48 @@ describe('googleAdsLoader', () => {
       { send_to: `${AW_ID}/${PURCHASE_CONVERSION_LABEL}` },
     ]);
   });
+
+  it('reports the purchase in the currency remembered at checkout start', async () => {
+    seedConsent({ marketing: true });
+    sessionStorage.clear();
+    const { rememberCheckoutValue, reportPurchaseConversion, PURCHASE_CONVERSION_LABEL } =
+      await import('../googleAdsLoader');
+    rememberCheckoutValue(4900, 'usd');
+    reportPurchaseConversion();
+    expect(queuedCalls().at(-1)).toEqual([
+      'event',
+      'conversion',
+      { send_to: `${AW_ID}/${PURCHASE_CONVERSION_LABEL}`, value: 49, currency: 'USD' },
+    ]);
+    expect(window.fbq?.queue.at(-1)).toEqual(['track', 'Purchase', { value: 49, currency: 'USD' }]);
+    const frame = document.querySelector<HTMLIFrameElement>('iframe[src="/oaiq-frame.html"]')!;
+    const postSpy = vi.spyOn(frame.contentWindow!, 'postMessage').mockImplementation(() => {});
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { channel: 'mesaas-oaiq', ready: true },
+        origin: window.location.origin,
+        source: frame.contentWindow,
+      }),
+    );
+    expect((postSpy.mock.calls.at(-1)![0] as { call: unknown[] }).call).toEqual([
+      'measure',
+      'subscription_created',
+      { type: 'plan_enrollment', amount: 4900, currency: 'USD' },
+    ]);
+    expect(sessionStorage.length).toBe(0);
+  });
+
+  it('reads a value stored without a currency (older tab) as BRL', async () => {
+    seedConsent({ marketing: true });
+    sessionStorage.clear();
+    sessionStorage.setItem('gads_checkout_value_cents', '9990');
+    const { reportPurchaseConversion, PURCHASE_CONVERSION_LABEL } =
+      await import('../googleAdsLoader');
+    reportPurchaseConversion();
+    expect(queuedCalls().at(-1)).toEqual([
+      'event',
+      'conversion',
+      { send_to: `${AW_ID}/${PURCHASE_CONVERSION_LABEL}`, value: 99.9, currency: 'BRL' },
+    ]);
+  });
 });

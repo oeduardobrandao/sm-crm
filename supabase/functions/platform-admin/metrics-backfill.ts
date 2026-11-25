@@ -6,7 +6,11 @@ import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { fetchAllRows } from "../_shared/paginate.ts";
 import { pagarmeFetch } from "../_shared/pagarme.ts";
 import { loadStripe } from "../_shared/stripe-loader.ts";
-import { STRIPE_TIMEOUT_MS, stripeAmountFromSubscription } from "../_shared/stripe-amount.ts";
+import {
+  STRIPE_LIST_AMOUNT_EXPAND,
+  STRIPE_TIMEOUT_MS,
+  stripeAmountFromSubscription,
+} from "../_shared/stripe-amount.ts";
 import { fetchInternalWorkspaceIdsOrThrow } from "../_shared/internal-workspaces.ts";
 import { type SnapshotRow, writeSnapshot } from "../_shared/metrics-snapshot.ts";
 import { saoPauloDate } from "../_shared/sao-paulo-date.ts";
@@ -61,6 +65,7 @@ export function toStripeSubLite(raw: unknown): StripeSubLite {
     price_id: s.items?.data?.[0]?.price?.id ?? null,
     amount_cents: amt.amount_cents,
     interval: amt.interval,
+    currency: amt.currency.toLowerCase() === "usd" ? "usd" : "brl",
   };
 }
 
@@ -125,7 +130,43 @@ const STRIPE_MAX_PAGES = 100;
 const PAGARME_PAGE_SIZE = 100;
 export const PAGARME_MAX_PAGES = 50;
 
+export type PriceRetriever = (
+  priceId: string,
+) => Promise<{ currency?: string; unit_amount?: number | null; currency_options?: unknown } | null>;
+
+/**
+ * subscriptions.list cannot expand price.currency_options (Stripe's 4-level limit), so a
+ * subscription billed in a non-default currency gets its price retrieved once (cached per id)
+ * and substituted into the item before pricing.
+ */
+export async function enrichSubscriptionPrice(
+  raw: unknown,
+  retrievePrice: PriceRetriever,
+  cache: Map<string, Promise<unknown>>,
+): Promise<unknown> {
+  const sub = raw as {
+    currency?: string | null;
+    items?: { data?: Array<{ price?: { id?: string; currency?: string } }> };
+  };
+  const item = sub.items?.data?.[0];
+  const price = item?.price;
+  const cur = sub.currency?.toLowerCase();
+  if (!item || !price?.id || !cur || cur === (price.currency ?? "brl").toLowerCase()) return raw;
+  let pending = cache.get(price.id);
+  if (!pending) {
+    pending = retrievePrice(price.id);
+    cache.set(price.id, pending);
+  }
+  const full = (await pending) as object | null;
+  if (!full) return raw;
+  const items = { ...sub.items, data: [{ ...item, price: { ...price, ...full } }, ...(sub.items?.data ?? []).slice(1)] };
+  return { ...sub, items };
+}
+
 type StripeSubsClient = {
+  prices: {
+    retrieve: (id: string, params: { expand: string[] }, opts?: { timeout?: number }) => Promise<unknown>;
+  };
   subscriptions: {
     list: (
       params: Record<string, unknown>,
@@ -139,17 +180,24 @@ async function listStripeSubscriptions(): Promise<StripeSubLite[]> {
   if (!client) throw new Error("stripe not configured");
   const stripe = client as unknown as StripeSubsClient;
   const out: StripeSubLite[] = [];
+  const priceCache = new Map<string, Promise<unknown>>();
+  const retrievePrice: PriceRetriever = (id) =>
+    withTimeout(
+      stripe.prices.retrieve(id, { expand: ["currency_options"] }, { timeout: STRIPE_TIMEOUT_MS }),
+      STRIPE_TIMEOUT_MS,
+      "stripe.prices.retrieve",
+    ) as ReturnType<PriceRetriever>;
   let startingAfter: string | undefined;
   for (let page = 0; page < STRIPE_MAX_PAGES; page++) {
     const res = await withTimeout(
       stripe.subscriptions.list(
-        { status: "all", limit: 100, expand: ["data.discounts"], ...(startingAfter ? { starting_after: startingAfter } : {}) },
+        { status: "all", limit: 100, expand: STRIPE_LIST_AMOUNT_EXPAND, ...(startingAfter ? { starting_after: startingAfter } : {}) },
         { timeout: STRIPE_TIMEOUT_MS },
       ),
       STRIPE_TIMEOUT_MS,
       "stripe.subscriptions.list",
     );
-    for (const raw of res.data) out.push(toStripeSubLite(raw));
+    for (const raw of res.data) out.push(toStripeSubLite(await enrichSubscriptionPrice(raw, retrievePrice, priceCache)));
     if (!res.has_more || !res.data.length) return out;
     startingAfter = (res.data[res.data.length - 1] as { id: string }).id;
   }

@@ -21,7 +21,7 @@ vi.mock('react-chartjs-2', () => ({
 
 vi.mock('../../lib/api', () => ({ getMetricsHistory: vi.fn() }));
 
-import { getMetricsHistory, type MetricsHistoryResponse } from '../../lib/api';
+import { getMetricsHistory, type MetricsHistoryResponse, type MetricsMonth } from '../../lib/api';
 import { RevenueSection } from '../metricas/RevenueSection';
 import { MovementSection } from '../metricas/MovementSection';
 
@@ -86,6 +86,83 @@ const DATA: MetricsHistoryResponse = {
 };
 
 beforeEach(() => vi.mocked(getMetricsHistory).mockReset());
+
+const usdMonth = (over: Partial<MetricsMonth> = {}): MetricsMonth => ({
+  month: '2026-09',
+  missing: false,
+  close_date: '2026-09-24',
+  closed: false,
+  source: 'cron',
+  mrr_cents: 4900,
+  arr_cents: 58800,
+  paying_count: 1,
+  by_provider: { stripe: 4900, pagarme: 0 },
+  by_plan: [{ plan_id: 'pro', name: 'Pro', mrr_cents: 4900 }],
+  movements_since: null,
+  movements: null,
+  churn: null,
+  ...over,
+});
+
+describe('USD history', () => {
+  it('hides the USD block when every USD month is zero', async () => {
+    vi.mocked(getMetricsHistory).mockResolvedValue({
+      ...DATA,
+      months_usd: [usdMonth({ mrr_cents: 0, arr_cents: 0, paying_count: 0, by_plan: [] })],
+    });
+    wrap(<RevenueSection />);
+    await screen.findByText('MRR atual');
+    expect(screen.queryByTestId('revenue-usd')).not.toBeInTheDocument();
+    expect(screen.queryByText('MRR atual (USD)')).not.toBeInTheDocument();
+  });
+
+  it('hides the USD block when months_usd is absent (older payload)', async () => {
+    vi.mocked(getMetricsHistory).mockResolvedValue(DATA);
+    wrap(<RevenueSection />);
+    await screen.findByText('MRR atual');
+    expect(screen.queryByTestId('revenue-usd')).not.toBeInTheDocument();
+  });
+
+  it('shows the USD MRR in dollars next to the BRL one', async () => {
+    vi.mocked(getMetricsHistory).mockResolvedValue({ ...DATA, months_usd: [usdMonth()] });
+    wrap(<RevenueSection />);
+    expect(await screen.findByText('MRR atual (USD)')).toBeInTheDocument();
+    expect(screen.getByTestId('revenue-mrr-usd')).toHaveTextContent('US$ 49,00');
+    expect(screen.getByTestId('revenue-paying-usd')).toHaveTextContent('1');
+    expect(screen.getByTestId('revenue-mrr')).toHaveTextContent('R$ 150,00');
+  });
+
+  it('shows USD movement and churn only when USD months have movements', async () => {
+    const usdWithMovement = usdMonth({
+      month: '2026-10',
+      movements: {
+        new: 4900,
+        expansion: 0,
+        contraction: 0,
+        past_due: 0,
+        recovered: 0,
+        churn: 0,
+        switch: 0,
+      },
+      movements_since: '2026-09',
+      churn: {
+        logos: 0,
+        lost_cents: 0,
+        base_logos: 1,
+        base_cents: 4900,
+        logo_pct: 0,
+        revenue_pct: 0,
+      },
+    });
+    vi.mocked(getMetricsHistory).mockResolvedValue({
+      ...DATA,
+      months_usd: [usdMonth(), usdWithMovement],
+    });
+    wrap(<MovementSection />);
+    expect(await screen.findByTestId('movement-usd')).toBeInTheDocument();
+    expect(screen.getAllByText('US$ 49,00').length).toBeGreaterThan(0);
+  });
+});
 
 describe('RevenueSection', () => {
   it('shows the current MRR, ARR, paying count and delta, and toggles the stack', async () => {

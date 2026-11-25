@@ -89,7 +89,9 @@ begin
       'storage_used_bytes = 12345',
       'storage_quota_bytes = 1',
       'demo_created_at = now()',
-      'is_internal = true'
+      'is_internal = true',
+      'billing_currency = ''usd''',
+      'billing_currency_locked_at = now()'
     ] loop
       v_msg := null; v_state := null;
       perform set_config('request.jwt.claims',

@@ -64,6 +64,9 @@ describe('PlansPage (desktop)', () => {
     fireEvent.change(within(sheet).getByLabelText('Preço mensal (R$)'), {
       target: { value: '49,90' },
     });
+    fireEvent.change(within(sheet).getByLabelText('Preço mensal (USD)'), {
+      target: { value: '29' },
+    });
     fireEvent.change(within(sheet).getByLabelText('ID do produto Stripe'), {
       target: { value: 'prod_123' },
     });
@@ -77,6 +80,8 @@ describe('PlansPage (desktop)', () => {
     expect(vi.mocked(createPlan).mock.calls[0][0]).toMatchObject({
       name: 'Gold',
       price_brl: 4990,
+      price_usd: 2900,
+      price_usd_annual: null,
       is_active: false,
       stripe_product_id: 'prod_123',
       max_clients: 7,

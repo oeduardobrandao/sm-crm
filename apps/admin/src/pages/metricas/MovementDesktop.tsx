@@ -17,21 +17,30 @@ import {
   monthLabel,
   movementSeries,
   prevCalendarMonth,
+  type MetricsCurrency,
 } from './metrics-view';
 import { formatMonth } from './deposits-view';
 import { ChurnLineChart, MovementBarChart } from './charts';
 
-export function MovementDesktop({ months }: { months: MetricsMonth[] }) {
+export function MovementDesktop({
+  months,
+  currency = 'brl',
+}: {
+  months: MetricsMonth[];
+  currency?: MetricsCurrency;
+}) {
+  const sfx = currency === 'usd' ? '-usd' : '';
+  const usdTag = currency === 'usd' ? ' (USD)' : '';
   const s = useMemo(() => movementSeries(months), [months]);
   return (
     <div className="space-y-4">
       <div className="grid gap-4 lg:grid-cols-2">
-        <GlassPanel title="Movimento do MRR" titleId="mov-bars-title">
+        <GlassPanel title={`Movimento do MRR${usdTag}`} titleId={`mov-bars-title${sfx}`}>
           <div className="h-72">
-            <MovementBarChart months={months} />
+            <MovementBarChart months={months} currency={currency} />
           </div>
         </GlassPanel>
-        <GlassPanel title="Churn" titleId="mov-churn-title">
+        <GlassPanel title={`Churn${usdTag}`} titleId={`mov-churn-title${sfx}`}>
           <div className="h-72">
             <ChurnLineChart months={months} />
           </div>
@@ -64,7 +73,7 @@ export function MovementDesktop({ months }: { months: MetricsMonth[] }) {
                 </TableCell>
                 {MOVEMENT_KEYS.map((k) => (
                   <TableCell key={k} className="text-right tabular-nums">
-                    {formatMoney(m.movements![k], 'brl')}
+                    {formatMoney(m.movements![k], currency)}
                   </TableCell>
                 ))}
                 <TableCell className="text-right tabular-nums">

@@ -110,6 +110,19 @@ Deno.test("recordInvoiceCommission: trial invoice (zero) touches nothing", async
   assertEquals(db.calls.length, 0);
 });
 
+Deno.test("recordInvoiceCommission: USD invoice records no commission and touches nothing", async () => {
+  const db = createSupabaseQueryMock();
+  queueReferral(db);
+  const out = await recordInvoiceCommission(
+    db as unknown as SupabaseClient,
+    invoice({ currency: "USD" }),
+    PAID_AT,
+    NO_FETCH,
+  );
+  assertEquals(out, "skipped:non_brl_currency");
+  assertEquals(db.calls.length, 0);
+});
+
 Deno.test("recordInvoiceCommission: workspace without referral is a no-op", async () => {
   const db = createSupabaseQueryMock();
   db.queue("workspace_subscriptions", "select", { data: { workspace_id: "ws-1" } });

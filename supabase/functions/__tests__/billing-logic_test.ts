@@ -342,3 +342,116 @@ Deno.test("never_trialed_gets_30_days", async () => {
     { kind: "none" },
   );
 });
+
+// ---------------------------------------------------------------------------
+// USD billing: checkout pins the workspace currency (Task 3)
+// ---------------------------------------------------------------------------
+
+Deno.test("usdPriceConfigured needs a positive USD amount for the chosen interval", async () => {
+  const { usdPriceConfigured } = await import("../_shared/billing-logic.ts");
+  assertEquals(usdPriceConfigured({ price_usd: 2900, price_usd_annual: 29000 }, "month"), true);
+  assertEquals(usdPriceConfigured({ price_usd: 2900, price_usd_annual: 29000 }, "year"), true);
+  assertEquals(usdPriceConfigured({ price_usd: 2900, price_usd_annual: null }, "year"), false);
+  assertEquals(usdPriceConfigured({ price_usd: null, price_usd_annual: 29000 }, "month"), false);
+  assertEquals(usdPriceConfigured({ price_usd: 0, price_usd_annual: 0 }, "month"), false);
+  assertEquals(usdPriceConfigured({ price_usd: -1, price_usd_annual: 29000 }, "month"), false);
+});
+
+Deno.test("customerCurrencyConflict only when the customer already has a different currency", async () => {
+  const { customerCurrencyConflict } = await import("../_shared/billing-logic.ts");
+  assertEquals(customerCurrencyConflict("brl", "usd"), true);
+  assertEquals(customerCurrencyConflict("usd", "brl"), true);
+  assertEquals(customerCurrencyConflict("usd", "usd"), false);
+  assertEquals(customerCurrencyConflict("brl", "brl"), false);
+  // Stripe reports the currency in lowercase, but never trust the casing.
+  assertEquals(customerCurrencyConflict("USD", "usd"), false);
+  // A customer that never paid has no currency yet: no conflict.
+  assertEquals(customerCurrencyConflict(null, "usd"), false);
+  assertEquals(customerCurrencyConflict(undefined, "brl"), false);
+  assertEquals(customerCurrencyConflict("", "usd"), false);
+});
+
+Deno.test("checkoutLocale: English for USD, Portuguese for BRL", async () => {
+  const { checkoutLocale } = await import("../_shared/billing-logic.ts");
+  assertEquals(checkoutLocale("usd"), "en");
+  assertEquals(checkoutLocale("brl"), "pt-BR");
+});
+
+Deno.test("parseBillingCurrency accepts only brl/usd", async () => {
+  const { parseBillingCurrency } = await import("../_shared/billing-logic.ts");
+  assertEquals(parseBillingCurrency("brl"), "brl");
+  assertEquals(parseBillingCurrency("usd"), "usd");
+  assertEquals(parseBillingCurrency("USD"), null);
+  assertEquals(parseBillingCurrency("eur"), null);
+  assertEquals(parseBillingCurrency(null), null);
+  assertEquals(parseBillingCurrency(undefined), null);
+});
+
+Deno.test("buildCheckoutSessionParams always pins currency and locale", async () => {
+  const { buildCheckoutSessionParams } = await import("../_shared/billing-logic.ts");
+  const base = {
+    customerId: "cus_1",
+    workspaceId: "ws-1",
+    planId: "pro",
+    priceId: "price_1",
+    trial: { kind: "days" as const, days: 30 },
+    successUrl: "https://app/ok",
+    cancelUrl: "https://app/cancel",
+  };
+  const usd = buildCheckoutSessionParams({ ...base, currency: "usd" });
+  assertEquals(usd.currency, "usd");
+  assertEquals(usd.locale, "en");
+  const brl = buildCheckoutSessionParams({ ...base, currency: "brl" });
+  assertEquals(brl.currency, "brl");
+  assertEquals(brl.locale, "pt-BR");
+  // Everything else matches the pre-USD session exactly.
+  assertEquals(brl, {
+    mode: "subscription",
+    customer: "cus_1",
+    client_reference_id: "ws-1",
+    line_items: [{ price: "price_1", quantity: 1 }],
+    subscription_data: {
+      metadata: { workspace_id: "ws-1", plan_id: "pro" },
+      trial_period_days: 30,
+    },
+    allow_promotion_codes: true,
+    payment_method_collection: "always",
+    success_url: "https://app/ok",
+    cancel_url: "https://app/cancel",
+    currency: "brl",
+    locale: "pt-BR",
+  });
+});
+
+Deno.test("buildCheckoutSessionParams maps each trial kind", async () => {
+  const { buildCheckoutSessionParams } = await import("../_shared/billing-logic.ts");
+  const base = {
+    customerId: "cus_1",
+    workspaceId: "ws-1",
+    planId: "pro",
+    priceId: "price_1",
+    currency: "usd" as const,
+    successUrl: "s",
+    cancelUrl: "c",
+  };
+  const end = new Date("2026-12-10T15:00:00Z");
+  assertEquals(
+    buildCheckoutSessionParams({ ...base, trial: { kind: "reverse", trialEnd: end } }).subscription_data,
+    { metadata: { workspace_id: "ws-1", plan_id: "pro" }, trial_end: Math.floor(end.getTime() / 1000) },
+  );
+  assertEquals(
+    buildCheckoutSessionParams({ ...base, trial: { kind: "none" } }).subscription_data,
+    { metadata: { workspace_id: "ws-1", plan_id: "pro" } },
+  );
+});
+
+Deno.test("lockedCurrencyMismatch: the lock must return the currency every refusal used", async () => {
+  const { lockedCurrencyMismatch } = await import("../_shared/billing-logic.ts");
+  assertEquals(lockedCurrencyMismatch("brl", "brl"), false);
+  assertEquals(lockedCurrencyMismatch("usd", "usd"), false);
+  assertEquals(lockedCurrencyMismatch("brl", "usd"), true);
+  assertEquals(lockedCurrencyMismatch("usd", "brl"), true);
+  // Anything that is not a known currency is a mismatch (fail closed).
+  assertEquals(lockedCurrencyMismatch("usd", null), true);
+  assertEquals(lockedCurrencyMismatch("brl", "eur"), true);
+});
