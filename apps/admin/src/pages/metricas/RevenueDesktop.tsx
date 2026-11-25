@@ -37,7 +37,7 @@ export function RevenueDesktop({ months, mode, onModeChange, currency = 'brl' }:
           className="flex-[1.8_1_520px]"
           actions={
             <SegmentedControl
-              aria-label="Empilhar por"
+              aria-label={currency === 'usd' ? 'Empilhar por (USD)' : 'Empilhar por'}
               options={REVENUE_MODE_OPTIONS}
               value={mode}
               onChange={onModeChange}

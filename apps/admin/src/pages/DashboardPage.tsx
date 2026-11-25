@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { listWorkspaces, getMrr, getTrials, getChurned, getReverseTrialFunnel } from '../lib/api';
-import { formatMoney, usdSegment } from '../lib/subscription';
+import { formatMoney, totalCount, usdSegment } from '../lib/subscription';
 import { toCSV, downloadCSV } from '../lib/csv-export';
 import { useIsPhone } from '../hooks/useIsPhone';
 import { metricasPath } from '../lib/routes';
@@ -115,6 +115,7 @@ export default function DashboardPage() {
   // Intl glues "R$" to the amount with a non-breaking space, so a long value can't wrap inside
   // a half-width mobile card and overflows instead. Swap it for a normal space in the KPI cards
   // only, so break-words wraps after "R$" rather than mid-number.
+  const payingTotal = totalCount(mrrData?.paying_count, mrrData?.usd?.paying_count);
   const kpiMoney = (cents: number | null | undefined) =>
     formatMoney(cents, currency).replace(/[\u00A0\u202F]/g, ' ');
 
@@ -134,10 +135,10 @@ export default function DashboardPage() {
     },
     {
       label: 'Pagantes',
-      value: mrrData?.paying_count ?? '—',
+      value: mrrData ? payingTotal : '—',
       sub:
         mrrData && totalWorkspaces > 0
-          ? `${Math.round((mrrData.paying_count / totalWorkspaces) * 100)}% dos workspaces`
+          ? `${Math.round((payingTotal / totalWorkspaces) * 100)}% dos workspaces`
           : undefined,
       loading: mrrLoading,
       to: `${metricasPath()}#mrr`,
@@ -145,7 +146,7 @@ export default function DashboardPage() {
     {
       label: 'MRR',
       value: kpiMoney(mrrData?.mrr_cents ?? null),
-      sub: mrrData ? `${mrrData.paying_count} pagantes${usdSegment(mrrData.usd)}` : undefined,
+      sub: mrrData ? `${payingTotal} pagantes${usdSegment(mrrData.usd)}` : undefined,
       loading: mrrLoading,
       to: `${metricasPath()}#mrr`,
     },
@@ -153,7 +154,7 @@ export default function DashboardPage() {
       label: 'Testes',
       value: kpiMoney(trialMrrCents),
       sub: trialsData
-        ? `${trialsData.trial_count} em teste${usdSegment(trialsData.usd)}`
+        ? `${totalCount(trialsData.trial_count, trialsData.usd?.trial_count)} em teste${usdSegment(trialsData.usd)}`
         : undefined,
       loading: trialsLoading,
     },

@@ -37,7 +37,7 @@ export function WorkspaceCurrencyControl({
     },
   });
 
-  // A reload of the workspace (another admin changed it) starts from a clean slate.
+  // Navigating to another workspace resets the lock (it only reruns when workspaceId changes).
   useEffect(() => setLocked(false), [workspaceId]);
 
   return (

@@ -1,6 +1,12 @@
 import { useState, type ReactNode } from 'react';
 import { Cell, GroupedList } from '@mesaas/ios-kit';
-import { formatMoney, intervalLabel, statusMeta, usdSegment } from '../../lib/subscription';
+import {
+  formatMoney,
+  intervalLabel,
+  statusMeta,
+  totalCount,
+  usdSegment,
+} from '../../lib/subscription';
 import { workspaceDetailPath } from '../../lib/routes';
 import { ACTIVITY_TONE_CLASS } from '../workspace-activity';
 import { Skeleton } from '../../components/ui/skeleton';
@@ -56,10 +62,10 @@ export function DashboardPhone({
   const trialsData = trials.data;
   const payingHeader = mrr.loading
     ? 'Workspaces pagantes'
-    : `Workspaces pagantes · ${mrrData?.paying_count ?? 0} · ${formatMoney(mrrData?.mrr_cents ?? null, mrrData?.currency)}/mês${usdSegment(mrrData?.usd)}`;
+    : `Workspaces pagantes · ${totalCount(mrrData?.paying_count, mrrData?.usd?.paying_count)} · ${formatMoney(mrrData?.mrr_cents ?? null, mrrData?.currency)}/mês${usdSegment(mrrData?.usd)}`;
   const trialsHeader = trials.loading
     ? 'Testes'
-    : `Testes · ${trialsData?.trial_count ?? 0} · ${formatMoney(trials.mrrCents, trials.currency)}/mês${usdSegment(trialsData?.usd)}`;
+    : `Testes · ${totalCount(trialsData?.trial_count, trialsData?.usd?.trial_count)} · ${formatMoney(trials.mrrCents, trials.currency)}/mês${usdSegment(trialsData?.usd)}`;
 
   return (
     <div className="pb-4">

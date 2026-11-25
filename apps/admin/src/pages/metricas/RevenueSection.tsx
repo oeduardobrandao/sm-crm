@@ -15,6 +15,7 @@ export function RevenueSection() {
   const isPhone = useIsPhone();
   // Lives here, not in a view, so the choice survives crossing the phone/desktop breakpoint.
   const [mode, setMode] = useState<RevenueMode>('provider');
+  const [modeUsd, setModeUsd] = useState<RevenueMode>('provider');
   const months = useMemo(() => q.data?.months ?? [], [q.data]);
   const monthsUsd = useMemo(() => q.data?.months_usd ?? [], [q.data]);
   const showUsd = hasUsdHistory(monthsUsd);
@@ -44,7 +45,7 @@ export function RevenueSection() {
       {months.length ? <View months={months} mode={mode} onModeChange={setMode} /> : null}
       {showUsd ? (
         <div data-testid="revenue-usd">
-          <View months={monthsUsd} mode={mode} onModeChange={setMode} currency="usd" />
+          <View months={monthsUsd} mode={modeUsd} onModeChange={setModeUsd} currency="usd" />
         </div>
       ) : null}
     </div>

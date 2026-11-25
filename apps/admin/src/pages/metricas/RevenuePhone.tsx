@@ -20,7 +20,7 @@ export function RevenuePhone({ months, mode, onModeChange, currency = 'brl' }: P
       </h2>
       <div className="admin-glass overflow-hidden rounded-2xl border border-border bg-card p-3.5">
         <SegmentedControl
-          aria-label="Empilhar por"
+          aria-label={currency === 'usd' ? 'Empilhar por (USD)' : 'Empilhar por'}
           options={REVENUE_MODE_OPTIONS}
           value={mode}
           onChange={onModeChange}

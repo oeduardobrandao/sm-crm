@@ -193,22 +193,17 @@ export function intervalSuffix(interval: string | null | undefined): string {
   return INTERVAL_SUFFIX[interval] ?? '';
 }
 
-/** " · US$ 49,00" for a USD headline segment, or '' when there is no USD money. */
+/** " · US$ 49,00" for a USD money segment, or '' when there is no USD money. Counts are not split by currency. */
 export function usdSegment(
-  usd:
-    | {
-        mrr_cents?: number;
-        paying_count?: number;
-        trial_mrr_cents?: number;
-        trial_count?: number;
-        lost_mrr_cents?: number;
-      }
-    | undefined,
+  usd: { mrr_cents?: number; trial_mrr_cents?: number; lost_mrr_cents?: number } | undefined,
 ): string {
   const cents = usd?.mrr_cents ?? usd?.trial_mrr_cents ?? usd?.lost_mrr_cents ?? 0;
-  if (cents <= 0) return '';
-  const count = usd?.paying_count ?? usd?.trial_count;
-  return ` · ${count != null ? `${count} em USD · ` : ''}${formatMoney(cents, 'usd')}`;
+  return cents > 0 ? ` · ${formatMoney(cents, 'usd')}` : '';
+}
+
+/** BRL count + USD count: a count of workspaces is never split by currency. */
+export function totalCount(brl: number | undefined, usd: number | undefined): number {
+  return (brl ?? 0) + (usd ?? 0);
 }
 
 /** centavos → "R$ 1.234,56". Returns "—" for null. currency defaults to BRL. */

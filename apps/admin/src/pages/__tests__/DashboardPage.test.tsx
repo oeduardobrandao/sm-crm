@@ -464,7 +464,25 @@ describe('DashboardPage USD', () => {
     const br = screen.getByRole('link', { name: 'Brasil Ltda' });
     expect(br.closest('tr')!.textContent).toContain('R$');
     expect(kpiCard('MRR').textContent).toContain('US$');
-    expect(kpiCard('Pagantes').textContent).toContain('1');
+    // A count is not split by currency: one BRL + one USD payer = 2.
+    expect(kpiCard('Pagantes').textContent).toContain('2');
+    expect(screen.getByText(/Workspaces pagantes/).parentElement!.textContent).toMatch(
+      /Workspaces pagantes · 2 ·/,
+    );
+  });
+
+  it('counts BRL and USD churners together', async () => {
+    vi.mocked(getChurned).mockResolvedValue({
+      workspaces: [],
+      churn_count: 1,
+      trial_expired_count: 0,
+      lost_mrr_cents: 9700,
+      window_days: 30,
+      currency: 'brl',
+      usd: { lost_mrr_cents: 4900, churn_count: 1 },
+    } as never);
+    renderPage();
+    expect(await screen.findByText(/2 cancelaram/)).toBeInTheDocument();
   });
 
   it('adds no USD segment when there is no USD money', async () => {
