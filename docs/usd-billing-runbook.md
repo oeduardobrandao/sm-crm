@@ -61,18 +61,16 @@ que estar nos DOIS antes de qualquer `currency_options` entrar num preço live.
      `workspace-limits`
    - `mcp-admin` (blocos USD do dashboard)
 
-   Flags de deploy (conferidas contra `supabase/config.toml` e o cabeçalho de cada
-   `index.ts`):
-   - COM `--no-verify-jwt`: `mcp-admin` (sem entrada no config.toml; o cabeçalho manda o
-     flag, a function faz a própria auth).
-   - Já com `verify_jwt = false` no config.toml (use o flag mesmo assim, como no resto do
-     repo): `billing-checkout`, `stripe-webhook`, `pagarme-checkout`, `pagarme-subscription`,
-     `metrics-snapshot-cron`, `lifecycle-email-cron`, `affiliate-public`,
-     `affiliate-payout-cron`, `platform-admin`, `automation-media`, `equipe-chat-media`,
-     `paywall-report`, `workspace-limits`.
-   - SEM o flag (verificação de JWT do gateway ligada): `mcp-keys` e `mcp-oauth-consent`
-     (os cabeçalhos dizem explicitamente), e `data-import` (sem entrada no config.toml nem
-     instrução de flag: segue o padrão do gateway).
+   Flags de deploy: os valores abaixo batem com o `verify_jwt` vivo de PRODUÇÃO, conferido
+   pela Management API em 2026-11-25. Se o valor vivo de alguma function estiver diferente na
+   hora do deploy, mantenha o valor vivo (confira antes no painel ou na Management API).
+   - COM `--no-verify-jwt` (vivo `verify_jwt = false`): todas as functions deste runbook,
+     menos `mcp-keys`. Ou seja: `billing-checkout`, `stripe-webhook`, `pagarme-checkout`,
+     `pagarme-subscription`, `metrics-snapshot-cron`, `lifecycle-email-cron`,
+     `affiliate-public`, `affiliate-payout-cron`, `platform-admin`, `automation-media`,
+     `data-import`, `equipe-chat-media`, `mcp-oauth-consent`, `paywall-report`,
+     `workspace-limits` e `mcp-admin`.
+   - SEM o flag (vivo `verify_jwt = true`): só `mcp-keys`.
 
 4. Merge do frontend.
 5. Stripe `currency_options` (ver abaixo), só com aprovação explícita do dono.
