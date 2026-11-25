@@ -135,7 +135,8 @@
       "startTrial": "Start 30 days free",
       "confirmSubscription": "Confirm subscription",
       "confirmSwitch": "Confirm switch",
-      "saveCard": "Save new card"
+      "saveCard": "Save new card",
+      "continueAfterTrial": "Continue after the trial"
     },
     "successTitle": {
       "switch": "Switch confirmed!",
@@ -179,7 +180,8 @@
       "trialNoDate": "30 days free. The first installment is only charged after the trial and you can cancel before then.",
       "switchOn": "No charge now. The first installment is expected on {{date}}, when the period you already paid for ends.",
       "switchNoDate": "No charge now. The first installment comes when the period you already paid for ends.",
-      "security": "Your details go straight to Pagar.me securely. We don't store your card number."
+      "security": "Your details go straight to Pagar.me securely. We don't store your card number.",
+      "reverseTrialOn": "Your Pro trial goes on. The first installment is only charged on {{date}}, when the trial ends, and you can cancel before then."
     },
     "processing": "Processing...",
     "goToDashboard": "Go to dashboard",

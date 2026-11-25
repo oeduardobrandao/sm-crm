@@ -135,7 +135,8 @@
       "startTrial": "Começar 30 dias grátis",
       "confirmSubscription": "Confirmar assinatura",
       "confirmSwitch": "Confirmar troca",
-      "saveCard": "Salvar novo cartão"
+      "saveCard": "Salvar novo cartão",
+      "continueAfterTrial": "Continuar depois do teste"
     },
     "successTitle": {
       "switch": "Troca confirmada!",
@@ -179,7 +180,8 @@
       "trialNoDate": "30 dias grátis. A primeira parcela só é cobrada depois do teste e você pode cancelar antes disso.",
       "switchOn": "Sem cobrança agora. A primeira parcela está prevista para {{date}}, quando termina o período que você já pagou.",
       "switchNoDate": "Sem cobrança agora. A primeira parcela vem quando terminar o período que você já pagou.",
-      "security": "Seus dados vão direto para a Pagar.me com segurança. Nós não armazenamos o número do seu cartão."
+      "security": "Seus dados vão direto para a Pagar.me com segurança. Nós não armazenamos o número do seu cartão.",
+      "reverseTrialOn": "Seu teste do Pro continua. A primeira parcela só é cobrada em {{date}}, no fim do teste, e você pode cancelar antes disso."
     },
     "processing": "Processando...",
     "goToDashboard": "Ir para o painel",

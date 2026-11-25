@@ -10,12 +10,23 @@ vi.mock('@/services/billing', async (importOriginal) => {
     ...actual,
     getWorkspaceSubscription: vi.fn(),
     getEffectivePlanWithSource: vi.fn(),
+    getReverseTrialOffer: vi.fn(),
+    startReverseTrial: vi.fn(),
   };
 });
 vi.mock('@/lib/analytics', () => ({ captureEvent: vi.fn() }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 import { useAuth } from '@/context/AuthContext';
-import { getEffectivePlanWithSource, getWorkspaceSubscription } from '@/services/billing';
+import {
+  getEffectivePlanWithSource,
+  getReverseTrialOffer,
+  getWorkspaceSubscription,
+  startReverseTrial,
+} from '@/services/billing';
+import { captureEvent } from '@/lib/analytics';
+import { toast } from 'sonner';
+import userEvent from '@testing-library/user-event';
 import { TrialNudgeCard } from '../TrialNudgeCard';
 
 const plan = (planId: string | null, wasDemo = false, planSource = 'system') => ({
@@ -42,6 +53,11 @@ beforeEach(() => {
   vi.mocked(useAuth).mockReturnValue({ role: 'owner', profile: { conta_id: 'ws-1' } } as never);
   vi.mocked(getEffectivePlanWithSource).mockResolvedValue(plan('free'));
   vi.mocked(getWorkspaceSubscription).mockResolvedValue(NEVER_SUBSCRIBED);
+  vi.mocked(getReverseTrialOffer).mockResolvedValue({
+    enabled: false,
+    eligible: false,
+    auto: false,
+  });
 });
 
 function renderCard(seedCache?: { planId: string | null; hasEverSubscribed: boolean }) {
@@ -201,5 +217,61 @@ describe('TrialNudgeCard inside the native app', () => {
     expect(container).toBeEmptyDOMElement();
     expect(getEffectivePlanWithSource).not.toHaveBeenCalled();
     expect(getWorkspaceSubscription).not.toHaveBeenCalled();
+  });
+});
+
+describe('TrialNudgeCard with the reverse trial switch on', () => {
+  it('nudge_starts_trial', async () => {
+    vi.mocked(getReverseTrialOffer).mockResolvedValue({
+      enabled: true,
+      eligible: true,
+      auto: false,
+    });
+    vi.mocked(startReverseTrial).mockResolvedValue({
+      started: true,
+      endsAt: '2026-12-08T17:00:00Z',
+    });
+    const { client } = renderCard();
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    expect(await screen.findByText('Teste o Pro por 14 dias, sem cartão')).toBeInTheDocument();
+    expect(screen.queryByRole('link')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Testar o Pro' }));
+    await waitFor(() => expect(startReverseTrial).toHaveBeenCalledWith('nudge'));
+    await waitFor(() =>
+      expect(captureEvent).toHaveBeenCalledWith('reverse_trial_started', { source: 'nudge' }),
+    );
+    expect(toast.success).toHaveBeenCalled();
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['billing'] });
+  });
+
+  it('shows an error when the server refuses', async () => {
+    vi.mocked(getReverseTrialOffer).mockResolvedValue({
+      enabled: true,
+      eligible: true,
+      auto: false,
+    });
+    vi.mocked(startReverseTrial).mockResolvedValue({
+      started: false,
+      endsAt: null,
+      reason: 'not_eligible',
+    });
+    renderCard();
+    await userEvent.click(await screen.findByRole('button', { name: 'Testar o Pro' }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(captureEvent).not.toHaveBeenCalledWith('reverse_trial_started', expect.anything());
+  });
+
+  it('nudge_hidden_when_not_eligible', async () => {
+    vi.mocked(getReverseTrialOffer).mockResolvedValue({
+      enabled: true,
+      eligible: false,
+      auto: false,
+    });
+    const { client, container } = renderCard();
+    await waitFor(() =>
+      expect(client.getQueryState(['billing', 'reverse-trial-offer'])?.status).toBe('success'),
+    );
+    await waitForBillingQueriesToSettle(client);
+    expect(container).toBeEmptyDOMElement();
   });
 });

@@ -673,3 +673,108 @@ describe('ComecarPage', () => {
     });
   });
 });
+
+describe('ComecarPage with a reverse trial', () => {
+  const trialPlan = (over: Record<string, unknown> = {}) => ({
+    planId: 'pro',
+    planSource: 'trial',
+    wasDemo: false,
+    hasWorkspace: true,
+    trialOfferSeenAt: '2026-11-24T17:00:00Z',
+    reverseTrial: {
+      startedAt: '2026-11-24T17:00:00Z',
+      endsAt: '2099-12-08T17:00:00Z',
+      endedAt: null,
+      outcome: null,
+      cardAddedAt: null,
+      firstPaidAt: null,
+    },
+    ...over,
+  });
+  const exTrialPlan = () =>
+    trialPlan({
+      planId: null,
+      planSource: 'system',
+      reverseTrial: {
+        startedAt: '2026-11-10T17:00:00Z',
+        endsAt: '2026-11-24T17:00:00Z',
+        endedAt: '2026-11-24T17:05:00Z',
+        outcome: 'downgraded',
+        cardAddedAt: null,
+        firstPaidAt: null,
+      },
+    });
+
+  it('comecar_copy_during_trial_says_charge_on_end_date', async () => {
+    vi.mocked(getEffectivePlanWithSource).mockResolvedValue(trialPlan() as never);
+    vi.mocked(getWorkspaceSubscription).mockResolvedValue(null);
+    renderPage('?recomendado=pro');
+    expect(await screen.findByText('Continue depois do teste')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Primeira cobrança de .* em 8 de dezembro, no fim do teste/),
+    ).toBeTruthy();
+    expect(screen.queryByText(/30 dias/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Continuar no Pro depois do teste' })).toBeTruthy();
+    expect(screen.getByText(/Nada é cobrado antes de 8 de dezembro/)).toBeInTheDocument();
+  });
+
+  it('the grid during the trial shows the end date, never the 30-day copy', async () => {
+    vi.mocked(getEffectivePlanWithSource).mockResolvedValue(trialPlan() as never);
+    vi.mocked(getWorkspaceSubscription).mockResolvedValue(null);
+    renderPage('?recomendado=pro');
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver todos os planos' }));
+    expect(await screen.findByText('Escolha o plano para depois do teste')).toBeInTheDocument();
+    expect(screen.getByText('Grátis até 8 de dezembro')).toBeInTheDocument();
+    expect(screen.queryByText(/30 dias/)).toBeNull();
+  });
+
+  it('a recomendado link never starts a checkout and checkout carries the trial context', async () => {
+    vi.mocked(getEffectivePlanWithSource).mockResolvedValue(trialPlan() as never);
+    vi.mocked(getWorkspaceSubscription).mockResolvedValue(null);
+    renderPage('?recomendado=pro');
+    const cta = await screen.findByRole('button', { name: 'Continuar no Pro depois do teste' });
+    expect(startCheckout).not.toHaveBeenCalled();
+    fireEvent.click(cta);
+    await waitFor(() => expect(startCheckout).toHaveBeenCalledWith('pro', 'month', 'onboarding'));
+    expect(vi.mocked(captureCheckoutStarted).mock.calls[0]?.[4]).toMatchObject({
+      reverse_trial: true,
+      recommended_plan_id: 'pro',
+    });
+  });
+
+  it('ignores a landing intent during the trial (no auto checkout, no standby screen)', async () => {
+    vi.mocked(getEffectivePlanWithSource).mockResolvedValue(trialPlan() as never);
+    vi.mocked(getWorkspaceSubscription).mockResolvedValue(null);
+    renderPage('?plan=pro&interval=month');
+    expect(await screen.findByText('Continue depois do teste')).toBeInTheDocument();
+    expect(startCheckout).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Preparando seu teste/)).toBeNull();
+  });
+
+  it('admits an ex-trial owner on Free with immediate-charge copy', async () => {
+    vi.mocked(getEffectivePlanWithSource).mockResolvedValue(exTrialPlan() as never);
+    vi.mocked(getWorkspaceSubscription).mockResolvedValue(null);
+    renderPage();
+    expect(await screen.findByText('Volte para um plano pago')).toBeInTheDocument();
+    expect(screen.getByText(/A cobrança é imediata/)).toBeInTheDocument();
+    expect(screen.queryByText(/nada é cobrado nos primeiros 30 dias/i)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Assinar o Pro' })).toBeInTheDocument();
+  });
+
+  it('still bounces a converted (paying) ex-trial workspace', async () => {
+    vi.mocked(getEffectivePlanWithSource).mockResolvedValue(
+      trialPlan({
+        planSource: 'stripe',
+        reverseTrial: { ...trialPlan().reverseTrial, outcome: 'converted' },
+      }) as never,
+    );
+    vi.mocked(getWorkspaceSubscription).mockResolvedValue({
+      ...NEVER_SUBSCRIBED,
+      status: 'trialing',
+      plan_id: 'pro',
+      hasEverSubscribed: true,
+    } as never);
+    renderPage();
+    expect(await screen.findByText('Painel')).toBeInTheDocument();
+  });
+});
