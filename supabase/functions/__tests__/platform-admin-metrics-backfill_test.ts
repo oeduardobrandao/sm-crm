@@ -3,7 +3,9 @@ import {
   type BackfillDeps,
   defaultBackfillDeps,
   handleBackfillMetrics,
+  enrichSubscriptionPrice,
   listPagarmeSubscriptions,
+  toStripeSubLite,
   PAGARME_MAX_PAGES,
   toPagarmeSubLite,
   toStripeSubLite,
@@ -151,4 +153,34 @@ Deno.test("defaultBackfillDeps: the 403 guard runs before any client or network 
     globalThis.fetch = realFetch;
     if (prevAllowed !== undefined) Deno.env.set("METRICS_BACKFILL_ALLOWED", prevAllowed);
   }
+});
+
+Deno.test("USD sub whose listed price lacks currency_options is priced from the retrieved price, once per price id", async () => {
+  const mk = (id: string) => ({
+    id,
+    customer: "cus_1",
+    status: "active",
+    currency: "usd",
+    items: {
+      data: [{ quantity: 1, price: { id: "price_1", unit_amount: 9990, currency: "brl", recurring: { interval: "month" } } }],
+    },
+  });
+  const retrieved: string[] = [];
+  const cache = new Map<string, Promise<unknown>>();
+  const retrieve = (id: string) => {
+    retrieved.push(id);
+    return Promise.resolve({
+      currency: "brl",
+      unit_amount: 9990,
+      currency_options: { brl: { unit_amount: 9990 }, usd: { unit_amount: 2900 } },
+    });
+  };
+  const a = toStripeSubLite(await enrichSubscriptionPrice(mk("sub_a"), retrieve, cache));
+  const b = toStripeSubLite(await enrichSubscriptionPrice(mk("sub_b"), retrieve, cache));
+  assertEquals(a.amount_cents, 2900);
+  assertEquals(b.amount_cents, 2900);
+  assertEquals(retrieved, ["price_1"]);
+  const brl = { ...mk("sub_c"), currency: "brl" };
+  await enrichSubscriptionPrice(brl, retrieve, cache);
+  assertEquals(retrieved.length, 1);
 });

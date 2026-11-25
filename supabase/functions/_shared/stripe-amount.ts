@@ -15,15 +15,15 @@ export type CouponLike = {
   currency_options?: Record<string, { amount_off?: number | null }> | null;
 };
 
+let warnedCouponMismatch = false;
+
 export const STRIPE_AMOUNT_EXPAND = [
   "items.data.price",
   "items.data.price.currency_options",
   "discounts",
 ];
-export const STRIPE_LIST_AMOUNT_EXPAND = [
-  "data.discounts",
-  "data.items.data.price.currency_options",
-];
+// subscriptions.list cannot expand price.currency_options (4-level limit): callers retrieve the price.
+export const STRIPE_LIST_AMOUNT_EXPAND = ["data.discounts"];
 
 /** Reads the active coupon off a subscription (handles both `discounts[]` and legacy `discount`). */
 export function extractCoupon(sub: unknown): CouponLike | null {
@@ -127,6 +127,11 @@ export function stripeAmountFromSubscription(
       : currency === (item?.price?.currency ?? "brl").toLowerCase()
         ? (item?.price?.unit_amount ?? 0)
         : 0;
+  if (typeof optionAmount !== "number" && unit === 0 && currency !== (item?.price?.currency ?? "brl").toLowerCase()) {
+    console.warn(
+      `[stripe-amount] no ${currency} price option for subscription ${(sub as { id?: string }).id ?? "?"}; amount 0`,
+    );
+  }
   const gross = unit * qty;
   const coupon = extractCoupon(sub);
   let net = gross;
@@ -148,7 +153,10 @@ export function stripeAmountFromSubscription(
         net = Math.max(0, gross - off);
         discountLabel = coupon.name ?? coupon.id;
       } else if (typeof coupon.amount_off === "number" && coupon.amount_off > 0) {
-        console.warn("[stripe-amount] amount_off coupon skipped: currency mismatch");
+        if (!warnedCouponMismatch) {
+          warnedCouponMismatch = true;
+          console.warn("[stripe-amount] amount_off coupon skipped: currency mismatch");
+        }
       }
     }
   }

@@ -129,7 +129,43 @@ const STRIPE_MAX_PAGES = 100;
 const PAGARME_PAGE_SIZE = 100;
 export const PAGARME_MAX_PAGES = 50;
 
+export type PriceRetriever = (
+  priceId: string,
+) => Promise<{ currency?: string; unit_amount?: number | null; currency_options?: unknown } | null>;
+
+/**
+ * subscriptions.list cannot expand price.currency_options (Stripe's 4-level limit), so a
+ * subscription billed in a non-default currency gets its price retrieved once (cached per id)
+ * and substituted into the item before pricing.
+ */
+export async function enrichSubscriptionPrice(
+  raw: unknown,
+  retrievePrice: PriceRetriever,
+  cache: Map<string, Promise<unknown>>,
+): Promise<unknown> {
+  const sub = raw as {
+    currency?: string | null;
+    items?: { data?: Array<{ price?: { id?: string; currency?: string } }> };
+  };
+  const item = sub.items?.data?.[0];
+  const price = item?.price;
+  const cur = sub.currency?.toLowerCase();
+  if (!item || !price?.id || !cur || cur === (price.currency ?? "brl").toLowerCase()) return raw;
+  let pending = cache.get(price.id);
+  if (!pending) {
+    pending = retrievePrice(price.id);
+    cache.set(price.id, pending);
+  }
+  const full = (await pending) as object | null;
+  if (!full) return raw;
+  const items = { ...sub.items, data: [{ ...item, price: { ...price, ...full } }, ...(sub.items?.data ?? []).slice(1)] };
+  return { ...sub, items };
+}
+
 type StripeSubsClient = {
+  prices: {
+    retrieve: (id: string, params: { expand: string[] }, opts?: { timeout?: number }) => Promise<unknown>;
+  };
   subscriptions: {
     list: (
       params: Record<string, unknown>,
@@ -143,6 +179,13 @@ async function listStripeSubscriptions(): Promise<StripeSubLite[]> {
   if (!client) throw new Error("stripe not configured");
   const stripe = client as unknown as StripeSubsClient;
   const out: StripeSubLite[] = [];
+  const priceCache = new Map<string, Promise<unknown>>();
+  const retrievePrice: PriceRetriever = (id) =>
+    withTimeout(
+      stripe.prices.retrieve(id, { expand: ["currency_options"] }, { timeout: STRIPE_TIMEOUT_MS }),
+      STRIPE_TIMEOUT_MS,
+      "stripe.prices.retrieve",
+    ) as ReturnType<PriceRetriever>;
   let startingAfter: string | undefined;
   for (let page = 0; page < STRIPE_MAX_PAGES; page++) {
     const res = await withTimeout(
@@ -153,7 +196,7 @@ async function listStripeSubscriptions(): Promise<StripeSubLite[]> {
       STRIPE_TIMEOUT_MS,
       "stripe.subscriptions.list",
     );
-    for (const raw of res.data) out.push(toStripeSubLite(raw));
+    for (const raw of res.data) out.push(toStripeSubLite(await enrichSubscriptionPrice(raw, retrievePrice, priceCache)));
     if (!res.has_more || !res.data.length) return out;
     startingAfter = (res.data[res.data.length - 1] as { id: string }).id;
   }

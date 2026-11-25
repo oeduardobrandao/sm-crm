@@ -199,3 +199,22 @@ Deno.test("fetchStripeAmount requests currency_options", async () => {
   assert(seen[1].includes("items.data.price.currency_options"));
   assertEquals(amt.amount_cents, 2900);
 });
+
+Deno.test("usd sub with no usd currency option yields 0 and warns", () => {
+  const warns: string[] = [];
+  const orig = console.warn;
+  console.warn = (m: string) => warns.push(String(m));
+  try {
+    const sub = {
+      id: "sub_z",
+      currency: "usd",
+      items: { data: [{ quantity: 1, price: { unit_amount: 9990, currency: "brl" } }] },
+    };
+    const amt = stripeAmountFromSubscription(sub, null);
+    assertEquals(amt.amount_cents, 0);
+    assertEquals(amt.currency, "usd");
+    assert(warns.some((w) => w.includes("sub_z")));
+  } finally {
+    console.warn = orig;
+  }
+});
