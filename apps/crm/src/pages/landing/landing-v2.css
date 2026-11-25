@@ -484,7 +484,7 @@ body.landing-page:has(.lp-v2) {
   display: flex;
   flex-direction: column;
 }
-/* "30 dias grátis" on the first line, the rest of the sentence under it */
+/* "14 dias de Pro grátis, sem cartão." on the first line, the rest of the sentence under it */
 .lp-v2 .lp2-offer-text strong {
   font-weight: 600;
 }

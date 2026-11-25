@@ -45,7 +45,7 @@ export const LANDING: {
     titleEm: 'em planilha e grupo de WhatsApp',
     titleAfter: '.',
     sub: 'O Mesaas reúne clientes, entregas, aprovações, agendamento no Instagram e no TikTok e métricas em um único lugar. Feito para quem gerencia social media, sozinho ou com equipe.',
-    note: '30 dias grátis em qualquer plano pago. Cancele quando quiser.',
+    note: '14 dias de Pro grátis, sem cartão. No fim, você escolhe se continua.',
   },
   ticker: [
     'Clientes + contratos',
@@ -155,7 +155,7 @@ export const LANDING: {
         n: '01',
         title: 'Cadastre sua agência',
         description:
-          'Comece o teste grátis de 30 dias, importe seus clientes por planilha e configure os modelos de contrato.',
+          'Comece com 14 dias de Pro grátis, sem cartão, importe seus clientes por planilha e configure os modelos de contrato.',
       },
       {
         n: '02',

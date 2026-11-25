@@ -63,7 +63,7 @@ export default function MarketingPage({ page }: { page: MarketingPageContent }) 
                   letterSpacing: '.08em',
                 }}
               >
-                O Free não pede cartão · planos pagos com 30 dias grátis
+                14 dias de Pro grátis · sem cartão
               </div>
             </div>
           </div>

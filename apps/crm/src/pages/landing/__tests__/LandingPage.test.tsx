@@ -247,9 +247,9 @@ describe('LandingPage', () => {
     expect(document.querySelector('.promo-banner')).toBeNull();
     const offer = document.querySelector('.lp2-offer-text');
     expect(offer).toHaveTextContent(
-      '30 dias grátis em qualquer plano pago. Cancele quando quiser.',
+      '14 dias de Pro grátis, sem cartão. No fim, você escolhe se continua.',
     );
-    expect(offer?.querySelector('strong')).toHaveTextContent('30 dias grátis');
+    expect(offer?.querySelector('strong')).toHaveTextContent('14 dias de Pro grátis, sem cartão.');
   });
 
   it('keeps all six feature cards in the DOM and toggles the extra two', () => {
@@ -283,7 +283,9 @@ describe('LandingPage', () => {
     const cta = document.querySelector<HTMLElement>('.lp2-features-cta');
     expect(cta).not.toBeNull();
     expect(cta).toHaveTextContent('Teste tudo isso na sua agência.');
-    expect(cta).toHaveTextContent('30 dias grátis em qualquer plano pago. Cancele quando quiser.');
+    expect(cta).toHaveTextContent(
+      '14 dias de Pro grátis, sem cartão. No fim, você escolhe se continua.',
+    );
     expect(within(cta!).getByRole('link', { name: 'Começar teste grátis' })).toHaveAttribute(
       'href',
       '/login?tab=register',

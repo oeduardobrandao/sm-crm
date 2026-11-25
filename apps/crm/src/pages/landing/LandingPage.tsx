@@ -124,11 +124,11 @@ export default function LandingPage() {
 }
 
 /** The part of `LANDING.hero.note` the hero pill emphasises (first line on desktop). */
-const OFFER_STRONG = '30 dias grátis';
+const OFFER_STRONG = '14 dias de Pro grátis, sem cartão.';
 
-/** `LANDING.hero.note` with its first "30 dias grátis" in `<strong>`. The note itself stays one
- * plain sentence (landing.content.ts is the single source of the copy); the remainder keeps its
- * leading space so the text reads as one sentence. */
+/** `LANDING.hero.note` with its first sentence ("14 dias de Pro grátis, sem cartão.") in
+ * `<strong>`. The note itself stays plain text (landing.content.ts is the single source of the
+ * copy); the remainder keeps its leading space so the text reads on. */
 function OfferNote({ note }: { note: string }) {
   const at = note.indexOf(OFFER_STRONG);
   if (at < 0) return <>{note}</>;
@@ -519,8 +519,8 @@ function CtaFinal() {
                 Pronto para sair <em>das planilhas?</em>
               </h2>
               <p>
-                Teste qualquer plano pago por 30 dias e organize seus clientes ainda hoje. Cancele
-                quando quiser.
+                Use o Pro por 14 dias, sem cartão, e organize seus clientes ainda hoje. No fim, você
+                escolhe se continua.
               </p>
             </>
           )}

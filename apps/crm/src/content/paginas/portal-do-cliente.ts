@@ -52,6 +52,6 @@ export const PORTAL_DO_CLIENTE: MarketingPageContent = {
   ],
   cta: {
     title: 'Dê um portal profissional para cada cliente',
-    sub: 'Teste grátis por 30 dias e gere o primeiro link de portal em minutos.',
+    sub: 'Teste o Pro grátis por 14 dias, sem cartão, e gere o primeiro link de portal em minutos.',
   },
 };

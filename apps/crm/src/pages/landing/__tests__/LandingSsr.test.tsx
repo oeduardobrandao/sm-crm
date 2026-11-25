@@ -66,7 +66,7 @@ describe('landing server render', () => {
     authState.loading = true;
     const html = renderLanding();
     expect(html).not.toContain('promo-banner');
-    expect(html).toContain('<strong>30 dias grátis</strong>');
+    expect(html).toContain('<strong>14 dias de Pro grátis, sem cartão.</strong>');
     expect(html).toContain(`© ${__BUILD_YEAR__} Mesaas`);
   });
 

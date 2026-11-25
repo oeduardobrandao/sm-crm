@@ -123,20 +123,20 @@ describe('PricingSection', () => {
     vi.mocked(getWorkspaceSubscription).mockReset();
   });
 
-  it('logged out: states the 30-day trial and offers "Usar o Free"', async () => {
+  it('logged out: states both trials and offers "Usar o Free"', async () => {
     renderPricing();
     await screen.findByRole('heading', { name: 'Pro', level: 3 });
 
     expect(
       screen.getByText(
-        'Teste qualquer plano pago por 30 dias e só pague se continuar. Sem fidelidade, cancele quando quiser.',
+        'Crie sua conta e use o Pro por 14 dias, sem cartão. Se preferir escolher o plano agora, os planos pagos têm 30 dias grátis com cartão. Sem fidelidade, cancele quando quiser.',
       ),
     ).toBeInTheDocument();
     expect(within(planCard('Free')).getByRole('link', { name: 'Usar o Free' })).toHaveAttribute(
       'href',
       '/login?tab=register',
     );
-    expect(within(planCard('Pro')).getByText('30 dias grátis para começar')).toBeInTheDocument();
+    expect(within(planCard('Pro')).getByText('30 dias grátis com cartão')).toBeInTheDocument();
     expect(
       within(planCard('Pro')).getByRole('link', { name: 'Começar teste grátis' }),
     ).toBeInTheDocument();
@@ -173,7 +173,7 @@ describe('PricingSection', () => {
         '/configuracao/cobranca',
       ),
     );
-    expect(screen.queryByText('30 dias grátis para começar')).not.toBeInTheDocument();
+    expect(screen.queryByText('30 dias grátis com cartão')).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Começar teste grátis' })).not.toBeInTheDocument();
     expect(within(planCard('Free')).getByRole('link', { name: 'Acessar painel' })).toBeVisible();
   });
@@ -201,7 +201,7 @@ describe('PricingSection', () => {
     expect(
       await within(planCard('Pro')).findByRole('link', { name: 'Começar teste grátis' }),
     ).toBeInTheDocument();
-    expect(within(planCard('Pro')).getByText('30 dias grátis para começar')).toBeInTheDocument();
+    expect(within(planCard('Pro')).getByText('30 dias grátis com cartão')).toBeInTheDocument();
   });
 
   it('comparison table: Free shows a dash for "Relatórios por mês"', async () => {
