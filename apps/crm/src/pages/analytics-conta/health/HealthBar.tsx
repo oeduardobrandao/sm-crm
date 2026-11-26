@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import type { VerdictTone } from '@mesaas/report-blocks/health';
 
 interface HealthBarProps {
@@ -10,11 +11,12 @@ interface HealthBarProps {
 
 /** Barra 0..100 com marca na mediana (50), preenchimento até o percentil e marcador redondo. */
 export function HealthBar({ pct, tone, size = 'lg', approx = false }: HealthBarProps) {
+  const { t } = useTranslation('analyticsAccount');
   const clamped = Math.min(100, Math.max(0, pct));
   return (
     <div
       role="img"
-      aria-label={`À frente de ${approx ? 'cerca de ' : ''}${clamped}% das contas do seu tamanho`}
+      aria-label={t('health.ahead', { approx: approx ? t('health.approx') : '', pct: clamped })}
       className={`ig-health-bar ig-health-bar--${size} ig-health-tone-${tone}`}
     >
       <span className="ig-health-bar__fill" style={{ width: `${clamped}%` }} />

@@ -3,6 +3,7 @@ import { Badge } from '@/components/ui/badge';
 import { Cell, GroupedList } from '@/components/mobile/GroupedList';
 import type { GbpUnitRow } from '../../../services/gbpAnalytics';
 import { formatRating } from './gbpTabFormat';
+import { getIntlLocale } from '@mesaas/i18n';
 
 /** "Comparar unidades": the period's sums per unit, plus each unit's current rating. */
 export function GbpUnitsTable({
@@ -23,9 +24,9 @@ export function GbpUnitsTable({
       ? t('units.noRating')
       : t('units.rating', {
           rating: formatRating(u.avgRating),
-          reviews: (u.totalReviewCount ?? 0).toLocaleString('pt-BR'),
+          reviews: (u.totalReviewCount ?? 0).toLocaleString(getIntlLocale()),
         });
-  const n = (v: number) => v.toLocaleString('pt-BR');
+  const n = (v: number) => v.toLocaleString(getIntlLocale());
 
   if (phone) {
     return (

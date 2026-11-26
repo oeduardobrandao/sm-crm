@@ -2,7 +2,6 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { formatDistanceToNow } from 'date-fns';
-import { enUS, ptBR } from 'date-fns/locale';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
 import { PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
@@ -42,6 +41,7 @@ import {
   syncedDate,
 } from './youtubeTabFormat';
 import type { useYouTubeTabData } from './useYouTubeTabData';
+import { getDateFnsLocale } from '@mesaas/i18n';
 
 /** Who the page is about, plus the shell's tab control (same shape as the TikTok frame). */
 export interface YouTubePhoneFrame {
@@ -163,8 +163,8 @@ function Frame({
   onSync?: () => void;
   children: ReactNode;
 }) {
-  const { t, i18n } = useTranslation('analyticsYoutube');
-  const dateLocale = i18n.language.startsWith('en') ? enUS : ptBR;
+  const { t } = useTranslation('analyticsYoutube');
+  const dateLocale = getDateFnsLocale();
   const url = channel ? channelUrl(channel.handle) : null;
   const channelName = channel?.title ?? channel?.handle ?? '';
   const synced = channel ? syncedDate(channel.lastSyncedAt) : null;

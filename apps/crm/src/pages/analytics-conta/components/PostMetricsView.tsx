@@ -8,13 +8,14 @@ import {
 } from 'react';
 import { Bookmark, Heart, MessageCircle, Repeat2, Send, type LucideIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { useIntlLocale } from '@mesaas/i18n';
+import i18n from 'i18next';
+import { getIntlLocale, useIntlLocale } from '@mesaas/i18n';
 import { Badge } from '@/components/ui/badge';
 import { SegmentedControl } from '@/components/mobile/SegmentedControl';
 import type { PostAnalytics } from '../../../services/analytics';
 import type { RateDistributions, RateKey } from '../../../lib/ig-rates';
 import {
-  NOT_RETURNED_TITLE,
+  notReturnedTitle,
   missingActionMetricTitle,
   type ActionMetricKey,
 } from '../../../lib/post-action-metrics';
@@ -30,15 +31,11 @@ import { PostThumbnail } from './PostThumbnail';
 
 type Tab = 'overview' | 'engagement' | 'comments';
 
-const fmtCount = (n: number) => n.toLocaleString('pt-BR');
+const fmtCount = (n: number) => n.toLocaleString(getIntlLocale());
 const fmtPercent = (pct: number) =>
-  `${pct.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+  `${pct.toLocaleString(getIntlLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
 
-const ACTION_ROWS: { metric: ActionMetricKey; label: string }[] = [
-  { metric: 'profile_visits', label: 'Visitas ao perfil' },
-  { metric: 'follows', label: 'Novos seguidores' },
-  { metric: 'bio_link_clicks', label: 'Toques no link da bio' },
-];
+const ACTION_ROWS: ActionMetricKey[] = ['profile_visits', 'follows', 'bio_link_clicks'];
 
 /** `unavailable_metrics` tokens of the counts the sync stores as 0 when Instagram skips them. */
 type CountToken = 'impressions' | 'reach' | 'likes' | 'comments' | 'shares' | 'saved';
@@ -53,10 +50,12 @@ function countMissing(post: PostAnalytics, token: CountToken, value: number | nu
 
 /** The written-out reason under a group of "—" counts (touch has no hover title). */
 function missingCountsNote(labels: string[]): string {
-  if (labels.length === 1)
-    return `${labels[0]}: o Instagram não retornou este dado na última sincronização.`;
-  const list = `${labels.slice(0, -1).join(', ')} e ${labels[labels.length - 1]}`;
-  return `${list}: o Instagram não retornou estes dados na última sincronização.`;
+  if (labels.length === 1) return i18n.t('analyticsAccount:pm.missingOne', { label: labels[0] });
+  const list = i18n.t('analyticsAccount:pm.listAnd', {
+    head: labels.slice(0, -1).join(', '),
+    last: labels[labels.length - 1],
+  });
+  return i18n.t('analyticsAccount:pm.missingMany', { list });
 }
 
 /** A count for a label/value row: the number, or a muted "—" with the reason as its title. */
@@ -71,18 +70,13 @@ function CountValue({
 }) {
   if (!countMissing(post, token, value)) return <strong>{fmtCount(value ?? 0)}</strong>;
   return (
-    <strong title={NOT_RETURNED_TITLE} style={{ color: 'var(--text-muted)', fontWeight: 400 }}>
+    <strong title={notReturnedTitle()} style={{ color: 'var(--text-muted)', fontWeight: 400 }}>
       —
     </strong>
   );
 }
 
-const RATE_ROWS: { key: RateKey; label: string }[] = [
-  { key: 'share_rate', label: 'Compartilhamentos' },
-  { key: 'like_rate', label: 'Curtidas' },
-  { key: 'save_rate', label: 'Salvamentos' },
-  { key: 'comment_rate', label: 'Comentários' },
-];
+const RATE_ROWS: RateKey[] = ['share_rate', 'like_rate', 'save_rate', 'comment_rate'];
 
 /** A post's action-metric value, or "—" with a tooltip explaining why it's missing. */
 export function ActionMetricValue({
@@ -96,7 +90,7 @@ export function ActionMetricValue({
   as?: 'strong' | 'span';
 }) {
   const value = post[metric];
-  if (typeof value === 'number') return <Tag>{value.toLocaleString('pt-BR')}</Tag>;
+  if (typeof value === 'number') return <Tag>{value.toLocaleString(getIntlLocale())}</Tag>;
   return (
     <Tag
       title={missingActionMetricTitle(metric, post.unavailable_metrics, post.media_type)}
@@ -181,12 +175,13 @@ function CountCard({
     <div className="post-metrics__card post-metrics__card--missing">
       <span>{label}</span>
       <strong>—</strong>
-      <em>{NOT_RETURNED_TITLE}</em>
+      <em>{notReturnedTitle()}</em>
     </div>
   );
 }
 
 function Caption({ post }: { post: PostAnalytics }) {
+  const { t } = useTranslation('analyticsAccount');
   const ref = useRef<HTMLParagraphElement>(null);
   // Expansion belongs to one post, like the tab: another post opens clamped.
   const [state, setState] = useState<{ postId: string; expanded: boolean }>({
@@ -209,7 +204,9 @@ function Caption({ post }: { post: PostAnalytics }) {
   }, [post.caption, expanded]);
 
   if (!post.caption) {
-    return <p className="post-metrics__caption post-metrics__caption--empty">Sem legenda</p>;
+    return (
+      <p className="post-metrics__caption post-metrics__caption--empty">{t('pm.noCaption')}</p>
+    );
   }
   return (
     <div className="post-metrics__caption-wrap">
@@ -226,7 +223,7 @@ function Caption({ post }: { post: PostAnalytics }) {
           aria-expanded={expanded}
           onClick={() => setState({ postId: post.id, expanded: !expanded })}
         >
-          {expanded ? 'Ver menos' : 'Ver mais'}
+          {expanded ? t('pm.less') : t('pm.more')}
         </button>
       )}
     </div>
@@ -234,41 +231,42 @@ function Caption({ post }: { post: PostAnalytics }) {
 }
 
 function IconRow({ post }: { post: PostAnalytics }) {
+  const { t } = useTranslation('analyticsAccount');
   const items: { icon: LucideIcon; value: number; label: string; missing: boolean }[] = [
     {
       icon: Heart,
       value: post.likes ?? 0,
-      label: 'Curtidas',
+      label: t('pm.likes'),
       missing: countMissing(post, 'likes', post.likes),
     },
     {
       icon: MessageCircle,
       value: post.comments ?? 0,
-      label: 'Comentários',
+      label: t('pm.comments'),
       missing: countMissing(post, 'comments', post.comments),
     },
     // Reposts is nullable already (null is hidden), so it never needs the unavailable check.
     ...(typeof post.reposts === 'number'
-      ? [{ icon: Repeat2, value: post.reposts, label: 'Reposts', missing: false }]
+      ? [{ icon: Repeat2, value: post.reposts, label: t('pm.reposts'), missing: false }]
       : []),
     // `shares` is what Instagram labels as sends.
     {
       icon: Send,
       value: post.shares ?? 0,
-      label: 'Envios',
+      label: t('pm.sends'),
       missing: countMissing(post, 'shares', post.shares),
     },
     {
       icon: Bookmark,
       value: post.saved ?? 0,
-      label: 'Salvos',
+      label: t('pm.saved'),
       missing: countMissing(post, 'saved', post.saved),
     },
   ];
   const missing = items.filter((i) => i.missing).map((i) => i.label);
   return (
     <>
-      <ul className="post-metrics__stats" aria-label="Interações">
+      <ul className="post-metrics__stats" aria-label={t('pm.interactions')}>
         {items.map(({ icon: Icon, value, label, missing: isMissing }) => (
           <li
             key={label}
@@ -276,7 +274,7 @@ function IconRow({ post }: { post: PostAnalytics }) {
           >
             <Icon aria-hidden="true" strokeWidth={1.8} />
             {isMissing ? (
-              <strong title={NOT_RETURNED_TITLE}>—</strong>
+              <strong title={notReturnedTitle()}>—</strong>
             ) : (
               <strong>{fmtCount(value)}</strong>
             )}
@@ -307,26 +305,27 @@ function engagementMissing(post: PostAnalytics): boolean {
 }
 
 function OverviewPanel({ post, footer }: { post: PostAnalytics; footer?: ReactNode }) {
+  const { t } = useTranslation('analyticsAccount');
   const noEngagement = engagementMissing(post);
   return (
     <>
-      <Section title="Resumo">
+      <Section title={t('pm.summary')}>
         <div className="post-metrics__cards">
-          <CountCard post={post} token="impressions" value={post.views} label="Visualizações" />
-          <CountCard post={post} token="reach" value={post.reach} label="Contas alcançadas" />
-          <ActionCard post={post} metric="profile_visits" label="Visitas ao perfil" />
-          <ActionCard post={post} metric="follows" label="Novos seguidores" />
+          <CountCard post={post} token="impressions" value={post.views} label={t('pm.views')} />
+          <CountCard post={post} token="reach" value={post.reach} label={t('pm.accountsReached')} />
+          <ActionCard post={post} metric="profile_visits" label={t('pm.profileVisits')} />
+          <ActionCard post={post} metric="follows" label={t('pm.newFollowers')} />
         </div>
         <div className="post-metrics__ratios">
           {noEngagement ? (
             <div className="post-metrics__ratio post-metrics__ratio--missing">
-              <span>Engajamento</span>
+              <span>{t('pm.engagement')}</span>
               <strong>—</strong>
-              <em>{NOT_RETURNED_TITLE}</em>
+              <em>{notReturnedTitle()}</em>
             </div>
           ) : (
             <div className="post-metrics__ratio">
-              <span>Engajamento</span>
+              <span>{t('pm.engagement')}</span>
               <strong
                 className={
                   post.engagement_rate >= GOOD_ENGAGEMENT_RATE
@@ -340,8 +339,8 @@ function OverviewPanel({ post, footer }: { post: PostAnalytics; footer?: ReactNo
           )}
           {typeof post.ig_score === 'number' && (
             <div className="post-metrics__ratio">
-              <span>IG Score</span>
-              <strong>{post.ig_score} de 100</strong>
+              <span>{t('pm.igScore')}</span>
+              <strong>{t('pm.scoreOf', { score: post.ig_score })}</strong>
             </div>
           )}
         </div>
@@ -352,10 +351,13 @@ function OverviewPanel({ post, footer }: { post: PostAnalytics; footer?: ReactNo
 }
 
 function RateBlock({ post, dists }: { post: PostAnalytics; dists: RateDistributions }) {
-  const shown = RATE_ROWS.flatMap(({ key, label }) => {
+  const { t } = useTranslation('analyticsAccount');
+  const shown = RATE_ROWS.flatMap((key) => {
     const rate = post.rates?.[key];
     if (typeof rate !== 'number') return [];
-    return [{ key, label, rate, bench: rateBenchmark(dists, post.media_type, key) }];
+    return [
+      { key, label: t(`pm.rate.${key}`), rate, bench: rateBenchmark(dists, post.media_type, key) },
+    ];
   });
   // Rows without a median compare against this post's largest rate, which fills the track.
   const ownMax = Math.max(0, ...shown.map((r) => r.rate));
@@ -368,12 +370,8 @@ function RateBlock({ post, dists }: { post: PostAnalytics; dists: RateDistributi
   if (rows.length === 0) return null;
   const anyTick = rows.some((r) => r.tick !== null);
   return (
-    <Section title="Por visualização">
-      <p className="post-metrics__hint">
-        {anyTick
-          ? 'A barra é este post; o traço é a mediana dos posts da conta.'
-          : 'A barra é este post.'}
-      </p>
+    <Section title={t('pm.perView')}>
+      <p className="post-metrics__hint">{anyTick ? t('pm.barPostMedian') : t('pm.barPost')}</p>
       {rows.map((r) => (
         <div key={r.key} className="post-metrics__rate">
           <span>{r.label}</span>
@@ -385,7 +383,9 @@ function RateBlock({ post, dists }: { post: PostAnalytics; dists: RateDistributi
           </span>
           <strong>{fmtPercent(r.rate * 100)}</strong>
           {r.bench && (
-            <span className="sr-only">Mediana da conta: {fmtPercent(r.bench.p50 * 100)}</span>
+            <span className="sr-only">
+              {t('pm.accountMedian', { value: fmtPercent(r.bench.p50 * 100) })}
+            </span>
           )}
         </div>
       ))}
@@ -394,15 +394,16 @@ function RateBlock({ post, dists }: { post: PostAnalytics; dists: RateDistributi
 }
 
 function EngagementPanel({ post, dists }: { post: PostAnalytics; dists?: RateDistributions }) {
+  const { t } = useTranslation('analyticsAccount');
   const follows = post.follows;
   const reachPerFollower =
     typeof follows === 'number' && follows > 0 && post.reach > 0
       ? Math.max(1, Math.round(post.reach / follows))
       : null;
   // Touch has no hover title, so the reason for a "—" is also written out.
-  const missing = ACTION_ROWS.filter(({ metric }) => typeof post[metric] !== 'number').map(
-    ({ metric, label }) => ({
-      label,
+  const missing = ACTION_ROWS.filter((metric) => typeof post[metric] !== 'number').map(
+    (metric) => ({
+      label: t(`pm.action.${metric}`),
       reason: missingActionMetricTitle(metric, post.unavailable_metrics, post.media_type),
     }),
   );
@@ -413,10 +414,10 @@ function EngagementPanel({ post, dists }: { post: PostAnalytics; dists?: RateDis
       : missing.map((m) => `${m.label}: ${m.reason}.`).join(' ');
   const missingInteractions = (
     [
-      ['likes', post.likes, 'Curtidas'],
-      ['comments', post.comments, 'Comentários'],
-      ['shares', post.shares, 'Compartilhamentos'],
-      ['saved', post.saved, 'Salvamentos'],
+      ['likes', post.likes, t('pm.likes')],
+      ['comments', post.comments, t('pm.comments')],
+      ['shares', post.shares, t('pm.sharesFull')],
+      ['saved', post.saved, t('pm.savesFull')],
     ] as const
   )
     .filter(([token, value]) => countMissing(post, token, value))
@@ -424,35 +425,35 @@ function EngagementPanel({ post, dists }: { post: PostAnalytics; dists?: RateDis
 
   return (
     <>
-      <Section title="Ações após a visualização">
-        {ACTION_ROWS.map(({ metric, label }) => (
-          <Row key={metric} label={label}>
+      <Section title={t('pm.actionsAfter')}>
+        {ACTION_ROWS.map((metric) => (
+          <Row key={metric} label={t(`pm.action.${metric}`)}>
             <ActionMetricValue post={post} metric={metric} />
           </Row>
         ))}
         {missing.length > 0 && <p className="post-metrics__hint">{missingNote}</p>}
         {reachPerFollower !== null && (
           <p className="post-metrics__hint">
-            1 novo seguidor a cada {fmtCount(reachPerFollower)} contas alcançadas
+            {t('pm.followerEvery', { n: fmtCount(reachPerFollower) })}
           </p>
         )}
       </Section>
-      <Section title="Interações">
-        <Row label="Curtidas">
+      <Section title={t('pm.interactions')}>
+        <Row label={t('pm.likes')}>
           <CountValue post={post} token="likes" value={post.likes} />
         </Row>
-        <Row label="Comentários">
+        <Row label={t('pm.comments')}>
           <CountValue post={post} token="comments" value={post.comments} />
         </Row>
         {typeof post.reposts === 'number' && (
-          <Row label="Reposts">
+          <Row label={t('pm.reposts')}>
             <strong>{fmtCount(post.reposts)}</strong>
           </Row>
         )}
-        <Row label="Compartilhamentos">
+        <Row label={t('pm.sharesFull')}>
           <CountValue post={post} token="shares" value={post.shares} />
         </Row>
-        <Row label="Salvamentos">
+        <Row label={t('pm.savesFull')}>
           <CountValue post={post} token="saved" value={post.saved} />
         </Row>
         {missingInteractions.length > 0 && (
@@ -460,10 +461,7 @@ function EngagementPanel({ post, dists }: { post: PostAnalytics; dists?: RateDis
         )}
       </Section>
       {dists && <RateBlock post={post} dists={dists} />}
-      <p className="post-metrics__note">
-        O Instagram não informa curtidas por foto do carrossel, de onde vieram as visualizações nem
-        o público do post.
-      </p>
+      <p className="post-metrics__note">{t('pm.carouselNote')}</p>
     </>
   );
 }
@@ -488,6 +486,7 @@ export function PostMetricsView({
   overviewFooter?: ReactNode;
 }) {
   const { t } = useTranslation('analyticsComments');
+  const { t: tp } = useTranslation('analyticsAccount');
   const intlLocale = useIntlLocale();
   const uid = useId();
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -618,7 +617,7 @@ export function PostMetricsView({
       </div>
 
       <div className="post-metrics__footer">
-        <span>Dados da API oficial do Instagram. Podem levar até 48 h para fechar.</span>
+        <span>{tp('pm.footer')}</span>
         {synced && <span>{synced}</span>}
       </div>
     </div>

@@ -53,6 +53,7 @@ const LAZY_LOCALES: Record<string, Record<string, () => LocaleModule>> = {
     ideas: () => import('../../../../packages/i18n/locales/pt/ideas.json'),
     ideaDrawer: () => import('../../../../packages/i18n/locales/pt/ideaDrawer.json'),
     setup: () => import('../../../../packages/i18n/locales/pt/setup.json'),
+    analyticsAccount: () => import('../../../../packages/i18n/locales/pt/analyticsAccount.json'),
   },
   en: {
     dashboard: () => import('../../../../packages/i18n/locales/en/dashboard.json'),
@@ -96,6 +97,7 @@ const LAZY_LOCALES: Record<string, Record<string, () => LocaleModule>> = {
     ideas: () => import('../../../../packages/i18n/locales/en/ideas.json'),
     ideaDrawer: () => import('../../../../packages/i18n/locales/en/ideaDrawer.json'),
     setup: () => import('../../../../packages/i18n/locales/en/setup.json'),
+    analyticsAccount: () => import('../../../../packages/i18n/locales/en/analyticsAccount.json'),
   },
 };
 

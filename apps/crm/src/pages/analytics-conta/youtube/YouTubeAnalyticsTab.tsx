@@ -4,7 +4,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
-import { enUS, ptBR } from 'date-fns/locale';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { Button } from '@/components/ui/button';
@@ -53,6 +52,7 @@ import {
   syncedDate,
 } from './youtubeTabFormat';
 import { isYouTubeTabQuery, useYouTubeTabData } from './useYouTubeTabData';
+import { getDateFnsLocale } from '@mesaas/i18n';
 
 const CONTENT_TYPES: YouTubeContentType[] = ['all', 'shorts', 'long'];
 
@@ -308,8 +308,8 @@ export function YouTubeAnalyticsTab({
 
 /** Avatar, channel name (linking to the channel), subscriber count and last sync. */
 function ChannelIdentity({ channel }: { channel: YtOverview['channel'] }) {
-  const { t, i18n } = useTranslation('analyticsYoutube');
-  const dateLocale = i18n.language.startsWith('en') ? enUS : ptBR;
+  const { t } = useTranslation('analyticsYoutube');
+  const dateLocale = getDateFnsLocale();
   const avatar = channel.avatarUrl?.startsWith('https://') ? channel.avatarUrl : null;
   const url = channelUrl(channel.handle);
   const name = channel.title ?? channel.handle ?? '';

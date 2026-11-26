@@ -2,7 +2,6 @@ import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { formatDistanceToNow } from 'date-fns';
-import { enUS, ptBR } from 'date-fns/locale';
 import { AlertTriangle, ArrowUpDown, Check, Lock, RefreshCw } from 'lucide-react';
 import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
 import { PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
@@ -47,6 +46,7 @@ import {
 } from './tiktokTabFormat';
 import { isNativeApp } from '@/native/platform';
 import type { useTikTokTabData } from './useTikTokTabData';
+import { getDateFnsLocale } from '@mesaas/i18n';
 
 const PRESET_DAYS = [7, 30, 90];
 const MAX_CUSTOM_DAYS = 730;
@@ -186,8 +186,8 @@ function Frame({
   onSync?: () => void;
   children: ReactNode;
 }) {
-  const { t, i18n } = useTranslation('analyticsTiktok');
-  const dateLocale = i18n.language.startsWith('en') ? enUS : ptBR;
+  const { t } = useTranslation('analyticsTiktok');
+  const dateLocale = getDateFnsLocale();
   const handle = account?.username ?? account?.display_name ?? '';
   const name = frame.nome;
   return (

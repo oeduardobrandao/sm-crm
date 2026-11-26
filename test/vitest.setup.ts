@@ -106,6 +106,8 @@ import ptIdeaDrawer from '../packages/i18n/locales/pt/ideaDrawer.json';
 import enMember from '../packages/i18n/locales/en/member.json';
 import enIdeas from '../packages/i18n/locales/en/ideas.json';
 import enIdeaDrawer from '../packages/i18n/locales/en/ideaDrawer.json';
+import ptAnalyticsAccount from '../packages/i18n/locales/pt/analyticsAccount.json';
+import enAnalyticsAccount from '../packages/i18n/locales/en/analyticsAccount.json';
 
 initI18n({
   pt: {
@@ -156,6 +158,7 @@ initI18n({
     hubMessages: ptHubMessages,
     hubAgenda: ptHubAgenda,
     hubConvite: ptHubConvite,
+    analyticsAccount: ptAnalyticsAccount,
   },
   en: {
     common: enCommon,
@@ -205,6 +208,7 @@ initI18n({
     hubMessages: enHubMessages,
     hubAgenda: enHubAgenda,
     hubConvite: enHubConvite,
+    analyticsAccount: enAnalyticsAccount,
   },
 });
 

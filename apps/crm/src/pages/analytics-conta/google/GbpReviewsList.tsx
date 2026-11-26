@@ -1,10 +1,10 @@
 import { useTranslation } from 'react-i18next';
 import { formatDistanceToNow } from 'date-fns';
-import { enUS, ptBR } from 'date-fns/locale';
 import { Badge } from '@/components/ui/badge';
 import type { GbpReview, GbpReviewFilter } from '../../../services/gbpAnalytics';
 import { sanitizeUrl } from '../../../utils/security';
 import { GbpCard, QueryBody, Segments, Stars, type GbpQuery } from './GbpCard';
+import { getDateFnsLocale } from '@mesaas/i18n';
 
 const FILTERS: { value: GbpReviewFilter; key: string }[] = [
   { value: 'all', key: 'reviews.filterAll' },
@@ -58,7 +58,7 @@ export function GbpReviewsList({
 }
 
 function ReviewItem({ review, first }: { review: GbpReview; first: boolean }) {
-  const { t, i18n } = useTranslation('analyticsGoogle');
+  const { t } = useTranslation('analyticsGoogle');
   const name = review.reviewer?.trim() || t('reviews.anonymous');
   // A missing or unparseable createTime drops the date: `new Date(null)` would read "há 56 anos".
   const created = review.createTime ? new Date(review.createTime) : null;
@@ -66,7 +66,7 @@ function ReviewItem({ review, first }: { review: GbpReview; first: boolean }) {
     created && !isNaN(created.getTime())
       ? formatDistanceToNow(created, {
           addSuffix: true,
-          locale: i18n.language.startsWith('en') ? enUS : ptBR,
+          locale: getDateFnsLocale(),
         })
       : null;
   const meta = [review.unitTitle, when].filter(Boolean).join(' · ');

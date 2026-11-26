@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import type { GbpSurfaceRow } from '../../../services/gbpAnalytics';
 import { GbpCard, QueryBody, type GbpQuery } from './GbpCard';
 import { formatGbpCount, pctOf } from './gbpTabFormat';
+import { getIntlLocale } from '@mesaas/i18n';
 
 type Surface = GbpSurfaceRow['surface'];
 
@@ -59,7 +60,7 @@ export function GbpSurfacesCard({
                         }}
                       >
                         <span>{t(`surfaces.${surface}`)}</span>
-                        <strong>{v.toLocaleString('pt-BR')}</strong>
+                        <strong>{v.toLocaleString(getIntlLocale())}</strong>
                       </div>
                       <div
                         aria-hidden="true"

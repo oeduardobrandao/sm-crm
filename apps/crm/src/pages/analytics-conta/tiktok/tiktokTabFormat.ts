@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import { enUS, ptBR } from 'date-fns/locale';
 import type { AnalyticsRange, KpiEntry } from '../../../services/tiktokAnalytics';
 import { spDayStartMs } from '../../analytics-tiktok/videoRanking';
+import { getIntlLocale } from '@mesaas/i18n';
 
 /** Where a plan-locked section sends the user. */
 export { BILLING_PATH } from '../AnalyticsStateCards';
@@ -23,13 +24,13 @@ const DAY_MS = 86_400_000;
 
 /** A count, pt-BR; a missing one reads "—", never 0. */
 export const formatCount = (n: number | null | undefined): string =>
-  n === null || n === undefined ? '—' : n.toLocaleString('pt-BR');
+  n === null || n === undefined ? '—' : n.toLocaleString(getIntlLocale());
 
 /** A percent (0-100) with one decimal, pt-BR: 6.8 → "6,8%". Null reads "—", never 0%. */
 export const formatRate = (v: number | null | undefined): string =>
   v === null || v === undefined
     ? '—'
-    : `${v.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+    : `${v.toLocaleString(getIntlLocale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
 
 /** A KPI value in its unit; null means "no data" and is left to the caller. */
 export const formatKpi = (entry: Pick<KpiEntry, 'unit'>, v: number): string =>

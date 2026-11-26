@@ -17,6 +17,7 @@ import { HelpTooltip } from '@/components/help/HelpTooltip';
 import { makeDelta } from '../../../services/analytics';
 import type { GbpKpiEntry, GbpKpiId } from '../../../services/gbpAnalytics';
 import { formatGbpCount, formatRating, formatRatingDelta } from './gbpTabFormat';
+import { getIntlLocale } from '@mesaas/i18n';
 
 /** Board 4 order and tones. */
 const KPI_ORDER: { id: GbpKpiId; icon: LucideIcon; tone: StatTone }[] = [
@@ -68,7 +69,7 @@ export function GbpKpiGrid({
                   ? t('kpi.avg_rating.subNoTotal')
                   : t('kpi.avg_rating.sub', {
                       count: totalReviews,
-                      formattedCount: totalReviews.toLocaleString('pt-BR'),
+                      formattedCount: totalReviews.toLocaleString(getIntlLocale()),
                     })
               }
               footNote={

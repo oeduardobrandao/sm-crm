@@ -1,6 +1,7 @@
 // Period and formatting helpers for the client Google Meu Negócio tab (desktop and phone).
 // Dates from the server are plain YYYY-MM-DD / YYYY-MM strings (São Paulo days): they are read
 // at UTC noon and formatted in UTC, so no time zone moves them to the day before.
+import { getIntlLocale } from '@mesaas/i18n';
 import type { AnalyticsRange, GbpOverview } from '../../../services/gbpAnalytics';
 
 /** The tab's own presets (not YouTube's 7/28/90): the server accepts exactly these `days`. */
@@ -73,17 +74,17 @@ export function formatMonth(month: string, language: string, style: 'short' | 'l
 /** A count, pt-BR; from 10 mil up it is compact ("24,8 mil"), as on board 4. */
 export function formatGbpCount(n: number): string {
   if (Math.abs(n) >= 10_000) {
-    return new Intl.NumberFormat('pt-BR', {
+    return new Intl.NumberFormat(getIntlLocale(), {
       notation: 'compact',
       maximumFractionDigits: 1,
     }).format(n);
   }
-  return n.toLocaleString('pt-BR');
+  return n.toLocaleString(getIntlLocale());
 }
 
 /** A star rating with one decimal: 4.7 → "4,7". */
 export const formatRating = (n: number): string =>
-  n.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  n.toLocaleString(getIntlLocale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
 /** A signed rating change with one decimal: 0.1 → "+0,1". */
 export function formatRatingDelta(diff: number): string {

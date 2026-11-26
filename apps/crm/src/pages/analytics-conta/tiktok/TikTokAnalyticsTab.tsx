@@ -5,7 +5,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
-import { enUS, ptBR } from 'date-fns/locale';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
@@ -22,6 +21,7 @@ import {
 import type { BestPostingTimes } from '../../../services/analytics';
 import { sanitizeUrl } from '../../../utils/security';
 import { AISection, BestTimesHeatmap } from '../AnalyticsContaPage';
+import { dayShort, hourText } from '../contaFormat';
 import { FollowerChart } from '../FollowerChart';
 import { LoadingCard, LockedCard, StateCard } from '../AnalyticsStateCards';
 import { isNativeApp } from '@/native/platform';
@@ -39,6 +39,7 @@ import {
   periodTag,
 } from './tiktokTabFormat';
 import { isTikTokTabQuery, useTikTokTabData } from './useTikTokTabData';
+import { getDateFnsLocale } from '@mesaas/i18n';
 
 /** TikTok's brand pink, for the follower line. */
 const TIKTOK_COLOR = '#FE2C55';
@@ -186,7 +187,7 @@ export function TikTokAnalyticsTab({
 
   const account = overview.data!.account;
   const period = periodTag(range, i18n.language);
-  const dateLocale = i18n.language.startsWith('en') ? enUS : ptBR;
+  const dateLocale = getDateFnsLocale();
 
   const avatar = account.avatar_url?.startsWith('https://') ? account.avatar_url : null;
   const handle = account.username ?? account.display_name ?? '';
@@ -401,8 +402,8 @@ function BestTimesCard({
         <div className="an-insight">
           <h3 className="an-insight-kpi">
             {t('clientTab.bestSlot', {
-              day: data.labels_days[top.day],
-              hour: data.labels_hours[top.hour],
+              day: dayShort(data.labels_days[top.day]),
+              hour: hourText(data.labels_hours[top.hour]),
             })}
           </h3>
           <div className="an-insight-sub">
@@ -439,8 +440,8 @@ function BestTimesCard({
                   <span className={`an-slot-rank${i === 0 ? ' r1' : ''}`}>{i + 1}</span>
                   <span className="an-slot-when">
                     {t('clientTab.slotWhen', {
-                      day: data.labels_days[s.day],
-                      hour: data.labels_hours[s.hour],
+                      day: dayShort(data.labels_days[s.day]),
+                      hour: hourText(data.labels_hours[s.hour]),
                     })}
                   </span>
                   <span className="an-slot-meta">

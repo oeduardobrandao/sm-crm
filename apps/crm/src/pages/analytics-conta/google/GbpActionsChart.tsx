@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Chart, registerables } from 'chart.js';
 import type { GbpDailyPoint } from '../../../services/gbpAnalytics';
 import { formatDayMonth } from './gbpTabFormat';
+import { getIntlLocale } from '@mesaas/i18n';
 
 Chart.register(...registerables);
 
@@ -53,7 +54,7 @@ export function GbpActionsChart({ daily, phone }: { daily: GbpDailyPoint[]; phon
             padding: 10,
             callbacks: {
               label: (ctx) =>
-                ` ${ctx.dataset.label}: ${Number(ctx.parsed.y).toLocaleString('pt-BR')}`,
+                ` ${ctx.dataset.label}: ${Number(ctx.parsed.y).toLocaleString(getIntlLocale())}`,
             },
           },
         },

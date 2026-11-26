@@ -1,5 +1,8 @@
 import { Fragment, type ReactNode, useMemo, useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Trans, useTranslation } from 'react-i18next';
+import i18n from 'i18next';
+import { getIntlLocale } from '@mesaas/i18n';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -96,6 +99,9 @@ import {
   formatMediaType,
   formatPublishedDateTime,
   toStatDelta,
+  dayFull,
+  dayShort,
+  hourText,
 } from './contaFormat';
 import { PostThumbnail } from './components/PostThumbnail';
 import { ActionMetricValue } from './components/PostMetricsView';
@@ -141,7 +147,7 @@ function BulletText({ text }: { text: unknown }) {
 }
 
 function formatNumber(n: number): string {
-  return (n || 0).toLocaleString('pt-BR');
+  return (n || 0).toLocaleString(getIntlLocale());
 }
 
 // The account-metrics endpoint (Task 13) takes an explicit start/end range
@@ -157,13 +163,13 @@ function lastNDaysRange(days: number, today: Date = new Date()): { start: string
 }
 
 function formatPostDate(date: string): string {
-  return new Date(date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+  return new Date(date).toLocaleDateString(getIntlLocale(), { day: '2-digit', month: 'short' });
 }
 
 /** A one-line caption for an accessible name: whitespace collapsed, cut at 60 characters. */
 function captionExcerpt(caption: string | null | undefined): string {
   const text = (caption ?? '').replace(/\s+/g, ' ').trim();
-  if (!text) return 'Sem legenda';
+  if (!text) return i18n.t('analyticsAccount:page.noCaption');
   return text.length > 60 ? `${text.slice(0, 60).trimEnd()}…` : text;
 }
 
@@ -179,6 +185,7 @@ function RankedPostCard({
   tone: 'best' | 'worst';
   onOpen: OpenPostHandler;
 }) {
+  const { t } = useTranslation('analyticsAccount');
   const reachColor = tone === 'best' ? 'var(--success)' : 'var(--danger)';
 
   return (
@@ -186,7 +193,7 @@ function RankedPostCard({
       <button
         type="button"
         className="analytics-post-card__open"
-        aria-label={`Ver métricas: ${captionExcerpt(post.caption)}`}
+        aria-label={t('page.viewMetrics', { caption: captionExcerpt(post.caption) })}
         onClick={(e) => onOpen(post, e.currentTarget)}
       >
         <div
@@ -230,13 +237,15 @@ function RankedPostCard({
               WebkitBoxOrient: 'vertical',
             }}
           >
-            {post.caption || 'Sem legenda'}
+            {post.caption || t('page.noCaption')}
           </span>
           <span style={{ fontSize: '0.65rem', color: 'var(--text-light)' }}>
             {formatPostDate(post.posted_at)}
           </span>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Visualizações</span>
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+              {t('metric.views')}
+            </span>
             <span
               style={{
                 fontSize: '0.7rem',
@@ -249,7 +258,9 @@ function RankedPostCard({
             </span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Engajamento</span>
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+              {t('metric.engagement')}
+            </span>
             <span style={{ fontSize: '0.7rem', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
               {post.engagement_rate.toFixed(2)}%
             </span>
@@ -307,7 +318,7 @@ function RankedPostCard({
             </span>
             {typeof post.follows === 'number' && (
               <span
-                title="Novos seguidores"
+                title={t('metric.newFollowers')}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -347,6 +358,7 @@ interface RankedPostsSectionProps {
 }
 
 function RankedPostsSection(props: RankedPostsSectionProps) {
+  const { t } = useTranslation('analyticsAccount');
   return (
     <InstagramPostCarousel
       title={props.title}
@@ -359,7 +371,7 @@ function RankedPostsSection(props: RankedPostsSectionProps) {
       action={
         props.canSeeMore ? (
           <Button variant="ghost" size="sm" onClick={props.onSeeMore}>
-            Ver mais <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+            {t('page.seeMore')} <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
           </Button>
         ) : undefined
       }
@@ -404,6 +416,7 @@ function KpiCard({
   tone?: StatTone;
   sub?: ReactNode;
 }) {
+  const { t } = useTranslation('analyticsAccount');
   return (
     <StatCard
       label={label}
@@ -415,14 +428,18 @@ function KpiCard({
           ? {
               direction: delta.direction,
               percent: delta.deltaPercent,
-              caption: 'vs período anterior',
+              caption: t('format.vsPrevious'),
             }
           : undefined
       }
       sub={sub}
       footNote={
         <>
-          {prevFormatted != null && <span>Anterior: {prevFormatted}</span>}
+          {prevFormatted != null && (
+            <span>
+              {t('page.previous')} {prevFormatted}
+            </span>
+          )}
           {period && <span className="kpi-period-chip">{period}</span>}
         </>
       }
@@ -431,18 +448,8 @@ function KpiCard({
 }
 
 // ---- Insight helpers ----
-const formatPct = (v: number) => v.toFixed(1).replace('.', ',');
-
-const DAY_FULL: Record<string, string> = {
-  Seg: 'Segunda',
-  Ter: 'Terça',
-  Qua: 'Quarta',
-  Qui: 'Quinta',
-  Sex: 'Sexta',
-  Sab: 'Sábado',
-  Sáb: 'Sábado',
-  Dom: 'Domingo',
-};
+const formatPct = (v: number) =>
+  getIntlLocale() === 'en-US' ? v.toFixed(1) : v.toFixed(1).replace('.', ',');
 
 function InsightHeader({ kpi, sub }: { kpi: ReactNode; sub?: ReactNode }) {
   return (
@@ -459,25 +466,24 @@ function TypeChart({
 }: {
   typeBreakdown: { type: string; count: number; avgEngagement: number }[];
 }) {
+  const { t } = useTranslation('analyticsAccount');
   if (typeBreakdown.length === 0)
-    return <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>Sem dados.</p>;
-  const max = Math.max(...typeBreakdown.map((t) => t.avgEngagement), 0.1);
+    return <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>{t('page.noData')}</p>;
+  const max = Math.max(...typeBreakdown.map((row) => row.avgEngagement), 0.1);
   return (
     <div style={{ marginTop: '0.5rem' }}>
-      {typeBreakdown.map((t, i) => {
-        const pct = (t.avgEngagement / max) * 80;
+      {typeBreakdown.map((row, i) => {
+        const pct = (row.avgEngagement / max) * 80;
         return (
-          <div key={t.type} className="an-tbar-row">
+          <div key={row.type} className="an-tbar-row">
             <div className="an-tbar-label">
-              {t.type}
-              <small>
-                {t.count} post{t.count !== 1 ? 's' : ''}
-              </small>
+              {row.type}
+              <small>{t('count.posts', { count: row.count })}</small>
             </div>
             <div className="an-tbar-track">
               <div className={`an-tbar-fill${i > 0 ? ' dim' : ''}`} style={{ width: `${pct}%` }} />
               <span className="an-tbar-val" style={{ left: `${pct}%` }}>
-                {formatPct(t.avgEngagement)}%
+                {formatPct(row.avgEngagement)}%
               </span>
             </div>
           </div>
@@ -489,6 +495,7 @@ function TypeChart({
 
 // ---- Age Chart ----
 function AgeChart({ demographics }: { demographics: AudienceDemographics }) {
+  const { t } = useTranslation('analyticsAccount');
   const groups = demographics.age_gender;
   if (groups.length === 0) return null;
   const maxVal = Math.max(...groups.flatMap((a) => [a.male, a.female]), 1);
@@ -506,10 +513,14 @@ function AgeChart({ demographics }: { demographics: AudienceDemographics }) {
           <div
             key={a.age_range}
             className={`an-age-group${i === hotIdx ? ' hot' : ''}`}
-            title={`${a.age_range}: ${a.male.toLocaleString('pt-BR')} homens · ${a.female.toLocaleString('pt-BR')} mulheres`}
+            title={t('age.tooltip', {
+              range: a.age_range,
+              male: a.male.toLocaleString(getIntlLocale()),
+              female: a.female.toLocaleString(getIntlLocale()),
+            })}
           >
             {i === hotIdx && total > 0 && (
-              <span className="an-age-peak">{hotShare}% do público</span>
+              <span className="an-age-peak">{t('age.peak', { share: hotShare })}</span>
             )}
             <div className="an-age-col m" style={{ height: `${(a.male / maxVal) * 100}%` }} />
             <div className="an-age-col f" style={{ height: `${(a.female / maxVal) * 100}%` }} />
@@ -532,11 +543,14 @@ function AgeChart({ demographics }: { demographics: AudienceDemographics }) {
 // Also drawn by the TikTok tab, which counts videos instead of posts.
 export function BestTimesHeatmap({
   data,
-  countLabel = (n: number) => `${n} post${n !== 1 ? 's' : ''}`,
+  countLabel: countLabelProp,
 }: {
   data: BestPostingTimes;
   countLabel?: (count: number) => string;
 }) {
+  const { t } = useTranslation('analyticsAccount');
+  const countLabel = countLabelProp ?? ((n: number) => t('count.posts', { count: n }));
+  const hourLabel = (h: number) => t('hm.hour', { h });
   const bucketStarts = BEST_TIME_BUCKET_STARTS;
   const { buckets, bucketSize, max, topCell } = bucketBestTimes(data);
   return (
@@ -545,12 +559,12 @@ export function BestTimesHeatmap({
         <span />
         {bucketStarts.map((h) => (
           <span key={h} className="an-hm-hlab">
-            {h}h
+            {hourLabel(h)}
           </span>
         ))}
         {data.labels_days.map((day, d) => (
           <Fragment key={day}>
-            <span className="an-hm-dlab">{day}</span>
+            <span className="an-hm-dlab">{dayShort(day)}</span>
             {buckets[d].map((cell, b) => {
               const step = cell.value > 0 ? 1 + Math.round((cell.value / max) * 7) : 0;
               const isTop = topCell !== null && topCell.day === d && topCell.bucket === b;
@@ -561,8 +575,14 @@ export function BestTimesHeatmap({
                   style={{ background: `var(--an-heat-${Math.min(step, 8)})` }}
                   title={
                     cell.count > 0
-                      ? `${day} ${bucketStarts[b]}h–${bucketStarts[b] + bucketSize - 1}h: ${formatPct(cell.value)}% eng. (${countLabel(cell.count)})`
-                      : `${day} ${bucketStarts[b]}h: sem posts`
+                      ? t('hm.tooltip', {
+                          day: dayShort(day),
+                          from: hourLabel(bucketStarts[b]),
+                          to: hourLabel(bucketStarts[b] + bucketSize - 1),
+                          pct: formatPct(cell.value),
+                          count: countLabel(cell.count),
+                        })
+                      : t('hm.empty', { day: dayShort(day), hour: hourLabel(bucketStarts[b]) })
                   }
                 />
               );
@@ -571,9 +591,9 @@ export function BestTimesHeatmap({
         ))}
       </div>
       <div className="an-hm-scale">
-        <span>menos</span>
+        <span>{t('hm.less')}</span>
         <span className="an-hm-ramp" />
-        <span>mais engajamento</span>
+        <span>{t('hm.more')}</span>
       </div>
     </div>
   );
@@ -592,20 +612,14 @@ export interface AISectionLabels {
   captionDiagnostic: string;
 }
 
-const AI_SECTION_LABELS: AISectionLabels = {
-  topPerformer: 'Melhor Post',
-  worstPerformer: 'Pior Post',
-  captionDiagnostic: 'Diagnóstico de Legendas',
-};
-
 // Also drawn by the TikTok tab: `load` fetches its analysis (same output shape) and throws an
 // Error whose message is the copy to show.
 export function AISection({
   clientId,
   days,
   load,
-  title = 'Análise Inteligente',
-  labels = AI_SECTION_LABELS,
+  title: titleProp,
+  labels: labelsProp,
 }: {
   clientId: number;
   days: number;
@@ -613,6 +627,13 @@ export function AISection({
   title?: string;
   labels?: AISectionLabels;
 }) {
+  const { t } = useTranslation('analyticsAccount');
+  const title = titleProp ?? t('ai.title');
+  const labels: AISectionLabels = labelsProp ?? {
+    topPerformer: t('ai.topPerformer'),
+    worstPerformer: t('ai.worstPerformer'),
+    captionDiagnostic: t('ai.captionDiagnostic'),
+  };
   const [loading, setLoading] = useState(false);
   const [analysis, setAnalysis] = useState<any>(null);
   const [error, setError] = useState('');
@@ -623,12 +644,12 @@ export function AISection({
     try {
       const result = await (load ? load(days) : getAccountAIAnalysis(clientId, days));
       if (result.analysis.error) {
-        setError('Não foi possível gerar a análise.');
+        setError(t('ai.failed'));
         return;
       }
       setAnalysis({ ...result.analysis, generatedAt: result.generatedAt });
     } catch (e: any) {
-      setError(e.message || 'Erro na análise');
+      setError(e.message || t('ai.error'));
     } finally {
       setLoading(false);
     }
@@ -650,13 +671,11 @@ export function AISection({
       <div className="dashboard-hub-card-header" style={{ marginBottom: '1rem' }}>
         <h3>{title}</h3>
         <Button size="sm" variant="outline" disabled={loading} onClick={handleGenerate}>
-          {loading ? <Spinner size="sm" /> : <Zap className="h-3 w-3" />} Gerar Análise IA
+          {loading ? <Spinner size="sm" /> : <Zap className="h-3 w-3" />} {t('ai.generate')}
         </Button>
       </div>
       {!analysis && !error && !loading && (
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-          Clique em "Gerar Análise IA" para obter insights personalizados.
-        </p>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{t('ai.prompt')}</p>
       )}
       {error && <p style={{ color: 'var(--danger)' }}>{error}</p>}
       {analysis && (
@@ -684,7 +703,7 @@ export function AISection({
                   marginBottom: '0.2rem',
                 }}
               >
-                Health Score
+                {t('ai.healthScore')}
               </div>
               <p style={{ fontSize: '0.85rem', lineHeight: 1.4 }}>
                 {String(analysis.healthScore?.summary ?? '')}
@@ -745,7 +764,7 @@ export function AISection({
                 <h4
                   style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}
                 >
-                  Mix de Conteúdo
+                  {t('ai.contentMix')}
                 </h4>
                 <BulletText text={analysis.performanceMap.contentMix} />
               </div>
@@ -782,7 +801,7 @@ export function AISection({
                       color: 'var(--text-muted)',
                     }}
                   >
-                    Trajetória de Crescimento
+                    {t('ai.trajectory')}
                   </h4>
                   <BulletText text={analysis.growthAnalysis.trajectory} />
                 </div>
@@ -794,7 +813,7 @@ export function AISection({
                       color: 'var(--text-muted)',
                     }}
                   >
-                    Projeção
+                    {t('ai.projection')}
                   </h4>
                   <BulletText text={analysis.growthAnalysis.projection} />
                 </div>
@@ -808,7 +827,7 @@ export function AISection({
               <h4
                 style={{ fontSize: '0.8rem', marginBottom: '0.6rem', color: 'var(--text-muted)' }}
               >
-                Plano de Ação
+                {t('ai.actionPlan')}
               </h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 {analysis.actionPlan.map((a: any, i: number) => (
@@ -860,8 +879,8 @@ export function AISection({
               textAlign: 'right',
             }}
           >
-            Gerado em{' '}
-            {new Date(analysis.generatedAt).toLocaleString('pt-BR', {
+            {t('ai.generatedAt')}{' '}
+            {new Date(analysis.generatedAt).toLocaleString(getIntlLocale(), {
               timeZone: 'America/Sao_Paulo',
             })}
           </p>
@@ -873,6 +892,7 @@ export function AISection({
 
 // ---- Tag pill component ----
 function TagPill({ tag, onRemove }: { tag: PostTag; onRemove: () => void }) {
+  const { t } = useTranslation('analyticsAccount');
   return (
     <span
       className="tag-pill"
@@ -881,7 +901,7 @@ function TagPill({ tag, onRemove }: { tag: PostTag; onRemove: () => void }) {
       {tag.tag_name}
       <span
         className="tag-remove"
-        title="Remover tag"
+        title={t('tag.remove')}
         style={{ cursor: 'pointer', marginLeft: 4 }}
         onClick={(e) => {
           e.stopPropagation();
@@ -907,6 +927,7 @@ function AnalyticsContent({
   /** The shell's platform tabs, shown under the phone identity (desktop renders them itself). */
   tabs?: ReactNode;
 }) {
+  const { t } = useTranslation('analyticsAccount');
   const qc = useQueryClient();
   const isPhone = !useIsDesktop(768);
   // Under the Vidro shell the three inline var(--card-bg) surfaces below drop their background so
@@ -1051,7 +1072,7 @@ function AnalyticsContent({
       const fetched = await getPostAnalyticsById(clientId, postId, baselineQuery.data?.dists);
       if (request !== openRequestRef.current) return;
       if (!fetched) {
-        toast.error('Não foi possível abrir o post.');
+        toast.error(t('toast.openPostFailed'));
         return;
       }
       openerRef.current = opener;
@@ -1059,7 +1080,7 @@ function AnalyticsContent({
       setHeldPost(fetched);
       setOpenPostId(fetched.id);
     } catch {
-      if (request === openRequestRef.current) toast.error('Não foi possível abrir o post.');
+      if (request === openRequestRef.current) toast.error(t('toast.openPostFailed'));
     }
   };
   // Close only once the list has settled without the post (a sync removed it). A key change
@@ -1252,7 +1273,7 @@ function AnalyticsContent({
     setSyncing(true);
     try {
       await syncInstagramData(clientId);
-      toast.success('Dados sincronizados com sucesso!');
+      toast.success(t('toast.synced'));
       // account-metrics sits behind a 6h server-side cache
       // (instagram_analytics_cache) -- a plain invalidateQueries would just
       // refetch with the same non-refresh queryFn and hit that cache again,
@@ -1287,9 +1308,11 @@ function AnalyticsContent({
       qc.invalidateQueries({ queryKey: ['ig-account-health', clientId] });
     } catch (err: any) {
       if (err.message === 'TOKEN_EXPIRED') {
-        toast.error('Token expirado. Por favor, reconecte a conta.');
+        toast.error(t('toast.tokenExpired'));
       } else {
-        toast.error('Erro na sincronização: ' + (err.message || 'Falha'));
+        toast.error(
+          t('toast.syncError', { message: err.message || t('toast.syncFailedFallback') }),
+        );
       }
     } finally {
       setSyncing(false);
@@ -1317,7 +1340,9 @@ function AnalyticsContent({
     setOverviewDays(daysInLastMonth);
     setPeriodStart(fmt(firstOfLastMonth));
     setPeriodEnd(fmt(lastOfLastMonth));
-    setPeriodLabel(firstOfLastMonth.toLocaleString('pt-BR', { month: 'short', year: 'numeric' }));
+    setPeriodLabel(
+      firstOfLastMonth.toLocaleString(getIntlLocale(), { month: 'short', year: 'numeric' }),
+    );
     setShowAllPosts(false);
     resetRankedDrawer();
   };
@@ -1347,17 +1372,17 @@ function AnalyticsContent({
   const handleSaveManualFollower = async () => {
     const count = parseInt(manualCount, 10);
     if (!manualDate || isNaN(count) || count < 0) {
-      toast.error('Preencha todos os campos corretamente');
+      toast.error(t('toast.fillAll'));
       return;
     }
     try {
       await upsertManualFollowerCount(clientId, manualDate, count);
-      toast.success('Seguidores registrados com sucesso');
+      toast.success(t('toast.followersSaved'));
       setManualFollowerOpen(false);
       setManualCount('');
       qc.invalidateQueries({ queryKey: ['analytics-history', clientId] });
     } catch (err: any) {
-      toast.error(err.message || 'Erro ao salvar');
+      toast.error(err.message || t('toast.saveError'));
     }
   };
 
@@ -1368,17 +1393,17 @@ function AnalyticsContent({
     const color = colors[Math.floor(Math.random() * colors.length)];
     try {
       await createTag(name.trim(), color);
-      toast.success('Tag criada!');
+      toast.success(t('toast.tagCreated'));
       qc.invalidateQueries({ queryKey: ['analytics-tags'] });
       return true;
     } catch (err: any) {
-      toast.error(err.message || 'Erro ao criar tag');
+      toast.error(err.message || t('toast.tagCreateError'));
       return false;
     }
   };
 
   const handleAddTag = async () => {
-    const name = prompt('Nome da nova tag (ex: Educativo, Procedimento, Bastidores):');
+    const name = prompt(t('tag.newNamePrompt'));
     if (!name || !name.trim()) return;
     await createTagNamed(name);
   };
@@ -1386,15 +1411,15 @@ function AnalyticsContent({
   const deleteTagConfirmed = async (tagId: number) => {
     try {
       await deleteTag(tagId);
-      toast.success('Tag removida');
+      toast.success(t('toast.tagRemoved'));
       qc.invalidateQueries({ queryKey: ['analytics-tags'] });
     } catch (err: any) {
-      toast.error(err.message || 'Erro');
+      toast.error(err.message || t('toast.genericError'));
     }
   };
 
   const handleRemoveTag = async (tagId: number) => {
-    if (!confirm('Remover esta tag?')) return;
+    if (!confirm(t('tag.confirmRemove'))) return;
     await deleteTagConfirmed(tagId);
   };
 
@@ -1406,7 +1431,9 @@ function AnalyticsContent({
       else await assignTagToPost(post.id, tag.id);
       await qc.invalidateQueries({ queryKey: ['analytics-posts', clientId] });
     } catch (err: any) {
-      toast.error(err.message || (assigned ? 'Erro ao remover tag' : 'Erro ao atribuir tag'));
+      toast.error(
+        err.message || (assigned ? t('toast.tagRemoveError') : t('toast.tagAssignError')),
+      );
     }
   };
 
@@ -1415,7 +1442,7 @@ function AnalyticsContent({
       await assignTagToPost(postId, tagId);
       qc.invalidateQueries({ queryKey: ['analytics-posts', clientId] });
     } catch (err: any) {
-      toast.error(err.message || 'Erro ao atribuir tag');
+      toast.error(err.message || t('toast.tagAssignError'));
     }
   };
 
@@ -1437,13 +1464,13 @@ function AnalyticsContent({
   const metricsPrevious = metricsRes?.previous ?? null;
 
   const metricValue = (v: number | null | undefined) =>
-    loadingMetrics ? '…' : v != null ? v.toLocaleString('pt-BR') : '—';
+    loadingMetrics ? '…' : v != null ? v.toLocaleString(getIntlLocale()) : '—';
   const metricDelta = (current: number | null | undefined, previous: number | null | undefined) =>
     current != null && previous != null ? makeDelta(current, previous) : undefined;
   const metricPrevFormatted = (previous: number | null | undefined) =>
-    previous != null ? previous.toLocaleString('pt-BR') : undefined;
+    previous != null ? previous.toLocaleString(getIntlLocale()) : undefined;
 
-  const viewsSub = !loadingMetrics && !metricsRes ? 'Indisponível no momento' : undefined;
+  const viewsSub = !loadingMetrics && !metricsRes ? t('page.unavailableNow') : undefined;
 
   const followersWindow = metricsCurrent?.followers ?? null;
   const followersPrevWindow = metricsPrevious?.followers ?? null;
@@ -1454,16 +1481,18 @@ function AnalyticsContent({
   const followersValue = loadingMetrics
     ? '…'
     : followersWindow
-      ? followersWindow.end.toLocaleString('pt-BR')
+      ? followersWindow.end.toLocaleString(getIntlLocale())
       : '—';
   const followersPrevFormatted = followersWindow
-    ? followersWindow.start.toLocaleString('pt-BR')
+    ? followersWindow.start.toLocaleString(getIntlLocale())
     : undefined;
 
   const cacheNote = overviewRes?.fromCache ? (
     <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-      Dados de{' '}
-      {new Date(overviewRes.fetchedAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
+      {t('page.dataFrom')}{' '}
+      {new Date(overviewRes.fetchedAt).toLocaleString(getIntlLocale(), {
+        timeZone: 'America/Sao_Paulo',
+      })}
     </span>
   ) : null;
 
@@ -1486,7 +1515,7 @@ function AnalyticsContent({
         size="icon"
         disabled={syncing}
         onClick={handleSync}
-        title="Sincronizar Dados"
+        title={t('page.syncData')}
       >
         {syncing ? <Spinner size="sm" /> : <RefreshCw className="h-4 w-4" />}
       </Button>
@@ -1494,7 +1523,7 @@ function AnalyticsContent({
   );
   const primaryAction = (
     <Button onClick={() => setNewReportOpen(true)}>
-      <FileText className="h-4 w-4" /> Gerar Relatório
+      <FileText className="h-4 w-4" /> {t('page.generateReport')}
     </Button>
   );
 
@@ -1510,7 +1539,7 @@ function AnalyticsContent({
       labels wrap into the icon bubbles */}
       <StatCardGrid className="animate-up" maxCols={4} phoneLayout="scroll">
         <KpiCard
-          label="Visualizações"
+          label={t('kpi.views')}
           icon={Play}
           tone="violet"
           value={metricValue(metricsCurrent?.views)}
@@ -1520,7 +1549,7 @@ function AnalyticsContent({
           sub={viewsSub}
         />
         <KpiCard
-          label="Seguidores"
+          label={t('kpi.followers')}
           icon={Users}
           tone="blue"
           value={followersValue}
@@ -1529,7 +1558,7 @@ function AnalyticsContent({
           prevFormatted={followersPrevFormatted}
         />
         <KpiCard
-          label="Engajamento"
+          label={t('kpi.engagement')}
           icon={Heart}
           tone="pink"
           value={overview.engagement.current.toFixed(2) + '%'}
@@ -1538,7 +1567,7 @@ function AnalyticsContent({
           prevFormatted={overview.engagement.previous.toFixed(2) + '%'}
         />
         <KpiCard
-          label="Contas engajadas"
+          label={t('kpi.accountsEngaged')}
           icon={Zap}
           tone="amber"
           value={metricValue(metricsCurrent?.accounts_engaged)}
@@ -1547,7 +1576,7 @@ function AnalyticsContent({
           prevFormatted={metricPrevFormatted(metricsPrevious?.accounts_engaged)}
         />
         <KpiCard
-          label="Alcance acumulado"
+          label={t('kpi.reach')}
           icon={Eye}
           tone="violet"
           value={metricValue(metricsCurrent?.reach)}
@@ -1556,7 +1585,7 @@ function AnalyticsContent({
           prevFormatted={metricPrevFormatted(metricsPrevious?.reach)}
         />
         <KpiCard
-          label="Cliques no link"
+          label={t('kpi.linkClicks')}
           icon={MousePointerClick}
           tone="green"
           value={metricValue(metricsCurrent?.website_clicks)}
@@ -1565,7 +1594,7 @@ function AnalyticsContent({
           prevFormatted={metricPrevFormatted(metricsPrevious?.website_clicks)}
         />
         <KpiCard
-          label="Taxa de salvamentos"
+          label={t('kpi.savesRate')}
           icon={Bookmark}
           tone="slate"
           value={overview.savesRate.current.toFixed(2) + '%'}
@@ -1574,7 +1603,7 @@ function AnalyticsContent({
           prevFormatted={overview.savesRate.previous.toFixed(2) + '%'}
         />
         <KpiCard
-          label="Posts publicados"
+          label={t('kpi.postsPublished')}
           icon={Send}
           tone="blue"
           value={String(overview.postsPublished.current)}
@@ -1606,15 +1635,14 @@ function AnalyticsContent({
           }}
         >
           <DialogHeader>
-            <DialogTitle>Inserir Seguidores Manualmente</DialogTitle>
+            <DialogTitle>{t('manual.title')}</DialogTitle>
           </DialogHeader>
           <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-            Insira a contagem de seguidores para uma data específica. Dados manuais não serão
-            sobrescritos pela sincronização automática.
+            {t('manual.help')}
           </p>
           <div className="space-y-3">
             <div className="space-y-1">
-              <Label>Data</Label>
+              <Label>{t('manual.date')}</Label>
               <Input
                 type="date"
                 value={manualDate}
@@ -1623,11 +1651,11 @@ function AnalyticsContent({
               />
             </div>
             <div className="space-y-1">
-              <Label>Número de seguidores</Label>
+              <Label>{t('manual.count')}</Label>
               <Input
                 type="number"
                 min={0}
-                placeholder="Ex: 15432"
+                placeholder={t('manual.placeholder')}
                 value={manualCount}
                 onChange={(e) => setManualCount(e.target.value)}
               />
@@ -1641,9 +1669,9 @@ function AnalyticsContent({
                 setManualCount('');
               }}
             >
-              Cancelar
+              {t('manual.cancel')}
             </Button>
-            <Button onClick={handleSaveManualFollower}>Salvar</Button>
+            <Button onClick={handleSaveManualFollower}>{t('manual.save')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1654,14 +1682,21 @@ function AnalyticsContent({
   if (isPhone) {
     const typeHeadline =
       typeTop && typeSecond && typeRatio !== null && typeRatio >= 1.3
-        ? `${typeTop.type} engaja ${formatPct(typeRatio)}× mais que ${typeSecond.type}`
+        ? t('insight.formatBeats', {
+            top: typeTop.type,
+            ratio: formatPct(typeRatio),
+            second: typeSecond.type,
+          })
         : typeTop
-          ? `${typeTop.type} é o formato que mais engaja`
+          ? t('insight.formatTop', { top: typeTop.type })
           : null;
     const demoHeadline = !demographicsData
-      ? 'Indisponível'
+      ? t('insight.unavailable')
       : demoHotAge && demoAgeTotal > 0
-        ? `${demoFemaleDominant ? 'Mulheres' : 'Homens'} de ${demoHotAge.age_range} são o núcleo da audiência`
+        ? t('insight.audienceCore', {
+            who: demoFemaleDominant ? t('insight.women') : t('insight.men'),
+            age: demoHotAge.age_range,
+          })
         : null;
     return (
       <>
@@ -1755,7 +1790,7 @@ function AnalyticsContent({
               className={`page-tab${!periodStart && overviewDays === d ? ' active' : ''}`}
               onClick={() => handleDaysChange(d)}
             >
-              {d} dias
+              {t('filter.days', { count: d })}
             </button>
           ))}
           <button
@@ -1765,22 +1800,22 @@ function AnalyticsContent({
             className={`page-tab${periodStart ? ' active' : ''}`}
             onClick={handleLastMonth}
           >
-            Último mês
+            {t('filter.lastMonth')}
           </button>
         </div>
-        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>ou</span>
+        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{t('filter.or')}</span>
         <Input
           type="number"
           min={1}
           max={730}
-          placeholder="Dias..."
-          aria-label="Período personalizado em dias"
+          placeholder={t('filter.daysPlaceholder')}
+          aria-label={t('filter.customDaysLabel')}
           className="!rounded-full !text-xs h-9 w-[110px] mb-0"
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               const val = parseInt((e.target as HTMLInputElement).value, 10);
               if (isNaN(val) || val < 1 || val > 730) {
-                toast.error('Insira um valor entre 1 e 730 dias');
+                toast.error(t('filter.invalidDays'));
                 return;
               }
               applyCustomDays(val);
@@ -1810,11 +1845,9 @@ function AnalyticsContent({
               onClick={() => setSavesOpen((v) => !v)}
             >
               <span className="analytics-callout__title">
-                Taxa de salvamentos
+                {t('saves.title')}
                 <span className="analytics-callout__count">
-                  {topSaved.length === 1
-                    ? '1 post em destaque'
-                    : `${topSaved.length} posts em destaque`}
+                  {t('saves.featured', { count: topSaved.length })}
                 </span>
               </span>
               <ChevronDown
@@ -1824,19 +1857,21 @@ function AnalyticsContent({
             </button>
             {savesOpen && (
               <div id="saves-callout-content" className="analytics-callout__collapsible">
-                <p className="analytics-callout__text">
-                  Salvamentos indicam que alguém guardou o conteúdo para uma decisão de saúde. É a
-                  métrica mais subestimada para conteúdo médico.
-                </p>
+                <p className="analytics-callout__text">{t('saves.help')}</p>
                 <div className="analytics-callout__grid">
                   {topSaved.map((p) => (
                     <div key={p.id} className="analytics-callout__item">
-                      <strong>{p.saved}</strong> salvamentos
+                      <Trans
+                        t={t}
+                        i18nKey="saves.item"
+                        values={{ count: p.saved }}
+                        components={{ strong: <strong /> }}
+                      />
                       <span style={{ color: 'var(--text-muted)', marginLeft: '0.25rem' }}>
-                        ({p.saves_rate.toFixed(1)}% taxa)
+                        {t('saves.rate', { rate: p.saves_rate.toFixed(1) })}
                       </span>
                       <div className="analytics-callout__item-caption">
-                        {p.caption || 'Sem legenda'}
+                        {p.caption || t('page.noCaption')}
                       </div>
                     </div>
                   ))}
@@ -1848,8 +1883,8 @@ function AnalyticsContent({
       )}
 
       <RankedPostsSection
-        title="Melhores Posts"
-        description={`Top posts por visualizações neste período (${periodTag}).`}
+        title={t('ranked.bestTitle')}
+        description={t('ranked.bestDescription', { period: periodTag })}
         icon={<Trophy className="h-5 w-5" style={{ color: 'var(--success)' }} />}
         posts={rankedPosts.slice(0, 5)}
         tone="best"
@@ -1859,8 +1894,8 @@ function AnalyticsContent({
       />
 
       <RankedPostsSection
-        title="Precisam de Atenção"
-        description="Posts com pelo menos 48h de publicação e menos visualizações no período."
+        title={t('ranked.worstTitle')}
+        description={t('ranked.worstDescription')}
         icon={<AlertTriangle className="h-5 w-5" style={{ color: 'var(--warning)' }} />}
         posts={matureRankedPosts.slice(0, 5)}
         tone="worst"
@@ -1872,9 +1907,9 @@ function AnalyticsContent({
       {/* Follower Growth Chart */}
       <div className="card animate-up">
         <div className="dashboard-hub-card-header">
-          <h3>Crescimento de Seguidores</h3>
+          <h3>{t('followers.title')}</h3>
           <Button size="sm" variant="outline" onClick={() => setManualFollowerOpen(true)}>
-            ✏ Inserir manualmente
+            {t('followers.manualButton')}
           </Button>
         </div>
         <FollowerChart history={history} postDates={postDates} />
@@ -1883,37 +1918,35 @@ function AnalyticsContent({
       {/* Content Performance Table */}
       <div className="card animate-up">
         <div className="dashboard-hub-card-header">
-          <h3>Performance de Conteúdo</h3>
+          <h3>{t('table.title')}</h3>
         </div>
         {posts.length === 0 ? (
-          <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>
-            Nenhuma publicação neste período.
-          </p>
+          <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>{t('table.empty')}</p>
         ) : (
           <div style={{ overflowX: 'auto', marginTop: '1rem' }}>
             <table className="data-table" id="posts-table">
               <thead>
                 <tr>
                   {[
-                    { col: 'posted_at', label: 'Data' },
-                    { col: null, label: 'Tipo' },
-                    { col: 'impressions', label: 'Visualizações' },
-                    { col: 'reach', label: 'Alcance' },
-                    { col: 'engagement_rate', label: 'Eng.' },
-                    { col: 'ig_score', label: 'IG Score' },
-                    { col: 'likes', label: 'Curtidas' },
-                    { col: 'saved', label: 'Salvos' },
-                    { col: 'comments', label: 'Coment.' },
-                    { col: 'shares', label: 'Compart.' },
-                    { col: 'follows', label: 'Novos seg.' },
-                    { col: null, label: 'Tags' },
-                  ].map(({ col, label }) => (
+                    { col: 'posted_at', key: 'date' },
+                    { col: null, key: 'type' },
+                    { col: 'impressions', key: 'views' },
+                    { col: 'reach', key: 'reach' },
+                    { col: 'engagement_rate', key: 'eng' },
+                    { col: 'ig_score', key: 'igScore' },
+                    { col: 'likes', key: 'likes' },
+                    { col: 'saved', key: 'saved' },
+                    { col: 'comments', key: 'comments' },
+                    { col: 'shares', key: 'shares' },
+                    { col: 'follows', key: 'follows' },
+                    { col: null, key: 'tags' },
+                  ].map(({ col, key }) => (
                     <th
-                      key={label}
+                      key={key}
                       style={{ cursor: col ? 'pointer' : 'default' }}
                       onClick={col ? () => handleSortChange(col) : undefined}
                     >
-                      {label}
+                      {t(`table.${key}`)}
                       {col && sort.col === col && (sort.dir === 'asc' ? ' ↑' : ' ↓')}
                     </th>
                   ))}
@@ -1930,11 +1963,13 @@ function AnalyticsContent({
                       if (opener) openPostMetrics(p, opener);
                     }}
                   >
-                    <td data-label="Data">
+                    <td data-label={t('table.date')}>
                       <button
                         type="button"
                         className="post-row-open"
-                        aria-label={`Ver métricas do post de ${formatPublishedDateTime(p.posted_at)}`}
+                        aria-label={t('table.viewPostMetrics', {
+                          when: formatPublishedDateTime(p.posted_at),
+                        })}
                         onClick={(e) => {
                           e.stopPropagation();
                           openPostMetrics(p, e.currentTarget);
@@ -1973,26 +2008,26 @@ function AnalyticsContent({
                             📷
                           </div>
                         )}
-                        <span>{new Date(p.posted_at).toLocaleDateString('pt-BR')}</span>
+                        <span>{new Date(p.posted_at).toLocaleDateString(getIntlLocale())}</span>
                       </button>
                     </td>
-                    <td data-label="Tipo">
+                    <td data-label={t('table.type')}>
                       <span className="badge badge-info">{formatMediaType(p.media_type)}</span>
                     </td>
-                    <td data-label="Visualizações">{p.views.toLocaleString('pt-BR')}</td>
-                    <td data-label="Alcance">{p.reach.toLocaleString('pt-BR')}</td>
-                    <td data-label="Eng.">
+                    <td data-label={t('table.views')}>{p.views.toLocaleString(getIntlLocale())}</td>
+                    <td data-label={t('table.reach')}>{p.reach.toLocaleString(getIntlLocale())}</td>
+                    <td data-label={t('table.eng')}>
                       <span
                         className={`badge ${p.engagement_rate >= 5 ? 'badge-success' : p.engagement_rate >= 2 ? 'badge-warning' : 'badge-neutral'}`}
                       >
                         {p.engagement_rate.toFixed(1)}%
                       </span>
                     </td>
-                    <td data-label="IG Score">
+                    <td data-label={t('table.igScore')}>
                       {(p as PostAnalytics).ig_score === null ||
                       (p as PostAnalytics).ig_score === undefined ? (
                         <span
-                          title="amostra insuficiente (<5)"
+                          title={t('table.insufficientSample')}
                           style={{ color: 'var(--text-muted)' }}
                         >
                           —
@@ -2005,26 +2040,28 @@ function AnalyticsContent({
                         </span>
                       )}
                     </td>
-                    <td data-label="Curtidas">{(p.likes || 0).toLocaleString('pt-BR')}</td>
-                    <td data-label="Salvos">{p.saved}</td>
-                    <td data-label="Coment.">{p.comments}</td>
-                    <td data-label="Compart.">{p.shares}</td>
-                    <td data-label="Novos seg.">
+                    <td data-label={t('table.likes')}>
+                      {(p.likes || 0).toLocaleString(getIntlLocale())}
+                    </td>
+                    <td data-label={t('table.saved')}>{p.saved}</td>
+                    <td data-label={t('table.comments')}>{p.comments}</td>
+                    <td data-label={t('table.shares')}>{p.shares}</td>
+                    <td data-label={t('table.follows')}>
                       <ActionMetricValue post={p} metric="follows" as="span" />
                     </td>
-                    <td data-label="Tags" onClick={(e) => e.stopPropagation()}>
-                      {p.tags.map((t) => (
+                    <td data-label={t('table.tags')} onClick={(e) => e.stopPropagation()}>
+                      {p.tags.map((tag) => (
                         <span
-                          key={t.id}
+                          key={tag.id}
                           className="tag-pill"
                           style={{
-                            background: t.color + '20',
-                            color: t.color,
-                            border: `1px solid ${t.color}40`,
+                            background: tag.color + '20',
+                            color: tag.color,
+                            border: `1px solid ${tag.color}40`,
                             marginRight: 2,
                           }}
                         >
-                          {t.tag_name}
+                          {tag.tag_name}
                         </span>
                       ))}
                       {tagsData.length > 0 && (
@@ -2036,16 +2073,16 @@ function AnalyticsContent({
                           }}
                         >
                           {tagsData
-                            .filter((t) => !p.tags.some((pt) => pt.id === t.id))
-                            .map((t) => (
+                            .filter((tag) => !p.tags.some((pt) => pt.id === tag.id))
+                            .map((tag) => (
                               <span
-                                key={t.id}
-                                title={`Adicionar "${t.tag_name}"`}
-                                onClick={() => handleAssignTag(p.id, t.id)}
+                                key={tag.id}
+                                title={t('table.addTag', { tag: tag.tag_name })}
+                                onClick={() => handleAssignTag(p.id, tag.id)}
                                 style={{
-                                  background: t.color + '20',
-                                  color: t.color,
-                                  border: `1px solid ${t.color}40`,
+                                  background: tag.color + '20',
+                                  color: tag.color,
+                                  border: `1px solid ${tag.color}40`,
                                   cursor: 'pointer',
                                   display: 'inline-block',
                                   padding: '1px 6px',
@@ -2054,7 +2091,7 @@ function AnalyticsContent({
                                   marginRight: 2,
                                 }}
                               >
-                                + {t.tag_name}
+                                + {tag.tag_name}
                               </span>
                             ))}
                         </span>
@@ -2082,7 +2119,7 @@ function AnalyticsContent({
                 }}
                 onClick={() => setShowAllPosts(!showAllPosts)}
               >
-                {showAllPosts ? '↑ Ver menos' : '↓ Ver mais publicações'}
+                {showAllPosts ? t('table.showLess') : t('table.showMore')}
               </button>
             )}
           </div>
@@ -2106,24 +2143,38 @@ function AnalyticsContent({
           {typeTop && typeSecond && typeRatio !== null && typeRatio >= 1.3 ? (
             <InsightHeader
               kpi={
-                <>
-                  {typeTop.type} engaja <em>{formatPct(typeRatio)}×</em> mais que {typeSecond.type}
-                </>
+                <Trans
+                  t={t}
+                  i18nKey="insight.formatBeatsRich"
+                  values={{
+                    top: typeTop.type,
+                    ratio: formatPct(typeRatio),
+                    second: typeSecond.type,
+                  }}
+                  components={{ em: <em /> }}
+                />
               }
-              sub={`${formatPct(typeTop.avgEngagement)}% vs ${formatPct(typeSecond.avgEngagement)}% de engajamento médio · últimos ${days} dias`}
+              sub={t('insight.avgVs', {
+                a: formatPct(typeTop.avgEngagement),
+                b: formatPct(typeSecond.avgEngagement),
+                days,
+              })}
             />
           ) : typeTop ? (
             <InsightHeader
               kpi={
-                <>
-                  <em>{typeTop.type}</em> é o formato que mais engaja
-                </>
+                <Trans
+                  t={t}
+                  i18nKey="insight.formatTopRich"
+                  values={{ top: typeTop.type }}
+                  components={{ em: <em /> }}
+                />
               }
-              sub={`${formatPct(typeTop.avgEngagement)}% de engajamento médio · últimos ${days} dias`}
+              sub={t('insight.avgTop', { a: formatPct(typeTop.avgEngagement), days })}
             />
           ) : (
             <div className="dashboard-hub-card-header">
-              <h3>Desempenho por Tipo</h3>
+              <h3>{t('insight.byType')}</h3>
             </div>
           )}
           <TypeChart typeBreakdown={typeBreakdown} />
@@ -2132,15 +2183,21 @@ function AnalyticsContent({
           {topicStats.length > 0 ? (
             <InsightHeader
               kpi={
-                <>
-                  <em>{topicStats[0].tag_name}</em> é o tema que mais engaja
-                </>
+                <Trans
+                  t={t}
+                  i18nKey="insight.topicTopRich"
+                  values={{ tag: topicStats[0].tag_name }}
+                  components={{ em: <em /> }}
+                />
               }
-              sub={`${formatPct(topicStats[0].avgEngagement)}% de engajamento médio em ${topicStats[0].count} post${topicStats[0].count !== 1 ? 's' : ''}`}
+              sub={t('insight.topicSub', {
+                pct: formatPct(topicStats[0].avgEngagement),
+                count: topicStats[0].count,
+              })}
             />
           ) : (
             <div className="dashboard-hub-card-header">
-              <h3>Desempenho por Tópico</h3>
+              <h3>{t('insight.byTopic')}</h3>
             </div>
           )}
           <div
@@ -2152,8 +2209,8 @@ function AnalyticsContent({
               marginBottom: '1rem',
             }}
           >
-            {tagsData.map((t) => (
-              <TagPill key={t.id} tag={t} onRemove={() => handleRemoveTag(t.id)} />
+            {tagsData.map((tag) => (
+              <TagPill key={tag.id} tag={tag} onRemove={() => handleRemoveTag(tag.id)} />
             ))}
             <Button
               size="sm"
@@ -2161,27 +2218,25 @@ function AnalyticsContent({
               onClick={handleAddTag}
               style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem' }}
             >
-              <Plus className="h-3 w-3" /> Nova Tag
+              <Plus className="h-3 w-3" /> {t('topic.newTag')}
             </Button>
           </div>
           {topicStats.length === 0 ? (
             <>
               {tagsData.length === 0 && (
                 <div className="an-ghost-pills">
-                  <span className="an-ghost-pill">bastidores</span>
-                  <span className="an-ghost-pill">dicas</span>
-                  <span className="an-ghost-pill">promoção</span>
+                  <span className="an-ghost-pill">{t('topic.ghost1')}</span>
+                  <span className="an-ghost-pill">{t('topic.ghost2')}</span>
+                  <span className="an-ghost-pill">{t('topic.ghost3')}</span>
                 </div>
               )}
               <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                {tagsData.length === 0
-                  ? 'Crie tags e atribua aos posts para descobrir quais temas engajam mais.'
-                  : 'Atribua tags aos posts para ver o desempenho por tópico.'}
+                {tagsData.length === 0 ? t('topic.hintNoTags') : t('topic.hintAssign')}
               </p>
             </>
           ) : (
             <div style={{ marginTop: '0.5rem' }}>
-              {topicStats.map((t, i) => (
+              {topicStats.map((topic, i) => (
                 <div
                   key={i}
                   style={{
@@ -2194,17 +2249,22 @@ function AnalyticsContent({
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <span
-                      style={{ width: 10, height: 10, borderRadius: '50%', background: t.color }}
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: '50%',
+                        background: topic.color,
+                      }}
                     />
-                    <span style={{ fontSize: '0.85rem' }}>{t.tag_name}</span>
+                    <span style={{ fontSize: '0.85rem' }}>{topic.tag_name}</span>
                     <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                      ({t.count} posts)
+                      {t('topic.count', { count: topic.count })}
                     </span>
                   </div>
                   <span
-                    className={`badge ${t.avgEngagement >= 5 ? 'badge-success' : t.avgEngagement >= 2 ? 'badge-warning' : 'badge-neutral'}`}
+                    className={`badge ${topic.avgEngagement >= 5 ? 'badge-success' : topic.avgEngagement >= 2 ? 'badge-warning' : 'badge-neutral'}`}
                   >
-                    {t.avgEngagement.toFixed(2)}%
+                    {topic.avgEngagement.toFixed(2)}%
                   </span>
                 </div>
               ))}
@@ -2222,20 +2282,29 @@ function AnalyticsContent({
           {demographicsData && demoHotAge && demoAgeTotal > 0 ? (
             <InsightHeader
               kpi={
-                <>
-                  {demoFemaleDominant ? 'Mulheres' : 'Homens'} de <em>{demoHotAge.age_range}</em>{' '}
-                  são o núcleo da audiência
-                </>
+                <Trans
+                  t={t}
+                  i18nKey="demo.headlineRich"
+                  values={{
+                    who: demoFemaleDominant ? t('insight.women') : t('insight.men'),
+                    age: demoHotAge.age_range,
+                  }}
+                  components={{ em: <em /> }}
+                />
               }
               sub={
                 <>
                   {demoFemaleDominant
-                    ? `${demographicsData.gender_split.female}% do público é feminino`
-                    : `${demographicsData.gender_split.male}% do público é masculino`}
+                    ? t('demo.female', { pct: demographicsData.gender_split.female })
+                    : t('demo.male', { pct: demographicsData.gender_split.male })}
                   {demoTopCity && demoTopCityShare > 0 && (
                     <>
                       {' '}
-                      · {demoTopCityShare}% está em {demoTopCity.name.split(',')[0]}
+                      ·{' '}
+                      {t('demo.city', {
+                        share: demoTopCityShare,
+                        city: demoTopCity.name.split(',')[0],
+                      })}
                     </>
                   )}
                 </>
@@ -2243,14 +2312,11 @@ function AnalyticsContent({
             />
           ) : (
             <div className="dashboard-hub-card-header">
-              <h3>Demografia da Audiência</h3>
+              <h3>{t('demo.title')}</h3>
             </div>
           )}
           {!demographicsData ? (
-            <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>
-              Dados demográficos indisponíveis. A conta pode não ter seguidores suficientes ou a
-              permissão instagram_manage_insights pode estar ausente.
-            </p>
+            <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>{t('demo.unavailable')}</p>
           ) : (
             <div>
               <div className="an-split">
@@ -2263,16 +2329,16 @@ function AnalyticsContent({
               <div className="an-split-labels">
                 <span>
                   <span className="an-dot" style={{ background: 'var(--an-male)' }} />
-                  Masculino <strong>{demographicsData.gender_split.male}%</strong>
+                  {t('demo.maleLabel')} <strong>{demographicsData.gender_split.male}%</strong>
                 </span>
                 <span>
                   <span className="an-dot" style={{ background: 'var(--an-female)' }} />
-                  Feminino <strong>{demographicsData.gender_split.female}%</strong>
+                  {t('demo.femaleLabel')} <strong>{demographicsData.gender_split.female}%</strong>
                 </span>
               </div>
-              <h4 className="an-mini-h">Faixa etária</h4>
+              <h4 className="an-mini-h">{t('demo.ageRange')}</h4>
               <AgeChart demographics={demographicsData} />
-              <h4 className="an-mini-h">Principais cidades</h4>
+              <h4 className="an-mini-h">{t('demo.topCities')}</h4>
               {demographicsData.cities.slice(0, 5).map((c, i) => {
                 const maxCity = demographicsData.cities[0]?.count || 1;
                 const [cityName, cityRegion] = c.name.split(/,\s*/, 2);
@@ -2287,7 +2353,7 @@ function AnalyticsContent({
                     <span className="an-city-bar">
                       <i style={{ width: `${(c.count / maxCity) * 100}%` }} />
                     </span>
-                    <span className="an-city-val">{c.count.toLocaleString('pt-BR')}</span>
+                    <span className="an-city-val">{c.count.toLocaleString(getIntlLocale())}</span>
                   </div>
                 );
               })}
@@ -2298,23 +2364,29 @@ function AnalyticsContent({
           {bestTimesData && bestTimesData.totalPosts >= 5 && bestSlot ? (
             <InsightHeader
               kpi={
-                <>
-                  {DAY_FULL[bestTimesData.labels_days[bestSlot.day]] ??
-                    bestTimesData.labels_days[bestSlot.day]}{' '}
-                  às <em>{bestTimesData.labels_hours[bestSlot.hour]}</em> é o melhor horário
-                </>
+                <Trans
+                  t={t}
+                  i18nKey="best.headlineRich"
+                  values={{
+                    day: dayFull(bestTimesData.labels_days[bestSlot.day]),
+                    hour: hourText(bestTimesData.labels_hours[bestSlot.hour]),
+                  }}
+                  components={{ em: <em /> }}
+                />
               }
-              sub={`${formatPct(bestSlot.value)}% de engajamento médio · ${bestTimesData.totalPosts} posts nos últimos 90 dias`}
+              sub={t('best.sub', {
+                pct: formatPct(bestSlot.value),
+                count: bestTimesData.totalPosts,
+              })}
             />
           ) : (
             <div className="dashboard-hub-card-header">
-              <h3>Melhor Horário para Postar</h3>
+              <h3>{t('best.title')}</h3>
             </div>
           )}
           {!bestTimesData || bestTimesData.totalPosts < 5 ? (
             <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>
-              Dados insuficientes. São necessários pelo menos 5 posts nos últimos 90 dias para
-              análise.
+              {t('best.insufficient')}
             </p>
           ) : (
             <div style={{ marginTop: '0.5rem' }}>
@@ -2322,16 +2394,19 @@ function AnalyticsContent({
               {bestTimesData.topSlots.length > 0 && (
                 <div style={{ marginTop: '1.2rem' }}>
                   <h4 className="an-mini-h" style={{ margin: '0 0 0.5rem' }}>
-                    Horários recomendados
+                    {t('best.recommended')}
                   </h4>
                   {bestTimesData.topSlots.map((s, i) => (
                     <div key={i} className="an-slot-row">
                       <span className={`an-slot-rank${i === 0 ? ' r1' : ''}`}>{i + 1}</span>
                       <span className="an-slot-when">
-                        {bestTimesData.labels_days[s.day]} às {bestTimesData.labels_hours[s.hour]}
+                        {t('best.when', {
+                          day: dayShort(bestTimesData.labels_days[s.day]),
+                          hour: hourText(bestTimesData.labels_hours[s.hour]),
+                        })}
                       </span>
                       <span className="an-slot-meta">
-                        {formatPct(s.value)}% eng. · {s.postCount} post{s.postCount > 1 ? 's' : ''}
+                        {t('best.meta', { pct: formatPct(s.value), count: s.postCount })}
                       </span>
                     </div>
                   ))}
@@ -2388,19 +2463,22 @@ function AnalyticsContent({
             <SheetTitle style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               {rankedDrawer === 'worst' ? (
                 <>
-                  <AlertTriangle className="h-5 w-5" style={{ color: 'var(--warning)' }} /> Posts
-                  que precisam de atenção
+                  <AlertTriangle className="h-5 w-5" style={{ color: 'var(--warning)' }} />{' '}
+                  {t('drawer.worstTitle')}
                 </>
               ) : (
                 <>
-                  <Trophy className="h-5 w-5" style={{ color: 'var(--success)' }} /> Melhores posts
+                  <Trophy className="h-5 w-5" style={{ color: 'var(--success)' }} />{' '}
+                  {t('drawer.bestTitle')}
                 </>
               )}
             </SheetTitle>
             <SheetDescription>
-              {rankedDrawerPosts.length} de{' '}
-              {rankedDrawer === 'worst' ? matureRankedPosts.length : posts.length} posts de @
-              {account.username}
+              {t('drawer.subtitle', {
+                shown: rankedDrawerPosts.length,
+                total: rankedDrawer === 'worst' ? matureRankedPosts.length : posts.length,
+                username: account.username,
+              })}
             </SheetDescription>
           </SheetHeader>
 
@@ -2424,7 +2502,7 @@ function AnalyticsContent({
               <select
                 value={rankedOrderBy}
                 onChange={(e) => setRankedOrderBy(e.target.value as RankedPostOrderBy)}
-                aria-label="Ordenar posts"
+                aria-label={t('drawer.sortLabel')}
                 className="drawer-select"
                 style={{
                   height: 36,
@@ -2436,36 +2514,38 @@ function AnalyticsContent({
                   fontSize: '0.85rem',
                 }}
               >
-                <option value="views">Visualizações</option>
-                <option value="reach">Alcance</option>
-                <option value="engagement">Engajamento</option>
-                <option value="likes">Curtidas</option>
-                <option value="comments">Comentários</option>
-                <option value="saved">Salvos</option>
-                <option value="shares">Compart.</option>
-                <option value="profile_visits">Visitas ao perfil</option>
-                <option value="follows">Novos seguidores</option>
-                <option value="date">Data</option>
-                <option value="ig_score">IG Score</option>
-                <option value="share_rate">Compart./visualização</option>
-                <option value="like_rate">Curt./visualização</option>
-                <option value="save_rate">Salvos/visualização</option>
-                <option value="comment_rate">Coment./visualização</option>
-                <option value="follows_per_mil_reach">Seguidores/mil alcançados</option>
+                <option value="views">{t('drawer.sort.views')}</option>
+                <option value="reach">{t('drawer.sort.reach')}</option>
+                <option value="engagement">{t('drawer.sort.engagement')}</option>
+                <option value="likes">{t('drawer.sort.likes')}</option>
+                <option value="comments">{t('drawer.sort.comments')}</option>
+                <option value="saved">{t('drawer.sort.saved')}</option>
+                <option value="shares">{t('drawer.sort.shares')}</option>
+                <option value="profile_visits">{t('drawer.sort.profile_visits')}</option>
+                <option value="follows">{t('drawer.sort.follows')}</option>
+                <option value="date">{t('drawer.sort.date')}</option>
+                <option value="ig_score">{t('drawer.sort.ig_score')}</option>
+                <option value="share_rate">{t('drawer.sort.share_rate')}</option>
+                <option value="like_rate">{t('drawer.sort.like_rate')}</option>
+                <option value="save_rate">{t('drawer.sort.save_rate')}</option>
+                <option value="comment_rate">{t('drawer.sort.comment_rate')}</option>
+                <option value="follows_per_mil_reach">
+                  {t('drawer.sort.follows_per_mil_reach')}
+                </option>
               </select>
               <Button
                 variant="outline"
                 size="icon"
                 onClick={() => setRankedAsc((v) => !v)}
                 className="mb-0 h-9 w-9 shrink-0 rounded-lg"
-                title={rankedAsc ? 'Crescente' : 'Decrescente'}
+                title={rankedAsc ? t('drawer.ascending') : t('drawer.descending')}
               >
                 <ArrowUpDown className="h-3.5 w-3.5" />
               </Button>
               <select
                 value={rankedFormatFilter}
                 onChange={(e) => setRankedFormatFilter(e.target.value)}
-                aria-label="Filtrar formato"
+                aria-label={t('drawer.filterFormat')}
                 className="drawer-select"
                 style={{
                   height: 36,
@@ -2477,7 +2557,7 @@ function AnalyticsContent({
                   fontSize: '0.85rem',
                 }}
               >
-                <option value="all">Todos os formatos</option>
+                <option value="all">{t('drawer.allFormats')}</option>
                 {rankedPostFormats.map((type) => (
                   <option key={type} value={type}>
                     {formatMediaType(type)}
@@ -2499,7 +2579,9 @@ function AnalyticsContent({
                 onChange={(e) => setRankedDateFrom(e.target.value)}
                 className="h-9 rounded-lg font-mono text-sm"
               />
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>até</span>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                {t('drawer.until')}
+              </span>
               <Input
                 type="date"
                 value={rankedDateTo}
@@ -2524,7 +2606,7 @@ function AnalyticsContent({
                     cursor: 'pointer',
                   }}
                 >
-                  Limpar datas
+                  {t('drawer.clearDates')}
                 </button>
               </div>
             )}
@@ -2540,7 +2622,7 @@ function AnalyticsContent({
           >
             {rankedDrawerPosts.length === 0 ? (
               <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', padding: '1rem 0' }}>
-                Nenhum post encontrado com estes filtros.
+                {t('drawer.empty')}
               </p>
             ) : (
               rankedDrawerPosts.map((post, i) => (
@@ -2560,7 +2642,7 @@ function AnalyticsContent({
                   <button
                     type="button"
                     className="ranked-drawer-row__open"
-                    aria-label={`Ver métricas: ${captionExcerpt(post.caption)}`}
+                    aria-label={t('page.viewMetrics', { caption: captionExcerpt(post.caption) })}
                     onClick={(e) => openPostMetrics(post, e.currentTarget)}
                   >
                     <span
@@ -2597,7 +2679,7 @@ function AnalyticsContent({
                             whiteSpace: 'nowrap',
                           }}
                         >
-                          {post.caption || 'Sem legenda'}
+                          {post.caption || t('page.noCaption')}
                         </span>
                         <span
                           style={{ fontSize: '0.65rem', color: 'var(--text-light)', flexShrink: 0 }}
@@ -2617,7 +2699,7 @@ function AnalyticsContent({
                       >
                         <span>{formatMediaType(post.media_type)}</span>
                         <span>
-                          Visualizações{' '}
+                          {t('drawer.rowViews')}{' '}
                           <strong
                             style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}
                           >
@@ -2625,7 +2707,7 @@ function AnalyticsContent({
                           </strong>
                         </span>
                         <span>
-                          Eng.{' '}
+                          {t('drawer.rowEng')}{' '}
                           <strong
                             style={{
                               fontFamily: 'var(--font-mono)',
@@ -2666,7 +2748,7 @@ function AnalyticsContent({
                         </span>
                         {typeof post.follows === 'number' && (
                           <span
-                            title="Novos seguidores"
+                            title={t('metric.newFollowers')}
                             style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}
                           >
                             <UserPlus className="h-3 w-3" />{' '}
@@ -2702,18 +2784,19 @@ type StorySortCol =
   | 'exits'
   | 'replies';
 
-const STORY_COLUMNS: { col: StorySortCol; label: string }[] = [
-  { col: 'posted_at', label: 'Data' },
-  { col: 'reach', label: 'Alcance' },
-  { col: 'impressions', label: 'Impressões' },
-  { col: 'retention_rate', label: 'Retenção' },
-  { col: 'taps_forward', label: 'Avançaram' },
-  { col: 'taps_back', label: 'Voltaram' },
-  { col: 'exits', label: 'Saídas' },
-  { col: 'replies', label: 'Respostas' },
+const STORY_COLUMNS: StorySortCol[] = [
+  'posted_at',
+  'reach',
+  'impressions',
+  'retention_rate',
+  'taps_forward',
+  'taps_back',
+  'exits',
+  'replies',
 ];
 
 function StoriesSection({ data }: { data: StoriesAnalyticsResponse }) {
+  const { t } = useTranslation('analyticsAccount');
   const { current, previous } = data.kpis;
   const [sort, setSort] = useState<{ col: StorySortCol; dir: 'asc' | 'desc' }>({
     col: 'posted_at',
@@ -2736,34 +2819,34 @@ function StoriesSection({ data }: { data: StoriesAnalyticsResponse }) {
       <div className="flex items-center gap-2 mb-4">
         <Film className="h-5 w-5" style={{ color: 'var(--primary-color)' }} />
         <h2 className="text-lg font-semibold" style={{ color: 'var(--text-main)' }}>
-          Stories
+          {t('stories.title')}
         </h2>
       </div>
 
       <StatCardGrid maxCols={4}>
         <StatCard
-          label="Stories publicados"
+          label={t('stories.published')}
           value={current.stories_count}
           icon={Film}
           tone="blue"
           delta={toStatDelta(current.stories_count, previous?.stories_count)}
         />
         <StatCard
-          label="Alcance de Stories"
+          label={t('stories.reach')}
           value={formatNumber(current.total_reach)}
           icon={Eye}
           tone="violet"
           delta={toStatDelta(current.total_reach, previous?.total_reach)}
         />
         <StatCard
-          label="Taxa de retenção"
+          label={t('stories.retention')}
           value={`${(current.avg_retention_rate * 100).toFixed(1)}%`}
           icon={ChevronRight}
           tone="green"
           delta={toStatDelta(current.avg_retention_rate, previous?.avg_retention_rate)}
         />
         <StatCard
-          label="Respostas"
+          label={t('stories.replies')}
           value={current.total_replies}
           icon={MessageCircle}
           tone="pink"
@@ -2774,13 +2857,13 @@ function StoriesSection({ data }: { data: StoriesAnalyticsResponse }) {
       {data.stories.length > 0 && (
         <div className="card animate-up mt-4" style={{ animationDelay: '0.5s' }}>
           <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--text-muted)' }}>
-            Detalhamento por story
+            {t('stories.breakdown')}
           </h3>
           <div style={{ overflowX: 'auto' }}>
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                  {STORY_COLUMNS.map(({ col, label }) => (
+                  {STORY_COLUMNS.map((col) => (
                     <th
                       key={col}
                       className={`${col === 'posted_at' ? 'text-left' : 'text-right'} py-2 px-2 font-medium`}
@@ -2799,7 +2882,7 @@ function StoriesSection({ data }: { data: StoriesAnalyticsResponse }) {
                         className="font-medium"
                         style={{ cursor: 'pointer', color: 'inherit' }}
                       >
-                        {label}
+                        {t(`stories.col.${col}`)}
                         {sort.col === col && (sort.dir === 'asc' ? ' ↑' : ' ↓')}
                       </button>
                     </th>
@@ -2825,7 +2908,7 @@ function StoriesSection({ data }: { data: StoriesAnalyticsResponse }) {
                       style={{ borderBottom: '1px solid var(--border-color)' }}
                     >
                       <td className="py-2 px-2" style={{ color: 'var(--text-main)' }}>
-                        {new Date(story.posted_at).toLocaleDateString('pt-BR', {
+                        {new Date(story.posted_at).toLocaleDateString(getIntlLocale(), {
                           day: '2-digit',
                           month: 'short',
                         })}
@@ -2869,19 +2952,8 @@ function StoriesSection({ data }: { data: StoriesAnalyticsResponse }) {
 }
 
 // ---- Baseline Card ----
-const RATE_STRIP_LABELS: Record<RateKey, string> = {
-  share_rate: 'Compartilhamentos',
-  like_rate: 'Curtidas',
-  save_rate: 'Salvos',
-  comment_rate: 'Comentários',
-};
-const FORMAT_LABELS: Record<string, string> = {
-  VIDEO: 'Reels',
-  CAROUSEL_ALBUM: 'Carrossel',
-  IMAGE: 'Imagem',
-};
-
 function BaselineCard({ baseline }: { baseline: Baseline }) {
+  const { t } = useTranslation('analyticsAccount');
   if (baseline.sample_size === 0) return null;
   const strip = (key: RateKey) => {
     const stat = baseline.overall[key];
@@ -2891,7 +2963,7 @@ function BaselineCard({ baseline }: { baseline: Baseline }) {
     const perFormat = Object.entries(baseline.by_format)
       .map(([fmt, m]) => {
         const fq = m[key].quartiles;
-        return `${FORMAT_LABELS[fmt] ?? fmt} ${fq ? formatRate(fq.p50) : 'n<5'}`;
+        return `${['VIDEO', 'CAROUSEL_ALBUM', 'IMAGE'].includes(fmt) ? t(`baseline.format.${fmt}`) : fmt} ${fq ? formatRate(fq.p50) : 'n<5'}`;
       })
       .join(' · ');
     return (
@@ -2905,15 +2977,15 @@ function BaselineCard({ baseline }: { baseline: Baseline }) {
           }}
         >
           <span style={{ fontWeight: 600 }}>
-            {RATE_STRIP_LABELS[key]}{' '}
+            {t(`baseline.rate.${key}`)}{' '}
             <span style={{ color: 'var(--primary-color)', fontSize: '0.62rem' }}>
-              peso {Math.round(IG_RATE_WEIGHTS[key] * 100)}%
+              {t('baseline.weight', { pct: Math.round(IG_RATE_WEIGHTS[key] * 100) })}
             </span>
           </span>
           <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
             {q ? formatRate(q.p50) : '—'}{' '}
             <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: '0.65rem' }}>
-              mediana
+              {t('baseline.median')}
             </span>
           </span>
         </div>
@@ -2961,7 +3033,9 @@ function BaselineCard({ baseline }: { baseline: Baseline }) {
             fontFamily: 'var(--font-mono)',
           }}
         >
-          {q ? `p25 ${formatRate(q.p25)} · p75 ${formatRate(q.p75)} — ` : 'amostra insuficiente — '}
+          {q
+            ? t('baseline.quartiles', { p25: formatRate(q.p25), p75: formatRate(q.p75) })
+            : t('baseline.insufficient')}
           {perFormat}
         </div>
       </div>
@@ -2970,11 +3044,10 @@ function BaselineCard({ baseline }: { baseline: Baseline }) {
   return (
     <div className="card animate-up">
       <div className="dashboard-hub-card-header" style={{ marginBottom: '0.25rem' }}>
-        <h3>Baseline Instagram</h3>
+        <h3>{t('baseline.title')}</h3>
       </div>
       <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
-        Histórico completo · {baseline.sample_size} posts · por visualização · pontuado vs.
-        histórico completo do cliente — igual ao que o agente vê.
+        {t('baseline.description', { count: baseline.sample_size })}
       </div>
       {(['share_rate', 'like_rate', 'save_rate', 'comment_rate'] as RateKey[]).map(strip)}
       <div
@@ -2986,8 +3059,7 @@ function BaselineCard({ baseline }: { baseline: Baseline }) {
           lineHeight: 1.5,
         }}
       >
-        Heurística interna alinhada ao IG (compart.&gt;curt.&gt;salvos&gt;coment.) — não são os
-        pesos oficiais do Instagram. Taxa de skip e repost não estão na API.
+        {t('baseline.note')}
       </div>
     </div>
   );
@@ -3009,6 +3081,7 @@ export function InstagramAnalyticsTab({
   /** Phone only: the shell's tab control, rendered under ContaPhone's identity. */
   tabs?: ReactNode;
 }) {
+  const { t } = useTranslation('analyticsAccount');
   const navigate = useNavigate();
 
   const {
@@ -3027,39 +3100,39 @@ export function InstagramAnalyticsTab({
   }
 
   if (igError) {
-    const msg = igError instanceof Error ? igError.message : 'Erro';
+    const msg = igError instanceof Error ? igError.message : t('tab.error');
     if (msg === 'TOKEN_EXPIRED') {
       if (isPhone) {
         return (
           <ContaPhoneMessage
-            title="Token do Instagram expirado"
-            message="Reconecte a conta Instagram para continuar visualizando os analytics."
-            action={{ label: 'Reconectar conta', to: `/clientes/${clientId}/redes-sociais` }}
+            title={t('tab.tokenExpiredTitle')}
+            message={t('tab.tokenExpiredMessage')}
+            action={{ label: t('tab.reconnectPhone'), to: `/clientes/${clientId}/redes-sociais` }}
             tabs={tabs}
           />
         );
       }
       return (
         <div className="card animate-up" style={{ textAlign: 'center', padding: '3rem' }}>
-          <h3>Token do Instagram expirado</h3>
+          <h3>{t('tab.tokenExpiredTitle')}</h3>
           <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-            Reconecte a conta Instagram para continuar visualizando os analytics.
+            {t('tab.tokenExpiredMessage')}
           </p>
           <Button
             style={{ marginTop: '1rem' }}
             onClick={() => navigate(`/clientes/${clientId}/redes-sociais`)}
           >
-            Reconectar Conta
+            {t('tab.reconnect')}
           </Button>
         </div>
       );
     }
     if (isPhone) {
-      return <ContaPhoneMessage title="Erro ao carregar analytics" message={msg} tabs={tabs} />;
+      return <ContaPhoneMessage title={t('tab.loadErrorTitle')} message={msg} tabs={tabs} />;
     }
     return (
       <div className="card">
-        <p style={{ color: 'var(--danger)' }}>Erro ao carregar analytics: {msg}</p>
+        <p style={{ color: 'var(--danger)' }}>{t('tab.loadError', { message: msg })}</p>
       </div>
     );
   }
@@ -3068,10 +3141,10 @@ export function InstagramAnalyticsTab({
     if (isPhone) {
       return (
         <ContaPhoneMessage
-          title="Instagram não conectado"
-          message="Conecte a conta Instagram deste cliente para acessar os analytics."
+          title={t('tab.notConnectedTitle')}
+          message={t('tab.notConnectedMessage')}
           action={{
-            label: 'Ir para o perfil do cliente',
+            label: t('tab.goToClient'),
             to: `/clientes/${clientId}/redes-sociais`,
           }}
           tabs={tabs}
@@ -3080,15 +3153,15 @@ export function InstagramAnalyticsTab({
     }
     return (
       <div className="card animate-up" style={{ textAlign: 'center', padding: '3rem' }}>
-        <h3>Instagram não conectado</h3>
+        <h3>{t('tab.notConnectedTitle')}</h3>
         <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-          Conecte a conta Instagram deste cliente para acessar os analytics.
+          {t('tab.notConnectedMessage')}
         </p>
         <Button
           style={{ marginTop: '1rem' }}
           onClick={() => navigate(`/clientes/${clientId}/redes-sociais`)}
         >
-          Ir para o perfil do cliente
+          {t('tab.goToClient')}
         </Button>
       </div>
     );

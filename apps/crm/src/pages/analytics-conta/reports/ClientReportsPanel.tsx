@@ -1,5 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import i18n from 'i18next';
+import { Trans, useTranslation } from 'react-i18next';
+import { getIntlLocale } from '@mesaas/i18n';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { FileText, Plus, Trash2 } from 'lucide-react';
@@ -61,21 +64,23 @@ function PlatformBadges({ platforms }: { platforms: ReportPlatform[] }) {
 function reportStatusText(r: AnalyticsReport): { text: string; tone?: string } {
   switch (r.status) {
     case 'pending':
-      return { text: 'Pendente', tone: 'phone-an-tone--warn' };
+      return { text: i18n.t('analyticsAccount:reports.pending'), tone: 'phone-an-tone--warn' };
     case 'generating':
-      return { text: 'Gerando…', tone: 'phone-an-tone--muted' };
+      return { text: i18n.t('analyticsAccount:reports.generating'), tone: 'phone-an-tone--muted' };
     case 'failed':
       return {
-        text: `Falha: ${r.generation_error || 'Erro desconhecido'}`,
+        text: i18n.t('analyticsAccount:reports.failed', {
+          error: r.generation_error || i18n.t('analyticsAccount:reports.unknownError'),
+        }),
         tone: 'phone-an-tone--down',
       };
     case 'skipped':
       return {
-        text: 'Fora do plano: o plano do workspace não incluía relatórios de analytics no momento da geração.',
+        text: i18n.t('analyticsAccount:reports.outOfPlanLong'),
         tone: 'phone-an-tone--muted',
       };
     default:
-      return { text: 'Pronto', tone: 'phone-an-tone--up' };
+      return { text: i18n.t('analyticsAccount:reports.ready'), tone: 'phone-an-tone--up' };
   }
 }
 
@@ -87,6 +92,7 @@ function reportStatusText(r: AnalyticsReport): { text: string; tone?: string } {
  * inside the shell's phone frame.
  */
 export function ClientReportsPanel({ clientId }: { clientId: number }) {
+  const { t } = useTranslation('analyticsAccount');
   const qc = useQueryClient();
   const navigate = useNavigate();
   const isPhone = !useIsDesktop(768);
@@ -172,11 +178,11 @@ export function ClientReportsPanel({ clientId }: { clientId: number }) {
       if (result.warning) {
         toast.warning(result.warning);
       } else {
-        toast.success('E-mail enviado com sucesso!');
+        toast.success(t('reports.emailSent'));
       }
       qc.invalidateQueries({ queryKey: ['analytics-reports', clientId] });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao enviar e-mail');
+      toast.error(err instanceof Error ? err.message : t('reports.emailError'));
     } finally {
       setSendingEmail(false);
       setEmailReportTarget(null);
@@ -194,22 +200,26 @@ export function ClientReportsPanel({ clientId }: { clientId: number }) {
     if (downloadingReportId !== null) return;
     setDownloadingReportId(report.id);
     // The phone's action sheet closes on tap, so the toast is the in-flight feedback.
-    const toastId = viaTap ? toast.loading('Preparando PDF…') : undefined;
+    const toastId = viaTap ? toast.loading(t('reports.preparingPdf')) : undefined;
     try {
       const url = await getReportDownloadUrl(report.id);
       if (opensPdfInApp()) {
         if (toastId !== undefined) toast.dismiss(toastId);
-        const title = ['Relatório', cliente?.nome, formatReportMonth(report.report_month)];
+        const title = [
+          t('reports.pdfTitle'),
+          cliente?.nome,
+          formatReportMonth(report.report_month),
+        ];
         await openPdf(url, pdfFilename(title.filter(Boolean).join(' ')));
       } else if (viaTap) {
-        toast.success('PDF pronto.', {
+        toast.success(t('reports.pdfReady'), {
           id: toastId,
-          action: { label: 'Abrir PDF', onClick: () => openExternalUrl(url) },
+          action: { label: t('reports.openPdf'), onClick: () => openExternalUrl(url) },
           duration: 15000,
         });
       } else openExternalUrl(url);
     } catch {
-      toast.error('Erro ao baixar relatório', { id: toastId });
+      toast.error(t('reports.downloadError'), { id: toastId });
     } finally {
       setDownloadingReportId(null);
     }
@@ -219,9 +229,9 @@ export function ClientReportsPanel({ clientId }: { clientId: number }) {
     try {
       await deleteReportDoc(docId);
       qc.invalidateQueries({ queryKey: ['report-docs', clientId] });
-      toast.success('Relatório excluído.');
+      toast.success(t('reports.deleted'));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao excluir relatório');
+      toast.error(err instanceof Error ? err.message : t('reports.deleteError'));
     }
   };
 
@@ -234,13 +244,19 @@ export function ClientReportsPanel({ clientId }: { clientId: number }) {
     >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Enviar relatório por e-mail</AlertDialogTitle>
+          <AlertDialogTitle>{t('reports.emailTitle')}</AlertDialogTitle>
           <AlertDialogDescription>
             {emailReportTarget && (
               <>
-                Enviar o relatório de{' '}
-                <strong>{formatReportMonth(emailReportTarget.report_month)}</strong> por e-mail para
-                o cliente <strong>{cliente?.nome}</strong>?
+                <Trans
+                  t={t}
+                  i18nKey="reports.emailBody"
+                  values={{
+                    month: formatReportMonth(emailReportTarget.report_month),
+                    client: cliente?.nome ?? '',
+                  }}
+                  components={{ strong: <strong /> }}
+                />
                 {cliente?.send_report_email === false && (
                   <span
                     style={{
@@ -250,7 +266,7 @@ export function ClientReportsPanel({ clientId }: { clientId: number }) {
                       fontWeight: 600,
                     }}
                   >
-                    Atenção: este cliente tem o envio de relatórios por e-mail desativado.
+                    {t('reports.emailOff')}
                   </span>
                 )}
                 {emailReportTarget.last_emailed_at && (
@@ -262,8 +278,11 @@ export function ClientReportsPanel({ clientId }: { clientId: number }) {
                       color: 'var(--text-muted)',
                     }}
                   >
-                    Último envio:{' '}
-                    {new Date(emailReportTarget.last_emailed_at).toLocaleString('pt-BR')}
+                    {t('reports.lastSent', {
+                      date: new Date(emailReportTarget.last_emailed_at).toLocaleString(
+                        getIntlLocale(),
+                      ),
+                    })}
                   </span>
                 )}
               </>
@@ -271,9 +290,9 @@ export function ClientReportsPanel({ clientId }: { clientId: number }) {
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={sendingEmail}>Cancelar</AlertDialogCancel>
+          <AlertDialogCancel disabled={sendingEmail}>{t('reports.cancel')}</AlertDialogCancel>
           <AlertDialogAction disabled={sendingEmail} onClick={handleConfirmSendEmail}>
-            {sendingEmail ? 'Enviando...' : 'Enviar'}
+            {sendingEmail ? t('reports.sending') : t('reports.send')}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -295,27 +314,32 @@ export function ClientReportsPanel({ clientId }: { clientId: number }) {
           ...(reportTarget.storage_path
             ? [
                 {
-                  label: downloadingReportId === reportTarget.id ? 'Baixando…' : 'Baixar PDF',
+                  label:
+                    downloadingReportId === reportTarget.id
+                      ? t('reports.downloading')
+                      : t('reports.downloadPdf'),
                   disabled: downloadingReportId !== null,
                   onSelect: () => handleDownloadReport(reportTarget, true),
                 },
               ]
             : []),
-          { label: 'Enviar por e-mail', onSelect: () => setEmailReportTarget(reportTarget) },
+          { label: t('reports.sendByEmail'), onSelect: () => setEmailReportTarget(reportTarget) },
         ]
       : [];
 
     return (
       <>
         <GroupedList
-          header="Relatórios gerados"
+          header={t('reports.generatedHeader')}
           footer={
-            reportDocs.length === 0 && reportsData.length === 0
-              ? 'Nenhum relatório gerado ainda.'
-              : undefined
+            reportDocs.length === 0 && reportsData.length === 0 ? t('reports.none') : undefined
           }
         >
-          <Cell icon={<Plus />} label="Gerar relatório" onClick={() => setNewReportOpen(true)} />
+          <Cell
+            icon={<Plus />}
+            label={t('reports.generate')}
+            onClick={() => setNewReportOpen(true)}
+          />
           {reportDocs.map((doc) => (
             <Cell
               key={doc.id}
@@ -323,7 +347,7 @@ export function ClientReportsPanel({ clientId }: { clientId: number }) {
               label={doc.title}
               subtitle={
                 <span className="phone-an-cell-sub phone-an-cell-sub--wrap">
-                  {new Date(doc.created_at).toLocaleDateString('pt-BR')}
+                  {new Date(doc.created_at).toLocaleDateString(getIntlLocale())}
                   {doc.platforms.map((p) => ` · ${PLATFORM_NAMES[p]}`).join('')}
                 </span>
               }
@@ -334,19 +358,19 @@ export function ClientReportsPanel({ clientId }: { clientId: number }) {
           ))}
         </GroupedList>
         {reportsData.length > 0 && (
-          <GroupedList header="Formato anterior">
+          <GroupedList header={t('reports.previousFormat')}>
             {reportsData.map((r) => {
               const status = reportStatusText(r);
               const ready = r.status === 'ready';
               return (
                 <Cell
                   key={r.id}
-                  label={`${formatReportMonth(r.report_month)}${r.include_ai ? ' · IA' : ''}`}
+                  label={`${formatReportMonth(r.report_month)}${r.include_ai ? t('reports.aiSuffix') : ''}`}
                   subtitle={
                     <span className="phone-an-cell-sub phone-an-cell-sub--wrap">
                       <span className={status.tone}>{status.text}</span>
                       {r.generated_at &&
-                        ` · ${new Date(r.generated_at).toLocaleDateString('pt-BR')}`}
+                        ` · ${new Date(r.generated_at).toLocaleDateString(getIntlLocale())}`}
                     </span>
                   }
                   chevron={ready}
@@ -363,13 +387,16 @@ export function ClientReportsPanel({ clientId }: { clientId: number }) {
           onOpenChange={(open) => {
             if (!open) setDocTarget(null);
           }}
-          title={docTarget?.title ?? 'Relatório'}
+          title={docTarget?.title ?? t('reports.pdfTitle')}
           actions={
             docTarget
               ? [
-                  { label: 'Abrir', onSelect: () => navigate(`/relatorios/${docTarget.id}`) },
                   {
-                    label: 'Excluir',
+                    label: t('reports.open'),
+                    onSelect: () => navigate(`/relatorios/${docTarget.id}`),
+                  },
+                  {
+                    label: t('reports.delete'),
                     destructive: true,
                     onSelect: () => setDocToDelete(docTarget),
                   },
@@ -380,11 +407,11 @@ export function ClientReportsPanel({ clientId }: { clientId: number }) {
 
         <PhoneConfirmSheet
           open={docToDelete !== null}
-          title="Excluir este relatório?"
-          message="O PDF exportado também é removido."
+          title={t('reports.deleteTitle')}
+          message={t('reports.deleteMessage')}
           actions={[
             {
-              label: 'Excluir',
+              label: t('reports.delete'),
               destructive: true,
               onSelect: () => {
                 if (docToDelete) deleteDoc(docToDelete.id);
@@ -400,7 +427,11 @@ export function ClientReportsPanel({ clientId }: { clientId: number }) {
           onOpenChange={(open) => {
             if (!open) setReportTarget(null);
           }}
-          title={reportTarget ? `Relatório de ${formatReportMonth(reportTarget.report_month)}` : ''}
+          title={
+            reportTarget
+              ? t('reports.reportOf', { month: formatReportMonth(reportTarget.report_month) })
+              : ''
+          }
           actions={reportActions}
         />
 
@@ -417,15 +448,15 @@ export function ClientReportsPanel({ clientId }: { clientId: number }) {
           className="dashboard-hub-card-header"
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
         >
-          <h3>Relatórios Gerados</h3>
+          <h3>{t('reports.generatedTitle')}</h3>
           <Button variant="outline" size="sm" onClick={() => setNewReportOpen(true)}>
-            <Plus className="h-3.5 w-3.5" /> Gerar
+            <Plus className="h-3.5 w-3.5" /> {t('reports.generateShort')}
           </Button>
         </div>
         <div style={{ marginTop: '1rem' }}>
           {reportDocs.length === 0 && reportsData.length === 0 && (
             <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-              Nenhum relatório gerado ainda. Clique em "Gerar" para criar o primeiro.
+              {t('reports.noneDesktop')}
             </p>
           )}
           {reportDocs.map((doc) => (
@@ -445,7 +476,7 @@ export function ClientReportsPanel({ clientId }: { clientId: number }) {
                 <span
                   style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}
                 >
-                  {new Date(doc.created_at).toLocaleDateString('pt-BR')}
+                  {new Date(doc.created_at).toLocaleDateString(getIntlLocale())}
                 </span>
                 <span style={{ display: 'inline-flex', gap: '0.25rem', marginLeft: '0.5rem' }}>
                   <PlatformBadges platforms={doc.platforms} />
@@ -457,17 +488,14 @@ export function ClientReportsPanel({ clientId }: { clientId: number }) {
                   size="sm"
                   onClick={() => navigate(`/relatorios/${doc.id}`)}
                 >
-                  Abrir
+                  {t('reports.open')}
                 </Button>
                 <Button
                   size="sm"
                   variant="ghost"
-                  aria-label="Excluir relatório"
+                  aria-label={t('reports.deleteAria')}
                   onClick={async () => {
-                    if (
-                      !window.confirm('Excluir este relatório? O PDF exportado também é removido.')
-                    )
-                      return;
+                    if (!window.confirm(t('reports.deleteConfirm'))) return;
                     await deleteDoc(doc.id);
                   }}
                 >
@@ -485,7 +513,7 @@ export function ClientReportsPanel({ clientId }: { clientId: number }) {
                 marginBottom: '0.25rem',
               }}
             >
-              Formato anterior
+              {t('reports.previousFormat')}
             </p>
           )}
           {reportsData.map((r) => (
@@ -509,43 +537,45 @@ export function ClientReportsPanel({ clientId }: { clientId: number }) {
                       marginLeft: '0.5rem',
                     }}
                   >
-                    {new Date(r.generated_at).toLocaleDateString('pt-BR')}
+                    {new Date(r.generated_at).toLocaleDateString(getIntlLocale())}
                   </span>
                 )}
                 {r.include_ai && (
                   <span className="badge badge-neutral badge--sm" style={{ marginLeft: '0.5rem' }}>
-                    IA
+                    {t('reports.ai')}
                   </span>
                 )}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                {r.status === 'pending' && <span className="badge badge-warning">Pendente</span>}
+                {r.status === 'pending' && (
+                  <span className="badge badge-warning">{t('reports.pending')}</span>
+                )}
                 {r.status === 'generating' && (
                   <span className="badge badge-info">
-                    <Spinner size="sm" /> Gerando...
+                    <Spinner size="sm" /> {t('reports.generatingAscii')}
                   </span>
                 )}
                 {r.status === 'failed' && (
                   <span
                     className="badge badge-danger"
-                    title={r.generation_error || 'Erro desconhecido'}
+                    title={r.generation_error || t('reports.unknownError')}
                     style={{ cursor: 'help' }}
                   >
-                    Falha
+                    {t('reports.failedBadge')}
                   </span>
                 )}
                 {r.status === 'skipped' && (
                   <span
                     className="badge badge-neutral"
-                    title="Não gerado: o plano do workspace não incluía relatórios de analytics no momento da geração."
+                    title={t('reports.skippedTitle')}
                     style={{ cursor: 'help' }}
                   >
-                    Fora do plano
+                    {t('reports.outOfPlan')}
                   </span>
                 )}
                 {r.status === 'ready' && (
                   <>
-                    <span className="badge badge-success">Pronto</span>
+                    <span className="badge badge-success">{t('reports.ready')}</span>
                     {r.storage_path && (
                       <Button
                         variant="outline"
@@ -555,15 +585,15 @@ export function ClientReportsPanel({ clientId }: { clientId: number }) {
                       >
                         {downloadingReportId === r.id ? (
                           <>
-                            <Spinner size="sm" /> Baixando…
+                            <Spinner size="sm" /> {t('reports.downloading')}
                           </>
                         ) : (
-                          '↓ Baixar PDF'
+                          t('reports.downloadPdfArrow')
                         )}
                       </Button>
                     )}
                     <Button variant="outline" size="sm" onClick={() => setEmailReportTarget(r)}>
-                      Enviar
+                      {t('reports.send')}
                     </Button>
                   </>
                 )}

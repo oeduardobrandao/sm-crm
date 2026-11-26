@@ -1,4 +1,5 @@
 import { useEffect, useState, type RefObject } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { InstagramLinkButton } from '@/components/instagram/InstagramLinkButton';
 import type { PostAnalytics } from '../../../services/analytics';
@@ -21,6 +22,7 @@ export function PostMetricsDialog({
   commentsEnabled: boolean;
   returnFocusTo?: RefObject<HTMLElement | null>;
 }) {
+  const { t } = useTranslation('analyticsAccount');
   // Keeps the last post while the dialog animates out, so the body doesn't vanish on close.
   const [shown, setShown] = useState<PostAnalytics | null>(post);
   useEffect(() => {
@@ -44,7 +46,7 @@ export function PostMetricsDialog({
         <DialogHeader>
           {/* pr-8 keeps the Instagram button clear of the built-in close X. */}
           <div className="flex items-center justify-between gap-2 pr-8">
-            <DialogTitle>Métricas do post</DialogTitle>
+            <DialogTitle>{t('pm.title')}</DialogTitle>
             <InstagramLinkButton permalink={p?.permalink ?? null} />
           </div>
         </DialogHeader>

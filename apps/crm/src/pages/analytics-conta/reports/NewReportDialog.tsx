@@ -55,6 +55,7 @@ export interface NewReportDialogProps {
 
 export function NewReportDialog({ open, onOpenChange, clientId, connected }: NewReportDialogProps) {
   const { t } = useTranslation('analyticsTiktok');
+  const { t: ta } = useTranslation('analyticsAccount');
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { can } = useAuth();
@@ -138,13 +139,13 @@ export function NewReportDialog({ open, onOpenChange, clientId, connected }: New
         templateId === SYSTEM_TEMPLATE ? 'system' : templateId,
         platforms,
       );
-      toast.success('Relatório gerado.');
+      toast.success(ta('newReport.generated'));
       captureEvent('report_generated');
       await qc.invalidateQueries({ queryKey: ['report-docs', clientId] });
       onOpenChange(false);
       navigate(`/relatorios/${id}`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao gerar relatório');
+      toast.error(err instanceof Error ? err.message : ta('newReport.error'));
     } finally {
       setGenerating(false);
     }
@@ -159,15 +160,12 @@ export function NewReportDialog({ open, onOpenChange, clientId, connected }: New
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Novo relatório</DialogTitle>
-          <DialogDescription>
-            Gera o relatório com os dados do mês escolhido. Depois você edita os blocos, remove
-            métricas e salva o layout como modelo.
-          </DialogDescription>
+          <DialogTitle>{ta('newReport.title')}</DialogTitle>
+          <DialogDescription>{ta('newReport.description')}</DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="new-report-month">Mês do relatório</Label>
+            <Label htmlFor="new-report-month">{ta('newReport.month')}</Label>
             <MonthPicker
               id="new-report-month"
               value={month}
@@ -202,7 +200,7 @@ export function NewReportDialog({ open, onOpenChange, clientId, connected }: New
           )}
           <div className="flex flex-col gap-1.5">
             <div className="flex items-baseline justify-between gap-2">
-              <Label htmlFor="new-report-template">Modelo</Label>
+              <Label htmlFor="new-report-template">{ta('newReport.template')}</Label>
               {canSeeTemplates && (
                 <a
                   href="/configuracao/relatorios"
@@ -210,20 +208,21 @@ export function NewReportDialog({ open, onOpenChange, clientId, connected }: New
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
                 >
-                  Ver e editar modelos <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                  {ta('newReport.editTemplates')}{' '}
+                  <ExternalLink className="h-3 w-3" aria-hidden="true" />
                 </a>
               )}
             </div>
             <Select value={templateId} onValueChange={setTemplateId} disabled={generating}>
-              <SelectTrigger id="new-report-template" aria-label="Modelo do relatório">
-                <SelectValue placeholder="Padrão do sistema" />
+              <SelectTrigger id="new-report-template" aria-label={ta('newReport.templateAria')}>
+                <SelectValue placeholder={ta('newReport.systemDefault')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={SYSTEM_TEMPLATE}>Padrão do sistema</SelectItem>
+                <SelectItem value={SYSTEM_TEMPLATE}>{ta('newReport.systemDefault')}</SelectItem>
                 {templates.map((t) => (
                   <SelectItem key={t.id} value={t.id}>
                     {t.name}
-                    {t.is_default ? ' · padrão' : ''}
+                    {t.is_default ? ta('newReport.defaultSuffix') : ''}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -238,11 +237,11 @@ export function NewReportDialog({ open, onOpenChange, clientId, connected }: New
         </div>
         <DialogFooter>
           <Button variant="outline" disabled={generating} onClick={() => onOpenChange(false)}>
-            Cancelar
+            {ta('newReport.cancel')}
           </Button>
           <Button disabled={generating || !month || noneChecked} onClick={handleGenerate}>
             {generating ? <Spinner size="sm" /> : null}{' '}
-            {generating ? 'Gerando…' : 'Gerar relatório'}
+            {generating ? ta('newReport.generating') : ta('newReport.generate')}
           </Button>
         </DialogFooter>
       </DialogContent>
