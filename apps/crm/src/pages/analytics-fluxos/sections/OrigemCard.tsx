@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import type { OrigemAgg } from '@/services/workflowAnalytics';
 import { formatDiasDecimal, origemLabel } from '../format';
@@ -16,27 +17,28 @@ export function temOrigemParaMostrar(origem: OrigemAgg[]): boolean {
 }
 
 export function OrigemCard({ origem }: { origem: OrigemAgg[] }) {
+  const { t } = useTranslation('analyticsFlows');
   if (!temOrigemParaMostrar(origem)) return null;
 
   return (
-    <SectionCard title="Origem dos fluxos" caption="quem criou os fluxos concluídos no período">
+    <SectionCard title={t('origin.title')} caption={t('origin.caption')}>
       <div style={{ overflowX: 'auto' }}>
         <table className="data-table">
           <thead>
             <tr>
-              <th>Origem</th>
-              <th>Concluídos</th>
-              <th>Tempo médio</th>
+              <th>{t('origin.origin')}</th>
+              <th>{t('kpi.completed')}</th>
+              <th>{t('kpi.avgTime')}</th>
             </tr>
           </thead>
           <tbody>
             {origem.map((linha) => (
               <tr key={linha.origem}>
-                <td data-label="Origem">
+                <td data-label={t('origin.origin')}>
                   <Badge variant="neutral">{origemLabel(linha.origem)}</Badge>
                 </td>
-                <td data-label="Concluídos">{linha.concluidos}</td>
-                <td data-label="Tempo médio">{formatDiasDecimal(linha.tempo_medio_dias)}</td>
+                <td data-label={t('kpi.completed')}>{linha.concluidos}</td>
+                <td data-label={t('kpi.avgTime')}>{formatDiasDecimal(linha.tempo_medio_dias)}</td>
               </tr>
             ))}
           </tbody>

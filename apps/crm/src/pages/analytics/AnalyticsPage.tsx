@@ -23,7 +23,9 @@ import {
 import { StatCard, type StatTone } from '@/components/StatCard';
 import { StatCardGrid } from '@/components/StatCardGrid';
 import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import i18n from 'i18next';
+import { useTranslation } from 'react-i18next';
+import { getIntlLocale, useDateFnsLocale } from '@mesaas/i18n';
 import {
   Select,
   SelectContent,
@@ -76,6 +78,7 @@ import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { PhonePageHeader } from '@/components/mobile/PhonePageHeader';
 import { AnalyticsPhone, type AccountSortCol } from './phone/AnalyticsPhone';
+import { fmtFixed, fmtPct as formatPct, mediaTypeLabel } from './phone/shared';
 
 Chart.register(...registerables);
 
@@ -110,7 +113,7 @@ function BulletText({ text }: { text: unknown }) {
 }
 
 function formatNumber(n: number) {
-  return n.toLocaleString('pt-BR');
+  return n.toLocaleString(getIntlLocale());
 }
 
 /** Plain data on purpose: the TikTok overview feeds it the same two fields. */
@@ -155,7 +158,7 @@ export function BenchmarkChart({ accounts }: { accounts: BenchmarkEntry[] }) {
           legend: { display: false },
           tooltip: {
             callbacks: {
-              label: (ctx: any) => `${ctx.parsed.x.toFixed(2).replace('.', ',')}%`,
+              label: (ctx: any) => `${fmtFixed(ctx.parsed.x, 2)}%`,
             },
           },
         },
@@ -193,6 +196,7 @@ export function AIPortfolioSection({
   /** Defaults to the Instagram portfolio analysis. */
   loader?: PortfolioAILoader;
 }) {
+  const { t } = useTranslation('analyticsPhone');
   const [loading, setLoading] = useState(false);
   const [analysis, setAnalysis] = useState<any>(null);
   const [error, setError] = useState('');
@@ -203,12 +207,12 @@ export function AIPortfolioSection({
     try {
       const result = await loader();
       if (!result || result.analysis.error) {
-        setError('Não foi possível gerar a análise. Tente novamente.');
+        setError(t('ai.failed'));
         return;
       }
       setAnalysis({ ...result.analysis, generatedAt: result.generatedAt });
     } catch {
-      setError('Erro ao gerar análise. Tente novamente.');
+      setError(t('ai.error'));
     } finally {
       setLoading(false);
     }
@@ -219,17 +223,15 @@ export function AIPortfolioSection({
   return (
     <div className="card animate-up">
       <div className="dashboard-hub-card-header" style={{ marginBottom: '1rem' }}>
-        <h3>Análise Inteligente do Portfólio</h3>
+        <h3>{t('ai.titleDesk')}</h3>
         <Button onClick={handleGenerate} disabled={loading} size="sm">
           {loading ? <Spinner size="sm" /> : <Zap className="h-4 w-4" />}
-          Gerar Análise IA
+          {t('ai.generate')}
         </Button>
       </div>
 
       {!analysis && !error && !loading && (
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-          Clique para obter uma análise estratégica do portfólio com IA.
-        </p>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{t('ai.promptDesk')}</p>
       )}
 
       {error && <p style={{ color: 'var(--danger)' }}>{error}</p>}
@@ -271,7 +273,7 @@ export function AIPortfolioSection({
                     color: 'var(--text-muted)',
                   }}
                 >
-                  Saúde do Portfólio
+                  {t('ai.healthDesk')}
                 </div>
                 <p style={{ fontSize: '0.85rem', lineHeight: 1.4 }}>
                   {analysis.portfolioHealth.summary}
@@ -283,7 +285,7 @@ export function AIPortfolioSection({
           {/* Account Ranking */}
           {analysis.accountRanking && analysis.accountRanking.length > 0 && (
             <div>
-              <h4 style={{ fontSize: '0.85rem', marginBottom: '0.4rem' }}>Ranking de Contas</h4>
+              <h4 style={{ fontSize: '0.85rem', marginBottom: '0.4rem' }}>{t('ai.rankingDesk')}</h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                 {analysis.accountRanking.map((acc: any, i: number) => {
                   const statusColor =
@@ -328,24 +330,24 @@ export function AIPortfolioSection({
           )}
 
           <div>
-            <h4 style={{ fontSize: '0.85rem', marginBottom: '0.3rem' }}>Insights Cruzados</h4>
+            <h4 style={{ fontSize: '0.85rem', marginBottom: '0.3rem' }}>{t('ai.crossDesk')}</h4>
             <BulletText text={analysis.crossAccountInsights} />
           </div>
           {analysis.resourceAllocation && (
             <div>
-              <h4 style={{ fontSize: '0.85rem', marginBottom: '0.3rem' }}>Alocação de Esforço</h4>
+              <h4 style={{ fontSize: '0.85rem', marginBottom: '0.3rem' }}>{t('ai.effortDesk')}</h4>
               <BulletText text={analysis.resourceAllocation} />
             </div>
           )}
           <div>
-            <h4 style={{ fontSize: '0.85rem', marginBottom: '0.3rem' }}>Resumo Mensal</h4>
+            <h4 style={{ fontSize: '0.85rem', marginBottom: '0.3rem' }}>{t('ai.digestDesk')}</h4>
             <BulletText text={analysis.monthlyDigest} />
           </div>
 
           {/* Priority Actions */}
           {analysis.priorityActions && analysis.priorityActions.length > 0 && (
             <div style={{ paddingTop: '0.75rem', borderTop: '1px solid var(--border-color)' }}>
-              <h4 style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>Ações Prioritárias</h4>
+              <h4 style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>{t('ai.actionsDesk')}</h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                 {analysis.priorityActions.map((a: any, i: number) => {
                   const pColor =
@@ -399,9 +401,10 @@ export function AIPortfolioSection({
           )}
 
           <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textAlign: 'right' }}>
-            Gerado em{' '}
-            {new Date(analysis.generatedAt).toLocaleString('pt-BR', {
-              timeZone: 'America/Sao_Paulo',
+            {t('ai.generatedAt', {
+              when: new Date(analysis.generatedAt).toLocaleString(getIntlLocale(), {
+                timeZone: 'America/Sao_Paulo',
+              }),
             })}
           </p>
         </div>
@@ -409,6 +412,20 @@ export function AIPortfolioSection({
     </div>
   );
 }
+
+const DRAWER_ORDER_VALUES = [
+  'views',
+  'reach',
+  'engagement',
+  'likes',
+  'comments',
+  'saved',
+  'share_rate',
+  'like_rate',
+  'save_rate',
+  'comment_rate',
+  'date',
+] as const;
 
 type SortCol =
   | 'client_name'
@@ -421,9 +438,10 @@ type SortCol =
   | 'website_clicks_28d'
   | 'last_post_at';
 
-const formatPct = (v: number) => (v === 0 ? '—' : `${v.toFixed(2).replace('.', ',')}%`);
-
 export default function AnalyticsPage() {
+  const { t } = useTranslation(['analyticsPhone', 'analyticsAccount']);
+  const dateFnsLocale = useDateFnsLocale();
+  const dateShort = t('analyticsAccount:phone.dateShort');
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{
     success: number;
@@ -578,9 +596,12 @@ export default function AnalyticsPage() {
         color: syncResult.failed > 0 ? 'var(--warning)' : 'var(--success)',
       }}
     >
-      {syncResult.success} sincronizada{syncResult.success !== 1 ? 's' : ''}
+      {t('sync.done', { count: syncResult.success })}
       {syncResult.failed > 0 &&
-        `, ${syncResult.failed} falhou: ${syncResult.failedNames.join(', ')}`}
+        t('sync.failed', {
+          count: syncResult.failed,
+          names: syncResult.failedNames.join(', '),
+        })}
     </span>
   ) : null;
   const syncButton = (
@@ -591,20 +612,20 @@ export default function AnalyticsPage() {
       variant="outline"
     >
       <RefreshCw className={`h-4 w-4${syncing ? ' animate-spin' : ''}`} />
-      {syncing ? 'Sincronizando...' : 'Sincronizar'}
+      {syncing ? t('sync.running') : t('sync.button')}
     </Button>
   );
   const sortedClientOptions = [...(data?.accounts ?? [])]
-    .sort((a, b) => a.client_name.localeCompare(b.client_name, 'pt-BR'))
+    .sort((a, b) => a.client_name.localeCompare(b.client_name, getIntlLocale()))
     .filter((a, i, arr) => arr.findIndex((x) => x.client_id === a.client_id) === i); // dedupe
   const filterControls = (
     <>
       <Select value={clienteFilter} onValueChange={setClienteFilter}>
         <SelectTrigger className="!rounded-full !text-xs h-9 px-4 mb-0 w-auto">
-          <SelectValue placeholder="Todos os clientes" />
+          <SelectValue placeholder={t('filter.allClients')} />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="all">Todos os clientes</SelectItem>
+          <SelectItem value="all">{t('filter.allClients')}</SelectItem>
           {sortedClientOptions.map((a) => (
             <SelectItem key={a.client_id} value={String(a.client_id)}>
               {a.client_name}
@@ -618,9 +639,9 @@ export default function AnalyticsPage() {
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="7">7 dias</SelectItem>
-          <SelectItem value="28">28 dias</SelectItem>
-          <SelectItem value="90">90 dias</SelectItem>
+          <SelectItem value="7">{t('analyticsAccount:filter.days', { count: 7 })}</SelectItem>
+          <SelectItem value="28">{t('analyticsAccount:filter.days', { count: 28 })}</SelectItem>
+          <SelectItem value="90">{t('analyticsAccount:filter.days', { count: 90 })}</SelectItem>
         </SelectContent>
       </Select>
     </>
@@ -629,7 +650,7 @@ export default function AnalyticsPage() {
     isLoading
       ? null
       : {
-          title: 'Analytics',
+          title: t('title'),
           actions: (
             <>
               {filterControls}
@@ -648,10 +669,11 @@ export default function AnalyticsPage() {
     if (isPhone) {
       return (
         <div className="phone-kit phone-an">
-          <PhonePageHeader title="Analytics" />
+          <PhonePageHeader title={t('title')} />
           <p className="phone-an-error" role="alert">
-            Erro ao carregar analytics:{' '}
-            {error instanceof Error ? error.message : 'Erro desconhecido'}
+            {t('error.load', {
+              message: error instanceof Error ? error.message : t('error.unknown'),
+            })}
           </p>
         </div>
       );
@@ -659,7 +681,9 @@ export default function AnalyticsPage() {
     return (
       <div className="card">
         <p style={{ color: 'var(--danger)' }}>
-          Erro ao carregar analytics: {error instanceof Error ? error.message : 'Erro desconhecido'}
+          {t('error.load', {
+            message: error instanceof Error ? error.message : t('error.unknown'),
+          })}
         </p>
       </div>
     );
@@ -703,7 +727,7 @@ export default function AnalyticsPage() {
 
   const specialtyMap: Record<string, PortfolioAccount[]> = {};
   for (const a of filteredAccounts) {
-    const spec = a.client_especialidade || 'Sem especialidade';
+    const spec = a.client_especialidade || t('benchmark.noSpecialty');
     if (!specialtyMap[spec]) specialtyMap[spec] = [];
     specialtyMap[spec].push(a);
   }
@@ -767,7 +791,7 @@ export default function AnalyticsPage() {
   if (filteredAccounts.length > 0 && summary.bestByEngagement) {
     highlights.push({
       key: 'engagement',
-      label: 'Melhor engajamento',
+      label: t('hl.engagement'),
       icon: Heart,
       tone: 'green',
       name: summary.bestByEngagement.client_name,
@@ -782,45 +806,45 @@ export default function AnalyticsPage() {
   ) {
     highlights.push({
       key: 'growth',
-      label: 'Maior crescimento',
+      label: t('hl.growth'),
       icon: TrendingUp,
       tone: 'amber',
       name: summary.mostImproved.client_name,
-      sub: `+${formatNumber(summary.mostImproved.follower_delta)} seguidores`,
+      sub: t('hl.growthSub', { n: formatNumber(summary.mostImproved.follower_delta) }),
       short: `+${formatNumber(summary.mostImproved.follower_delta)}`,
     });
   }
   if (bestByViews && (bestByViews.impressions_28d || 0) > 0) {
     highlights.push({
       key: 'views',
-      label: 'Mais visualizações',
+      label: t('hl.views'),
       icon: Eye,
       tone: 'blue',
       name: bestByViews.client_name,
-      sub: `${formatNumber(bestByViews.impressions_28d || 0)} visualizações 28d`,
+      sub: t('hl.viewsSub', { n: formatNumber(bestByViews.impressions_28d || 0) }),
       short: formatNumber(bestByViews.impressions_28d || 0),
     });
   }
   if (mostFollowers) {
     highlights.push({
       key: 'followers',
-      label: 'Mais seguidores',
+      label: t('hl.followers'),
       icon: Users,
       tone: 'violet',
       name: mostFollowers.client_name,
-      sub: `${formatNumber(mostFollowers.follower_count)} seguidores`,
+      sub: t('hl.followersSub', { n: formatNumber(mostFollowers.follower_count) }),
       short: formatNumber(mostFollowers.follower_count),
     });
   }
   if (mostPosts && mostPosts.posts_last_30d > 0) {
     highlights.push({
       key: 'posts',
-      label: 'Mais ativo',
+      label: t('hl.posts'),
       icon: Zap,
       tone: 'slate',
       name: mostPosts.client_name,
-      sub: `${mostPosts.posts_last_30d} posts em 30d`,
-      short: `${mostPosts.posts_last_30d} posts`,
+      sub: t('hl.postsSub', { n: mostPosts.posts_last_30d }),
+      short: t('hl.postsShort', { n: mostPosts.posts_last_30d }),
     });
   }
 
@@ -845,7 +869,7 @@ export default function AnalyticsPage() {
             </span>
             <span>{a.client_name}</span>
             <span className="badge badge-warning badge--sm">
-              {daysSince !== null ? `${daysSince}d sem postar` : 'Sem posts'}
+              {daysSince !== null ? t('daysSilent', { days: daysSince }) : t('noPosts')}
             </span>
           </Link>
         );
@@ -859,7 +883,7 @@ export default function AnalyticsPage() {
       maxCols={inToolbar && highlights.length > 0 ? 6 : 5}
     >
       <StatCard
-        label="Contas conectadas"
+        label={t('kpi.connected')}
         icon={Instagram}
         tone="pink"
         value={
@@ -870,35 +894,35 @@ export default function AnalyticsPage() {
             </span>
           </>
         }
-        sub={`${summary.growing} crescendo`}
+        sub={t('kpi.growing', { n: summary.growing })}
       />
       <StatCard
-        label="Seguidores totais"
+        label={t('kpi.followers')}
         icon={Users}
         tone="blue"
         value={formatNumber(totalFollowers)}
-        sub={`${summary.declining} em declínio`}
+        sub={t('kpi.declining', { n: summary.declining })}
       />
       <StatCard
-        label="Visualizações totais (28d)"
+        label={t('kpi.views')}
         icon={Eye}
         tone="violet"
         value={formatNumber(totalViews)}
-        sub="Soma de todas as contas"
+        sub={t('kpi.sumAll')}
       />
       <StatCard
-        label="Engajamento médio"
+        label={t('kpi.engagement')}
         icon={Heart}
         tone="amber"
         value={formatPct(avgEngagement)}
-        sub="Média de todas as contas"
+        sub={t('kpi.avgAll')}
       />
       <StatCard
-        label="Cliques no link (28d)"
+        label={t('kpi.clicks')}
         icon={MousePointerClick}
         tone="green"
         value={formatNumber(avgWebsiteClicks)}
-        sub="Média por conta"
+        sub={t('kpi.perAccount')}
       />
       {inToolbar ? (
         highlights.length > 0 && <AnalyticsHighlights items={highlights} />
@@ -981,7 +1005,7 @@ export default function AnalyticsPage() {
       {!inToolbar && (
         <header className="header header--flush animate-up">
           <div className="header-title">
-            <h1>Analytics</h1>
+            <h1>{t('title')}</h1>
           </div>
           <div className="header-actions">
             {syncResultText}
@@ -1005,11 +1029,9 @@ export default function AnalyticsPage() {
           <AlertTriangle className="h-5 w-5 analytics-callout__icon" aria-hidden />
           <div className="analytics-callout__body">
             <div className="analytics-callout__title">
-              Contas silenciosas
+              {t('silent.title')}
               <span className="analytics-callout__count">
-                {silentAccounts.length === 1
-                  ? '1 conta sem postar no período'
-                  : `${silentAccounts.length} contas sem postar no período`}
+                {t('silent.countText', { count: silentAccounts.length })}
               </span>
             </div>
             <div className="analytics-callout__chips">{silentChips}</div>
@@ -1025,8 +1047,8 @@ export default function AnalyticsPage() {
           <div className="dashboard-hub-card-header" style={{ marginBottom: '1rem' }}>
             <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Trophy className="h-5 w-5" style={{ color: 'var(--success)' }} />
-              Melhores Posts
-              <HelpTooltip content="Top 5 posts com mais visualizações no período selecionado." />
+              {t('analyticsAccount:ranked.bestTitle')}
+              <HelpTooltip content={t('rank.helpBest')} />
             </h3>
             {viewsRankedPosts.length > 5 && (
               <Button
@@ -1038,7 +1060,7 @@ export default function AnalyticsPage() {
                 }}
                 style={{ fontSize: '0.75rem', gap: '0.25rem' }}
               >
-                Ver mais <ChevronRight className="h-3.5 w-3.5" />
+                {t('analyticsAccount:page.seeMore')} <ChevronRight className="h-3.5 w-3.5" />
               </Button>
             )}
           </div>
@@ -1106,9 +1128,7 @@ export default function AnalyticsPage() {
                       fontWeight: 600,
                     }}
                   >
-                    {{ CAROUSEL_ALBUM: 'Carrossel', VIDEO: 'Reels', IMAGE: 'Imagem' }[
-                      post.media_type
-                    ] ?? post.media_type}
+                    {mediaTypeLabel(post.media_type)}
                   </span>
                 </div>
                 <div
@@ -1132,11 +1152,11 @@ export default function AnalyticsPage() {
                     {post.client_name}
                   </span>
                   <span style={{ fontSize: '0.65rem', color: 'var(--text-light)' }}>
-                    {format(new Date(post.posted_at), "d 'de' MMM", { locale: ptBR })}
+                    {format(new Date(post.posted_at), dateShort, { locale: dateFnsLocale })}
                   </span>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                      Visualizações
+                      {t('analyticsAccount:metric.views')}
                     </span>
                     <span
                       style={{
@@ -1151,7 +1171,7 @@ export default function AnalyticsPage() {
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                      Engajamento
+                      {t('analyticsAccount:metric.engagement')}
                     </span>
                     <span
                       style={{
@@ -1229,8 +1249,8 @@ export default function AnalyticsPage() {
             <div className="dashboard-hub-card-header" style={{ marginBottom: '1rem' }}>
               <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <AlertTriangle className="h-5 w-5" style={{ color: 'var(--warning)' }} />
-                Precisam de Atenção
-                <HelpTooltip content="Posts com pelo menos 48h desde a publicação e menos visualizações no período." />
+                {t('analyticsAccount:ranked.worstTitle')}
+                <HelpTooltip content={t('rank.helpWorst')} />
               </h3>
               {matureViewsRankedPosts.length > 5 && (
                 <Button
@@ -1242,7 +1262,7 @@ export default function AnalyticsPage() {
                   }}
                   style={{ fontSize: '0.75rem', gap: '0.25rem' }}
                 >
-                  Ver mais <ChevronRight className="h-3.5 w-3.5" />
+                  {t('analyticsAccount:page.seeMore')} <ChevronRight className="h-3.5 w-3.5" />
                 </Button>
               )}
             </div>
@@ -1310,9 +1330,7 @@ export default function AnalyticsPage() {
                         fontWeight: 600,
                       }}
                     >
-                      {{ CAROUSEL_ALBUM: 'Carrossel', VIDEO: 'Reels', IMAGE: 'Imagem' }[
-                        post.media_type
-                      ] ?? post.media_type}
+                      {mediaTypeLabel(post.media_type)}
                     </span>
                   </div>
                   <div
@@ -1336,11 +1354,11 @@ export default function AnalyticsPage() {
                       {post.client_name}
                     </span>
                     <span style={{ fontSize: '0.65rem', color: 'var(--text-light)' }}>
-                      {format(new Date(post.posted_at), "d 'de' MMM", { locale: ptBR })}
+                      {format(new Date(post.posted_at), dateShort, { locale: dateFnsLocale })}
                     </span>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                        Visualizações
+                        {t('analyticsAccount:metric.views')}
                       </span>
                       <span
                         style={{
@@ -1355,7 +1373,7 @@ export default function AnalyticsPage() {
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                        Engajamento
+                        {t('analyticsAccount:metric.engagement')}
                       </span>
                       <span
                         style={{
@@ -1435,26 +1453,24 @@ export default function AnalyticsPage() {
       {/* Desktop table */}
       <div className="card animate-up analytics-desktop-table">
         <div className="dashboard-hub-card-header" style={{ marginBottom: '1rem' }}>
-          <h3>Todas as Contas</h3>
+          <h3>{t('accounts.titleDesk')}</h3>
         </div>
         {filteredAccounts.length === 0 ? (
-          <p style={{ color: 'var(--text-muted)' }}>
-            Nenhuma conta Instagram conectada. Conecte contas na página de cada cliente.
-          </p>
+          <p style={{ color: 'var(--text-muted)' }}>{t('accounts.empty')}</p>
         ) : (
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  {renderSortableHead('client_name', 'Cliente')}
-                  {renderSortableHead('follower_count', 'Seguidores')}
-                  {renderSortableHead('engagement_rate_avg', 'Engajamento')}
-                  {renderSortableHead('impressions_28d', 'Visualizações (28d)')}
-                  {renderSortableHead('reach_28d', 'Alcance (28d)')}
-                  {renderSortableHead('alcance_seg', 'Alcance / Seg.')}
-                  {renderSortableHead('posts_last_30d', 'Posts (30d)')}
-                  {renderSortableHead('website_clicks_28d', 'Cliques no link')}
-                  {renderSortableHead('last_post_at', 'Último Post')}
+                  {renderSortableHead('client_name', t('head.client'))}
+                  {renderSortableHead('follower_count', t('head.followers'))}
+                  {renderSortableHead('engagement_rate_avg', t('head.engagement'))}
+                  {renderSortableHead('impressions_28d', t('head.views'))}
+                  {renderSortableHead('reach_28d', t('head.reach'))}
+                  {renderSortableHead('alcance_seg', t('head.reachPerFollower'))}
+                  {renderSortableHead('posts_last_30d', t('head.posts'))}
+                  {renderSortableHead('website_clicks_28d', t('head.clicks'))}
+                  {renderSortableHead('last_post_at', t('head.lastPost'))}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1472,7 +1488,7 @@ export default function AnalyticsPage() {
                   const deltaIcon = a.follower_delta > 0 ? '↑' : a.follower_delta < 0 ? '↓' : '→';
                   return (
                     <TableRow key={a.client_id}>
-                      <TableCell data-label="Cliente">
+                      <TableCell data-label={t('head.client')}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           {a.profile_picture_url ? (
                             <img
@@ -1511,7 +1527,7 @@ export default function AnalyticsPage() {
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell data-label="Seguidores">
+                      <TableCell data-label={t('head.followers')}>
                         {formatNumber(a.follower_count)}
                         {a.follower_delta !== 0 && (
                           <span style={{ color: deltaColor, fontSize: '0.75rem', marginLeft: 4 }}>
@@ -1520,7 +1536,7 @@ export default function AnalyticsPage() {
                           </span>
                         )}
                       </TableCell>
-                      <TableCell data-label="Engajamento">
+                      <TableCell data-label={t('head.engagement')}>
                         <Badge
                           variant={
                             a.engagement_rate_avg >= 3
@@ -1533,26 +1549,28 @@ export default function AnalyticsPage() {
                           {formatPct(a.engagement_rate_avg)}
                         </Badge>
                       </TableCell>
-                      <TableCell data-label="Visualizações (28d)">
+                      <TableCell data-label={t('head.views')}>
                         {formatNumber(a.impressions_28d || 0)}
                       </TableCell>
-                      <TableCell data-label="Alcance (28d)">{formatNumber(a.reach_28d)}</TableCell>
-                      <TableCell data-label="Alcance / Seg.">
+                      <TableCell data-label={t('head.reach')}>
+                        {formatNumber(a.reach_28d)}
+                      </TableCell>
+                      <TableCell data-label={t('head.reachPerFollower')}>
                         {a.follower_count > 0
                           ? ((a.reach_28d / a.follower_count) * 100).toFixed(1) + '%'
                           : '0.0%'}
                       </TableCell>
-                      <TableCell data-label="Posts (30d)">{a.posts_last_30d}</TableCell>
-                      <TableCell data-label="Cliques no link (28d)">
+                      <TableCell data-label={t('head.posts')}>{a.posts_last_30d}</TableCell>
+                      <TableCell data-label={t('kpi.clicks')}>
                         {formatNumber(a.website_clicks_28d ?? 0)}
                       </TableCell>
-                      <TableCell data-label="Último Post">
+                      <TableCell data-label={t('head.lastPost')}>
                         {daysSince !== null ? (
                           <span style={{ color: isSilent ? 'var(--danger)' : 'var(--text-main)' }}>
-                            {daysSince}d atrás
+                            {t('daysAgo', { days: daysSince })}
                           </span>
                         ) : (
-                          <span style={{ color: 'var(--danger)' }}>Sem posts</span>
+                          <span style={{ color: 'var(--danger)' }}>{t('noPosts')}</span>
                         )}
                       </TableCell>
                     </TableRow>
@@ -1582,7 +1600,7 @@ export default function AnalyticsPage() {
               margin: 0,
             }}
           >
-            Todas as Contas
+            {t('accounts.titleDesk')}
           </h3>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -1591,7 +1609,7 @@ export default function AnalyticsPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuLabel>Ordenar por</DropdownMenuLabel>
+              <DropdownMenuLabel>{t('drawer.sortBy')}</DropdownMenuLabel>
               <DropdownMenuRadioGroup
                 value={sortColumn}
                 onValueChange={(v) => {
@@ -1599,29 +1617,39 @@ export default function AnalyticsPage() {
                   setSortDirection('desc');
                 }}
               >
-                <DropdownMenuRadioItem value="client_name">Nome</DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="follower_count">Seguidores</DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="engagement_rate_avg">
-                  Engajamento
+                <DropdownMenuRadioItem value="client_name">{t('menu.name')}</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="follower_count">
+                  {t('head.followers')}
                 </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="impressions_28d">Visualizações</DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="reach_28d">Alcance</DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="posts_last_30d">Posts (30d)</DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="last_post_at">Último Post</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="engagement_rate_avg">
+                  {t('analyticsAccount:metric.engagement')}
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="impressions_28d">
+                  {t('menu.views')}
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="reach_28d">{t('menu.reach')}</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="posts_last_30d">
+                  {t('head.posts')}
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="last_post_at">
+                  {t('head.lastPost')}
+                </DropdownMenuRadioItem>
               </DropdownMenuRadioGroup>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={() => setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'))}
               >
                 <ArrowUpDown className="h-4 w-4 mr-2" />
-                {sortDirection === 'asc' ? 'Decrescente' : 'Crescente'}
+                {sortDirection === 'asc'
+                  ? t('analyticsAccount:drawer.descending')
+                  : t('analyticsAccount:drawer.ascending')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
         {filteredAccounts.length === 0 ? (
           <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-            Nenhuma conta conectada.
+            {t('accounts.emptyShort')}
           </p>
         ) : (
           sortedAccounts.map((a) => {
@@ -1692,7 +1720,7 @@ export default function AnalyticsPage() {
                         marginTop: 2,
                       }}
                     >
-                      <span>{formatNumber(a.follower_count)} seg.</span>
+                      <span>{t('card.followers', { n: formatNumber(a.follower_count) })}</span>
                       {a.follower_delta !== 0 && (
                         <span style={{ color: deltaColor }}>
                           {deltaIcon}
@@ -1700,14 +1728,14 @@ export default function AnalyticsPage() {
                         </span>
                       )}
                       <span>&bull;</span>
-                      <span>{formatNumber(a.impressions_28d || 0)} visualizações</span>
+                      <span>{t('card.views', { n: formatNumber(a.impressions_28d || 0) })}</span>
                       <span>&bull;</span>
                       {daysSince !== null ? (
                         <span style={{ color: isSilent ? 'var(--danger)' : undefined }}>
-                          {daysSince}d atrás
+                          {t('daysAgo', { days: daysSince })}
                         </span>
                       ) : (
-                        <span style={{ color: 'var(--danger)' }}>Sem posts</span>
+                        <span style={{ color: 'var(--danger)' }}>{t('noPosts')}</span>
                       )}
                     </div>
                   </div>
@@ -1722,7 +1750,7 @@ export default function AnalyticsPage() {
         <div className="widgets-grid animate-up">
           <div className="card">
             <div className="dashboard-hub-card-header">
-              <h3>Benchmarking de Engajamento</h3>
+              <h3>{t('benchmark.titleDesk')}</h3>
             </div>
             <div style={{ marginTop: '1rem' }}>
               <BenchmarkChart accounts={filteredAccounts} />
@@ -1732,7 +1760,7 @@ export default function AnalyticsPage() {
           {specialtyStats.length >= 2 && (
             <div className="card">
               <div className="dashboard-hub-card-header">
-                <h3>Por Especialidade</h3>
+                <h3>{t('benchmark.specialtyDesk')}</h3>
               </div>
               <div style={{ marginTop: '1rem' }}>
                 {specialtyStats.map((s) => (
@@ -1755,7 +1783,7 @@ export default function AnalyticsPage() {
                           marginLeft: '0.5rem',
                         }}
                       >
-                        {s.count} conta{s.count > 1 ? 's' : ''}
+                        {t('accountsCount', { count: s.count })}
                       </span>
                     </div>
                     <div style={{ textAlign: 'right' }}>
@@ -1771,7 +1799,7 @@ export default function AnalyticsPage() {
                         {formatPct(s.avgEngagement)}
                       </Badge>
                       <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                        {formatNumber(s.avgFollowers)} seg. médio
+                        {t('benchmark.avgFollowers', { followers: formatNumber(s.avgFollowers) })}
                       </div>
                     </div>
                   </div>
@@ -1795,21 +1823,24 @@ export default function AnalyticsPage() {
             <SheetTitle style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               {drawerSort === 'best' ? (
                 <>
-                  <Trophy className="h-5 w-5" style={{ color: 'var(--success)' }} /> Todos os Posts
+                  <Trophy className="h-5 w-5" style={{ color: 'var(--success)' }} />{' '}
+                  {t('drawer.allPostsDesk')}
                 </>
               ) : (
                 <>
-                  <AlertTriangle className="h-5 w-5" style={{ color: 'var(--warning)' }} /> Todos os
-                  Posts
+                  <AlertTriangle className="h-5 w-5" style={{ color: 'var(--warning)' }} />{' '}
+                  {t('drawer.allPostsDesk')}
                 </>
               )}
             </SheetTitle>
             <SheetDescription>
-              {drawerPosts.length} de{' '}
-              {drawerSort === 'worst'
-                ? matureViewsRankedPosts.length
-                : (data?.allRankedPosts?.length ?? 0)}{' '}
-              posts
+              {t('drawer.count', {
+                shown: drawerPosts.length,
+                total:
+                  drawerSort === 'worst'
+                    ? matureViewsRankedPosts.length
+                    : (data?.allRankedPosts?.length ?? 0),
+              })}
               {['share_rate', 'like_rate', 'save_rate', 'comment_rate'].includes(drawerOrderBy) && (
                 <span
                   style={{
@@ -1819,7 +1850,7 @@ export default function AnalyticsPage() {
                     marginTop: 2,
                   }}
                 >
-                  Top 200 por visualizações, reordenado por taxa
+                  {t('drawer.note')}
                 </span>
               )}
             </SheetDescription>
@@ -1829,20 +1860,14 @@ export default function AnalyticsPage() {
             <div className="grid grid-cols-[minmax(0,1fr)_2.25rem_minmax(0,1fr)] items-center gap-2">
               <Select value={drawerOrderBy} onValueChange={setDrawerOrderBy}>
                 <SelectTrigger className="h-9 rounded-lg text-sm">
-                  <SelectValue placeholder="Ordenar por" />
+                  <SelectValue placeholder={t('drawer.sortBy')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="views">Visualizações</SelectItem>
-                  <SelectItem value="reach">Alcance</SelectItem>
-                  <SelectItem value="engagement">Engajamento</SelectItem>
-                  <SelectItem value="likes">Curtidas</SelectItem>
-                  <SelectItem value="comments">Comentários</SelectItem>
-                  <SelectItem value="saved">Salvos</SelectItem>
-                  <SelectItem value="share_rate">Compart./visualização</SelectItem>
-                  <SelectItem value="like_rate">Curt./visualização</SelectItem>
-                  <SelectItem value="save_rate">Salvos/visualização</SelectItem>
-                  <SelectItem value="comment_rate">Coment./visualização</SelectItem>
-                  <SelectItem value="date">Data</SelectItem>
+                  {DRAWER_ORDER_VALUES.map((value) => (
+                    <SelectItem key={value} value={value}>
+                      {t(`analyticsAccount:drawer.sort.${value}`)}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               <Button
@@ -1850,29 +1875,33 @@ export default function AnalyticsPage() {
                 size="icon"
                 onClick={() => setDrawerAsc((v) => !v)}
                 className="mb-0 h-9 w-9 shrink-0 rounded-lg"
-                title={drawerAsc ? 'Crescente' : 'Decrescente'}
+                title={
+                  drawerAsc
+                    ? t('analyticsAccount:drawer.ascending')
+                    : t('analyticsAccount:drawer.descending')
+                }
               >
                 <ArrowUpDown className="h-3.5 w-3.5" />
               </Button>
               <Select value={drawerFormatFilter} onValueChange={setDrawerFormatFilter}>
                 <SelectTrigger className="h-9 rounded-lg text-sm">
-                  <SelectValue placeholder="Formato" />
+                  <SelectValue placeholder={t('drawer.format')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todos os formatos</SelectItem>
-                  <SelectItem value="IMAGE">Imagem</SelectItem>
-                  <SelectItem value="VIDEO">Reels</SelectItem>
-                  <SelectItem value="CAROUSEL_ALBUM">Carrossel</SelectItem>
+                  <SelectItem value="all">{t('analyticsAccount:drawer.allFormats')}</SelectItem>
+                  <SelectItem value="IMAGE">{mediaTypeLabel('IMAGE')}</SelectItem>
+                  <SelectItem value="VIDEO">{mediaTypeLabel('VIDEO')}</SelectItem>
+                  <SelectItem value="CAROUSEL_ALBUM">{mediaTypeLabel('CAROUSEL_ALBUM')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div>
               <Select value={drawerClientFilter} onValueChange={setDrawerClientFilter}>
                 <SelectTrigger className="h-9 rounded-lg text-sm">
-                  <SelectValue placeholder="Cliente" />
+                  <SelectValue placeholder={t('drawer.client')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todos os clientes</SelectItem>
+                  <SelectItem value="all">{t('filter.allClients')}</SelectItem>
                   {drawerClients.map((name) => (
                     <SelectItem key={name} value={name}>
                       {name}
@@ -1888,7 +1917,9 @@ export default function AnalyticsPage() {
                 onChange={(e) => setDrawerDateFrom(e.target.value)}
                 className="h-9 rounded-lg font-mono text-sm"
               />
-              <span className="text-sm text-muted-foreground">até</span>
+              <span className="text-sm text-muted-foreground">
+                {t('analyticsAccount:drawer.until')}
+              </span>
               <Input
                 type="date"
                 value={drawerDateTo}
@@ -1906,7 +1937,7 @@ export default function AnalyticsPage() {
                   }}
                   className="text-xs font-medium text-destructive"
                 >
-                  Limpar datas
+                  {t('analyticsAccount:drawer.clearDates')}
                 </button>
               </div>
             )}
@@ -2001,7 +2032,7 @@ export default function AnalyticsPage() {
                     <span
                       style={{ fontSize: '0.65rem', color: 'var(--text-light)', flexShrink: 0 }}
                     >
-                      {format(new Date(post.posted_at), "d 'de' MMM", { locale: ptBR })}
+                      {format(new Date(post.posted_at), dateShort, { locale: dateFnsLocale })}
                     </span>
                   </div>
                   <div
@@ -2015,13 +2046,13 @@ export default function AnalyticsPage() {
                     }}
                   >
                     <span>
-                      Visualizações{' '}
+                      {t('analyticsAccount:metric.views')}{' '}
                       <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>
                         {formatNumber(post.views)}
                       </strong>
                     </span>
                     <span>
-                      Eng.{' '}
+                      {t('analyticsAccount:phone.rowEng')}{' '}
                       <strong
                         style={{
                           fontFamily: 'var(--font-mono)',
@@ -2040,15 +2071,7 @@ export default function AnalyticsPage() {
                       drawerOrderBy,
                     ) && (
                       <span>
-                        {
-                          {
-                            share_rate: 'Compart.',
-                            like_rate: 'Curt.',
-                            save_rate: 'Salvos',
-                            comment_rate: 'Coment.',
-                          }[drawerOrderBy]
-                        }
-                        /visualização{' '}
+                        {t('rateSuffix', { rate: t(`rateShort.${drawerOrderBy}`) })}{' '}
                         <strong
                           style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}
                         >
@@ -2108,15 +2131,16 @@ export interface AnalyticsHighlight {
 /** Vidro: the leader cards folded into one KPI cell, one row per leader. */
 export function AnalyticsHighlights({
   items,
-  title = 'Destaques',
+  title,
 }: {
   items: AnalyticsHighlight[];
   title?: string;
 }) {
+  const { t } = useTranslation('analyticsPhone');
   return (
     <div className="kpi-card analytics-highlights">
       <div className="kpi-card-head">
-        <span className="kpi-label">{title}</span>
+        <span className="kpi-label">{title ?? t('hl.title')}</span>
       </div>
       <ul className="analytics-highlights__list">
         {items.map(({ key, label, icon: Icon, tone, name, short }) => (
@@ -2140,23 +2164,30 @@ function silentNamesText(names: string[]): string {
   if (names.length <= 3) {
     return names.length === 1
       ? names[0]
-      : `${names.slice(0, -1).join(', ')} e ${names[names.length - 1]}`;
+      : i18n.t('analyticsPhone:silent.listAnd', {
+          rest: names.slice(0, -1).join(', '),
+          last: names[names.length - 1],
+        });
   }
-  return `${names.slice(0, 3).join(', ')} e mais ${names.length - 3}`;
+  return i18n.t('analyticsPhone:silent.listMore', {
+    rest: names.slice(0, 3).join(', '),
+    n: names.length - 3,
+  });
 }
 
 /** Vidro: "Contas silenciosas" as one line; the account chips open below on demand. */
 function SilentAccountsLine({ names, children }: { names: string[]; children: ReactNode }) {
+  const { t } = useTranslation('analyticsPhone');
   const [open, setOpen] = useState(false);
   return (
     <div className="analytics-silent-line animate-up" role="status">
       <div className="analytics-silent-line__row">
         <AlertTriangle className="h-4 w-4 analytics-silent-line__icon" aria-hidden />
         <strong className="analytics-silent-line__title">
-          {names.length === 1 ? '1 conta silenciosa' : `${names.length} contas silenciosas`}
+          {t('silent.lineTitle', { count: names.length })}
         </strong>
         <span className="analytics-silent-line__names">
-          {silentNamesText(names)} sem postar no período
+          {silentNamesText(names)} {t('silent.suffix')}
         </span>
         <button
           type="button"
@@ -2164,7 +2195,7 @@ function SilentAccountsLine({ names, children }: { names: string[]; children: Re
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
         >
-          {open ? 'Ocultar' : 'Ver contas'}
+          {open ? t('silent.hide') : t('silent.show')}
           <ChevronDown className={`h-3.5 w-3.5${open ? ' rotate-180' : ''}`} aria-hidden />
         </button>
       </div>

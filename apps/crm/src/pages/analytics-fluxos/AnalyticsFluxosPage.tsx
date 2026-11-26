@@ -23,7 +23,7 @@ import {
   type Membro,
 } from '../../store';
 import { buildAnalyticsCsv, csvFilename, downloadCsv } from './csv';
-import { PERIODOS, useFluxosFilters } from './useFluxosFilters';
+import { getPeriodos, useFluxosFilters } from './useFluxosFilters';
 import { KpiRow } from './sections/KpiRow';
 import { RitmoChart } from './sections/RitmoChart';
 import { AprovacaoSection, temAtividadeAprovacao } from './sections/AprovacaoSection';
@@ -34,9 +34,6 @@ import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { FluxosPhone } from './phone/FluxosPhone';
 import { isNativeApp } from '@/native/platform';
-
-const EMPTY_WORKSPACE =
-  'Nenhum dado de fluxo encontrado. Crie fluxos de trabalho para começar a ver analytics.';
 
 /** Placeholder that keeps the page's shape while the first read is in flight. */
 function LoadingSkeleton() {
@@ -52,6 +49,9 @@ function LoadingSkeleton() {
 
 export default function AnalyticsFluxosPage() {
   const { t: tc } = useTranslation();
+  const { t } = useTranslation('analyticsFlows');
+  const PERIODOS = getPeriodos();
+  const EMPTY_WORKSPACE = t('page.emptyWorkspace');
   const {
     periodo,
     clienteId,
@@ -74,11 +74,11 @@ export default function AnalyticsFluxosPage() {
   // leaking into every other route the same way.
   useEffect(() => {
     const previousTitle = document.title;
-    document.title = 'Analytics de Fluxos | Mesaas';
+    document.title = t('page.docTitle');
     return () => {
       document.title = previousTitle;
     };
-  }, []);
+  }, [t]);
 
   // Every number on this page comes from this one RPC. The three lists below are
   // for the filter selects and for turning a membro_id into a name; they are
@@ -130,13 +130,13 @@ export default function AnalyticsFluxosPage() {
   // numbers would vanish with it and the paper would state a period it cannot
   // name. This line is the echo, hidden on screen by `.print-only`.
   const periodoLabel = PERIODOS.find((p) => p.value === periodo)?.label ?? periodo;
-  const NAO_IDENTIFICADO = 'não identificado';
+  const NAO_IDENTIFICADO = t('page.unidentified');
   const clienteLabel =
-    clienteId !== null ? (clientesById.get(clienteId)?.nome ?? NAO_IDENTIFICADO) : 'todos';
+    clienteId !== null ? (clientesById.get(clienteId)?.nome ?? NAO_IDENTIFICADO) : t('page.all');
   const templateLabel =
     templateId !== null
-      ? (templates.find((t) => t.id === templateId)?.nome ?? NAO_IDENTIFICADO)
-      : 'todos';
+      ? (templates.find((tpl) => tpl.id === templateId)?.nome ?? NAO_IDENTIFICADO)
+      : t('page.all');
 
   // "No data" is not "no flows". Approval cycles hang off posts, and a post
   // needs no workflow, so a workspace running entirely on posts avulsos (Post
@@ -158,14 +158,14 @@ export default function AnalyticsFluxosPage() {
   const subtitle = (
     <p
       style={{ color: 'var(--text-muted)' }}
-      data-tooltip="O período filtra pela data de conclusão. Ativos são sempre o retrato atual."
+      data-tooltip={t('page.hint')}
       data-tooltip-dir="bottom"
     >
-      Fluxos concluídos no período
+      {t('page.subtitle')}
     </p>
   );
   const periodTabs = (
-    <div className="page-tabs page-tabs--inline" role="tablist" aria-label="Período">
+    <div className="page-tabs page-tabs--inline" role="tablist" aria-label={t('page.period')}>
       {PERIODOS.map((opt) => (
         <button
           key={opt.value}
@@ -184,11 +184,11 @@ export default function AnalyticsFluxosPage() {
     <>
       <Button variant="outline" onClick={handleExport} disabled={!data}>
         <Download className="h-4 w-4" />
-        Exportar CSV
+        {t('page.exportCsv')}
       </Button>
       <Button variant="outline" onClick={() => window.print()}>
         <Printer className="h-4 w-4" />
-        Imprimir
+        {t('page.print')}
       </Button>
     </>
   );
@@ -196,17 +196,14 @@ export default function AnalyticsFluxosPage() {
   // (apps/mobile DECISIONS.md D33).
   const notEntitledCard = isNativeApp() ? (
     <QueryErrorCard
-      title={tc('native.lockedTitle', { feature: 'Analytics de Fluxos' })}
+      title={tc('native.lockedTitle', { feature: t('page.lockedFeature') })}
       description={tc('native.lockedBody')}
     />
   ) : (
-    <QueryErrorCard
-      title="Analytics de Fluxos não está disponível no seu plano."
-      description="Faça upgrade do plano para liberar relatórios e analytics."
-    />
+    <QueryErrorCard title={t('page.notEntitledTitle')} description={t('page.notEntitledDesc')} />
   );
   const inToolbar = usePageToolbar({
-    title: 'Analytics de Fluxos',
+    title: t('page.title'),
     subtitle,
     segmented: periodTabs,
     actions: headerActions,
@@ -255,7 +252,7 @@ export default function AnalyticsFluxosPage() {
       {!inToolbar && (
         <header className="header header--flush animate-up">
           <div className="header-title">
-            <h1>Analytics de Fluxos</h1>
+            <h1>{t('page.title')}</h1>
             {subtitle}
           </div>
           <div
@@ -268,7 +265,11 @@ export default function AnalyticsFluxosPage() {
       )}
 
       <p className="print-only analytics-fluxos-print-echo">
-        Período: {periodoLabel} · Cliente: {clienteLabel} · Template: {templateLabel}
+        {t('page.printEcho', {
+          periodo: periodoLabel,
+          cliente: clienteLabel,
+          template: templateLabel,
+        })}
       </p>
 
       <div
@@ -288,11 +289,11 @@ export default function AnalyticsFluxosPage() {
             value={clienteId !== null ? String(clienteId) : 'all'}
             onValueChange={(v) => setClienteId(v === 'all' ? null : Number(v))}
           >
-            <SelectTrigger aria-label="Cliente" style={{ minWidth: 160, width: 'auto' }}>
-              <SelectValue placeholder="Cliente: todos" />
+            <SelectTrigger aria-label={t('page.client')} style={{ minWidth: 160, width: 'auto' }}>
+              <SelectValue placeholder={t('page.clientAll')} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Cliente: todos</SelectItem>
+              <SelectItem value="all">{t('page.clientAll')}</SelectItem>
               {sortClientesByNome(clientes).map((c) => (
                 <SelectItem key={c.id} value={String(c.id)}>
                   {c.nome}
@@ -305,14 +306,14 @@ export default function AnalyticsFluxosPage() {
             value={templateId !== null ? String(templateId) : 'all'}
             onValueChange={(v) => setTemplateId(v === 'all' ? null : Number(v))}
           >
-            <SelectTrigger aria-label="Template" style={{ minWidth: 160, width: 'auto' }}>
-              <SelectValue placeholder="Template: todos" />
+            <SelectTrigger aria-label={t('page.template')} style={{ minWidth: 160, width: 'auto' }}>
+              <SelectValue placeholder={t('page.templateAll')} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Template: todos</SelectItem>
-              {templates.map((t) => (
-                <SelectItem key={t.id} value={String(t.id)}>
-                  {t.nome}
+              <SelectItem value="all">{t('page.templateAll')}</SelectItem>
+              {templates.map((tpl) => (
+                <SelectItem key={tpl.id} value={String(tpl.id)}>
+                  {tpl.nome}
                 </SelectItem>
               ))}
             </SelectContent>

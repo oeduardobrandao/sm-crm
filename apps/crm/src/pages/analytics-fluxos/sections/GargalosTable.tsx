@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { Badge } from '@/components/ui/badge';
 import type { EtapaAgg } from '@/services/workflowAnalytics';
-import { formatDiasDecimal, formatDataCurta, SEM_DADOS } from '../format';
+import { formatDiasDecimal, formatDataCurta, semDados } from '../format';
 import { SectionCard, SectionEmpty } from './SectionCard';
 
 /** Rows shown before the "Mostrar todas as etapas" toggle. */
@@ -25,7 +26,7 @@ function atrasoVariant(pct: number): AtrasoVariant {
 }
 
 function AtrasoBadge({ pct }: { pct: number | null }) {
-  if (pct === null) return <Badge variant="neutral">{SEM_DADOS}</Badge>;
+  if (pct === null) return <Badge variant="neutral">{semDados()}</Badge>;
   return <Badge variant={atrasoVariant(pct)}>{Math.round(pct)}%</Badge>;
 }
 
@@ -62,6 +63,7 @@ interface GargalosTableProps {
 }
 
 export function GargalosTable({ etapas, eventosDesde }: GargalosTableProps) {
+  const { t } = useTranslation('analyticsFlows');
   const [showAll, setShowAll] = useState(false);
   const desde = formatDataCurta(eventosDesde);
   // Kept short on purpose: the table lives in an `overflow-x: auto` wrapper,
@@ -69,11 +71,11 @@ export function GargalosTable({ etapas, eventosDesde }: GargalosTableProps) {
   // nowrap tooltip escaping a `th` would be cut off. The caption below carries
   // the same fact outside the scroll container, where it always shows.
   const retrabalhoTooltip = desde
-    ? `Devoluções desde ${desde}`
-    : 'Nenhuma devolução registrada ainda';
+    ? t('team.reworkTooltip', { date: desde })
+    : t('team.reworkTooltipNone');
   const caption = desde
-    ? `tempo médio real de cada etapa concluída no período · retrabalho registrado desde ${desde}`
-    : 'tempo médio real de cada etapa concluída no período';
+    ? t('bottlenecks.caption', { date: desde })
+    : t('bottlenecks.captionNoSince');
 
   const ordenadas = useMemo(
     () => [...etapas].sort((a, b) => (b.media_dias ?? -1) - (a.media_dias ?? -1)),
@@ -85,7 +87,7 @@ export function GargalosTable({ etapas, eventosDesde }: GargalosTableProps) {
 
   return (
     <SectionCard
-      title="Gargalos por etapa"
+      title={t('bottlenecks.title')}
       caption={caption}
       footer={
         ordenadas.length > TOP_N ? (
@@ -102,13 +104,13 @@ export function GargalosTable({ etapas, eventosDesde }: GargalosTableProps) {
               color: 'var(--teal)',
             }}
           >
-            {showAll ? 'Mostrar menos' : `Mostrar todas as etapas (${escondidas} ocultas)`}
+            {showAll ? t('bottlenecks.showLess') : t('bottlenecks.showAll', { count: escondidas })}
           </button>
         ) : null
       }
     >
       {ordenadas.length === 0 ? (
-        <SectionEmpty>Nenhuma etapa concluída no período.</SectionEmpty>
+        <SectionEmpty>{t('bottlenecks.empty')}</SectionEmpty>
       ) : (
         <>
           <div className="fluxos-bottleneck-desktop">
@@ -116,29 +118,29 @@ export function GargalosTable({ etapas, eventosDesde }: GargalosTableProps) {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Etapa</th>
-                    <th style={{ width: '38%' }}>Tempo médio</th>
-                    <th>Atraso</th>
-                    <th data-tooltip={retrabalhoTooltip}>Retrabalho</th>
-                    <th>Amostras</th>
+                    <th>{t('bottlenecks.stage')}</th>
+                    <th style={{ width: '38%' }}>{t('kpi.avgTime')}</th>
+                    <th>{t('bottlenecks.delay')}</th>
+                    <th data-tooltip={retrabalhoTooltip}>{t('kpi.rework')}</th>
+                    <th>{t('bottlenecks.samples')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {visiveis.map((etapa) => (
                     <tr key={etapa.nome}>
-                      <td data-label="Etapa">{etapa.nome}</td>
-                      <td data-label="Tempo médio">
+                      <td data-label={t('bottlenecks.stage')}>{etapa.nome}</td>
+                      <td data-label={t('kpi.avgTime')}>
                         <TempoBar dias={etapa.media_dias} max={max} />
                       </td>
-                      <td data-label="Atraso">
+                      <td data-label={t('bottlenecks.delay')}>
                         <AtrasoBadge pct={etapa.atraso_pct} />
                       </td>
-                      <td data-label="Retrabalho" style={{ color: 'var(--text-muted)' }}>
+                      <td data-label={t('kpi.rework')} style={{ color: 'var(--text-muted)' }}>
                         {etapa.retrabalho_pct === null
                           ? SEM_BASE_RETRABALHO
                           : `${Math.round(etapa.retrabalho_pct)}%`}
                       </td>
-                      <td data-label="Amostras">{etapa.amostras}</td>
+                      <td data-label={t('bottlenecks.samples')}>{etapa.amostras}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -170,15 +172,17 @@ export function GargalosTable({ etapas, eventosDesde }: GargalosTableProps) {
                   }}
                 >
                   <span>
-                    Tempo médio:{' '}
+                    {t('kpi.avgTime')}:{' '}
                     <strong style={{ color: 'var(--text-main)' }}>
                       {formatDiasDecimal(etapa.media_dias)}
                     </strong>
                   </span>
                   {etapa.retrabalho_pct !== null && (
-                    <span>{Math.round(etapa.retrabalho_pct)}% retrabalho</span>
+                    <span>
+                      {t('bottlenecks.reworkPct', { pct: Math.round(etapa.retrabalho_pct) })}
+                    </span>
                   )}
-                  <span>{etapa.amostras} amostras</span>
+                  <span>{t('bottlenecks.samplesCount', { count: etapa.amostras })}</span>
                 </div>
               </div>
             ))}

@@ -6,7 +6,7 @@ import {
   formatHoras,
   formatHorasOuSemDados,
   horizonteCaption,
-  SEM_DADOS,
+  semDados,
 } from '../format';
 
 describe('formatHoras', () => {
@@ -42,7 +42,7 @@ describe('formatHoras', () => {
   });
 
   it('routes null through SEM_DADOS instead of a fabricated zero', () => {
-    expect(formatHorasOuSemDados(null)).toBe(SEM_DADOS);
+    expect(formatHorasOuSemDados(null)).toBe(semDados());
     expect(formatHorasOuSemDados(28)).toBe('1d 4h');
   });
 });

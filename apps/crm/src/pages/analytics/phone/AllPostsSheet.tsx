@@ -1,5 +1,6 @@
 import { useRef, useState, type ReactNode, type RefObject } from 'react';
 import { ChevronLeft, SlidersHorizontal } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { BottomSheet } from '@/components/mobile/BottomSheet';
 import { CheckList } from '@/components/mobile/CheckList';
 import { Cell, GroupedList } from '@/components/mobile/GroupedList';
@@ -83,6 +84,7 @@ export function AllPostsSheet({
   emptyText,
   filters,
 }: AllPostsSheetProps) {
+  const { t } = useTranslation('analyticsPhone');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const filtersButtonRef = useRef<HTMLButtonElement>(null);
   const orderLabel =
@@ -113,13 +115,13 @@ export function AllPostsSheet({
             onClick={() => setFiltersOpen(true)}
           >
             <SlidersHorizontal aria-hidden="true" />
-            {active > 0 ? `Filtros (${active})` : 'Filtros'}
+            {active > 0 ? t('sheet.filtersCount', { n: active }) : t('sheet.filters')}
           </button>
         }
       >
         <div className="phone-an-sheet__body">
           <p className="phone-an-sheet__summary">
-            {countLabel} · {orderLabel}, {filters.asc ? 'crescente' : 'decrescente'}
+            {countLabel} · {orderLabel}, {filters.asc ? t('sheet.asc') : t('sheet.desc')}
             {note && (
               <>
                 <br />
@@ -211,6 +213,7 @@ function PostsFiltersSheet({
   resultCount: number;
   returnFocusRef: RefObject<HTMLButtonElement | null>;
 }) {
+  const { t } = useTranslation('analyticsPhone');
   const [page, setPage] = useState<Page>('main');
   const close = (next: boolean) => {
     if (!next) setPage('main');
@@ -232,7 +235,7 @@ function PostsFiltersSheet({
   if (page === 'order') {
     body = (
       <CheckList<string>
-        header="Ordenar por"
+        header={t('sheet.sortBy')}
         options={filters.orderOptions}
         value={filters.orderBy}
         onChange={(v) => v !== null && filters.onOrderBy(v)}
@@ -243,8 +246,8 @@ function PostsFiltersSheet({
     const onFormat = filters.onFormat;
     body = (
       <CheckList<string>
-        header="Formato"
-        emptyOption={{ label: 'Todos os formatos' }}
+        header={t('sheet.format')}
+        emptyOption={{ label: t('sheet.allFormats') }}
         options={filters.formatOptions}
         value={!filters.format || filters.format === 'all' ? null : filters.format}
         onChange={(v) => onFormat(v ?? 'all')}
@@ -255,9 +258,9 @@ function PostsFiltersSheet({
     const onClient = filters.onClient;
     body = (
       <CheckList<string>
-        header="Cliente"
+        header={t('sheet.client')}
         searchable={filters.clientOptions.length > 8}
-        emptyOption={{ label: 'Todos os clientes' }}
+        emptyOption={{ label: t('sheet.allClients') }}
         options={filters.clientOptions}
         value={!filters.client || filters.client === 'all' ? null : filters.client}
         onChange={(v) => onClient(v ?? 'all')}
@@ -267,9 +270,9 @@ function PostsFiltersSheet({
   } else {
     body = (
       <>
-        <GroupedList header="Ordem">
+        <GroupedList header={t('sheet.order')}>
           <Cell
-            label="Ordenar por"
+            label={t('sheet.sortBy')}
             value={labelOf(filters.orderOptions, filters.orderBy, '')}
             chevron
             onClick={() => setPage('order')}
@@ -277,10 +280,10 @@ function PostsFiltersSheet({
           <li className="phone-cell">
             <div className="phone-an-inline-segment">
               <SegmentedControl<'desc' | 'asc'>
-                aria-label="Direção"
+                aria-label={t('sheet.direction')}
                 options={[
-                  { value: 'desc', label: 'Decrescente' },
-                  { value: 'asc', label: 'Crescente' },
+                  { value: 'desc', label: t('sheet.descCap') },
+                  { value: 'asc', label: t('sheet.ascCap') },
                 ]}
                 value={filters.asc ? 'asc' : 'desc'}
                 onChange={(v) => filters.onAsc(v === 'asc')}
@@ -288,26 +291,26 @@ function PostsFiltersSheet({
             </div>
           </li>
         </GroupedList>
-        <GroupedList header="Filtros">
+        <GroupedList header={t('sheet.filters')}>
           {filters.formatOptions && (
             <Cell
-              label="Formato"
-              value={labelOf(filters.formatOptions, filters.format, 'Todos')}
+              label={t('sheet.format')}
+              value={labelOf(filters.formatOptions, filters.format, t('sheet.all'))}
               chevron
               onClick={() => setPage('format')}
             />
           )}
           {filters.clientOptions && filters.onClient && (
             <Cell
-              label="Cliente"
-              value={labelOf(filters.clientOptions, filters.client, 'Todos')}
+              label={t('sheet.client')}
+              value={labelOf(filters.clientOptions, filters.client, t('sheet.all'))}
               chevron
               onClick={() => setPage('client')}
             />
           )}
         </GroupedList>
         <GroupedList
-          header="Publicados entre"
+          header={t('sheet.publishedBetween')}
           footer={
             filters.dateFrom || filters.dateTo ? (
               <button
@@ -318,13 +321,13 @@ function PostsFiltersSheet({
                   filters.onDateTo('');
                 }}
               >
-                Limpar datas
+                {t('sheet.clearDates')}
               </button>
             ) : undefined
           }
         >
           <FormRow
-            label="De"
+            label={t('sheet.from')}
             input={{
               type: 'date',
               value: filters.dateFrom,
@@ -332,7 +335,7 @@ function PostsFiltersSheet({
             }}
           />
           <FormRow
-            label="Até"
+            label={t('sheet.to')}
             input={{
               type: 'date',
               value: filters.dateTo,
@@ -348,7 +351,7 @@ function PostsFiltersSheet({
     <BottomSheet
       open={open}
       onOpenChange={close}
-      title="Filtros"
+      title={t('sheet.filters')}
       detents={['large']}
       className="phone-an-sheet"
       returnFocusRef={returnFocusRef}
@@ -356,7 +359,7 @@ function PostsFiltersSheet({
         page !== 'main' ? (
           <button type="button" className="phone-text-button" onClick={() => setPage('main')}>
             <ChevronLeft aria-hidden="true" />
-            Filtros
+            {t('sheet.filters')}
           </button>
         ) : (
           <button
@@ -365,7 +368,7 @@ function PostsFiltersSheet({
             disabled={active === 0}
             onClick={clear}
           >
-            Limpar
+            {t('sheet.clear')}
           </button>
         )
       }
@@ -375,7 +378,7 @@ function PostsFiltersSheet({
           className="phone-text-button phone-text-button--strong"
           onClick={() => close(false)}
         >
-          Ver {resultCount}
+          {t('sheet.show', { n: resultCount })}
         </button>
       }
     >

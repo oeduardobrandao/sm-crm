@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { BottomSheet } from '@/components/mobile/BottomSheet';
 import { GroupedList } from '@/components/mobile/GroupedList';
 import { FormRow } from '@/components/mobile/FormRow';
@@ -29,7 +30,7 @@ export function PeriodSegmented({
   value,
   onChange,
   custom,
-  'aria-label': ariaLabel = 'Período',
+  'aria-label': ariaLabelProp,
 }: {
   presets: PeriodPreset[];
   /** The active preset's value; ignored while a custom window is active. */
@@ -38,9 +39,11 @@ export function PeriodSegmented({
   custom?: PeriodCustom;
   'aria-label'?: string;
 }) {
+  const { t } = useTranslation('analyticsPhone');
+  const ariaLabel = ariaLabelProp ?? t('period.default');
   const [sheetOpen, setSheetOpen] = useState(false);
   const customActive = custom?.days != null;
-  const options = [...presets, ...(custom ? [{ value: CUSTOM, label: 'Personalizado' }] : [])];
+  const options = [...presets, ...(custom ? [{ value: CUSTOM, label: t('period.custom') }] : [])];
   const current = customActive ? CUSTOM : (value ?? '');
 
   return (
@@ -56,9 +59,9 @@ export function PeriodSegmented({
       />
       {custom && customActive && (
         <p className="phone-an-period__custom">
-          <span>Últimos {custom.days} dias</span>
+          <span>{t('period.last', { days: custom.days })}</span>
           <button type="button" className="phone-text-button" onClick={() => setSheetOpen(true)}>
-            Alterar
+            {t('period.change')}
           </button>
         </p>
       )}
@@ -94,6 +97,7 @@ function CustomDaysSheet({
   max: number;
   onApply: (days: number) => void;
 }) {
+  const { t } = useTranslation('analyticsPhone');
   const [text, setText] = useState(initial ? String(initial) : '');
   const [error, setError] = useState('');
   const formId = useId();
@@ -107,7 +111,7 @@ function CustomDaysSheet({
   const apply = () => {
     const days = parseInt(text, 10);
     if (isNaN(days) || days < min || days > max) {
-      setError(`Insira um valor entre ${min} e ${max} dias`);
+      setError(t('period.error', { min, max }));
       return;
     }
     onApply(days);
@@ -117,7 +121,7 @@ function CustomDaysSheet({
     <BottomSheet
       open={open}
       onOpenChange={onOpenChange}
-      title="Período personalizado"
+      title={t('period.sheetTitle')}
       detents={['fit']}
       className="phone-an-sheet"
     >
@@ -129,21 +133,21 @@ function CustomDaysSheet({
           apply();
         }}
       >
-        <GroupedList aria-label="Período personalizado">
+        <GroupedList aria-label={t('period.sheetTitle')}>
           <FormRow
-            label="Últimos"
-            helper={error ? undefined : `Entre ${min} e ${max} dias`}
+            label={t('period.lastLabel')}
+            helper={error ? undefined : t('period.between', { min, max })}
             error={error || undefined}
-            accessory={<span className="phone-an-tone--muted">dias</span>}
+            accessory={<span className="phone-an-tone--muted">{t('period.days')}</span>}
             input={{
               type: 'number',
               inputMode: 'numeric',
               min,
               max,
-              placeholder: 'Dias',
+              placeholder: t('period.daysPlaceholder'),
               value: text,
               autoFocus: true,
-              'aria-label': 'Período personalizado em dias',
+              'aria-label': t('period.ariaDays'),
               onChange: (e) => {
                 setText(e.target.value);
                 if (error) setError('');
@@ -152,7 +156,7 @@ function CustomDaysSheet({
           />
         </GroupedList>
         <button type="submit" className="phone-an-primary-button">
-          Aplicar
+          {t('period.apply')}
         </button>
       </form>
     </BottomSheet>

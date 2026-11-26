@@ -1,4 +1,6 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+import i18n from 'i18next';
 import { Link } from 'react-router-dom';
 import { Chart as ReactChart } from 'react-chartjs-2';
 import {
@@ -42,13 +44,18 @@ export const LENTO_HORAS = 72;
  * future bucket edit surfaces as an unmapped raw key instead of silently
  * mislabelling a bar.
  */
-export const FAIXA_LABEL: Record<string, string> = {
-  '<4h': '< 4h',
-  '4-24h': '4 a 24h',
-  '1-3d': '1 a 3d',
-  '3-7d': '3 a 7d',
-  '7d+': '7d+',
+const FAIXA_KEY: Record<string, string> = {
+  '<4h': 'lt4h',
+  '4-24h': 'h4to24',
+  '1-3d': 'd1to3',
+  '3-7d': 'd3to7',
+  '7d+': 'd7plus',
 };
+
+export function faixaLabel(faixa: string): string {
+  const key = FAIXA_KEY[faixa];
+  return key ? i18n.t(`analyticsFlows:approval.bucket.${key}`) : faixa;
+}
 
 interface AprovacaoSectionProps {
   aprovacao: AprovacaoCliente;
@@ -117,6 +124,7 @@ export function AprovacaoSection({
   clientesById,
   postEventsSince,
 }: AprovacaoSectionProps) {
+  const { t, i18n: i18nInstance } = useTranslation('analyticsFlows');
   const isDark = useIsDark();
   const theme = useMemo(() => getChartTheme(isDark), [isDark]);
   const clientes = useMemo(() => [...clientesById.values()], [clientesById]);
@@ -146,10 +154,10 @@ export function AprovacaoSection({
 
   const data = useMemo<ChartData<'bar', number[], string>>(
     () => ({
-      labels: aprovacao.buckets.map((b) => FAIXA_LABEL[b.faixa] ?? b.faixa),
+      labels: aprovacao.buckets.map((b) => faixaLabel(b.faixa)),
       datasets: [
         {
-          label: 'Aprovações',
+          label: t('approval.approvalsSeries'),
           data: aprovacao.buckets.map((b) => b.quantidade),
           backgroundColor: aprovacao.buckets.map(
             (b, i) => corPorFaixa[b.faixa] ?? theme.categorical[i % theme.categorical.length],
@@ -160,7 +168,8 @@ export function AprovacaoSection({
         },
       ],
     }),
-    [aprovacao.buckets, corPorFaixa, theme],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [aprovacao.buckets, corPorFaixa, theme, i18nInstance.language],
   );
 
   const options = useMemo<ChartOptions<'bar'>>(
@@ -180,23 +189,21 @@ export function AprovacaoSection({
         tooltip: {
           ...theme.tooltip,
           callbacks: {
-            label: (item) => `${item.parsed.y} ${item.parsed.y === 1 ? 'aprovação' : 'aprovações'}`,
+            label: (item) => t('approval.approvals', { count: item.parsed.y }),
           },
         },
       },
     }),
-    [theme],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [theme, i18nInstance.language],
   );
 
   const ranking = useMemo(() => aprovacao.por_cliente.slice(0, TOP_N), [aprovacao.por_cliente]);
 
   if (!temAtividadeAprovacao(aprovacao)) {
     return (
-      <SectionCard
-        title="Tempo de resposta do cliente"
-        caption={caption('quanto tempo os posts esperam na aprovação do cliente')}
-      >
-        <SectionEmpty>Sem aprovações de cliente no período.</SectionEmpty>
+      <SectionCard title={t('approval.title')} caption={caption(t('approval.caption'))}>
+        <SectionEmpty>{t('approval.empty')}</SectionEmpty>
       </SectionCard>
     );
   }
@@ -210,14 +217,15 @@ export function AprovacaoSection({
       }}
     >
       <SectionCard
-        title="Tempo de resposta do cliente"
-        caption={caption('quanto tempo os posts esperam na aprovação do cliente')}
+        title={t('approval.title')}
+        caption={caption(t('approval.caption'))}
         footer={
           <div style={{ marginTop: '0.85rem' }}>
             <p style={{ fontSize: '0.8rem', margin: 0 }}>
-              Mediana: <strong>{formatHorasOuSemDados(aprovacao.mediana_horas)}</strong>{' '}
+              {t('approval.median')}:{' '}
+              <strong>{formatHorasOuSemDados(aprovacao.mediana_horas)}</strong>{' '}
               <span style={{ color: 'var(--text-muted)' }}>
-                · {aprovacao.amostras} {aprovacao.amostras === 1 ? 'resposta' : 'respostas'}
+                · {t('approval.responses', { count: aprovacao.amostras })}
               </span>
             </p>
             <p
@@ -227,13 +235,16 @@ export function AprovacaoSection({
                 margin: '0.25rem 0 0',
               }}
             >
-              {aprovacao.pendentes} aguardando · {aprovacao.resolvidos_internamente} resolvidos
-              internamente
+              {t('approval.waiting', { count: aprovacao.pendentes })} ·{' '}
+              {t('approval.resolvedInternally', { count: aprovacao.resolvidos_internamente })}
               {aprovacao.etapas.amostras > 0 && (
                 <>
                   {' '}
-                  · +{aprovacao.etapas.amostras} aprovações por etapa (mediana{' '}
-                  {formatHorasOuSemDados(aprovacao.etapas.mediana_horas)})
+                  ·{' '}
+                  {t('approval.stageApprovals', {
+                    count: aprovacao.etapas.amostras,
+                    median: formatHorasOuSemDados(aprovacao.etapas.mediana_horas),
+                  })}
                 </>
               )}
             </p>
@@ -246,17 +257,14 @@ export function AprovacaoSection({
             data={data}
             options={options}
             role="img"
-            aria-label="Gráfico de barras: aprovações do cliente por faixa de tempo de resposta"
+            aria-label={t('approval.chartAria')}
           />
         </div>
       </SectionCard>
 
-      <SectionCard
-        title="Clientes mais lentos para aprovar"
-        caption={caption('mediana de resposta · abre as entregas do cliente')}
-      >
+      <SectionCard title={t('approval.rankTitle')} caption={caption(t('approval.rankCaption'))}>
         {ranking.length === 0 ? (
-          <SectionEmpty>Nenhum cliente com ciclo de aprovação no período.</SectionEmpty>
+          <SectionEmpty>{t('approval.rankEmpty')}</SectionEmpty>
         ) : (
           <ul style={{ listStyle: 'none', margin: 0, padding: 0, fontSize: '0.8rem' }}>
             {ranking.map((linha, i) => {
@@ -288,7 +296,7 @@ export function AprovacaoSection({
                         whiteSpace: 'nowrap',
                       }}
                     >
-                      {cliente?.nome ?? 'Cliente removido'}
+                      {cliente?.nome ?? t('approval.removedClient')}
                     </span>
                     <strong
                       style={{
@@ -313,8 +321,8 @@ export function AprovacaoSection({
                           "0 respostas" hides the reason: they are still sitting
                           on them. */}
                       {linha.amostras === 0 && linha.pendentes > 0
-                        ? `${linha.pendentes} aguardando`
-                        : `${linha.amostras} ${linha.amostras === 1 ? 'resposta' : 'respostas'}`}
+                        ? t('approval.waiting', { count: linha.pendentes })
+                        : t('approval.responses', { count: linha.amostras })}
                     </span>
                   </Link>
                 </li>

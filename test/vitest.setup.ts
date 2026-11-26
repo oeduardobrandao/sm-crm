@@ -108,6 +108,10 @@ import enIdeas from '../packages/i18n/locales/en/ideas.json';
 import enIdeaDrawer from '../packages/i18n/locales/en/ideaDrawer.json';
 import ptAnalyticsAccount from '../packages/i18n/locales/pt/analyticsAccount.json';
 import enAnalyticsAccount from '../packages/i18n/locales/en/analyticsAccount.json';
+import ptAnalyticsFlows from '../packages/i18n/locales/pt/analyticsFlows.json';
+import enAnalyticsFlows from '../packages/i18n/locales/en/analyticsFlows.json';
+import ptAnalyticsPhone from '../packages/i18n/locales/pt/analyticsPhone.json';
+import enAnalyticsPhone from '../packages/i18n/locales/en/analyticsPhone.json';
 
 initI18n({
   pt: {
@@ -159,6 +163,8 @@ initI18n({
     hubAgenda: ptHubAgenda,
     hubConvite: ptHubConvite,
     analyticsAccount: ptAnalyticsAccount,
+    analyticsFlows: ptAnalyticsFlows,
+    analyticsPhone: ptAnalyticsPhone,
   },
   en: {
     common: enCommon,
@@ -209,6 +215,8 @@ initI18n({
     hubAgenda: enHubAgenda,
     hubConvite: enHubConvite,
     analyticsAccount: enAnalyticsAccount,
+    analyticsFlows: enAnalyticsFlows,
+    analyticsPhone: enAnalyticsPhone,
   },
 });
 

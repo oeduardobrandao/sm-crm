@@ -1,0 +1,219 @@
+{
+  "title": "Analytics",
+  "mediaType": {
+    "VIDEO": "Reel",
+    "CAROUSEL_ALBUM": "Carousel",
+    "IMAGE": "Image",
+    "STORY": "Story"
+  },
+  "period": {
+    "default": "Period",
+    "custom": "Custom",
+    "last": "Last {{days}} days",
+    "change": "Change",
+    "error": "Enter a value between {{min}} and {{max}} days",
+    "sheetTitle": "Custom period",
+    "lastLabel": "Last",
+    "between": "Between {{min}} and {{max}} days",
+    "days": "days",
+    "daysPlaceholder": "Days",
+    "ariaDays": "Custom period in days",
+    "apply": "Apply"
+  },
+  "ai": {
+    "generating": "Generating analysis…",
+    "generateNew": "Generate new AI analysis",
+    "generate": "Generate AI Analysis",
+    "analysis": "Analysis",
+    "generatedAt": "Generated on {{when}}",
+    "titleDesk": "Portfolio AI Analysis",
+    "titlePhone": "Portfolio AI analysis",
+    "failed": "Could not generate the analysis. Try again.",
+    "error": "Error generating the analysis. Try again.",
+    "promptDesk": "Click to get a strategic AI analysis of your portfolio.",
+    "promptPhone": "Tap to get a strategic AI analysis of your portfolio.",
+    "healthDesk": "Portfolio Health",
+    "healthPhone": "Portfolio health",
+    "rankingDesk": "Account Ranking",
+    "rankingPhone": "Account ranking",
+    "crossDesk": "Cross-Account Insights",
+    "crossPhone": "Cross-account insights",
+    "effortDesk": "Effort Allocation",
+    "effortPhone": "Effort allocation",
+    "digestDesk": "Monthly Digest",
+    "digestPhone": "Monthly digest",
+    "actionsDesk": "Priority Actions",
+    "actionsPhone": "Priority actions"
+  },
+  "rank": {
+    "openInstagram": "open on Instagram",
+    "cardLabel": "{{type}} from {{title}}, {{views}} views",
+    "bestPhone": "Best posts",
+    "worstPhone": "Need attention",
+    "helpBest": "Top 5 posts with the most views in the selected period.",
+    "helpWorst": "Posts published at least 48h ago with the fewest views in the period."
+  },
+  "sort": {
+    "client_name": "Name",
+    "follower_count": "Followers",
+    "engagement_rate_avg": "Engagement",
+    "impressions_28d": "Views (28d)",
+    "reach_28d": "Reach (28d)",
+    "alcance_seg": "Reach / Foll.",
+    "posts_last_30d": "Posts (30d)",
+    "website_clicks_28d": "Link clicks",
+    "last_post_at": "Last post"
+  },
+  "rateShort": {
+    "share_rate": "Shares",
+    "like_rate": "Likes",
+    "save_rate": "Saves",
+    "comment_rate": "Comments"
+  },
+  "rateSuffix": "{{rate}}/view",
+  "accounts": {
+    "titlePhone": "All accounts",
+    "titleDesk": "All Accounts",
+    "empty": "No Instagram accounts connected. Connect accounts on each client's page.",
+    "emptyShort": "No accounts connected.",
+    "sortAria": "Sort accounts: {{col}}, {{dir}}",
+    "sortTitle": "Sort accounts by",
+    "orderDesc": "Descending order",
+    "orderAsc": "Ascending order"
+  },
+  "dir": {
+    "asc": "ascending",
+    "desc": "descending"
+  },
+  "noPosts": "No posts",
+  "daysAgo": "{{days}}d ago",
+  "daysSilent": "{{days}}d without posting",
+  "accountsCount_one": "{{count}} account",
+  "accountsCount_zero": "{{count}} accounts",
+  "accountsCount_other": "{{count}} accounts",
+  "engLine": "{{pct}} eng.",
+  "silent": {
+    "title": "Silent accounts",
+    "countText_one": "{{count}} account with no posts in the period",
+    "countText_zero": "{{count}} accounts with no posts in the period",
+    "countText_other": "{{count}} accounts with no posts in the period",
+    "lineTitle_one": "{{count}} silent account",
+    "lineTitle_zero": "{{count}} silent accounts",
+    "lineTitle_other": "{{count}} silent accounts",
+    "suffix": "with no posts in the period",
+    "hide": "Hide",
+    "show": "Show accounts",
+    "listAnd": "{{rest}} and {{last}}",
+    "listMore": "{{rest}} and {{n}} more"
+  },
+  "filter": {
+    "client": "Client",
+    "all": "All",
+    "allClients": "All clients",
+    "period": "Period"
+  },
+  "sync": {
+    "button": "Sync",
+    "running": "Syncing...",
+    "runningPhone": "Syncing…",
+    "all": "Sync all accounts",
+    "done_one": "{{count}} synced",
+    "done_zero": "{{count}} synced",
+    "done_other": "{{count}} synced",
+    "failed": ", {{count}} failed: {{names}}"
+  },
+  "error": {
+    "load": "Error loading analytics: {{message}}",
+    "unknown": "Unknown error"
+  },
+  "benchmark": {
+    "titlePhone": "Engagement benchmark",
+    "titleDesk": "Engagement Benchmark",
+    "footer": "Portfolio average: {{avg}}. Green is above average.",
+    "specialtyPhone": "By specialty",
+    "specialtyDesk": "By Specialty",
+    "noSpecialty": "No specialty",
+    "specialtyRow_one": "{{count}} account · {{followers}} avg. followers",
+    "specialtyRow_zero": "{{count}} accounts · {{followers}} avg. followers",
+    "specialtyRow_other": "{{count}} accounts · {{followers}} avg. followers",
+    "avgFollowers": "{{followers}} avg. followers"
+  },
+  "hl": {
+    "title": "Highlights",
+    "engagement": "Best engagement",
+    "growth": "Biggest growth",
+    "views": "Most views",
+    "followers": "Most followers",
+    "posts": "Most active",
+    "growthSub": "+{{n}} followers",
+    "viewsSub": "{{n}} views (28d)",
+    "followersSub": "{{n}} followers",
+    "postsSub": "{{n}} posts in 30d",
+    "postsShort": "{{n}} posts"
+  },
+  "kpi": {
+    "connected": "Connected accounts",
+    "growing": "{{n}} growing",
+    "followers": "Total followers",
+    "declining": "{{n}} declining",
+    "views": "Total views (28d)",
+    "sumAll": "Sum of all accounts",
+    "engagement": "Average engagement",
+    "avgAll": "Average of all accounts",
+    "clicks": "Link clicks (28d)",
+    "perAccount": "Average per account"
+  },
+  "head": {
+    "client": "Client",
+    "followers": "Followers",
+    "engagement": "Engagement",
+    "views": "Views (28d)",
+    "reach": "Reach (28d)",
+    "reachPerFollower": "Reach / Foll.",
+    "posts": "Posts (30d)",
+    "clicks": "Link clicks",
+    "clicks28": "Link clicks (28d)",
+    "lastPost": "Last Post"
+  },
+  "menu": {
+    "name": "Name",
+    "views": "Views",
+    "reach": "Reach"
+  },
+  "card": {
+    "followers": "{{n}} followers",
+    "views": "{{n}} views"
+  },
+  "drawer": {
+    "allPostsDesk": "All Posts",
+    "allPostsPhone": "All posts",
+    "worstPhone": "Posts that need attention",
+    "count": "{{shown}} of {{total}} posts",
+    "note": "Top 200 by views, reordered by rate",
+    "sortBy": "Sort by",
+    "format": "Format",
+    "client": "Client"
+  },
+  "sheet": {
+    "filters": "Filters",
+    "filtersCount": "Filters ({{n}})",
+    "order": "Order",
+    "direction": "Direction",
+    "all": "All",
+    "publishedBetween": "Published between",
+    "from": "From",
+    "to": "To",
+    "clear": "Clear",
+    "show": "Show {{n}}",
+    "sortBy": "Sort by",
+    "format": "Format",
+    "client": "Client",
+    "allFormats": "All formats",
+    "allClients": "All clients",
+    "clearDates": "Clear dates",
+    "asc": "ascending",
+    "desc": "descending",
+    "ascCap": "Ascending",
+    "descCap": "Descending"
+  }
+}

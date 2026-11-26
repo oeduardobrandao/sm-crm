@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Chart as ReactChart } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -17,7 +18,7 @@ import {
 
 import { getChartTheme, useIsDark } from '@/lib/chartTheme';
 import type { SemanaAgg } from '@/services/workflowAnalytics';
-import { formatSemanaCurta, formatSemanaLonga } from '../format';
+import { formatSemanaCurta, semanaDeLabel } from '../format';
 import { SectionCard, SectionEmpty } from './SectionCard';
 
 // BarController/LineController EXPLÍCITOS: o react-chartjs-2 só auto-registra
@@ -69,6 +70,7 @@ export function buildPontos(
 }
 
 export function RitmoChart({ semanas, criadosSemConclusao }: RitmoChartProps) {
+  const { t, i18n } = useTranslation('analyticsFlows');
   const isDark = useIsDark();
   const theme = useMemo(() => getChartTheme(isDark), [isDark]);
   const pontos = useMemo(
@@ -84,7 +86,7 @@ export function RitmoChart({ semanas, criadosSemConclusao }: RitmoChartProps) {
       datasets: [
         {
           type: 'bar' as const,
-          label: 'Concluídos',
+          label: t('pace.completed'),
           data: pontos.map((p) => p.concluidos),
           backgroundColor: theme.semantic.success,
           borderWidth: 0,
@@ -94,7 +96,7 @@ export function RitmoChart({ semanas, criadosSemConclusao }: RitmoChartProps) {
         },
         {
           type: 'line' as const,
-          label: 'Criados',
+          label: t('pace.created'),
           data: pontos.map((p) => p.criados),
           borderColor: theme.categorical[0],
           backgroundColor: theme.categorical[0],
@@ -105,7 +107,9 @@ export function RitmoChart({ semanas, criadosSemConclusao }: RitmoChartProps) {
         },
       ],
     }),
-    [pontos, theme],
+    // `i18n.language` re-labels the series (and the week axis) on a language switch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pontos, theme, i18n.language],
   );
 
   const options = useMemo<ChartOptions<'bar' | 'line'>>(
@@ -133,22 +137,20 @@ export function RitmoChart({ semanas, criadosSemConclusao }: RitmoChartProps) {
             // a "Tudo" window can easily span two of them.
             title: (items) => {
               const ponto = pontos[items[0]?.dataIndex ?? 0];
-              return ponto ? `Semana de ${formatSemanaLonga(ponto.semana)}` : '';
+              return ponto ? semanaDeLabel(ponto.semana) : '';
             },
           },
         },
       },
     }),
-    [theme, pontos],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [theme, pontos, i18n.language],
   );
 
   return (
-    <SectionCard
-      title="Ritmo de entrega"
-      caption="por semana, com a linha de criados para ver se a fila cresce ou encolhe"
-    >
+    <SectionCard title={t('pace.title')} caption={t('pace.caption')}>
       {pontos.length === 0 ? (
-        <SectionEmpty>Nenhum fluxo concluído ou criado no período.</SectionEmpty>
+        <SectionEmpty>{t('pace.empty')}</SectionEmpty>
       ) : (
         <div style={{ position: 'relative', height: 260 }}>
           <ReactChart
@@ -156,7 +158,7 @@ export function RitmoChart({ semanas, criadosSemConclusao }: RitmoChartProps) {
             data={data}
             options={options}
             role="img"
-            aria-label="Gráfico de barras e linha: fluxos concluídos e criados por semana"
+            aria-label={t('pace.aria')}
           />
         </div>
       )}

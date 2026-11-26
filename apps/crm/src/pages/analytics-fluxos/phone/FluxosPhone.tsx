@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Download, MoreHorizontal, Printer } from 'lucide-react';
 import { PhonePageHeader } from '@/components/mobile/PhonePageHeader';
 import { PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
@@ -16,28 +17,24 @@ import {
   formatDiasDecimal,
   formatHorasOuSemDados,
   formatPontualidadeMembro,
-  formatSemanaLonga,
+  semanaDeLabel,
   horizonteCaption,
   MIN_AVALIADAS,
   origemLabel,
-  POUCOS_DADOS_TOOLTIP,
-  SEM_DADOS,
+  poucosDadosTooltip,
+  semDados,
 } from '../format';
-import { PERIODOS, type Periodo } from '../useFluxosFilters';
+import { getPeriodos, type Periodo } from '../useFluxosFilters';
 import { KpiRow } from '../sections/KpiRow';
 import { buildPontos } from '../sections/RitmoChart';
 import {
-  FAIXA_LABEL,
+  faixaLabel,
   LENTO_HORAS,
   SLOW_CLIENTS_TOP_N,
   temAtividadeAprovacao,
 } from '../sections/AprovacaoSection';
 import { GARGALOS_TOP_N } from '../sections/GargalosTable';
 import { temOrigemParaMostrar } from '../sections/OrigemCard';
-
-/** The page hint that is a desktop tooltip, as the visible subtitle (FFluxos mockup). */
-export const FLUXOS_PERIOD_HINT =
-  'O período filtra pela data de conclusão. Ativos são sempre o retrato atual.';
 
 export interface FluxosPhoneProps {
   periodo: Periodo;
@@ -76,26 +73,29 @@ export function FluxosPhone({
   canExport,
   onExport,
 }: FluxosPhoneProps) {
+  const { t } = useTranslation('analyticsFlows');
   const { fotosDe } = useClienteAvatars(clientes);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLButtonElement>(null);
 
   const clienteLabel =
-    clienteId !== null ? (clientesById.get(clienteId)?.nome ?? 'não identificado') : 'todos';
+    clienteId !== null
+      ? (clientesById.get(clienteId)?.nome ?? t('page.unidentified'))
+      : t('page.all');
   const templateLabel =
     templateId !== null
-      ? (templates.find((t) => t.id === templateId)?.nome ?? 'não identificado')
-      : 'todos';
+      ? (templates.find((tpl) => tpl.id === templateId)?.nome ?? t('page.unidentified'))
+      : t('page.all');
 
   return (
     <div className="phone-kit phone-an">
       <PhonePageHeader
-        title="Analytics de fluxos"
-        subtitle={FLUXOS_PERIOD_HINT}
+        title={t('page.titlePhone')}
+        subtitle={t('page.hint')}
         actions={
           <PhoneIconButton
             ref={menuRef}
-            label="Mais ações"
+            label={t('page.moreActions')}
             aria-haspopup="dialog"
             onClick={() => setMenuOpen(true)}
           >
@@ -105,8 +105,8 @@ export function FluxosPhone({
       >
         <div className="phone-an-period">
           <SegmentedControl<Periodo>
-            aria-label="Período"
-            options={PERIODOS}
+            aria-label={t('page.period')}
+            options={getPeriodos()}
             value={periodo}
             onChange={onPeriodo}
           />
@@ -115,25 +115,25 @@ export function FluxosPhone({
 
       <div className="phone-an-chips">
         <PickerChip<number>
-          label="Cliente"
+          label={t('page.client')}
           valueLabel={clienteLabel}
           options={clientes
             .filter((c) => c.id !== undefined)
             .map((c) => ({ value: c.id as number, label: c.nome }))}
           value={clienteId}
           onChange={onClienteId}
-          emptyOption={{ label: 'Cliente: todos' }}
+          emptyOption={{ label: t('page.clientAll') }}
           searchable={clientes.length > 8}
         />
         <PickerChip<number>
-          label="Template"
+          label={t('page.template')}
           valueLabel={templateLabel}
           options={templates
             .filter((t) => t.id !== undefined)
             .map((t) => ({ value: t.id as number, label: t.nome }))}
           value={templateId}
           onChange={onTemplateId}
-          emptyOption={{ label: 'Template: todos' }}
+          emptyOption={{ label: t('page.templateAll') }}
           searchable={templates.length > 8}
         />
       </div>
@@ -152,12 +152,17 @@ export function FluxosPhone({
       <ActionSheet
         open={menuOpen}
         onOpenChange={setMenuOpen}
-        title="Analytics de fluxos"
+        title={t('page.titlePhone')}
         hideTitle
         returnFocusRef={menuRef}
         actions={[
-          { label: 'Exportar CSV', icon: <Download />, disabled: !canExport, onSelect: onExport },
-          { label: 'Imprimir', icon: <Printer />, onSelect: () => window.print() },
+          {
+            label: t('page.exportCsv'),
+            icon: <Download />,
+            disabled: !canExport,
+            onSelect: onExport,
+          },
+          { label: t('page.print'), icon: <Printer />, onSelect: () => window.print() },
         ]}
       />
     </div>
@@ -177,6 +182,7 @@ function FluxosSections({
   membrosById: Map<number, Membro>;
   fotosDe: (clienteId: number) => string[];
 }) {
+  const { t } = useTranslation('analyticsFlows');
   const [showAllEtapas, setShowAllEtapas] = useState(false);
   const pontos = useMemo(
     () => buildPontos(data.semanas, data.semanas_criados_sem_conclusao),
@@ -206,15 +212,15 @@ function FluxosSections({
       <div className="phone-an-pair phone-an-stack">
         <div className="phone-an-half phone-an-stack">
           <BarList
-            header="Ritmo de entrega"
-            footer="Por semana, com os criados para ver se a fila cresce ou encolhe."
-            series={{ primary: 'Concluídos', secondary: 'Criados' }}
+            header={t('pace.title')}
+            footer={t('pace.phoneFooter')}
+            series={{ primary: t('pace.completed'), secondary: t('pace.created') }}
             color="var(--phone-ink)"
             secondaryColor="var(--phone-fill-pressed)"
-            emptyText="Nenhum fluxo concluído ou criado no período."
+            emptyText={t('pace.empty')}
             items={[...pontos].reverse().map((p) => ({
               key: p.semana,
-              label: `Semana de ${formatSemanaLonga(p.semana)}`,
+              label: semanaDeLabel(p.semana),
               value: p.concluidos,
               secondary: p.criados,
             }))}
@@ -222,31 +228,37 @@ function FluxosSections({
         </div>
         <div className="phone-an-half phone-an-stack">
           {!temAtividadeAprovacao(aprovacao) ? (
-            <GroupedList header="Tempo de resposta do cliente" footer={aprovHorizonte ?? undefined}>
+            <GroupedList header={t('approval.title')} footer={aprovHorizonte ?? undefined}>
               <li className="phone-cell">
-                <p className="phone-an-empty">Sem aprovações de cliente no período.</p>
+                <p className="phone-an-empty">{t('approval.empty')}</p>
               </li>
             </GroupedList>
           ) : (
             <>
               <BarList
-                header="Tempo de resposta do cliente"
+                header={t('approval.title')}
                 footer={
                   <>
-                    Mediana: <strong>{formatHorasOuSemDados(aprovacao.mediana_horas)}</strong> ·{' '}
-                    {aprovacao.amostras} {aprovacao.amostras === 1 ? 'resposta' : 'respostas'}.{' '}
-                    {aprovacao.pendentes} aguardando · {aprovacao.resolvidos_internamente}{' '}
-                    resolvidos internamente
+                    {t('approval.median')}:{' '}
+                    <strong>{formatHorasOuSemDados(aprovacao.mediana_horas)}</strong> ·{' '}
+                    {t('approval.responses', { count: aprovacao.amostras })}.{' '}
+                    {t('approval.waiting', { count: aprovacao.pendentes })} ·{' '}
+                    {t('approval.resolvedInternally', {
+                      count: aprovacao.resolvidos_internamente,
+                    })}
                     {aprovacao.etapas.amostras > 0 &&
-                      ` · +${aprovacao.etapas.amostras} aprovações por etapa (mediana ${formatHorasOuSemDados(aprovacao.etapas.mediana_horas)})`}
+                      ` · ${t('approval.stageApprovals', {
+                        count: aprovacao.etapas.amostras,
+                        median: formatHorasOuSemDados(aprovacao.etapas.mediana_horas),
+                      })}`}
                     {aprovHorizonte && `. ${aprovHorizonte}`}
                   </>
                 }
                 items={aprovacao.buckets.map((b) => ({
                   key: b.faixa,
-                  label: FAIXA_LABEL[b.faixa] ?? b.faixa,
+                  label: faixaLabel(b.faixa),
                   value: b.quantidade,
-                  valueLabel: `${b.quantidade} ${b.quantidade === 1 ? 'aprovação' : 'aprovações'}`,
+                  valueLabel: t('approval.approvals', { count: b.quantidade }),
                   color:
                     b.faixa === '7d+'
                       ? 'var(--phone-an-down)'
@@ -255,15 +267,10 @@ function FluxosSections({
                         : 'var(--phone-ink)',
                 }))}
               />
-              <GroupedList
-                header="Clientes mais lentos para aprovar"
-                footer="Mediana de resposta. Toque para abrir as entregas do cliente."
-              >
+              <GroupedList header={t('approval.rankTitle')} footer={t('approval.phoneRankFooter')}>
                 {aprovacao.por_cliente.length === 0 ? (
                   <li className="phone-cell">
-                    <p className="phone-an-empty">
-                      Nenhum cliente com ciclo de aprovação no período.
-                    </p>
+                    <p className="phone-an-empty">{t('approval.rankEmpty')}</p>
                   </li>
                 ) : (
                   aprovacao.por_cliente.slice(0, SLOW_CLIENTS_TOP_N).map((linha) => {
@@ -285,11 +292,11 @@ function FluxosSections({
                             color={cliente?.cor}
                           />
                         }
-                        label={cliente?.nome ?? 'Cliente removido'}
+                        label={cliente?.nome ?? t('approval.removedClient')}
                         subtitle={
                           linha.amostras === 0 && linha.pendentes > 0
-                            ? `${linha.pendentes} aguardando`
-                            : `${linha.amostras} ${linha.amostras === 1 ? 'resposta' : 'respostas'}`
+                            ? t('approval.waiting', { count: linha.pendentes })
+                            : t('approval.responses', { count: linha.amostras })
                         }
                         value={
                           <span className={lento ? 'phone-an-tone--down' : 'phone-an-row-value'}>
@@ -310,12 +317,12 @@ function FluxosSections({
       <div className="phone-an-pair phone-an-stack">
         <div className="phone-an-half phone-an-stack">
           <BarList
-            header="Gargalos por etapa"
-            emptyText="Nenhuma etapa concluída no período."
+            header={t('bottlenecks.title')}
+            emptyText={t('bottlenecks.empty')}
             footer={
               eventosDesde
-                ? `Tempo médio real de cada etapa concluída no período. Retrabalho registrado desde ${eventosDesde}.`
-                : 'Tempo médio real de cada etapa concluída no período.'
+                ? t('bottlenecks.phoneFooter', { date: eventosDesde })
+                : t('bottlenecks.phoneFooterNoSince')
             }
             items={etapasVisiveis.map((etapa) => ({
               key: etapa.nome,
@@ -324,12 +331,12 @@ function FluxosSections({
               valueLabel: formatDiasDecimal(etapa.media_dias),
               subtitle: [
                 etapa.atraso_pct === null
-                  ? `Atraso: ${SEM_DADOS}`
-                  : `${Math.round(etapa.atraso_pct)}% atraso`,
+                  ? t('bottlenecks.delayValue', { value: semDados() })
+                  : t('bottlenecks.delayPct', { pct: Math.round(etapa.atraso_pct) }),
                 etapa.retrabalho_pct !== null
-                  ? `${Math.round(etapa.retrabalho_pct)}% retrabalho`
+                  ? t('bottlenecks.reworkPct', { pct: Math.round(etapa.retrabalho_pct) })
                   : null,
-                `${etapa.amostras} amostras`,
+                t('bottlenecks.samplesCount', { count: etapa.amostras }),
               ]
                 .filter(Boolean)
                 .join(' · '),
@@ -348,31 +355,29 @@ function FluxosSections({
               onClick={() => setShowAllEtapas((v) => !v)}
             >
               {showAllEtapas
-                ? 'Mostrar menos'
-                : `Mostrar todas as etapas (${etapasOcultas} ocultas)`}
+                ? t('bottlenecks.showLess')
+                : t('bottlenecks.showAll', { count: etapasOcultas })}
             </button>
           )}
         </div>
         <div className="phone-an-half phone-an-stack">
-          <SectionHead title="Desempenho da equipe" />
+          <SectionHead title={t('team.title')} />
           <GroupedList
-            aria-label="Desempenho da equipe"
+            aria-label={t('team.title')}
             footer={
               eventosDesde
-                ? `Sem 100% falso: pouca amostra vira Poucos dados. Retrabalho e atividade desde ${eventosDesde}.`
-                : 'Sem 100% falso: pouca amostra vira Poucos dados.'
+                ? t('team.phoneFooter', { date: eventosDesde })
+                : t('team.phoneFooterNoSince')
             }
           >
             {equipe.length === 0 ? (
               <li className="phone-cell">
-                <p className="phone-an-empty">
-                  Nenhuma etapa concluída com responsável no período.
-                </p>
+                <p className="phone-an-empty">{t('team.empty')}</p>
               </li>
             ) : (
               equipe.map((linha) => {
                 const membro = membrosById.get(linha.membro_id);
-                const nome = membro?.nome ?? 'Membro removido';
+                const nome = membro?.nome ?? t('team.removedMember');
                 const pouco = linha.avaliadas < MIN_AVALIADAS;
                 const pct = pouco ? 0 : Math.round((linha.no_prazo / linha.avaliadas) * 100);
                 const tone = pouco ? '' : pct >= 80 ? 'up' : pct >= 50 ? 'warn' : 'down';
@@ -393,12 +398,16 @@ function FluxosSections({
                           <span className="phone-cell__label">{nome}</span>
                           {pouco && (
                             <span className="phone-an-cell-sub phone-an-cell-sub--wrap">
-                              {POUCOS_DADOS_TOOLTIP}
+                              {poucosDadosTooltip()}
                             </span>
                           )}
                           <span className="phone-an-cell-sub phone-an-cell-sub--wrap">
-                            {linha.concluidas} concluídas · {formatDiasDecimal(linha.media_dias)}{' '}
-                            média · {linha.retrabalho} devoluções · {linha.atividade} eventos
+                            {t('team.line', {
+                              done: linha.concluidas,
+                              avg: formatDiasDecimal(linha.media_dias),
+                              returns: linha.retrabalho,
+                              events: linha.atividade,
+                            })}
                           </span>
                         </span>
                         <span className={`phone-an-badge${tone ? ` phone-an-badge--${tone}` : ''}`}>
@@ -415,16 +424,15 @@ function FluxosSections({
       </div>
 
       {temOrigemParaMostrar(data.origem) && (
-        <GroupedList
-          header="Origem dos fluxos"
-          footer="Quem criou os fluxos concluídos no período."
-        >
+        <GroupedList header={t('origin.title')} footer={t('origin.phoneFooter')}>
           {data.origem.map((linha) => (
             <Cell
               key={linha.origem}
               label={origemLabel(linha.origem)}
-              subtitle={`Tempo médio ${formatDiasDecimal(linha.tempo_medio_dias)}`}
-              value={`${linha.concluidos} concluídos`}
+              subtitle={t('origin.avgTimeValue', {
+                value: formatDiasDecimal(linha.tempo_medio_dias),
+              })}
+              value={t('origin.completedCount', { count: linha.concluidos })}
             />
           ))}
         </GroupedList>

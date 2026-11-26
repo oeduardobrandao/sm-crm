@@ -11,6 +11,8 @@
 // supabase/functions/mcp/queries.ts. `Baseline` intentionally matches the MCP
 // get_performance_baseline output so a CRM number equals what an agent sees.
 
+import { getIntlLocale } from '@mesaas/i18n';
+
 export interface Quartiles {
   p25: number;
   p50: number;
@@ -247,8 +249,10 @@ export function buildBaseline(dists: RateDistributions, sampleSize: number): Bas
 export function formatRate(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '—';
   return (
-    (value * 100).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) +
-    '%'
+    (value * 100).toLocaleString(getIntlLocale(), {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    }) + '%'
   );
 }
 
