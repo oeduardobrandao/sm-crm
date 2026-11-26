@@ -67,6 +67,9 @@ export interface LandingContent {
   /** Mock DM exchange of the automations card. */
   dmVisual: { comment: string; commentTag: string; reply: string; button: string };
   shotAlts: { entregas: string; analytics: string; hub: string; calendario: string };
+  /** Alt text of the hero device mockups. */
+  heroAlts: { macbook: string; iphone: string };
+  faqTitle: string;
   agente: { eyebrow: string; title: string; paragraphs: string[]; bullets: string[]; cta: string };
   how: { title: string; sub: string; steps: LandingHowStep[] };
   faq: LandingFaqItem[];
@@ -95,8 +98,13 @@ export interface LandingContent {
     legalLabel: string;
     product: string[];
     legal: string[];
-    rights: string;
-    entity: string;
+    /** Bottom line; `{year}` is replaced by the build year. */
+    copyright: string;
+    cookieSettings: string;
+    /** CCPA opt-out entry; only markets that need it (en) carry it. */
+    doNotSell?: string;
+    /** Label of the link to the other language version. */
+    otherLanguage: string;
     instagramLabel: string;
     linkedinLabel: string;
     youtubeLabel: string;
@@ -228,6 +236,12 @@ export const LANDING: LandingContent = {
     hub: 'Portal do cliente do Mesaas com aprovações por link',
     calendario: 'Calendário editorial mensal do Mesaas',
   },
+  heroAlts: {
+    macbook:
+      'MacBook com o quadro de entregas do Mesaas: fluxos por etapa, do briefing à aprovação do cliente',
+    iphone: 'iPhone com o Hub do cliente: aprovações pendentes e próximo post',
+  },
+  faqTitle: 'Perguntas frequentes',
   features: [
     {
       title: 'Kanban de entregas que sua equipe entende no primeiro dia',
@@ -416,8 +430,10 @@ export const LANDING: LandingContent = {
       'Blog',
     ],
     legal: ['Privacidade', 'Termos de uso', 'LGPD'],
-    rights: 'Todos os direitos reservados.',
-    entity: 'CNPJ 63.758.902/0001-01 — EBS IT SOLUTIONS',
+    copyright:
+      '© {year} Mesaas. Todos os direitos reservados. · CNPJ 63.758.902/0001-01 — EBS IT SOLUTIONS',
+    cookieSettings: 'Preferências de cookies',
+    otherLanguage: 'English',
     instagramLabel: 'Instagram do Mesaas',
     linkedinLabel: 'LinkedIn do Mesaas',
     youtubeLabel: 'YouTube do Mesaas',

@@ -64,6 +64,12 @@ export const LANDING_EN: LandingContent = {
     hub: 'Mesaas client portal with approvals by link',
     calendario: 'Mesaas monthly content calendar',
   },
+  heroAlts: {
+    macbook:
+      'MacBook showing the Mesaas deliverables board: workflows by stage, from briefing to client approval',
+    iphone: 'iPhone showing the client Hub: pending approvals and the next post',
+  },
+  faqTitle: 'Frequently asked questions',
   features: [
     {
       title: 'A deliverables board your team gets on day one',
@@ -236,7 +242,7 @@ export const LANDING_EN: LandingContent = {
     logoLabel: 'Mesaas',
   },
   footer: {
-    tagline: 'Management for people who live on social media. Made in Brazil.',
+    tagline: 'Management for people who live on social media.',
     productLabel: 'Product',
     legalLabel: 'Legal',
     product: [
@@ -251,9 +257,11 @@ export const LANDING_EN: LandingContent = {
       'Changelog',
       'Blog',
     ],
-    legal: ['Privacy', 'Terms of use', 'LGPD'],
-    rights: 'All rights reserved.',
-    entity: 'EBS IT SOLUTIONS (Brazil CNPJ 63.758.902/0001-01)',
+    legal: ['Privacy Policy', 'Terms of Service'],
+    copyright: '© {year} Mesaas, operated by EBS IT SOLUTIONS (Salvador, Brazil)',
+    cookieSettings: 'Cookie settings',
+    doNotSell: 'Do Not Sell or Share My Personal Information',
+    otherLanguage: 'Versão em português',
     instagramLabel: 'Mesaas on Instagram',
     linkedinLabel: 'Mesaas on LinkedIn',
     youtubeLabel: 'Mesaas on YouTube',
