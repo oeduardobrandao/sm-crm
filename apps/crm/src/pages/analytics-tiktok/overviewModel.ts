@@ -34,7 +34,9 @@ export const formatNumber = (n: number | null | undefined): string =>
 
 /** A rate in percent; null (no views) reads "—", never 0%. */
 export const formatPct = (v: number | null | undefined): string =>
-  v === null || v === undefined ? '—' : `${v.toFixed(2).replace('.', ',')}%`;
+  v === null || v === undefined
+    ? '—'
+    : `${getIntlLocale() === 'en-US' ? v.toFixed(2) : v.toFixed(2).replace('.', ',')}%`;
 
 export function formatDay(iso: string | null, language: string): string {
   if (!iso) return '—';
