@@ -46,6 +46,13 @@ import {
 import { captureEvent } from '@/lib/analytics';
 import { captureCheckoutStarted } from '@/lib/checkout-analytics';
 import ComecarPage from '../ComecarPage';
+import i18n from 'i18next';
+import ptSetup from '../../../../../../packages/i18n/locales/pt/setup.json';
+import enSetup from '../../../../../../packages/i18n/locales/en/setup.json';
+
+// `setup` is a lazy namespace the shared test setup does not bundle.
+i18n.addResourceBundle('pt', 'setup', ptSetup, true, true);
+i18n.addResourceBundle('en', 'setup', enSetup, true, true);
 
 const assign = vi.fn();
 

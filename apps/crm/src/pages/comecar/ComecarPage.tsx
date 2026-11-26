@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
+import { i18n } from '@mesaas/i18n';
 import { toast } from 'sonner';
 import { Check, Loader2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -22,7 +25,7 @@ import {
   planHasPortal,
   resolveCurrentPlanId,
 } from '@/pages/configuracao/cobranca/plan-display';
-import { formatTrialDate, isReverseTrialRunning, reverseTrialPhase } from '@/lib/reverseTrial';
+import { isReverseTrialRunning, reverseTrialPhase } from '@/lib/reverseTrial';
 import { captureEvent } from '@/lib/analytics';
 import { captureCheckoutStarted } from '@/lib/checkout-analytics';
 import { rememberCheckoutValue } from '@/lib/googleAdsLoader';
@@ -39,6 +42,7 @@ import { PagarmeCheckoutDialog } from '@/components/billing/PagarmeCheckoutDialo
 import { parsePlanIntent } from './plan-intent';
 import { trialCandidates } from './recommend';
 import { TrialPlanPicker, type ComecarMode } from './TrialPlanPicker';
+import { formatComecarTrialDate, useComecarLang } from './comecarLocale';
 import './comecar.css';
 
 const RECOMMENDED_ID = 'pro';
@@ -51,11 +55,19 @@ type CheckoutExtra = {
   days_left?: number;
 };
 
-function planHighlights(p: BillingPlan): string[] {
+function planHighlights(p: BillingPlan, t: TFunction<'setup'>): string[] {
   const out: string[] = [];
-  out.push(p.max_clients == null ? 'Clientes ilimitados' : `${p.max_clients} clientes`);
-  out.push(p.max_team_members == null ? 'Usuários ilimitados' : `${p.max_team_members} usuários`);
-  if (planHasPortal(p)) out.push('Portal de aprovação do cliente');
+  out.push(
+    p.max_clients == null
+      ? t('comecar.unlimitedClients')
+      : t('comecar.clientsCount', { count: p.max_clients }),
+  );
+  out.push(
+    p.max_team_members == null
+      ? t('comecar.unlimitedUsers')
+      : t('comecar.usersCount', { count: p.max_team_members }),
+  );
+  if (planHasPortal(p)) out.push(t('comecar.clientPortal'));
   return out;
 }
 
@@ -79,12 +91,14 @@ async function startAndRedirect(
     window.location.assign(url);
     return true;
   } catch (err) {
-    toast.error('Não foi possível abrir o checkout: ' + (err as Error).message);
+    toast.error(i18n.t('setup:comecar.checkoutFailed', { message: (err as Error).message }));
     return false;
   }
 }
 
 export default function ComecarPage() {
+  const { t } = useTranslation('setup');
+  const lang = useComecarLang();
   const { role, workspaceRole, loading: authLoading } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
@@ -294,8 +308,8 @@ export default function ComecarPage() {
     return (
       <div className="comecar-shell comecar-shell--center">
         <div className="comecar-standby">
-          <h1>Não foi possível carregar seu plano</h1>
-          <p>Tivemos um problema ao buscar as informações da sua assinatura.</p>
+          <h1>{t('comecar.loadErrorTitle')}</h1>
+          <p>{t('comecar.loadErrorSub')}</p>
           <button
             type="button"
             className="comecar-cta"
@@ -305,7 +319,7 @@ export default function ComecarPage() {
               void refetchEffectivePlan();
             }}
           >
-            Tentar novamente
+            {t('comecar.loadErrorRetry')}
           </button>
         </div>
       </div>
@@ -326,10 +340,10 @@ export default function ComecarPage() {
       <div className="comecar-shell comecar-shell--center">
         <div className="comecar-standby">
           <Loader2 className="comecar-spin" size={24} aria-hidden="true" />
-          <h1>Preparando seu teste do plano {intentPlan?.name ?? intent.planId}</h1>
-          <p>Levamos você ao pagamento seguro. Nada é cobrado nos próximos 30 dias.</p>
+          <h1>{t('comecar.standbyTitle', { plan: intentPlan?.name ?? intent.planId })}</h1>
+          <p>{t('comecar.standbySub')}</p>
           <button type="button" className="comecar-link" onClick={() => setIntent(null)}>
-            Escolher outro plano
+            {t('comecar.standbyOther')}
           </button>
         </div>
       </div>
@@ -367,21 +381,21 @@ export default function ComecarPage() {
     navigate('/dashboard', { replace: true });
   }
 
-  const reverseEndDate = reverseEndsAt ? formatTrialDate(reverseEndsAt) : '';
+  const reverseEndDate = reverseEndsAt ? formatComecarTrialDate(reverseEndsAt, lang) : '';
   const footNote =
     mode === 'reverse_running'
-      ? `Nada é cobrado antes de ${reverseEndDate}, quando o teste termina.`
+      ? t('comecar.footReverseRunning', { date: reverseEndDate })
       : mode === 'reverse_ended'
         ? null
-        : 'Pedimos o cartão agora, mas nada é cobrado nos primeiros 30 dias.';
+        : t('comecar.footCardTrial');
 
   // WhatsApp support is a Brazilian channel: a USD workspace never sees it (spec §7).
   const footerHelp = currency !== 'usd' && isWhatsAppSupportEnabled() && (
     <p className="comecar-foot__help">
-      Prefere falar com uma pessoa?{' '}
+      {t('comecar.helpPrompt')}{' '}
       <WhatsAppSupportButton
         context="onboarding"
-        label="Fale com a gente no WhatsApp"
+        label={t('comecar.helpWhatsApp')}
         className="comecar-link comecar-link--inline"
       />
     </p>
@@ -425,40 +439,34 @@ export default function ComecarPage() {
               className="comecar-link comecar-back"
               onClick={() => setView('picker')}
             >
-              Voltar
+              {t('comecar.back')}
             </button>
           )}
           <header className="comecar-head">
             {mode === 'reverse_running' ? (
               <>
-                <h1>Escolha o plano para depois do teste</h1>
-                <p>
-                  A primeira cobrança só acontece em {reverseEndDate}, no fim do teste. Cancele
-                  quando quiser.
-                </p>
+                <h1>{t('comecar.gridTitleReverseRunning')}</h1>
+                <p>{t('comecar.gridSubReverseRunning', { date: reverseEndDate })}</p>
               </>
             ) : mode === 'reverse_ended' ? (
               <>
-                <h1>Escolha seu plano</h1>
-                <p>A cobrança é imediata: o teste grátis já foi usado. Cancele quando quiser.</p>
+                <h1>{t('comecar.gridTitleReverseEnded')}</h1>
+                <p>{t('comecar.gridSubReverseEnded')}</p>
               </>
             ) : (
               <>
-                <h1>Comece com 30 dias grátis</h1>
-                <p>
-                  Escolha o plano do seu teste. Você só é cobrado depois de 30 dias e pode cancelar
-                  quando quiser.
-                </p>
+                <h1>{t('comecar.gridTitleCardTrial')}</h1>
+                <p>{t('comecar.gridSubCardTrial')}</p>
               </>
             )}
           </header>
 
-          <div className="comecar-toggle" role="group" aria-label="Período de cobrança">
+          <div className="comecar-toggle" role="group" aria-label={t('comecar.billingPeriod')}>
             <button aria-pressed={interval === 'month'} onClick={() => setInterval('month')}>
-              Mensal
+              {t('comecar.monthly')}
             </button>
             <button aria-pressed={interval === 'year'} onClick={() => setInterval('year')}>
-              Anual
+              {t('comecar.annual')}
             </button>
           </div>
 
@@ -482,24 +490,34 @@ export default function ComecarPage() {
                 >
                   <div className="comecar-card__top">
                     <span className="comecar-card__name">{p.name}</span>
-                    {p.id === RECOMMENDED_ID && <span className="comecar-tag">Recomendado</span>}
+                    {p.id === RECOMMENDED_ID && (
+                      <span className="comecar-tag">{t('comecar.recommended')}</span>
+                    )}
                   </div>
                   {mode === 'reverse_running' ? (
-                    <p className="comecar-card__trial">Grátis até {reverseEndDate}</p>
+                    <p className="comecar-card__trial">
+                      {t('comecar.freeUntil', { date: reverseEndDate })}
+                    </p>
                   ) : mode === 'card_trial' ? (
-                    <p className="comecar-card__trial">30 dias grátis</p>
+                    <p className="comecar-card__trial">{t('comecar.thirtyDaysFree')}</p>
                   ) : null}
                   <p className="comecar-card__price">
-                    {mode === 'reverse_ended' ? '' : 'depois '}
+                    {mode === 'reverse_ended' ? '' : t('comecar.afterPrefix')}
                     {monthly == null
-                      ? 'Sob consulta'
+                      ? t('comecar.onRequest')
                       : gated
                         ? // PRIMARY AMOUNT RULE: the 12x's own parcela, never price_brl_annual / 12.
-                          `12x de ${formatPlanPrice(p.pagarme_installment_cents ?? 0, currency)} no cartão ou ${formatPlanPrice(amount ?? 0, currency)} à vista`
-                        : `${formatPlanPrice(monthly, currency)}/mês`}
+                          t('comecar.installments', {
+                            installment: formatPlanPrice(
+                              p.pagarme_installment_cents ?? 0,
+                              currency,
+                            ),
+                            total: formatPlanPrice(amount ?? 0, currency),
+                          })
+                        : t('comecar.perMonth', { price: formatPlanPrice(monthly, currency) })}
                   </p>
                   <ul className="comecar-card__features">
-                    {planHighlights(p).map((f) => (
+                    {planHighlights(p, t).map((f) => (
                       <li key={f}>
                         <Check size={14} aria-hidden="true" />
                         {f}
@@ -513,12 +531,12 @@ export default function ComecarPage() {
                     disabled={busy !== null || unpriced}
                   >
                     {busy === p.id
-                      ? 'Aguarde…'
+                      ? t('comecar.wait')
                       : mode === 'reverse_running'
-                        ? 'Continuar depois do teste'
+                        ? t('comecar.ctaReverseRunning')
                         : mode === 'reverse_ended'
-                          ? 'Assinar'
-                          : 'Começar teste'}
+                          ? t('comecar.ctaReverseEnded')
+                          : t('comecar.ctaCardTrial')}
                   </button>
                 </div>
               );
@@ -528,9 +546,7 @@ export default function ComecarPage() {
           <footer className="comecar-foot">
             {footNote && <p>{footNote}</p>}
             <button type="button" className="comecar-link" onClick={() => void handleSkip()}>
-              {mode === 'reverse_running'
-                ? 'Decidir depois'
-                : 'Prefiro continuar no plano Free por enquanto'}
+              {mode === 'reverse_running' ? t('comecar.decideLater') : t('comecar.stayFree')}
             </button>
             {footerHelp}
           </footer>
