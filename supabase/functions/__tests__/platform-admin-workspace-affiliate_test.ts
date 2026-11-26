@@ -187,3 +187,64 @@ Deno.test("loadWorkspaceAffiliate returns { id, name, code } or null", async () 
   const none = setup({ affiliate_referrals: [{ data: null, error: null }] });
   assertEquals(await loadWorkspaceAffiliate(none.db as never, "ws-1"), null);
 });
+
+// ─── reclassify the acquisition channel after an affiliate change ───
+
+function reclassifyCalls(t: ReturnType<typeof setup>) {
+  return t.calls.filter((c) => c.table === "rpc:workspace_acquisition_reclassify");
+}
+
+Deno.test("set-workspace-affiliate reclassifies the channel after set, change and removal", async () => {
+  const cases: Array<{ name: string; ref: string | null; current: unknown }> = [
+    { name: "set", ref: "novo123", current: null },
+    { name: "change", ref: "novo123", current: { affiliate_id: "aff-1" } },
+    { name: "remove", ref: null, current: { affiliate_id: "aff-1" } },
+  ];
+  for (const c of cases) {
+    const t = setup({
+      workspaces: [WS],
+      affiliate_referrals: [{ data: c.current, error: null }, { data: null, error: null }],
+      affiliates: [{ data: AFF_NEW, error: null }],
+      workspace_members: [OWNERS],
+    });
+    const r = await run(t, { workspace_id: "ws-1", ref_code: c.ref });
+    assertEquals(r.status, 200, c.name);
+    const rc = reclassifyCalls(t);
+    assertEquals(rc.length, 1, c.name);
+    assertEquals(rc[0].args[0], { p_workspace: "ws-1" }, c.name);
+  }
+});
+
+Deno.test("set-workspace-affiliate: no reclassify when nothing changed", async () => {
+  const t = setup({
+    workspaces: [WS],
+    affiliate_referrals: [{ data: { affiliate_id: "aff-2" }, error: null }],
+    affiliates: [{ data: AFF_NEW, error: null }],
+    workspace_members: [OWNERS],
+  });
+  await run(t, { workspace_id: "ws-1", ref_code: "novo123" });
+  assertEquals(reclassifyCalls(t).length, 0);
+});
+
+Deno.test("set-workspace-affiliate: a failing reclassify is logged and the action still returns 200", async () => {
+  const t = makeFakeDb({
+    workspaces: [WS],
+    affiliate_referrals: [{ data: null, error: null }, { data: null, error: null }],
+    affiliates: [{ data: AFF_NEW, error: null }],
+    workspace_members: [OWNERS],
+  }, { workspace_acquisition_reclassify: [{ data: null, error: { message: "boom" } }] });
+  t.db.auth.admin = {
+    getUserById: (_id: string) => Promise.resolve({ data: { user: { email: "dono@x.com" } }, error: null }),
+  } as never;
+  const orig = console.error;
+  const logged: unknown[][] = [];
+  console.error = (...a: unknown[]) => { logged.push(a); };
+  try {
+    const res = await handleSetWorkspaceAffiliate(t.db as never, { workspace_id: "ws-1", ref_code: "novo123" } as never, ACTOR, HEADERS);
+    assertEquals(res.status, 200);
+    assertEquals(await res.json(), { affiliate: { id: "aff-2", name: "Bia", code: "novo123" } });
+  } finally {
+    console.error = orig;
+  }
+  assert(logged.some((a) => String(a[0]).includes("reclassify")), "the failure must be logged");
+});

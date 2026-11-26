@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -19,9 +19,19 @@ vi.mock('react-chartjs-2', () => ({
   ),
 }));
 
-vi.mock('../../lib/api', () => ({ getMetricsHistory: vi.fn() }));
+vi.mock('../../lib/api', () => ({ getMetricsHistory: vi.fn(), getAcquisitionChannels: vi.fn() }));
 
-import { getMetricsHistory, type MetricsHistoryResponse, type MetricsMonth } from '../../lib/api';
+const phone = vi.hoisted(() => ({ value: false }));
+vi.mock('../../hooks/useIsPhone', () => ({ useIsPhone: () => phone.value }));
+
+import {
+  getAcquisitionChannels,
+  getMetricsHistory,
+  type AcquisitionChannelRow,
+  type MetricsHistoryResponse,
+  type MetricsMonth,
+} from '../../lib/api';
+import { ChannelsSection } from '../metricas/ChannelsSection';
 import { RevenueSection } from '../metricas/RevenueSection';
 import { MovementSection } from '../metricas/MovementSection';
 
@@ -85,7 +95,10 @@ const DATA: MetricsHistoryResponse = {
   ],
 };
 
-beforeEach(() => vi.mocked(getMetricsHistory).mockReset());
+beforeEach(() => {
+  vi.mocked(getMetricsHistory).mockReset();
+  phone.value = false;
+});
 
 const usdMonth = (over: Partial<MetricsMonth> = {}): MetricsMonth => ({
   month: '2026-09',
@@ -217,5 +230,122 @@ describe('MovementSection', () => {
     expect(
       await screen.findByText('Movimento aparece a partir do segundo mês'),
     ).toBeInTheDocument();
+  });
+});
+
+const CHANNELS: AcquisitionChannelRow[] = [
+  {
+    channel: 'meta_ads',
+    signups: 10,
+    ever_paid: 4,
+    paying_now: 3,
+    mrr_cents: { brl: 30000, usd: 0 },
+    campaigns: [
+      {
+        campaign: 'black-friday',
+        signups: 10,
+        ever_paid: 4,
+        paying_now: 3,
+        mrr_cents: { brl: 30000, usd: 0 },
+      },
+    ],
+  },
+  {
+    channel: 'direct',
+    signups: 5,
+    ever_paid: 1,
+    paying_now: 1,
+    mrr_cents: { brl: 10000, usd: 500 },
+    campaigns: [],
+  },
+];
+
+describe('ChannelsSection', () => {
+  it('renders the columns, the merged direct row and the total', async () => {
+    vi.mocked(getAcquisitionChannels).mockResolvedValue({ channels: CHANNELS });
+    wrap(<ChannelsSection />);
+    expect(await screen.findByText('Meta Ads')).toBeInTheDocument();
+    for (const name of [
+      'Canal',
+      'Cadastros',
+      'Assinaram',
+      'Pagando hoje',
+      'MRR (R$)',
+      'MRR (US$)',
+    ]) {
+      expect(screen.getByRole('columnheader', { name })).toBeInTheDocument();
+    }
+    expect(screen.getByText('Direto / desconhecido')).toBeInTheDocument();
+    expect(screen.getByText('Total')).toBeInTheDocument();
+    expect(screen.getByText(/Clique num canal para ver as campanhas/)).toBeInTheDocument();
+  });
+
+  it('reveals the campaign rows when a channel is clicked', async () => {
+    vi.mocked(getAcquisitionChannels).mockResolvedValue({ channels: CHANNELS });
+    wrap(<ChannelsSection />);
+    await screen.findByText('Meta Ads');
+    expect(screen.queryByText('black-friday')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Meta Ads, campanhas' }));
+    expect(screen.getByText('black-friday')).toBeInTheDocument();
+  });
+
+  it('refetches with the new months when the range changes', async () => {
+    vi.mocked(getAcquisitionChannels).mockResolvedValue({ channels: CHANNELS });
+    wrap(<ChannelsSection />);
+    await screen.findByText('Meta Ads');
+    const [from, to] = vi.mocked(getAcquisitionChannels).mock.calls[0];
+    expect(from).toBe(to);
+    fireEvent.change(screen.getByLabelText('Cadastros de'), { target: { value: '2026-01' } });
+    await waitFor(() => expect(getAcquisitionChannels).toHaveBeenCalledWith('2026-01', to));
+  });
+
+  it('blocks a range over 24 months with its own message, without calling the API', async () => {
+    vi.mocked(getAcquisitionChannels).mockReset();
+    vi.mocked(getAcquisitionChannels).mockResolvedValue({ channels: CHANNELS });
+    wrap(<ChannelsSection />);
+    await screen.findByText('Meta Ads');
+    fireEvent.change(screen.getByLabelText('até'), { target: { value: '2026-12' } });
+    // 2025-01..2026-12 is exactly 24 months: allowed.
+    fireEvent.change(screen.getByLabelText('Cadastros de'), { target: { value: '2025-01' } });
+    await waitFor(() => expect(getAcquisitionChannels).toHaveBeenCalledWith('2025-01', '2026-12'));
+    const calls = vi.mocked(getAcquisitionChannels).mock.calls.length;
+    // 2024-12..2026-12 is 25 months: blocked.
+    fireEvent.change(screen.getByLabelText('Cadastros de'), { target: { value: '2024-12' } });
+    expect(await screen.findByText('Período longo demais')).toBeInTheDocument();
+    expect(screen.getByText('Escolha até 24 meses.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /tentar/i })).not.toBeInTheDocument();
+    expect(vi.mocked(getAcquisitionChannels).mock.calls.length).toBe(calls);
+  });
+
+  it('on a phone shows the direct/unknown split as a visible line and expands campaigns', async () => {
+    phone.value = true;
+    vi.mocked(getAcquisitionChannels).mockResolvedValue({
+      channels: [
+        ...CHANNELS,
+        {
+          channel: 'unknown',
+          signups: 2,
+          ever_paid: 0,
+          paying_now: 0,
+          mrr_cents: { brl: 0, usd: 0 },
+          campaigns: [],
+        },
+      ],
+    });
+    wrap(<ChannelsSection />);
+    const card = await screen.findByTestId('channel-card-direct_unknown');
+    expect(card).toHaveTextContent('Direto: 5 · Não capturado: 2');
+    expect(screen.queryByRole('columnheader')).not.toBeInTheDocument();
+    expect(screen.queryByText('black-friday')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Meta Ads, campanhas' }));
+    expect(screen.getByTestId('channel-card-meta_ads')).toHaveTextContent('black-friday');
+  });
+
+  it('shows the error state when the request fails', async () => {
+    vi.mocked(getAcquisitionChannels).mockRejectedValue(new Error('boom'));
+    wrap(<ChannelsSection />);
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Não foi possível carregar os canais de aquisição.',
+    );
   });
 });

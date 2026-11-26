@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { Sparkles, ArrowLeft, Play, Check, MailCheck, CircleAlert } from 'lucide-react';
 import { signIn, signUp, resetPassword, resendSignupConfirmation } from '../../lib/supabase';
+import { clearStoredAcquisition, getStoredAcquisition } from '../../lib/acquisition';
 import { clearStoredReferral, getStoredReferral } from '../../lib/referral';
 import { captureEvent, identifySignup } from '@/lib/analytics';
 import { readSignupMarket } from '@/lib/signupMarket';
@@ -262,6 +263,7 @@ export default function LoginPage() {
     regSubmitting.current = true;
     setLoading(true);
     const refCode = getStoredReferral();
+    const acq = getStoredAcquisition();
     let result: Awaited<ReturnType<typeof signUp>>;
     try {
       result = await signUp(
@@ -271,6 +273,7 @@ export default function LoginPage() {
           nome,
           empresa: '',
           ...(refCode ? { ref_code: refCode } : {}),
+          ...(acq ? { acq } : {}),
           ...(signupMarket ? { market: signupMarket } : {}),
         },
         confirmRedirectPath,
@@ -312,6 +315,8 @@ export default function LoginPage() {
     if (data?.user?.id) identifySignup(data.user.id);
     // A atribuição já foi gravada com o usuário; não reaproveitar em outro cadastro deste navegador.
     if (refCode) clearStoredReferral();
+    // Origem de aquisição já foi gravada no workspace; não reaproveitar em outro cadastro.
+    clearStoredAcquisition();
     if (signupMarket) captureEvent('signup_completed', { market: signupMarket });
     else captureEvent('signup_completed');
     trackMetaEvent('CompleteRegistration');

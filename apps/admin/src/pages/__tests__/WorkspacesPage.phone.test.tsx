@@ -74,7 +74,10 @@ beforeEach(() => {
     ],
   } as never);
   mockedList.mockResolvedValue(
-    response([ws('a', 'Alpha', { has_overrides: true }), ws('b', 'Beta')], 2),
+    response(
+      [ws('a', 'Alpha', { has_overrides: true, acquisition_channel: 'meta_ads' }), ws('b', 'Beta')],
+      2,
+    ),
   );
 });
 afterEach(() => restorePhone());
@@ -90,6 +93,10 @@ describe('WorkspacesPage on phones', () => {
     expect(within(alpha).getByText('Pro')).toBeInTheDocument();
     expect(within(alpha).getByText(/2 clientes/)).toBeInTheDocument();
     expect(within(alpha).getByText(/Sem assinatura/)).toBeInTheDocument();
+    expect(within(alpha).getByText(/Meta Ads/)).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('link', { name: /Beta/ })).getByText(/Sem dados/),
+    ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Beta/ })).toHaveAttribute(
       'href',
       '/admin/workspaces/b',

@@ -20,6 +20,7 @@ const FULL: WorkspacesListParams = {
   status: ['pendente'],
   overrides: 'sim',
   atividade: ['dormente'],
+  origem: ['meta_ads'],
   criado: '30d',
   ord: 'client_count',
   dir: 'asc',
@@ -104,6 +105,7 @@ describe('workspaces-params', () => {
       status: 'pendente',
       has_overrides: true,
       activity: 'dormente',
+      channels: 'meta_ads',
       created_since: '2026-08-05T12:00:00.000Z',
       sort: 'client_count',
       dir: 'asc',
@@ -167,5 +169,20 @@ describe('workspaces-params', () => {
       ord: 'client_count',
       dir: 'desc',
     });
+  });
+
+  it('reads ?origem as a canonical channel list and maps it to channels', () => {
+    const parsed = parseWorkspacesParams(
+      new URLSearchParams('origem=no_data,bogus,meta_ads,meta_ads'),
+    );
+    expect(parsed.origem).toEqual(['meta_ads', 'no_data']);
+    expect(serializeWorkspacesParams(parsed).get('origem')).toBe('meta_ads,no_data');
+    expect(toListWorkspacesRequest(parsed, new Date('2026-09-04T12:00:00.000Z')).channels).toBe(
+      'meta_ads,no_data',
+    );
+    expect(
+      toListWorkspacesRequest(DEFAULT_PARAMS, new Date('2026-09-04T12:00:00.000Z')),
+    ).not.toHaveProperty('channels');
+    expect(countSheetFilters(parsed)).toBe(1);
   });
 });

@@ -132,6 +132,14 @@ export async function handleSetWorkspaceAffiliate(
       resource_id: workspaceId,
       metadata: { old_affiliate_id: oldId, new_affiliate_id: newId },
     });
+    // The acquisition channel depends on the referral (affiliate wins over the captured source).
+    // Best-effort: the referral change is already committed, so a failure here is only logged.
+    try {
+      const { error: rcErr } = await svc.rpc("workspace_acquisition_reclassify", { p_workspace: workspaceId });
+      if (rcErr) console.error("[platform-admin:set-workspace-affiliate] reclassify failed", { workspaceId, error: rcErr });
+    } catch (rcEx) {
+      console.error("[platform-admin:set-workspace-affiliate] reclassify failed", { workspaceId, error: rcEx });
+    }
     return json(payload, 200, headers);
   } catch (e) {
     console.error("[platform-admin:set-workspace-affiliate] failed", { workspaceId, error: e });

@@ -23,12 +23,14 @@ export async function handleListWorkspaces(
     created_since?: string;
     sort?: string;
     dir?: string;
+    /** Comma-separated channel buckets (acquisition filter); omitted = no filter. */
+    channels?: string;
   },
   headers: Record<string, string>,
 ) {
   const {
     search, plan_id, offset, limit, as_of,
-    status, has_overrides, activity, created_since, sort, dir,
+    status, has_overrides, activity, created_since, sort, dir, channels,
   } = body;
   const { data, error } = await svc.rpc("admin_list_workspaces", {
     p_search: search ?? null,
@@ -43,6 +45,7 @@ export async function handleListWorkspaces(
     p_created_since: created_since ?? null,
     p_sort: sort ?? "created_at",
     p_dir: dir ?? "desc",
+    p_channels: channels ?? null,
   });
   if (error) throw error;
   const payload = (data ?? {}) as {

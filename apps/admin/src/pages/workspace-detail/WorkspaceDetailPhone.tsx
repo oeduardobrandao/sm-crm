@@ -16,6 +16,7 @@ import {
 import { PageHeader } from '../../components/PageHeader';
 import { KpiGrid } from '../../components/shell/KpiTile';
 import { AffiliateRow } from './AffiliateRow';
+import { OriginBody } from './OriginPanel';
 import { Badge } from '../../components/ui/badge';
 import WorkspaceInvitesCard from '../WorkspaceInvitesCard';
 import WorkspaceEventsCard from '../WorkspaceEventsCard';
@@ -147,6 +148,13 @@ export function WorkspaceDetailPhone(props: WorkspaceDetailViewProps) {
         <SectionHeader id="wdp-affiliate" title="Afiliado" />
         <div className="mx-4 rounded-[10px] bg-[var(--phone-fill)]">
           <AffiliateRow workspaceId={props.workspaceId} affiliate={data.affiliate} />
+        </div>
+      </section>
+
+      <section className="phone-group" aria-labelledby="wdp-origin">
+        <SectionHeader id="wdp-origin" title="Origem" />
+        <div className="mx-4 rounded-[10px] bg-[var(--phone-fill)] p-3.5">
+          <OriginBody acquisition={data.acquisition} />
         </div>
       </section>
 

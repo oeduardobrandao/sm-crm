@@ -9,6 +9,7 @@ import {
 import { initSentry } from '@/lib/sentry';
 import { installConsentEffects } from './lib/consentEffects';
 import { applyUsConsentDefault } from './lib/usConsentDefault';
+import { captureAcquisition } from './lib/acquisition';
 import { captureReferral } from './lib/referral';
 import { initI18n } from '@mesaas/i18n';
 import { I18N_LAZY, I18N_RESOURCES } from './boot/i18nResources';
@@ -34,6 +35,8 @@ installConsentEffects();
 
 // Programa de afiliados: grava o ?ref= de qualquer página do site para o cadastro (lib/referral.ts).
 captureReferral(window.location.search);
+// Origem de aquisição (primeira e última visita, só rótulos): spec 2026-11-26-workspace-acquisition-source §1.
+captureAcquisition(window.location.href, document.referrer);
 
 const container = document.getElementById('root')!;
 const { pathname } = window.location;

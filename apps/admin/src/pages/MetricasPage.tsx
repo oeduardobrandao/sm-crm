@@ -10,6 +10,7 @@ import { backfillMetrics, type AdminApiError } from '../lib/api';
 import { DepositsSection } from './metricas/DepositsSection';
 import { RevenueSection } from './metricas/RevenueSection';
 import { MovementSection } from './metricas/MovementSection';
+import { ChannelsSection } from './metricas/ChannelsSection';
 import { METRICS_HISTORY_KEY } from './metricas/useMetricsHistory';
 import { backfillToastMessage } from './metricas/metrics-view';
 
@@ -113,7 +114,10 @@ export default function MetricasPage() {
         {section === 'mrr' ? (
           <RevenueSection />
         ) : section === 'churn' ? (
-          <MovementSection />
+          <div className="space-y-8">
+            <MovementSection />
+            <ChannelsSection />
+          </div>
         ) : (
           <DepositsSection />
         )}

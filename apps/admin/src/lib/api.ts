@@ -10,6 +10,8 @@ import type {
   FilePostRow,
 } from '../pages/blog/blog-view';
 
+import type { AcquisitionChannel } from './acquisition-channels';
+
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 
 // ─── Types ────────────────────────────────────────────────────
@@ -32,6 +34,8 @@ export interface WorkspaceSummary {
   /** converted | downgraded | ended_by_admin once the reverse trial ended. */
   reverse_trial_outcome?: string | null;
   has_overrides: boolean;
+  /** Acquisition channel (admin_list_workspaces); absent on an older payload, read as no_data. */
+  acquisition_channel?: AcquisitionChannel;
   subscription: SubscriptionSummary | null;
 }
 
@@ -55,6 +59,14 @@ export interface WorkspaceDetail {
     reverse_trial_first_paid_at?: string | null;
   };
   affiliate?: { id: string; name: string; code: string } | null;
+  /** Where the signup came from; null = no capture and not a demo; absent on an older payload. */
+  acquisition?: {
+    channel: AcquisitionChannel;
+    campaign: string | null;
+    captured: boolean;
+    first_touch: Record<string, unknown> | null;
+    last_touch: Record<string, unknown> | null;
+  } | null;
   owner: MemberInfo | null;
   members: MemberInfo[];
   plan: { id: string; name: string } | null;
@@ -221,6 +233,8 @@ export type ListWorkspacesParams = {
   activity?: WorkspaceActivityBucket | (string & {});
   /** ISO timestamp; created_at >= created_since. */
   created_since?: string;
+  /** One AcquisitionChannel or a comma-separated list of them (OR). */
+  channels?: string;
   sort?: WorkspaceSortKey;
   dir?: SortDir;
 };
@@ -403,6 +417,28 @@ async function adminApi<T>(action: string, params: Record<string, unknown> = {})
 
 export function verifyAdmin() {
   return adminApi<{ is_admin: boolean }>('verify-admin');
+}
+
+export interface AcquisitionChannelTotals {
+  signups: number;
+  ever_paid: number;
+  paying_now: number;
+  /** MRR per currency; never summed across currencies. */
+  mrr_cents: { brl: number; usd: number };
+}
+
+export interface AcquisitionChannelRow extends AcquisitionChannelTotals {
+  /** A classifier value, or 'unknown' | 'demo' | 'no_data'. */
+  channel: AcquisitionChannel | (string & {});
+  campaigns: ({ campaign: string | null } & AcquisitionChannelTotals)[];
+}
+
+/** Signups by acquisition channel for the signup months from_month..to_month (YYYY-MM). */
+export function getAcquisitionChannels(from_month: string, to_month: string) {
+  return adminApi<{ channels: AcquisitionChannelRow[] }>('get-acquisition-channels', {
+    from_month,
+    to_month,
+  });
 }
 
 export function listWorkspaces(params?: ListWorkspacesParams) {

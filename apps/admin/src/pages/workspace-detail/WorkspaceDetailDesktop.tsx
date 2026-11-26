@@ -18,6 +18,7 @@ import { WorkspaceAvatar } from '../../components/WorkspaceAvatar';
 import { KpiGrid } from '../../components/shell/KpiTile';
 import { GlassPanel } from '../../components/shell/GlassPanel';
 import { AffiliateRow } from './AffiliateRow';
+import { OriginPanel } from './OriginPanel';
 import { DangerZonePanel } from './DangerZone';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
@@ -209,6 +210,7 @@ export function WorkspaceDetailDesktop(props: WorkspaceDetailViewProps) {
               <GlassPanel title="Afiliado" titleId="wd-affiliate" flush>
                 <AffiliateRow workspaceId={workspaceId} affiliate={data.affiliate} />
               </GlassPanel>
+              <OriginPanel acquisition={data.acquisition} />
               <SubscriptionPanel data={data} />
               <OverridesPanel {...props} />
             </div>
