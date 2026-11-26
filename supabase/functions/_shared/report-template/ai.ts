@@ -1,3 +1,4 @@
+import type { Lang } from "../i18n/lang.ts";
 import type { AIOutput, ReportData, Recommendation, SuggestedGoal } from "./types.ts";
 
 // ---------------------------------------------------------------------------
@@ -55,6 +56,32 @@ const GOOGLE_RULES = `GOOGLE MEU NEGÓCIO DATA RULES (the "google" data, the cli
 const PLATFORM_LABELS = { instagram: "Instagram", tiktok: "TikTok", google: "Google Meu Negócio" } as const;
 type PromptPlatform = keyof typeof PLATFORM_LABELS;
 
+// Idioma da saída. O prompt `pt` é o texto de sempre, byte a byte. O `en` troca a linha LANGUAGE
+// (para não haver duas instruções de idioma em conflito) e traduz os termos em português que as
+// regras de plataforma mandam o modelo citar entre aspas ("engajamento por visualização" etc.),
+// senão o modelo obedeceria à regra e escreveria português no meio do texto em inglês.
+const LANGUAGE_LINE_PT =
+  "LANGUAGE: Write entirely in Brazilian Portuguese (pt-BR). All text, including labels and section headers, must be in pt-BR.";
+const LANGUAGE_LINE_EN =
+  "LANGUAGE: Write in US English. All text, including labels and section headers, must be in US English.";
+
+// Ordem importa: o mais específico antes do nome genérico "Google Meu Negócio".
+const EN_TERMS: ReadonlyArray<readonly [string, string]> = [
+  ['"engajamento por visualização"', '"engagement per view"'],
+  ['"visualizações do perfil"', '"profile views"'],
+  ['"no período anterior"', '"in the previous period"'],
+  ['"no mês anterior"', '"in the previous month"'],
+  ["Ligar, Rotas, Site, Mensagem and Agendar", "Call, Directions, Website, Message and Book"],
+  ['"menos de N pessoas"', '"fewer than N people"'],
+  ["GOOGLE MEU NEGÓCIO DATA RULES", "GOOGLE BUSINESS PROFILE DATA RULES"],
+  ["Google Meu Negócio", "Google Business Profile"],
+];
+
+function localizeText(text: string, lang: Lang): string {
+  if (lang !== "en") return text;
+  return EN_TERMS.reduce((acc, [pt, en]) => acc.split(pt).join(en), text);
+}
+
 const joinNames = (names: string[]) =>
   names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 
@@ -78,7 +105,7 @@ const TIKTOK_ONLY_SCOPE = `REPORT SCOPE: This report covers only TikTok. There i
 
 const atHandle = (handle: string) => (handle.startsWith("@") ? handle : `@${handle}`);
 
-export function buildAIPrompt(data: ReportData, opts?: AIPromptOpts): AIPrompt {
+export function buildAIPrompt(data: ReportData, lang: Lang, opts?: AIPromptOpts): AIPrompt {
   const tiktok = data.tiktok;
   const google = data.google;
   // Instagram ausente só conta com outra plataforma presente: sem nenhuma, o prompt de hoje.
@@ -91,11 +118,15 @@ export function buildAIPrompt(data: ReportData, opts?: AIPromptOpts): AIPrompt {
     ...(google ? ["google" as const] : []),
   ];
   const platformRules = others
-    ? `\n\n${scopeLine(present)}${tiktok ? `\n\n${TIKTOK_RULES}` : ""}${google ? `\n\n${GOOGLE_RULES}` : ""}`
+    ? localizeText(
+      `\n\n${scopeLine(present)}${tiktok ? `\n\n${TIKTOK_RULES}` : ""}${google ? `\n\n${GOOGLE_RULES}` : ""}`,
+      lang,
+    )
     : "";
+  const gbpName = localizeText("Google Meu Negócio", lang);
   const systemPrompt = `You are a social media analytics specialist writing a monthly performance report for a client of a Brazilian social media agency.
 
-LANGUAGE: Write entirely in Brazilian Portuguese (pt-BR). All text, including labels and section headers, must be in pt-BR.
+${lang === "en" ? LANGUAGE_LINE_EN : LANGUAGE_LINE_PT}
 
 DATA RULES:
 - ONLY use numbers from the provided data — never invent or estimate numbers.
@@ -164,8 +195,8 @@ ${JSON.stringify(tiktokData, null, 2)}`;
     };
     const specialty = data.specialty ? ` (${data.specialty})` : "";
     const subject = tiktok
-      ? `TikTok account ${atHandle(tiktok.handle)} and Google Meu Negócio profile`
-      : "Google Meu Negócio profile";
+      ? `TikTok account ${atHandle(tiktok.handle)} and ${gbpName} profile`
+      : `${gbpName} profile`;
     const userPrompt = `Analyze the following ${subject} data for the client${specialty}, period ${data.period}:
 
 ${JSON.stringify(nonInstagramData, null, 2)}`;
@@ -199,7 +230,7 @@ ${JSON.stringify({ tiktok }, null, 2)}`
   const userPrompt = google
     ? `${withTiktok}
 
-Google Meu Negócio profile data (${google.units} ${google.units === 1 ? "unit" : "units"} combined), same period:
+${gbpName} profile data (${google.units} ${google.units === 1 ? "unit" : "units"} combined), same period:
 
 ${JSON.stringify({ google }, null, 2)}`
     : withTiktok;
@@ -321,10 +352,11 @@ export function validateAIOutput(raw: unknown): ValidateResult {
 export async function generateAINarrative(
   data: ReportData,
   apiKey: string,
+  lang: Lang,
   signal?: AbortSignal,
   promptOpts?: AIPromptOpts,
 ): Promise<GenerateResult> {
-  const { systemPrompt, userPrompt } = buildAIPrompt(data, promptOpts);
+  const { systemPrompt, userPrompt } = buildAIPrompt(data, lang, promptOpts);
 
   const MAX_RETRIES = 2;
   let response: Response | null = null;

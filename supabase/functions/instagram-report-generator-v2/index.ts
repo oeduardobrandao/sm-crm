@@ -1007,7 +1007,7 @@ Deno.serve(async (req) => {
 
     if (includeAi && GEMINI_API_KEY) {
       console.log(`[report-v2] Generating AI narrative for report ${reportId}`);
-      const aiResult = await generateAINarrative(reportData, GEMINI_API_KEY);
+      const aiResult = await generateAINarrative(reportData, GEMINI_API_KEY, lang);
       if (aiResult.status === "success") {
         aiOutput = aiResult.output;
         aiStatus = "success";

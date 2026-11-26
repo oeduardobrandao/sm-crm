@@ -30,7 +30,7 @@ const fixture: ReportData = {
 };
 
 Deno.test("buildAIPrompt includes system role and data payload", () => {
-  const { systemPrompt, userPrompt } = buildAIPrompt(fixture);
+  const { systemPrompt, userPrompt } = buildAIPrompt(fixture, "pt");
   assertEquals(systemPrompt.includes("social media analytics specialist"), true);
   assertEquals(systemPrompt.includes("pt-BR"), true);
   assertEquals(systemPrompt.includes("ONLY use numbers from the provided data"), true);
@@ -39,11 +39,11 @@ Deno.test("buildAIPrompt includes system role and data payload", () => {
 });
 
 Deno.test("buildAIPrompt: extraGuidance anexa ao system prompt; sem opts o prompt é byte-idêntico (paridade legado)", () => {
-  const plain = buildAIPrompt(fixture);
-  const withOpts = buildAIPrompt(fixture, {});
-  const guided = buildAIPrompt(fixture, { extraGuidance: "METRIC PRIORITY: views first." });
+  const plain = buildAIPrompt(fixture, "pt");
+  const withOpts = buildAIPrompt(fixture, "pt", {});
+  const guided = buildAIPrompt(fixture, "pt", { extraGuidance: "METRIC PRIORITY: views first." });
   // O gerador legado chama com um argumento: nada pode mudar nesse caminho.
-  const legacy = buildAIPrompt(fixture);
+  const legacy = buildAIPrompt(fixture, "pt");
   if (plain.systemPrompt !== legacy.systemPrompt) throw new Error("legacy prompt drifted");
   if (plain.systemPrompt !== withOpts.systemPrompt) throw new Error("empty opts changed prompt");
   if (!guided.systemPrompt.endsWith("METRIC PRIORITY: views first.")) {
@@ -65,7 +65,7 @@ Deno.test("buildAIPrompt strips base64 thumbnails from the data payload", () => 
       },
     ],
   };
-  const { userPrompt } = buildAIPrompt(withThumbs);
+  const { userPrompt } = buildAIPrompt(withThumbs, "pt");
   assertEquals(userPrompt.includes("thumbnail_base64"), false);
   assertEquals(userPrompt.includes("AAAA"), false);
   // The analytical fields still go through untouched.
@@ -113,7 +113,7 @@ Deno.test("generateAINarrative: signal já abortado não reinsiste no backoff, f
   try {
     const controller = new AbortController();
     controller.abort();
-    const result = await generateAINarrative(fixture, "fake-key", controller.signal);
+    const result = await generateAINarrative(fixture, "fake-key", "pt", controller.signal);
     assertEquals(result.status, "generation_failed");
     assertEquals(callCount, 1, "não deveria reinsistir depois de um abort");
   } finally {
@@ -159,7 +159,7 @@ const tiktokData: NonNullable<ReportData["tiktok"]> = {
 };
 
 Deno.test("legacy prompt is byte-identical without tiktok", async () => {
-  const { systemPrompt, userPrompt } = buildAIPrompt(fixture);
+  const { systemPrompt, userPrompt } = buildAIPrompt(fixture, "pt");
   assertEquals(userPrompt, LEGACY_USER_PREFIX + JSON.stringify(fixture, null, 2));
   const digest = Array.from(
     new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(systemPrompt))),
@@ -167,12 +167,12 @@ Deno.test("legacy prompt is byte-identical without tiktok", async () => {
   assertEquals(digest, LEGACY_SYSTEM_SHA256);
   // instagram_connected: true explícito também é o caminho de hoje.
   // (snapshotToReportData nunca emite a chave; isto cobre um chamador que emita.)
-  const withTrue = buildAIPrompt({ ...fixture, instagram_connected: true });
+  const withTrue = buildAIPrompt({ ...fixture, instagram_connected: true }, "pt");
   assertEquals(withTrue.systemPrompt, systemPrompt);
 });
 
 Deno.test("prompt includes TikTok block when present", () => {
-  const { systemPrompt, userPrompt } = buildAIPrompt({ ...fixture, tiktok: tiktokData });
+  const { systemPrompt, userPrompt } = buildAIPrompt({ ...fixture, tiktok: tiktokData }, "pt");
   // O bloco Instagram continua, igual ao de hoje, e o TikTok vem depois dele.
   assert(userPrompt.startsWith(LEGACY_USER_PREFIX + JSON.stringify(fixture, null, 2)));
   assert(userPrompt.includes("TikTok account data for @dra.tt"));
@@ -196,7 +196,7 @@ Deno.test("prompt omits Instagram block when instagram_connected false", () => {
     content_breakdown: {},
     instagram_connected: false,
     tiktok: tiktokData,
-  });
+  }, "pt");
   assert(!userPrompt.includes("Instagram"));
   assert(!userPrompt.includes('"content_breakdown"'));
   assert(!userPrompt.includes('"kpi_deltas"'));
@@ -208,13 +208,13 @@ Deno.test("prompt omits Instagram block when instagram_connected false", () => {
 });
 
 Deno.test("prompt TikTok: extraGuidance continua no fim do system prompt", () => {
-  const { systemPrompt } = buildAIPrompt({ ...fixture, tiktok: tiktokData }, { extraGuidance: "X-GUIDE" });
+  const { systemPrompt } = buildAIPrompt({ ...fixture, tiktok: tiktokData }, "pt", { extraGuidance: "X-GUIDE" });
   assert(systemPrompt.endsWith("X-GUIDE"));
 });
 
 Deno.test("prompt TikTok-only: specialty vazia ou null não vira parênteses vazios", () => {
   for (const specialty of ["", null as unknown as string]) {
-    const { userPrompt } = buildAIPrompt({ ...fixture, specialty, instagram_connected: false, tiktok: tiktokData });
+    const { userPrompt } = buildAIPrompt({ ...fixture, specialty, instagram_connected: false, tiktok: tiktokData }, "pt");
     assert(userPrompt.startsWith("Analyze the following TikTok account data for @dra.tt, period Maio 2026:"), userPrompt.slice(0, 90));
     assert(!userPrompt.includes("(null)"));
     assert(!userPrompt.includes("()"));
@@ -236,7 +236,7 @@ const googleData: NonNullable<ReportData["google"]> = {
 };
 
 Deno.test("prompt Google only: GMN rules and scope, no Instagram data", () => {
-  const { systemPrompt, userPrompt } = buildAIPrompt({ ...fixture, instagram_connected: false, google: googleData });
+  const { systemPrompt, userPrompt } = buildAIPrompt({ ...fixture, instagram_connected: false, google: googleData }, "pt");
   assert(systemPrompt.includes("GOOGLE MEU NEGÓCIO DATA RULES"));
   assert(systemPrompt.includes("REPORT SCOPE: This report covers only Google Meu Negócio. There is no Instagram data."));
   assert(!systemPrompt.includes("TIKTOK DATA RULES"));
@@ -245,7 +245,7 @@ Deno.test("prompt Google only: GMN rules and scope, no Instagram data", () => {
 });
 
 Deno.test("prompt Instagram + TikTok + Google: one scope line with the three platforms", () => {
-  const { systemPrompt, userPrompt } = buildAIPrompt({ ...fixture, tiktok: tiktokData, google: googleData });
+  const { systemPrompt, userPrompt } = buildAIPrompt({ ...fixture, tiktok: tiktokData, google: googleData }, "pt");
   assert(systemPrompt.includes("This report covers Instagram, TikTok and Google Meu Negócio."));
   assert(systemPrompt.includes("TIKTOK DATA RULES"));
   assert(systemPrompt.includes("GOOGLE MEU NEGÓCIO DATA RULES"));
@@ -256,7 +256,7 @@ Deno.test("prompt Instagram + TikTok + Google: one scope line with the three pla
 Deno.test("prompt TikTok + Google without Instagram: both in the data, no Instagram root", () => {
   const { systemPrompt, userPrompt } = buildAIPrompt({
     ...fixture, instagram_connected: false, tiktok: tiktokData, google: googleData,
-  });
+  }, "pt");
   assert(systemPrompt.includes("This report covers TikTok and Google Meu Negócio. There is no Instagram data."));
   assert(userPrompt.includes('"tiktok"') && userPrompt.includes('"google"'));
   assert(!userPrompt.includes("top_posts"));

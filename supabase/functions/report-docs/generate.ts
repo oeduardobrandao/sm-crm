@@ -46,9 +46,9 @@ export function metricPriorityGuidance(n: {
   tiktok: boolean;
   google?: boolean;
   instagramHasViews: boolean;
-}): string | undefined {
+}, lang: Lang = "pt"): string | undefined {
   if (!n.instagram || !n.instagramHasViews) return undefined;
-  const others = [n.tiktok ? "TikTok" : null, n.google ? "Google Meu Negócio" : null].filter(
+  const others = [n.tiktok ? "TikTok" : null, n.google ? (lang === "en" ? "Google Business Profile" : "Google Meu Negócio") : null].filter(
     (x): x is string => x !== null,
   );
   return others.length > 0 ? metricPriorityWithOthers(others.join(" or ")) : METRIC_PRIORITY_INSTAGRAM;
@@ -253,12 +253,13 @@ export async function generateReportDocument(
         tiktok: narrativeTiktok !== null,
         google: narrativeGoogle !== null,
         instagramHasViews: snapshot.kpis.views?.value != null,
-      });
+      }, deps.lang);
       const promptOpts = guidance ? { extraGuidance: guidance } : undefined;
       const ai = await Promise.race([
         generateAINarrative(
           snapshotToReportData(snapshot, narrative),
           deps.geminiKey,
+          deps.lang,
           controller.signal,
           promptOpts,
         ),
