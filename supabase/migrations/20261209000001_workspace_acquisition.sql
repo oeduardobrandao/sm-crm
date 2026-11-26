@@ -70,13 +70,15 @@ GRANT ALL ON TABLE public.acquisition_pending TO service_role;
 -- (3a) Saneamento de um touch. O metadata vem do navegador (controlado pelo
 -- usuário): só as 10 chaves do Touch, texto só quando é string JSON (aparado,
 -- vazio vira null, cortado em 200), utm_source/utm_medium em minúsculas,
--- landing_path só o caminho (sem query nem hash), at só timestamp ISO, click
--- só da lista, referrer_host só com cara de host e até 200 (acima vira null:
--- host cortado é lixo), ref só booleano. Devolve null quando t não é objeto.
+-- landing_path só o caminho (sem query nem hash, e sem o token das rotas com
+-- token), at só timestamp ISO, click só da lista, referrer_host só com cara de
+-- host e até 200 (acima vira null: host cortado é lixo), ref só booleano.
+-- Devolve null quando t não é objeto. STABLE, não IMMUTABLE: o cast de at para
+-- timestamptz depende do TimeZone da sessão.
 CREATE OR REPLACE FUNCTION public.acquisition_sanitize_touch(t jsonb)
 RETURNS jsonb
 LANGUAGE plpgsql
-IMMUTABLE
+STABLE
 SET search_path = public
 AS $$
 DECLARE
@@ -86,6 +88,7 @@ DECLARE
   v_click text;
   v_host  text;
   v_path  text;
+  v_tok   text;
   v_at    text;
 BEGIN
   IF t IS NULL OR jsonb_typeof(t) <> 'object' THEN
@@ -106,10 +109,19 @@ BEGIN
   END LOOP;
 
   -- landing_path: só o caminho. Corta na primeira ? ou # (query e hash podem
-  -- trazer click ids) e exige / inicial; senão null.
+  -- trazer click ids) e exige / inicial; senão null. Rotas do CRM com token no
+  -- caminho (painel de afiliado, convite, descadastro, cancelar avisos) ficam só
+  -- com o prefixo: o token é uma credencial. Mesma lista de TOKEN_ROUTE em
+  -- apps/crm/src/lib/acquisition.ts (manter as duas juntas); sem diferenciar
+  -- maiúsculas e com barras repetidas colapsadas, como o React Router casa.
   IF jsonb_typeof(t -> 'landing_path') = 'string' THEN
     v_path := split_part(split_part(btrim(t ->> 'landing_path'), '?', 1), '#', 1);
     IF left(v_path, 1) = '/' THEN
+      v_tok := substring(regexp_replace(v_path, '/{2,}', '/', 'g')
+                         FROM '(?i)^/(afiliados/painel|conectar|descadastrar|cancelar-avisos)/');
+      IF v_tok IS NOT NULL THEN
+        v_path := '/' || lower(v_tok);
+      END IF;
       v_path := left(v_path, 200);
     ELSE
       v_path := NULL;
@@ -363,9 +375,9 @@ CREATE TRIGGER on_auth_user_created_aaa_acquisition_stash
   EXECUTE FUNCTION public.stash_signup_acquisition();
 
 -- (5b) AFTER: lê e apaga o pending (o DELETE fica mesmo se o INSERT da linha
--- falhar, para o touch não sobrar), limpa pendings com mais de um dia e grava
--- a linha do workspace do dono. Sem captura, 'unknown' sem chamar o
--- classificador (para "sem dados" nunca virar "direto").
+-- falhar, para o touch não sobrar), grava a linha do workspace do dono e, num
+-- bloco próprio depois dela, limpa pendings com mais de um dia. Sem captura,
+-- 'unknown' sem chamar o classificador (para "sem dados" nunca virar "direto").
 CREATE OR REPLACE FUNCTION public.record_workspace_acquisition()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -390,9 +402,6 @@ BEGIN
     DELETE FROM public.acquisition_pending
      WHERE user_id = NEW.id
     RETURNING acq, captured INTO v_acq, v_captured;
-
-    DELETE FROM public.acquisition_pending
-     WHERE created_at < now() - interval '1 day';
 
     SELECT p.conta_id INTO v_ws
       FROM public.profiles p
@@ -424,6 +433,16 @@ BEGIN
     END;
   EXCEPTION WHEN OTHERS THEN
     RAISE WARNING 'workspace acquisition skipped for user %: %', NEW.id, SQLERRM;
+  END;
+
+  -- Limpeza dos pendings órfãos em bloco próprio, depois da linha: um lock
+  -- timeout ou deadlock aqui (dois cadastros limpando os mesmos órfãos) não
+  -- desfaz a linha do workspace.
+  BEGIN
+    DELETE FROM public.acquisition_pending
+     WHERE created_at < now() - interval '1 day';
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'acquisition pending cleanup skipped for user %: %', NEW.id, SQLERRM;
   END;
   RETURN NEW;
 END;

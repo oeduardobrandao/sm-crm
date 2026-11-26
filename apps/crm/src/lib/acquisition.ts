@@ -7,6 +7,9 @@
  * anúncio nem o código de afiliado, e não lê consentimento (só rótulos). No cadastro, o
  * valor vai nos metadados do signUp (`acq`).
  *
+ * Rotas com token no caminho (painel de afiliado, convite, descadastro, cancelar avisos) não são
+ * visita de aquisição: nada é gravado nelas, e o caminho nunca leva o token (vira só o prefixo).
+ *
  * Spec: docs/superpowers/specs/2026-11-26-workspace-acquisition-source-design.md §1
  */
 
@@ -40,6 +43,19 @@ const CLICK_PARAMS: ClickParam[] = ['gclid', 'gbraid', 'wbraid', 'fbclid', 'oppr
 const MAX_LEN = 200;
 const OWN_HOSTS = new Set(['mesaas.com.br', 'www.mesaas.com.br', 'localhost', '127.0.0.1']);
 const PAYMENT_HOSTS = new Set(['checkout.stripe.com', 'billing.stripe.com', 'connect.stripe.com']);
+
+/**
+ * Rotas do CRM cujo segmento seguinte é um token secreto (`App.tsx`). Manter em sincronia com
+ * `acquisition_sanitize_touch` (migration 20261209000001), que corta o mesmo caminho no servidor.
+ * Sem diferenciar maiúsculas: o React Router casa rotas assim.
+ */
+const TOKEN_ROUTE = /^\/(afiliados\/painel|conectar|descadastrar|cancelar-avisos)\//i;
+
+/** Prefixo da rota com token (sem o token), ou null quando o caminho não é uma delas. */
+export function tokenRoutePrefix(pathname: string): string | null {
+  const m = TOKEN_ROUTE.exec(pathname.replace(/\/{2,}/g, '/'));
+  return m ? `/${m[1].toLowerCase()}` : null;
+}
 
 function safeStorage(): MinimalStorage | null {
   try {
@@ -80,6 +96,24 @@ export function buildTouch(href: string, referrer: string, now: number): Acquisi
   const params = url?.searchParams ?? new URLSearchParams();
   const pageHost = url?.hostname.toLowerCase() ?? '';
 
+  const pathname = url?.pathname ?? '/';
+  const tokenPrefix = tokenRoutePrefix(pathname);
+  if (tokenPrefix) {
+    // Link com credencial: só o prefixo, e nada que o faça contar como toque não direto.
+    return {
+      utm_source: null,
+      utm_medium: null,
+      utm_campaign: null,
+      utm_content: null,
+      utm_term: null,
+      click: null,
+      ref: false,
+      referrer_host: null,
+      landing_path: tokenPrefix,
+      at: new Date(now).toISOString(),
+    };
+  }
+
   let referrerHost: string | null = null;
   const refUrl = referrer ? parseUrl(referrer) : null;
   if (refUrl && refUrl.hostname) {
@@ -96,7 +130,7 @@ export function buildTouch(href: string, referrer: string, now: number): Acquisi
     click: CLICK_PARAMS.find((p) => (params.get(p) ?? '').trim() !== '') ?? null,
     ref: (params.get('ref') ?? '').trim() !== '',
     referrer_host: referrerHost,
-    landing_path: (url?.pathname ?? '/').slice(0, MAX_LEN),
+    landing_path: pathname.slice(0, MAX_LEN),
     at: new Date(now).toISOString(),
   };
 }
@@ -128,7 +162,10 @@ function readStored(storage: MinimalStorage, now: number): StoredAcquisition | n
   return { first: parsed.first, last: parsed.last ?? null, v: 1 };
 }
 
-/** Grava o toque desta visita (first uma vez; last só se não for direto). */
+/**
+ * Grava o toque desta visita (first uma vez; last só se não for direto). Numa rota com token não
+ * grava nada e devolve o que já estava guardado.
+ */
 export function captureAcquisition(
   href: string,
   referrer: string,
@@ -137,8 +174,10 @@ export function captureAcquisition(
 ): StoredAcquisition | null {
   if (!storage) return null;
   try {
-    const touch = buildTouch(href, referrer, now);
     const existing = readStored(storage, now);
+    const path = parseUrl(href, 'https://www.mesaas.com.br')?.pathname ?? '/';
+    if (tokenRoutePrefix(path)) return existing;
+    const touch = buildTouch(href, referrer, now);
     let next: StoredAcquisition;
     if (!existing) {
       next = { first: touch, last: isNonDirect(touch) ? touch : null, v: 1 };

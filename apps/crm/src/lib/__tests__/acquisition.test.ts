@@ -7,6 +7,7 @@ import {
   clearStoredAcquisition,
   getStoredAcquisition,
   isNonDirect,
+  tokenRoutePrefix,
 } from '../acquisition';
 
 function memoryStorage() {
@@ -154,5 +155,68 @@ describe('acquisition capture', () => {
     captureAcquisition(AD, '', s, T0);
     clearStoredAcquisition(s);
     expect(s.map.size).toBe(0);
+  });
+});
+
+describe('token routes', () => {
+  const SECRET = 'S3CR3T-token-value';
+  const MAIL = 'https://mail.google.com/';
+  const TOKENED = [
+    ['afiliados/painel', '/afiliados/painel'],
+    ['conectar', '/conectar'],
+    ['descadastrar', '/descadastrar'],
+    ['cancelar-avisos', '/cancelar-avisos'],
+  ] as const;
+
+  it.each(TOKENED)('buildTouch collapses /%s/:token to the bare prefix', (route, prefix) => {
+    const t = buildTouch(
+      `https://mesaas.com.br/${route}/${SECRET}?utm_source=x&utm_medium=email&gclid=1&ref=abc`,
+      MAIL,
+      T0,
+    );
+    expect(t.landing_path).toBe(prefix);
+    expect(JSON.stringify(t)).not.toContain(SECRET);
+    expect(isNonDirect(t)).toBe(false);
+  });
+
+  it('matches case-insensitively, across repeated slashes and trailing segments', () => {
+    expect(tokenRoutePrefix(`/Conectar/${SECRET}`)).toBe('/conectar');
+    expect(tokenRoutePrefix(`//afiliados//painel/${SECRET}`)).toBe('/afiliados/painel');
+    expect(tokenRoutePrefix(`/descadastrar/${SECRET}/extra`)).toBe('/descadastrar');
+    expect(buildTouch(`https://mesaas.com.br/CANCELAR-AVISOS/${SECRET}`, '', T0).landing_path).toBe(
+      '/cancelar-avisos',
+    );
+  });
+
+  it('leaves look-alike and bare prefixes alone', () => {
+    expect(tokenRoutePrefix('/conectar-x/abc')).toBeNull();
+    expect(tokenRoutePrefix('/afiliados/painel')).toBeNull();
+    expect(tokenRoutePrefix('/afiliados')).toBeNull();
+    expect(tokenRoutePrefix('/blog/conectar/abc')).toBeNull();
+    const t = buildTouch('https://mesaas.com.br/conectar-x/abc', MAIL, T0);
+    expect(t.landing_path).toBe('/conectar-x/abc');
+    expect(t.referrer_host).toBe('mail.google.com');
+  });
+
+  it('a token route with a referrer and UTMs writes nothing on a first visit', () => {
+    const s = memoryStorage();
+    const out = captureAcquisition(
+      `https://mesaas.com.br/afiliados/painel/${SECRET}?utm_source=x&utm_medium=email`,
+      MAIL,
+      s,
+      T0,
+    );
+    expect(out).toBeNull();
+    expect(s.map.size).toBe(0);
+  });
+
+  it('a token route keeps an existing first and last untouched', () => {
+    const s = memoryStorage();
+    const before = captureAcquisition(AD, '', s, T0);
+    const raw = s.map.get(ACQUISITION_STORAGE_KEY);
+    const out = captureAcquisition(`https://mesaas.com.br/conectar/${SECRET}`, MAIL, s, T0 + DAY);
+    expect(out).toEqual(before);
+    expect(s.map.get(ACQUISITION_STORAGE_KEY)).toBe(raw);
+    expect(raw).not.toContain(SECRET);
   });
 });

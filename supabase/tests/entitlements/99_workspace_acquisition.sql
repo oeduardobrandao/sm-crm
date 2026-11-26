@@ -24,6 +24,10 @@
 --   9. anon e authenticated não leem as tabelas nem executam as RPCs.
 --  10. ever_paid_workspace_ids: snapshot pagante, ever_subscribed_at ou
 --      reverse_trial_first_paid_at; trial da Stripe sozinho não conta.
+--  11. landing_path de rota com token (painel de afiliado, convite,
+--      descadastro, cancelar avisos) fica só com o prefixo, no saneador e num
+--      cadastro de ponta a ponta.
+--  12. falha na limpeza dos pendings órfãos não desfaz a linha do workspace.
 --
 -- Os inserts em auth.users rodam como postgres: localmente o postgres não pode
 -- SET ROLE supabase_auth_admin ("permission denied to set role"). O caminho
@@ -33,6 +37,18 @@
 begin;
 -- As duas tabelas ficam fora: o REVOKE delas é o que se testa.
 select et_grant_hosted_parity(array['workspace_acquisition', 'acquisition_pending']);
+
+-- Passo 12: trava a limpeza dos órfãos (só o DELETE de linhas com mais de um
+-- dia levanta erro; o DELETE do pending do próprio usuário passa).
+create function public.acq_test_fail_orphan_cleanup() returns trigger
+language plpgsql as $f$
+begin
+  if old.created_at < now() - interval '1 day' then
+    raise exception 'forced orphan cleanup failure';
+  end if;
+  return old;
+end;
+$f$;
 do $$
 declare
   r          record;
@@ -71,6 +87,18 @@ begin
       ('{"ref":true}', false, 'other_sites'),
       ('{"ref":true}', true, 'affiliate'),
       ('{"referrer_host":"blog.example.com"}', false, 'other_sites'),
+      -- regra 5: msclkid, ou cpc com fonte que não é Google nem Meta.
+      ('{"click":"msclkid"}', false, 'other_ads'),
+      ('{"utm_source":"bing","utm_medium":"cpc"}', false, 'other_ads'),
+      -- regras 6, 8 e 9 pelo host do referrer.
+      ('{"referrer_host":"mail.google.com"}', false, 'email'),
+      ('{"referrer_host":"l.facebook.com"}', false, 'other_social'),
+      ('{"referrer_host":"l.wl.co"}', false, 'other_social'),
+      ('{"referrer_host":"chatgpt.com"}', false, 'ai'),
+      ('{"referrer_host":"gemini.google.com"}', false, 'ai'),
+      -- buscador que não é o Google, e outro *.google.com que não é busca.
+      ('{"referrer_host":"www.bing.com"}', false, 'search'),
+      ('{"referrer_host":"news.google.com"}', false, 'other_sites'),
       ('{}', false, 'direct'),
       (null, false, 'direct'),
       ('{"utm_campaign":"x"}', false, 'direct')
@@ -210,6 +238,29 @@ begin
   end if;
   alter table public.workspace_acquisition_x rename to workspace_acquisition;
 
+  -- 12. falha na limpeza dos órfãos: a linha do workspace fica.
+  insert into acquisition_pending (user_id, acq, captured, created_at)
+    values (gen_random_uuid(), null, false, now() - interval '2 days');
+  create trigger acq_fail_orphan_cleanup before delete on public.acquisition_pending
+    for each row execute function public.acq_test_fail_orphan_cleanup();
+  v_user := gen_random_uuid();
+  insert into auth.users (id, email, raw_user_meta_data)
+    values (v_user, 'acq-cleanup-fail@example.com', jsonb_build_object(
+      'empresa', '', 'acq', '{"first":{"utm_source":"meta","utm_medium":"paid"}}'::jsonb));
+  select a.* into v_row from workspace_acquisition a
+    join profiles p on p.conta_id = a.workspace_id where p.id = v_user;
+  if not found or v_row.channel is distinct from 'meta_ads' then
+    raise exception 'a failing orphan cleanup must keep the workspace row, got %', v_row.channel;
+  end if;
+  if exists (select 1 from acquisition_pending where user_id = v_user) then
+    raise exception 'a failing orphan cleanup must still consume the user pending row';
+  end if;
+  if not exists (select 1 from acquisition_pending where created_at < now() - interval '1 day') then
+    raise exception 'the forced cleanup failure did not happen (orphan was deleted)';
+  end if;
+  drop trigger acq_fail_orphan_cleanup on public.acquisition_pending;
+  delete from acquisition_pending where created_at < now() - interval '1 day';
+
   -- 5. convite.
   v_host_ws := et_make_workspace('free');
   insert into auth.users (id) values (v_host);
@@ -286,7 +337,18 @@ begin
       ('precos', null),
       ('https://evil.example.com/x', null),
       ('?gclid=abc', null),
-      ('#x', null)
+      ('#x', null),
+      -- 11. rotas com token: só o prefixo.
+      ('/afiliados/painel/TOKEN123', '/afiliados/painel'),
+      ('/conectar/TOKEN123?utm_source=x', '/conectar'),
+      ('/descadastrar/TOKEN123', '/descadastrar'),
+      ('/cancelar-avisos/TOKEN123', '/cancelar-avisos'),
+      ('/Conectar/TOKEN123', '/conectar'),
+      ('//afiliados//painel/TOKEN123', '/afiliados/painel'),
+      ('/conectar/TOKEN123/x', '/conectar'),
+      ('/conectar-x/abc', '/conectar-x/abc'),
+      ('/afiliados/painel', '/afiliados/painel'),
+      ('/blog/conectar/abc', '/blog/conectar/abc')
     ) as t(input, expected)
   loop
     v_got := public.acquisition_sanitize_touch(jsonb_build_object('landing_path', r.input)) ->> 'landing_path';
@@ -315,6 +377,25 @@ begin
       raise exception 'at % must sanitize to %, got %', r.input, r.expected, v_got;
     end if;
   end loop;
+
+  -- 11. cadastro com first em rota com token: o token não chega à linha.
+  v_user := gen_random_uuid();
+  insert into auth.users (id, email, raw_user_meta_data)
+    values (v_user, 'acq-token-path@example.com', jsonb_build_object(
+      'empresa', '',
+      'acq', jsonb_build_object(
+        'first', jsonb_build_object('landing_path', '/afiliados/painel/SECRET-TOKEN-1',
+                                    'referrer_host', 'mail.google.com',
+                                    'at', '2026-11-20T10:00:00Z'),
+        'last', jsonb_build_object('landing_path', '/descadastrar/SECRET-TOKEN-2',
+                                   'utm_source', 'ig', 'at', '2026-11-21T10:00:00Z'))));
+  select a.* into v_row from workspace_acquisition a
+    join profiles p on p.conta_id = a.workspace_id where p.id = v_user;
+  if v_row.first_touch ->> 'landing_path' is distinct from '/afiliados/painel'
+     or v_row.last_touch ->> 'landing_path' is distinct from '/descadastrar'
+     or (v_row.first_touch::text || v_row.last_touch::text) like '%SECRET-TOKEN%' then
+    raise exception 'token route paths must be collapsed, got % / %', v_row.first_touch, v_row.last_touch;
+  end if;
 
   -- 6c. auth.identities: o GoTrue copia o metadata do cadastro em identity_data
   -- (INSERT e depois UPDATEs); o trigger tira acq e mantém o resto.

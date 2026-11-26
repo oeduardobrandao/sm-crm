@@ -888,13 +888,19 @@ describe('signup acquisition metadata', () => {
 
   it('sends the stored acquisition in the signUp metadata', async () => {
     seed();
-    mockedSignUp.mockResolvedValue({ data: { session: { access_token: 't' } }, error: null } as never);
+    mockedSignUp.mockResolvedValue({
+      data: { session: { access_token: 't' } },
+      error: null,
+    } as never);
     await register();
     expect(mockedSignUp.mock.calls[0][2]).toEqual({ nome: 'Ana Souza', empresa: '', acq: stored });
   });
 
   it('omits acq when nothing is stored', async () => {
-    mockedSignUp.mockResolvedValue({ data: { session: { access_token: 't' } }, error: null } as never);
+    mockedSignUp.mockResolvedValue({
+      data: { session: { access_token: 't' } },
+      error: null,
+    } as never);
     await register();
     expect(mockedSignUp.mock.calls[0][2]).not.toHaveProperty('acq');
   });
@@ -924,7 +930,11 @@ describe('signup acquisition metadata', () => {
     seed();
     mockedSignUp.mockResolvedValue({ data: null, error: { message: 'boom' } } as never);
     await register();
-    await waitFor(() => expect(mockedCaptureEvent).not.toHaveBeenCalledWith('signup_completed'));
+    // O alerta só aparece depois que o resultado com erro foi tratado.
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Não foi possível criar a conta. Tente de novo em instantes.',
+    );
+    expect(mockedCaptureEvent).not.toHaveBeenCalledWith('signup_completed');
     expect(window.localStorage.getItem('mesaas:acq')).not.toBeNull();
   });
 });
