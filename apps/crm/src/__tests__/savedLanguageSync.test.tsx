@@ -1,4 +1,6 @@
-import { render, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { ReactElement } from 'react';
+import { Link, MemoryRouter } from 'react-router-dom';
 import i18n from 'i18next';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SavedLanguageSync } from '../boot/SavedLanguageSync';
@@ -10,9 +12,14 @@ function visit(pathname: string) {
   window.history.replaceState(null, '', pathname);
 }
 
-// SavedLanguageSync applies the saved language after the prerendered landing hydrates. The /en
-// pages are English whatever the visitor saved: there it must stay out of the way, and the page
-// wrapper (EnglishPage) sets and persists English instead.
+function renderAt(pathname: string, ui: ReactElement = <SavedLanguageSync />) {
+  visit(pathname);
+  return render(<MemoryRouter initialEntries={[pathname]}>{ui}</MemoryRouter>);
+}
+
+// SavedLanguageSync picks the language per page: /en pages are English whatever the visitor saved
+// (EnglishPage sets and persists it), Portuguese-only site pages stay pt without saving, and
+// login and the app use the saved language.
 describe('SavedLanguageSync', () => {
   afterEach(async () => {
     visit('/');
@@ -23,12 +30,11 @@ describe('SavedLanguageSync', () => {
   it('never switches an /en page back to the saved language', async () => {
     await i18n.changeLanguage('en');
     localStorage.setItem(KEY, 'pt');
-    visit('/en');
     const seen: string[] = [];
     const onChange = (lng: string) => void seen.push(lng);
     i18n.on('languageChanged', onChange);
     try {
-      render(<SavedLanguageSync />);
+      renderAt('/en');
       await new Promise((r) => setTimeout(r, 20));
       expect(seen).not.toContain('pt');
       expect(i18n.language).toBe('en');
@@ -39,8 +45,8 @@ describe('SavedLanguageSync', () => {
 
   it('on /en with saved pt, ends in English and saves en', async () => {
     localStorage.setItem(KEY, 'pt');
-    visit('/en');
-    render(
+    renderAt(
+      '/en',
       <>
         <SavedLanguageSync />
         <EnglishPage>
@@ -55,10 +61,9 @@ describe('SavedLanguageSync', () => {
   it('on /en/pricing also leaves the language alone', async () => {
     await i18n.changeLanguage('en');
     localStorage.setItem(KEY, 'pt');
-    visit('/en/pricing');
     const spy = vi.spyOn(i18n, 'changeLanguage');
     try {
-      render(<SavedLanguageSync />);
+      renderAt('/en/pricing');
       await new Promise((r) => setTimeout(r, 20));
       expect(spy).not.toHaveBeenCalled();
     } finally {
@@ -66,16 +71,41 @@ describe('SavedLanguageSync', () => {
     }
   });
 
-  it('on / applies a saved en', async () => {
+  it.each(['/', '/precos', '/blog/um-post', '/termos-de-uso'])(
+    'keeps the Portuguese site page %s in pt with a saved en, without saving pt',
+    async (path) => {
+      await i18n.changeLanguage('en');
+      localStorage.setItem(KEY, 'en');
+      renderAt(path);
+      await waitFor(() => expect(i18n.language).toBe('pt'));
+      expect(localStorage.getItem(KEY)).toBe('en');
+      expect(document.documentElement.lang).toBe('pt-BR');
+    },
+  );
+
+  it('applies a saved en on login and in the app', async () => {
     localStorage.setItem(KEY, 'en');
-    visit('/');
-    render(<SavedLanguageSync />);
+    renderAt('/login');
+    await waitFor(() => expect(i18n.language).toBe('en'));
+  });
+
+  it('switches to the saved en when the visitor moves from / to /login', async () => {
+    localStorage.setItem(KEY, 'en');
+    renderAt(
+      '/',
+      <>
+        <SavedLanguageSync />
+        <Link to="/login">Entrar</Link>
+      </>,
+    );
+    await new Promise((r) => setTimeout(r, 20));
+    expect(i18n.language).toBe('pt');
+    fireEvent.click(screen.getByRole('link', { name: 'Entrar' }));
     await waitFor(() => expect(i18n.language).toBe('en'));
   });
 
   it('on / with nothing saved stays pt', async () => {
-    visit('/');
-    render(<SavedLanguageSync />);
+    renderAt('/');
     await new Promise((r) => setTimeout(r, 20));
     expect(i18n.language).toBe('pt');
   });

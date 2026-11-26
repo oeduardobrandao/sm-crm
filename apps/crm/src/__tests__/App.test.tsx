@@ -75,10 +75,22 @@ describe('App', () => {
     await i18n.changeLanguage('pt');
     localStorage.setItem('mesaas-language', 'en');
     try {
-      renderApp('/');
+      renderApp('/login');
       await waitFor(() => expect(i18n.language).toBe('en'));
     } finally {
       await i18n.changeLanguage('pt');
+    }
+  });
+
+  it('keeps the Portuguese landing in pt even with a saved en', async () => {
+    await i18n.changeLanguage('pt');
+    localStorage.setItem('mesaas-language', 'en');
+    try {
+      renderApp('/');
+      expect(await screen.findByText('Landing page')).toBeInTheDocument();
+      expect(i18n.language).toBe('pt');
+    } finally {
+      localStorage.removeItem('mesaas-language');
     }
   });
 
