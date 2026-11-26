@@ -32,6 +32,10 @@
 4. **Corrupt or old-version localStorage** (`not json`, `{v:2}`, missing `first`). Treated as empty and replaced on the next boot, never thrown. Test in Task 3.
 5. **A workspace created at 23:30 São Paulo on the last day of a month** (02:30 UTC the next day). It counts in the São Paulo month, not the UTC one. Test in Task 7.
 
+## Dependencies (for parallel execution)
+
+Chains that can run side by side: **1 → 2**, **3 → 4**, **5**, **6 → 7 → 8**, then **9 → (10, 11)** once 7 and 8 have fixed the response shapes. Task 12 runs last, on the merged result. Parallel implementers each touch only their task's files and never run a repo-wide formatter (`npx prettier --write <own files>` only).
+
 ---
 
 ### Task 1: Database: tables, classifier, capture triggers
@@ -49,6 +53,8 @@
   - `workspace_acquisition_reclassify(p_workspace uuid) RETURNS text` SECURITY DEFINER, EXECUTE to `service_role` only: recomputes `channel`/`campaign` from `coalesce(last_touch, first_touch)` and the current existence of an `affiliate_referrals` row; leaves `captured = false` rows untouched; returns the channel (null when no row)
   - trigger `on_auth_user_created_aaa_acquisition_stash` BEFORE INSERT OR UPDATE OF raw_user_meta_data ON auth.users → `stash_signup_acquisition()`
   - trigger `on_auth_user_created_zzz_acquisition` AFTER INSERT ON auth.users → `record_workspace_acquisition()`
+  - both trigger functions: `SECURITY DEFINER`, `SET search_path = public`, `REVOKE ALL ... FROM PUBLIC, anon, authenticated` (GoTrue inserts as `supabase_auth_admin`, which has no rights on `public` tables; the affiliate trigger works the same way)
+  - `ever_paid_workspace_ids(p_ids uuid[]) RETURNS SETOF uuid` STABLE SECURITY DEFINER, EXECUTE to `service_role` only: distinct ids among `p_ids` with a `workspace_subscription_snapshots` row that is paying by `classOf`'s rule (`status = 'active' AND monthly_cents > 0`, or `status = 'trialing' AND provider = 'pagarme' AND provider_switch AND monthly_cents > 0`), or `workspace_subscriptions.ever_subscribed_at IS NOT NULL`, or `workspaces.reverse_trial_first_paid_at IS NOT NULL`. Keeps Task 7 from paging every daily snapshot of a 24-month cohort
 
 - [ ] **Step 1: Verify the stash approach on the local stack (spec's open item)**
 
@@ -65,12 +71,16 @@ Expected: `select raw_user_meta_data ? 'acq' from auth.users where email = ...` 
 - classifier cases (each `acquisition_channel(<json>, <bool>) = <channel>`):
   `{"click":"oppref"}`→`chatgpt_ads`; `{"click":"gclid"}`→`google_ads`; `{"utm_source":"meta","utm_medium":"paid"}`→`meta_ads`; `{"utm_source":"ig","utm_medium":"social"}`→`instagram`; `{"click":"fbclid"}`→`other_social`; `{"click":"fbclid","referrer_host":"l.instagram.com"}`→`instagram`; `{"utm_source":"chatgpt.com"}`→`ai`; `{"referrer_host":"www.google.com"}`→`search`; `{"referrer_host":"www.google.com.br"}`→`search`; `{"utm_medium":"email"}`→`email`; `{"ref":true}` with false→`other_sites`; `{"ref":true}` with true→`affiliate`; `{"referrer_host":"blog.example.com"}`→`other_sites`; `{}`→`direct`; null→`direct`; `{"utm_campaign":"x"}`→`direct`.
 - owner signup: `insert into auth.users (id, email, raw_user_meta_data)` with `empresa` and `acq = {first:{utm_source:"ig",utm_medium:"social",landing_path:"/",at:"..."}, last:{utm_source:"meta",utm_medium:"paid",utm_campaign:"lp-nov",...}}` → one `workspace_acquisition` row for the owner's `profiles.conta_id`, `channel = 'meta_ads'`, `campaign = 'lp-nov'`, `captured = true`; `raw_user_meta_data ? 'acq'` false; no `acquisition_pending` row for that user.
+- the owner-signup insert above runs under `SET LOCAL ROLE supabase_auth_admin` (then `RESET ROLE`) when that role can insert into `auth.users` locally; if it cannot, note it in a comment and rely on Step 6.
 - signup without `acq` → row with `captured = false`, `channel = 'unknown'`, touches null.
+- `captured` requires an object `first`: `acq = '"oops"'` and `acq = {}` give `captured = false`, `channel = 'unknown'`.
+- forced failure (each in a savepoint): `alter table acquisition_pending rename to acquisition_pending_x`, insert an owner user, assert the user, its `profiles` row and its workspace exist and `acq` is still stripped; rename back. Same with `workspace_acquisition` renamed: user, profile and workspace exist, no row anywhere. (A BEFORE trigger that returns NULL would silently drop the user; this catches it.)
 - invite (`raw_user_meta_data` has `conta_id`) → no row, no pending row left.
-- hostile metadata (Review Focus 3): `acq` = `'"oops"'::jsonb`; and `acq.first` with a 10 000-char `utm_source`, `click = 'evil'`, `referrer_host = 'a b'`, nested object in `utm_medium` → signup succeeds; `length(first_touch->>'utm_source') = 200`; `first_touch->>'click'` null; `first_touch->>'referrer_host'` null.
+- hostile metadata (Review Focus 3): `acq.first` with a 10 000-char `utm_source`, `click = 'evil'`, `referrer_host = 'a b'`, nested object in `utm_medium` → signup succeeds; `length(first_touch->>'utm_source') = 200`; `first_touch->>'click'` null; `first_touch->>'referrer_host'` null.
 - re-signup path: `update auth.users set raw_user_meta_data = raw_user_meta_data || '{"acq":{"first":{}}}'` → `acq` absent after the update, no new pending row.
 - affiliate: owner signup with valid `ref_code` of an active affiliate and `acq.last.ref = true` → `channel = 'affiliate'`; then delete the `affiliate_referrals` row and `select workspace_acquisition_reclassify(ws)` → `other_sites`.
-- privileges: as `authenticated` and `anon`, `select` on both tables raises 42501; `has_function_privilege('authenticated', 'workspace_acquisition_reclassify(uuid)', 'execute')` false.
+- privileges: as `authenticated` and `anon`, `select` on both tables raises 42501; `has_function_privilege('authenticated', ...)` is false for `workspace_acquisition_reclassify(uuid)` and `ever_paid_workspace_ids(uuid[])`.
+- `ever_paid_workspace_ids`: returns a workspace with one active paying snapshot, one with only `ever_subscribed_at`, one with only `reverse_trial_first_paid_at`; not one with only a `trialing` Stripe subscription row.
 
 - [ ] **Step 3: Run it to verify it fails**
 
@@ -86,7 +96,12 @@ Copy the guard shape of `record_affiliate_referral` (migration `20261013000001`)
 Run: `npm run test:db`
 Expected: PASS, including the existing `99_usd_billing_currency.sql` and affiliate suites (trigger order unchanged for them).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Real GoTrue signup on the local stack**
+
+With the migration applied locally (`supabase db reset`), `POST /auth/v1/signup` with `data: {"empresa":"","acq":{"first":{"utm_source":"meta","utm_medium":"paid","landing_path":"/","at":"2026-11-26T12:00:00Z"},"last":null}}`.
+Expected: `select channel, captured from workspace_acquisition a join profiles p on p.conta_id = a.workspace_id join auth.users u on u.id = p.id where u.email = '<email>'` → `meta_ads | t`; `raw_user_meta_data ? 'acq'` false. This proves the triggers work under `supabase_auth_admin`.
+
+- [ ] **Step 7: Commit**
 
 ```bash
 git add supabase/migrations/20261209000001_workspace_acquisition.sql supabase/tests/entitlements/99_workspace_acquisition.sql
@@ -153,7 +168,7 @@ git commit -m "feat(db): filtro e coluna de origem no admin_list_workspaces"
   export function getStoredAcquisition(storage?: MinimalStorage | null, now?: number): StoredAcquisition | null;
   export function clearStoredAcquisition(storage?: MinimalStorage | null): void;
   ```
-  `MinimalStorage` and `safeStorage()` follow `lib/referral.ts`. Own hosts: `mesaas.com.br`, `www.mesaas.com.br`, `localhost`, `127.0.0.1`, any `*.vercel.app`; payment hosts: `checkout.stripe.com`, `billing.stripe.com`, `connect.stripe.com`, any `*.pagar.me`. `click` = the first present param in the `ClickParam` order.
+  `MinimalStorage` and `safeStorage()` follow `lib/referral.ts`. Own hosts: the page's own host (from `href`), `mesaas.com.br`, `www.mesaas.com.br`, `localhost`, `127.0.0.1`, any `*.vercel.app`; payment hosts: `checkout.stripe.com`, `billing.stripe.com`, `connect.stripe.com`, any `*.pagar.me`. `click` = the first present param in the `ClickParam` order.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -167,6 +182,7 @@ it('a later non-direct visit replaces last only', ...)
   // then '?utm_source=ig&utm_medium=social' → first unchanged, last.utm_source === 'ig'
 it('own and payment referrers are not a source', ...)
   // referrer 'https://www.mesaas.com.br/blog/x' and 'https://checkout.stripe.com/c/pay' → referrer_host null, not non-direct
+  // href 'https://staging-x.example.dev/precos' with referrer 'https://staging-x.example.dev/' → referrer_host null (page's own host)
 it('keeps host only and pathname only', ...)
   // referrer 'https://l.instagram.com/?u=abc' → 'l.instagram.com'; href '/precos?x=1#y' → landing_path '/precos'
 it('cuts strings to 200 chars', ...)
@@ -293,7 +309,7 @@ git commit -m "refactor(platform-admin): extrai o carregamento das linhas de MRR
 - Test: `supabase/functions/__tests__/platform-admin-acquisition_test.ts`
 
 **Interfaces:**
-- Consumes: `loadPricedMrrRows` (Task 6), `classOf`/`SnapshotRecord` (`metrics-logic.ts`), `fetchAllRows` (`_shared/paginate.ts`).
+- Consumes: `loadPricedMrrRows` (Task 6), `ever_paid_workspace_ids` (Task 1), `fetchAllRows` (`_shared/paginate.ts`).
 - Produces (`acquisition-logic.ts`, pure):
   ```ts
   export type ChannelBucket = string; // classifier value | 'unknown' | 'demo' | 'no_data'
@@ -306,7 +322,7 @@ git commit -m "refactor(platform-admin): extrai o carregamento das linhas de MRR
   export function aggregateChannels(input: { workspaces: AcqWorkspace[]; acquisition: Map<string, AcqRow>; priced: { workspace_id: string; currency: 'brl' | 'usd'; monthly_cents: number }[]; everPaidIds: Set<string>; }): ChannelRow[];
   ```
   `monthBounds`: null when either month fails `^\d{4}-(0[1-9]|1[0-2])$`, `from > to`, or the span exceeds 24 months; else `startIso = ${from}-01T00:00:00-03:00`, `endIso` = first day of the month after `to`, same offset. `aggregateChannels` drops `is_internal`, sorts rows by `signups` desc, campaigns by `signups` desc with `null` last; `paying_now` and MRR come only from `priced`; `ever_paid` = `everPaidIds` ∪ paying now.
-- Produces (`acquisition.ts`): `handleGetAcquisitionChannels(svc, body: { from_month?: string; to_month?: string }, headers, deps?: { loadPriced?: typeof loadPricedMrrRows })` → 400 `{ error: 'invalid_range' }` when `monthBounds` is null; else 200 `{ channels: ChannelRow[] }`. It fetches workspaces in range (`id, created_at, demo_created_at, is_internal, reverse_trial_first_paid_at`), their `workspace_acquisition` rows, their `workspace_subscription_snapshots` (the `SnapshotRecord` columns), their `workspace_subscriptions.ever_subscribed_at`, all in `chunk`ed `.in()` reads, and builds `everPaidIds` = snapshot row with `classOf(r) === 'paying'` ∪ `ever_subscribed_at` set ∪ `reverse_trial_first_paid_at` set.
+- Produces (`acquisition.ts`): `handleGetAcquisitionChannels(svc, body: { from_month?: string; to_month?: string }, headers, deps?: { loadPriced?: typeof loadPricedMrrRows })` → 400 `{ error: 'invalid_range' }` when `monthBounds` is null; else 200 `{ channels: ChannelRow[] }`. It fetches workspaces in range (`id, created_at, demo_created_at, is_internal`) with `fetchAllRows`, their `workspace_acquisition` rows in `chunk`ed `.in()` reads, and `everPaidIds` from `svc.rpc('ever_paid_workspace_ids', { p_ids })` per chunk (Task 1).
 
 - [ ] **Step 1: Write the failing Deno tests**
 
@@ -323,8 +339,8 @@ Deno.test("aggregateChannels: is_internal dropped, currencies apart", ...)
 Deno.test("aggregateChannels: ever_paid includes paying-now and past payers", ...)
 Deno.test("aggregateChannels: campaigns grouped, null campaign last", ...)
 Deno.test("handler: 400 invalid_range", ...)
-Deno.test("handler: ever paid from snapshot, ever_subscribed_at and reverse_trial_first_paid_at; a trialing-only subscription is not ever paid", ...)
-  // stub svc in the style of platform-admin-churn_test.ts
+Deno.test("handler: ever paid comes from the ever_paid_workspace_ids RPC, called per chunk", ...)
+  // stub svc in the style of platform-admin-churn_test.ts; 250 workspaces → RPC called in chunks, union used
 ```
 
 - [ ] **Step 2: Run to verify they fail**
@@ -517,9 +533,13 @@ Start the CRM dev server (`npm run dev:env` via `preview_start`), open `/?utm_so
 
 Copy the spec's deploy order (migrations → `platform-admin` + `mcp-admin` → merge), the Task 1 Step 1 outcome (stash or fallback), the migration numbers checked against `main`, and the post-deploy check: one real staging signup through `/?utm_source=meta&utm_medium=paid&utm_campaign=teste`, then the row in `workspace_acquisition` and the Admin card. Add the follow-up from the spec's §6: capture runs on `/en` without consent, to be added to the pending US-site legal review (`docs/us-english-site-runbook.md`); and that Google Ads needs `utm_campaign` in a tracking template for a campaign breakdown (Ads account change, not code).
 
-- [ ] **Step 5: Commit any fixes**
+- [ ] **Step 5: CLAUDE.md Gotchas entry**
+
+Add one bullet under Gotchas, in the file's Portuguese style: origem de aquisição (spec path); `acq` é tirado do metadata pelo trigger `on_auth_user_created_aaa_acquisition_stash` e gravado pelo `on_auth_user_created_zzz_acquisition`, que depende de rodar DEPOIS de `on_auth_user_created_workspace` e `on_auth_user_created_zz_affiliate_referral` (ordem alfabética: não renomeie sem conferir); `workspace_acquisition` e `acquisition_pending` só do service role; regra de canal só em `acquisition_channel()` (mudar = migration + `UPDATE` de reclassificação); ordem de deploy: migrations `20261209000001` + `…02` → `platform-admin` + `mcp-admin` → merge; rollback: frontend primeiro, tabelas e functions podem ficar.
+
+- [ ] **Step 6: Commit any fixes and the CLAUDE.md entry**
 
 ```bash
-git add <the files the gates changed>
+git add CLAUDE.md <the files the gates changed>
 git commit -m "chore: ajustes dos gates de CI"
 ```
