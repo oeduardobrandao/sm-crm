@@ -1,0 +1,105 @@
+/**
+ * Block reports (`report-docs`): the text the edge function writes into a document at generation
+ * time (title, no-AI summary, goal headings). Labels of the blocks themselves are rendered by the
+ * apps. The pt KPI labels are the shared constants the React package also reads.
+ */
+import { defineCatalog } from "../catalog.ts";
+import { KPI_LABELS_PT } from "../../report-docs/kpis.ts";
+import { TIKTOK_KPI_LABELS_PT } from "../../report-docs/tiktok-kpi-labels.ts";
+import { GBP_KPI_LABELS_PT } from "../../report-docs/gbp-kpi-labels.ts";
+
+export const reportDocsText = defineCatalog({
+  pt: {
+    docTitle: (monthLabel: string) => `Relatório de ${monthLabel}`,
+    kpiInstagram: KPI_LABELS_PT as Record<string, string>,
+    kpiTikTok: TIKTOK_KPI_LABELS_PT as Record<string, string>,
+    kpiGoogle: GBP_KPI_LABELS_PT as Record<string, string>,
+    onTikTok: (label: string) => `${label} no TikTok`,
+    onGoogle: (label: string) => `${label} no Google Meu Negócio`,
+    // No-AI summary.
+    igSummary: (month: string, joined: string) => `Resumo de ${month}${joined ? `: ${joined}.` : "."}`,
+    ttSummary: (month: string, joined: string) => `Resumo de ${month} no TikTok${joined ? `: ${joined}.` : "."}`,
+    googleSummary: (month: string, joined: string) =>
+      `Resumo de ${month} no Google Meu Negócio${joined ? `: ${joined}.` : "."}`,
+    ttAlso: (joined: string) => `No TikTok: ${joined}.`,
+    googleAlso: (joined: string) => `No Google Meu Negócio: ${joined}.`,
+    igPosts: (n: string) => `${n} publicações no período`,
+    igReach: (n: string) => `alcance total de ${n} contas`,
+    gained: (n: string) => `${n} novos seguidores`,
+    netChange: (n: string) => `${n} seguidores no saldo do mês`,
+    igEngagement: (pct: string) => `taxa de engajamento de ${pct}%`,
+    ttVideoOne: "1 vídeo publicado",
+    ttVideos: (n: string) => `${n} vídeos publicados`,
+    ttViews: (n: string) => `${n} visualizações`,
+    ttEngagement: (pct: string) => `engajamento por visualização de ${pct}%`,
+    gbpProfileViewsOne: "visualização do perfil",
+    gbpProfileViewsMany: "visualizações do perfil",
+    gbpCallsOne: "ligação",
+    gbpCallsMany: "ligações",
+    gbpDirectionsOne: "pedido de rota",
+    gbpDirectionsMany: "pedidos de rota",
+    gbpWebsiteClicksOne: "clique no site",
+    gbpWebsiteClicksMany: "cliques no site",
+  },
+  en: {
+    docTitle: (monthLabel: string) => `Report for ${monthLabel}`,
+    kpiInstagram: {
+      followers_gained: "New followers",
+      followers_total: "Total followers",
+      reach: "Cumulative reach",
+      views: "Views",
+      engagement_rate: "Engagement rate",
+      saves: "Saves",
+      posts_count: "Posts",
+      profile_views: "Profile visits",
+      website_clicks: "Link clicks",
+      follows: "Followers gained",
+    } as Record<string, string>,
+    kpiTikTok: {
+      followers_total: "Followers",
+      followers_gained: "New followers",
+      views: "Views",
+      engagement_rate: "Engagement per view",
+      likes: "Likes",
+      comments: "Comments",
+      shares: "Shares",
+      posts_count: "Videos published",
+      likes_total: "Total profile likes",
+    } as Record<string, string>,
+    kpiGoogle: {
+      profile_views: "Profile views",
+      calls: "Calls",
+      directions: "Direction requests",
+      website_clicks: "Website clicks",
+      messages: "Messages",
+      bookings: "Bookings",
+      avg_rating: "Average rating",
+      new_reviews: "New reviews",
+    } as Record<string, string>,
+    onTikTok: (label: string) => `${label} on TikTok`,
+    onGoogle: (label: string) => `${label} on Google Business Profile`,
+    igSummary: (month: string, joined: string) => `Summary for ${month}${joined ? `: ${joined}.` : "."}`,
+    ttSummary: (month: string, joined: string) => `Summary for ${month} on TikTok${joined ? `: ${joined}.` : "."}`,
+    googleSummary: (month: string, joined: string) =>
+      `Summary for ${month} on Google Business Profile${joined ? `: ${joined}.` : "."}`,
+    ttAlso: (joined: string) => `On TikTok: ${joined}.`,
+    googleAlso: (joined: string) => `On Google Business Profile: ${joined}.`,
+    igPosts: (n: string) => `${n} posts in the period`,
+    igReach: (n: string) => `total reach of ${n} accounts`,
+    gained: (n: string) => `${n} new followers`,
+    netChange: (n: string) => `${n} followers net for the month`,
+    igEngagement: (pct: string) => `engagement rate of ${pct}%`,
+    ttVideoOne: "1 video published",
+    ttVideos: (n: string) => `${n} videos published`,
+    ttViews: (n: string) => `${n} views`,
+    ttEngagement: (pct: string) => `engagement per view of ${pct}%`,
+    gbpProfileViewsOne: "profile view",
+    gbpProfileViewsMany: "profile views",
+    gbpCallsOne: "call",
+    gbpCallsMany: "calls",
+    gbpDirectionsOne: "direction request",
+    gbpDirectionsMany: "direction requests",
+    gbpWebsiteClicksOne: "website click",
+    gbpWebsiteClicksMany: "website clicks",
+  },
+});

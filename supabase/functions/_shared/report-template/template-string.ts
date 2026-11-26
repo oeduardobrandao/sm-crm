@@ -10,11 +10,11 @@
 // readable inside the Client Hub iframe on a phone — do not remove it.
 
 export const REPORT_TEMPLATE = `<!DOCTYPE html>
-<html lang="pt-BR" data-theme="light">
+<html lang="{{L_HTML_LANG}}" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Relatório — {{HANDLE}} — {{PERIOD}}</title>
+<title>{{L_DOC_TITLE}}</title>
 <style>{{FONTS_CSS}}</style>
 <style>
   /* Deliberately 1px LARGER than the sheet Gotenberg emits, in both axes.
@@ -516,7 +516,7 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
 <div class="page cover">
   <div class="cover-top">
     <div>{{COVER_BRAND}}</div>
-    <div class="cover-doc">Relatório mensal<br>Instagram</div>
+    <div class="cover-doc">{{L_COVER_DOC}}</div>
   </div>
   <div class="cover-mid">{{COVER_MID}}</div>
   {{COVER_ART}}
@@ -527,19 +527,19 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
 
 <!-- ═══════════ PÁGINA 2 · RESUMO ═══════════ -->
 <div class="page">
-  <div class="sec"><h2>Resumo do mês</h2><span class="rule"></span><span class="idx">{{SEC_NO}} / {{SEC_TOTAL}}</span></div>
+  <div class="sec"><h2>{{L_SEC_SUMMARY}}</h2><span class="rule"></span><span class="idx">{{SEC_NO}} / {{SEC_TOTAL}}</span></div>
 
   {{TAKEAWAY_RESUMO}}
 
   <div class="summary">{{EXECUTIVE_SUMMARY}}</div>
 
-  <div class="sec"><h2>Métricas principais</h2><span class="rule"></span></div>
+  <div class="sec"><h2>{{L_SEC_KPIS}}</h2><span class="rule"></span></div>
   <div class="kpi-grid">{{KPI_CARDS}}</div>
 
-  {{#IF_HAS_HIGHLIGHTS}}<div class="sec"><h2>Destaques</h2><span class="rule"></span></div>
+  {{#IF_HAS_HIGHLIGHTS}}<div class="sec"><h2>{{L_SEC_HIGHLIGHTS}}</h2><span class="rule"></span></div>
   <div class="hl-grid">{{HIGHLIGHTS}}</div>{{/IF_HAS_HIGHLIGHTS}}
 
-  <div class="sec"><h2>Neste relatório</h2><span class="rule"></span></div>
+  <div class="sec"><h2>{{L_SEC_TOC}}</h2><span class="rule"></span></div>
   <div class="toc">{{TOC_ITEMS}}</div>
 
   {{FOOTER}}
@@ -547,19 +547,19 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
 
 <!-- ═══════════ PÁGINA 3 · CRESCIMENTO E FORMATOS ═══════════ -->
 <div class="page">
-  <div class="sec"><h2>Evolução de seguidores</h2><span class="rule"></span><span class="idx">{{SEC_NO}} / {{SEC_TOTAL}}</span></div>
+  <div class="sec"><h2>{{L_SEC_FOLLOWERS}}</h2><span class="rule"></span><span class="idx">{{SEC_NO}} / {{SEC_TOTAL}}</span></div>
 
   {{TAKEAWAY_CRESCIMENTO}}
 
   <div class="chart-card">{{FOLLOWER_CHART}}</div>
 
-  <div class="sec"><h2>Desempenho por formato</h2><span class="rule"></span></div>
+  <div class="sec"><h2>{{L_SEC_FORMATS}}</h2><span class="rule"></span></div>
 
   {{TAKEAWAY_FORMATOS}}
 
   <div class="fmt-grid">{{FORMAT_CARDS}}</div>
 
-  <div class="sec"><h2>Métricas complementares</h2><span class="rule"></span></div>
+  <div class="sec"><h2>{{L_SEC_AUX}}</h2><span class="rule"></span></div>
   <div class="aux-grid">{{AUX_KPIS}}</div>
 
   {{FOOTER}}
@@ -579,7 +579,7 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
   <div class="topics">
     <table>
       <thead>
-        <tr><th>Tópico</th><th>Posts</th><th>Alcance médio</th><th class="r">Engajamento médio</th></tr>
+        <tr><th>{{L_TH_TOPIC}}</th><th>{{L_TH_POSTS}}</th><th>{{L_TH_AVG_REACH}}</th><th class="r">{{L_TH_AVG_ENGAGEMENT}}</th></tr>
       </thead>
       <tbody>{{TAGS_TABLE}}</tbody>
     </table>
@@ -590,16 +590,16 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
 
 {{#IF_HAS_AUDIENCE}}<!-- ═══════════ PÁGINA 5 · AUDIÊNCIA ═══════════ -->
 <div class="page">
-  <div class="sec"><h2>Quem é a sua audiência</h2><span class="rule"></span><span class="idx">{{SEC_NO}} / {{SEC_TOTAL}}</span></div>
+  <div class="sec"><h2>{{L_SEC_AUDIENCE}}</h2><span class="rule"></span><span class="idx">{{SEC_NO}} / {{SEC_TOTAL}}</span></div>
 
   {{TAKEAWAY_AUDIENCIA}}
 
   <div class="aud-grid">{{DEMOGRAPHICS}}</div>
 
-  <div class="sec"><h2>Localização</h2><span class="rule"></span></div>
+  <div class="sec"><h2>{{L_SEC_LOCATION}}</h2><span class="rule"></span></div>
   <div class="loc-grid">{{LOCATION}}</div>
 
-  {{#IF_HAS_HEATMAP}}<div class="sec"><h2>Melhores horários para publicar</h2><span class="rule"></span></div>
+  {{#IF_HAS_HEATMAP}}<div class="sec"><h2>{{L_SEC_HEAT}}</h2><span class="rule"></span></div>
   <div class="panel">
     <div class="heat-scroll">{{HEATMAP_TABLE}}</div>
     <div class="heat-top">{{HEAT_CHIPS}}</div>
@@ -610,13 +610,13 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
 
 {{#IF_HAS_AI}}<!-- ═══════════ PÁGINA 6 · PRÓXIMOS PASSOS ═══════════ -->
 <div class="page">
-  {{#IF_HAS_RECOS}}<div class="sec"><h2>Recomendações para {{NEXT_MONTH}}</h2><span class="rule"></span><span class="idx">{{SEC_NO}} / {{SEC_TOTAL}}</span></div>
+  {{#IF_HAS_RECOS}}<div class="sec"><h2>{{L_SEC_RECOS}}</h2><span class="rule"></span><span class="idx">{{SEC_NO}} / {{SEC_TOTAL}}</span></div>
 
   {{TAKEAWAY_PLANO}}
 
   <div class="reco">{{RECO_CARDS}}</div>{{/IF_HAS_RECOS}}
 
-  <div class="sec"><h2>Metas para {{NEXT_MONTH}}</h2><span class="rule"></span></div>
+  <div class="sec"><h2>{{L_SEC_GOALS}}</h2><span class="rule"></span></div>
   <div class="goal-grid">{{GOAL_CARDS}}</div>
 
   <div class="spacer"></div>

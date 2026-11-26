@@ -7,6 +7,7 @@
 import type { BlockSize, BlockType, ReportBlock, ReportLayout } from "./layout.ts";
 import { LAYOUT_VERSION } from "./layout.ts";
 import { makeSectionMarker, PLATFORM_ORDER, type SectionPlatform } from "./sections.ts";
+import type { Lang } from "../i18n/lang.ts";
 
 export type DefaultLayoutPlatform = SectionPlatform;
 
@@ -21,16 +22,36 @@ export interface DefaultLayoutOpts {
   hasTikTokBestTimes?: boolean;
   /** Google Meu Negócio com 2+ unidades: a seção ganha "Comparar unidades". Ausente = false. */
   hasGbpUnits?: boolean;
+  /** Idioma do título de "Próximos passos". Ausente = pt (o CRM não passa). */
+  lang?: Lang;
   makeId?: () => string;
 }
 
 /** Opções que moldam a seção de uma plataforma (sem capa, resumo nem "Próximos passos"). */
 export type PlatformSectionOpts = Pick<
   DefaultLayoutOpts,
-  "hasAudience" | "hasBestTimes" | "hasTags" | "hasTikTokBestTimes" | "hasGbpUnits"
+  "hasAudience" | "hasBestTimes" | "hasTags" | "hasTikTokBestTimes" | "hasGbpUnits" | "lang"
 >;
 
+// Títulos dos section_header da seção Instagram, gravados no documento. TS puro (o CRM importa
+// este arquivo), então ficam aqui e não num catálogo do edge.
+const INSTAGRAM_HEADERS: Record<Lang, { kpis: string; growth: string; posts: string; audience: string }> = {
+  pt: { kpis: "Métricas principais", growth: "Crescimento e formatos", posts: "Publicações", audience: "Audiência" },
+  en: { kpis: "Key metrics", growth: "Growth and formats", posts: "Posts", audience: "Audience" },
+};
+
 export const NEXT_STEPS_TITLE = "Próximos passos";
+export const NEXT_STEPS_TITLE_EN = "Next steps";
+
+/** Título da seção "Próximos passos" no idioma do relatório. */
+export function nextStepsTitle(lang: Lang | undefined): string {
+  return lang === "en" ? NEXT_STEPS_TITLE_EN : NEXT_STEPS_TITLE;
+}
+
+/** O título é o da seção "Próximos passos" em qualquer idioma? */
+export function isNextStepsTitle(title: unknown): boolean {
+  return title === NEXT_STEPS_TITLE || title === NEXT_STEPS_TITLE_EN;
+}
 
 function blockAdder(blocks: ReportBlock[], makeId: () => string): AddBlock {
   return (type, size, config) => {
@@ -74,8 +95,9 @@ export function buildDefaultLayout(opts: DefaultLayoutOpts): ReportLayout {
   }
 
   if (opts.hasAi) {
-    section("general", NEXT_STEPS_TITLE);
-    add("section_header", "full", { title: NEXT_STEPS_TITLE });
+    const nextSteps = nextStepsTitle(opts.lang);
+    section("general", nextSteps);
+    add("section_header", "full", { title: nextSteps });
     add("ai_recommendations", "full");
     add("ai_goals", "full");
   }
@@ -118,7 +140,8 @@ function addTikTokSection(add: AddBlock, opts: PlatformSectionOpts): void {
 }
 
 function addInstagramSection(add: AddBlock, opts: PlatformSectionOpts): void {
-  add("section_header", "full", { title: "Métricas principais" });
+  const h = INSTAGRAM_HEADERS[opts.lang === "en" ? "en" : "pt"];
+  add("section_header", "full", { title: h.kpis });
   add("kpi_followers_gained", "third");
   add("kpi_followers_total", "third");
   add("kpi_engagement_rate", "third");
@@ -126,7 +149,7 @@ function addInstagramSection(add: AddBlock, opts: PlatformSectionOpts): void {
   add("kpi_saves", "third");
   add("kpi_posts_count", "third");
 
-  add("section_header", "full", { title: "Crescimento e formatos" });
+  add("section_header", "full", { title: h.growth });
   add("chart_followers", "full");
   add("chart_formats", "full");
   // Três terços equilibrados: views entrou (2026-08) e as duas metades viraram
@@ -135,12 +158,12 @@ function addInstagramSection(add: AddBlock, opts: PlatformSectionOpts): void {
   add("kpi_profile_views", "third");
   add("kpi_website_clicks", "third");
 
-  add("section_header", "full", { title: "Publicações" });
+  add("section_header", "full", { title: h.posts });
   add("top_posts", "full", { count: 6 });
   if (opts.hasTags) add("tags_table", "full");
 
   if (opts.hasAudience) {
-    add("section_header", "full", { title: "Audiência" });
+    add("section_header", "full", { title: h.audience });
     add("audience_gender", "half");
     add("audience_age", "half");
     add("audience_cities", "half");

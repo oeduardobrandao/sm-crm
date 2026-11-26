@@ -58,6 +58,7 @@ const deps = {
   fetch: globalThis.fetch,
   // deno-lint-ignore no-explicit-any
   storage: {} as any,
+  lang: "pt" as const,
 };
 
 Deno.test("doc de outro workspace: not_found", async () => {
@@ -339,4 +340,23 @@ Deno.test("refresh keeps a frozen Google section when GMN is gone but Instagram 
   await refreshReportDocument(db, deps, "c", "d1");
   const patch = db.updates[0] as { data_snapshot: { google?: unknown } };
   assert(JSON.stringify(patch.data_snapshot.google) === JSON.stringify(frozenGoogle));
+});
+
+Deno.test("refresh grava o rótulo do período no idioma do workspace", async () => {
+  const rows = () => ({
+    report_documents: { id: "d1", conta_id: "c", client_id: 1, period_start: "2026-07-01" },
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: "Derma", include_ai_analysis: false },
+    instagram_accounts: { id: "ig-1", username: "x" },
+    instagram_posts: [],
+    instagram_follower_history: [],
+    workspaces: { name: "W", logo_url: null, brand_color: "#123456", report_splash_url: null },
+  });
+  const label = (db: ReturnType<typeof makeDb>) =>
+    (db.updates[0] as { data_snapshot: { period: { label: string } } }).data_snapshot.period.label;
+  const en = makeDb(rows());
+  await refreshReportDocument(en, { ...deps, lang: "en" }, "c", "d1");
+  assert(label(en) === "July 2026");
+  const pt = makeDb(rows());
+  await refreshReportDocument(pt, deps, "c", "d1");
+  assert(label(pt) === "Julho de 2026");
 });

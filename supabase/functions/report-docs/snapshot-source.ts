@@ -2,6 +2,7 @@
 // compartilhado com POST /:id/refresh-data (spec §5). Quem chama já validou
 // ownership do cliente; este arquivo resolve por conta própria o entitlement
 // feature_brand_customization (fail-closed) para a config whitelabel do Hub.
+import type { Lang } from "../_shared/i18n/lang.ts";
 import { mapAudience, mapBestTimes } from "../instagram-report-generator-v2/mappers.ts";
 import { resolveBestTimes } from "../_shared/best-times.ts";
 import { decryptText } from "../_shared/crypto.ts";
@@ -39,6 +40,8 @@ const ACCOUNT_METRICS: AccountMetric[] = [
 export interface SnapshotDeps {
   fetch: typeof fetch;
   storage: ThumbnailStorage;
+  /** Idioma do workspace (rótulo do período do snapshot). */
+  lang: Lang;
 }
 
 // deno-lint-ignore no-explicit-any
@@ -132,7 +135,7 @@ export async function loadClientSnapshot(
 
   const snapshot = account
     ? await loadInstagramSnapshot(db, deps, contaId, cliente, month, account)
-    : await loadSnapshotWithoutInstagram(db, contaId, cliente, month);
+    : await loadSnapshotWithoutInstagram(db, contaId, cliente, month, deps.lang);
   return {
     snapshot: {
       ...snapshot,
@@ -221,10 +224,12 @@ async function loadSnapshotWithoutInstagram(
   contaId: string,
   cliente: SnapshotCliente,
   month: string,
+  lang: Lang,
 ): Promise<ReportDocSnapshot> {
   const ws = await loadWorkspace(db, contaId);
   const base = assembleSnapshot({
     month,
+    lang,
     nowIso: new Date().toISOString(),
     prevMonthPosts: null,
     account: {
@@ -494,6 +499,7 @@ async function loadInstagramSnapshot(
 
   const snapshot = assembleSnapshot({
     month,
+    lang: deps.lang,
     nowIso,
     // Outlier do mês ANTERIOR (spec §4.3): erro na query ou mês sem posts
     // degradam igual, pro mesmo `comparison: null` (computeComparison trata

@@ -30,7 +30,7 @@ const fixture: ReportData = {
 };
 
 Deno.test("buildFallbackSummary returns bullet-point summary", () => {
-  const summary = buildFallbackSummary(fixture);
+  const summary = buildFallbackSummary(fixture, "pt");
   assertStringIncludes(summary, "347");
   assertStringIncludes(summary, "45.200");
   assertStringIncludes(summary, "4,2%");

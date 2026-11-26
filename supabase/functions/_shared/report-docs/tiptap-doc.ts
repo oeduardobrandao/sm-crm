@@ -4,9 +4,9 @@
 import type { AIOutput } from "../report-template/types.ts";
 import type { ReportLayout } from "./layout.ts";
 import type { TikTokKpiId } from "../tiktok-analytics/kpis.ts";
-import { KPI_LABELS_PT, type KpiEntry, type ReportKpiId } from "./kpis.ts";
-import { TIKTOK_KPI_LABELS_PT } from "./tiktok-kpi-labels.ts";
-import { GBP_KPI_LABELS_PT } from "./gbp-kpi-labels.ts";
+import type { KpiEntry, ReportKpiId } from "./kpis.ts";
+import { type Lang, intlLocale } from "../i18n/lang.ts";
+import { reportDocsText } from "../i18n/catalogs/report-docs.ts";
 import type { GbpKpiId } from "../gbp-analytics/kpis.ts";
 import type { GbpReportKpiEntry } from "./snapshot.ts";
 
@@ -37,7 +37,9 @@ export function aiRecommendationsDoc(ai: AIOutput): unknown {
   return { type: "doc", content };
 }
 
-const fmt = new Intl.NumberFormat("pt-BR");
+const fmtFor = (lang: Lang) => new Intl.NumberFormat(intlLocale(lang));
+/** One decimal, in the language's separator: 3.25 -> "3,3" (pt) / "3.3" (en). */
+const pct1 = (v: number, lang: Lang) => (lang === "en" ? v.toFixed(1) : v.toFixed(1).replace(".", ","));
 
 // O prompt pede "metric_id from the provided data", então a IA devolve ids
 // crus (reach, followers_gained). O tratamento é AQUI, na renderização: id
@@ -46,34 +48,35 @@ const fmt = new Intl.NumberFormat("pt-BR");
 // vira vírgula ("11.5%" -> "11,5%").
 // Metas TikTok chegam como "tiktok_<kpi>" (o prompt pede o prefixo para não confundir com o
 // KPI do Instagram de mesmo id) e ganham " no TikTok" no rótulo.
-function metricLabel(metric: string): string {
+function metricLabel(metric: string, lang: Lang): string {
+  const t = reportDocsText(lang);
   if (metric.startsWith("tiktok_")) {
-    const tt = (TIKTOK_KPI_LABELS_PT as Record<string, string>)[metric.slice("tiktok_".length)];
-    return tt ? `${tt} no TikTok` : metric;
+    const tt = t.kpiTikTok[metric.slice("tiktok_".length)];
+    return tt ? t.onTikTok(tt) : metric;
   }
   // Metas do Google Meu Negócio chegam como "gbp_<kpi>" (mesma regra do TikTok).
   if (metric.startsWith("gbp_")) {
-    const g = (GBP_KPI_LABELS_PT as Record<string, string>)[metric.slice("gbp_".length)];
-    return g ? `${g} no Google Meu Negócio` : metric;
+    const g = t.kpiGoogle[metric.slice("gbp_".length)];
+    return g ? t.onGoogle(g) : metric;
   }
-  return (KPI_LABELS_PT as Record<string, string>)[metric] ?? metric;
+  return t.kpiInstagram[metric] ?? metric;
 }
 
-function goalHeading(metric: string, target: string): string {
-  const label = metricLabel(metric);
+function goalHeading(metric: string, target: string, lang: Lang): string {
+  const label = metricLabel(metric, lang);
   const t = target.trim();
   const formatted = /^\d+$/.test(t)
-    ? fmt.format(Number(t))
+    ? fmtFor(lang).format(Number(t))
     : /^\d+([.,]\d+)?%$/.test(t)
-    ? t.replace(".", ",")
+    ? (lang === "en" ? t.replace(",", ".") : t.replace(".", ","))
     : target;
   return `${label}: ${formatted}`;
 }
 
-export function aiGoalsDoc(ai: AIOutput): unknown {
+export function aiGoalsDoc(ai: AIOutput, lang: Lang): unknown {
   const content: unknown[] = [];
   for (const goal of ai.suggested_goals) {
-    content.push(h3(goalHeading(goal.metric, goal.target)));
+    content.push(h3(goalHeading(goal.metric, goal.target, lang)));
     content.push(p(goal.rationale));
   }
   return { type: "doc", content };
@@ -87,32 +90,36 @@ export interface FallbackPlatforms {
   google?: Record<GbpKpiId, GbpReportKpiEntry> | null;
 }
 
-function googleSummaryParts(kpis: Record<GbpKpiId, GbpReportKpiEntry>): string[] {
+function googleSummaryParts(kpis: Record<GbpKpiId, GbpReportKpiEntry>, lang: Lang): string[] {
+  const t = reportDocsText(lang);
+  const fmt = fmtFor(lang);
   const parts: string[] = [];
   const add = (id: GbpKpiId, one: string, many: string) => {
     const v = kpis[id]?.value;
     if (v !== null && v !== undefined) parts.push(`${fmt.format(v)} ${v === 1 ? one : many}`);
   };
-  add("profile_views", "visualização do perfil", "visualizações do perfil");
-  add("calls", "ligação", "ligações");
-  add("directions", "pedido de rota", "pedidos de rota");
-  add("website_clicks", "clique no site", "cliques no site");
+  add("profile_views", t.gbpProfileViewsOne, t.gbpProfileViewsMany);
+  add("calls", t.gbpCallsOne, t.gbpCallsMany);
+  add("directions", t.gbpDirectionsOne, t.gbpDirectionsMany);
+  add("website_clicks", t.gbpWebsiteClicksOne, t.gbpWebsiteClicksMany);
   return parts;
 }
 
-function tiktokSummaryParts(kpis: Record<TikTokKpiId, KpiEntry>): string[] {
+function tiktokSummaryParts(kpis: Record<TikTokKpiId, KpiEntry>, lang: Lang): string[] {
+  const t = reportDocsText(lang);
+  const fmt = fmtFor(lang);
   const parts: string[] = [];
   const posts = kpis.posts_count.value;
   if (posts !== null) {
-    parts.push(posts === 1 ? "1 vídeo publicado" : `${fmt.format(posts)} vídeos publicados`);
+    parts.push(posts === 1 ? t.ttVideoOne : t.ttVideos(fmt.format(posts)));
   }
-  if (kpis.views.value !== null) parts.push(`${fmt.format(kpis.views.value)} visualizações`);
+  if (kpis.views.value !== null) parts.push(t.ttViews(fmt.format(kpis.views.value)));
   if (kpis.followers_gained.value !== null) {
     const g = kpis.followers_gained.value;
-    parts.push(g >= 0 ? `${fmt.format(g)} novos seguidores` : `${fmt.format(g)} seguidores no saldo do mês`);
+    parts.push(g >= 0 ? t.gained(fmt.format(g)) : t.netChange(fmt.format(g)));
   }
   if (kpis.engagement_rate.value !== null) {
-    parts.push(`engajamento por visualização de ${kpis.engagement_rate.value.toFixed(1).replace(".", ",")}%`);
+    parts.push(t.ttEngagement(pct1(kpis.engagement_rate.value, lang)));
   }
   return parts;
 }
@@ -120,54 +127,53 @@ function tiktokSummaryParts(kpis: Record<TikTokKpiId, KpiEntry>): string[] {
 export function fallbackSummaryParagraphs(
   kpis: Record<ReportKpiId, KpiEntry>,
   monthLabel: string,
+  lang: Lang,
   platforms?: FallbackPlatforms,
 ): string[] {
+  const t = reportDocsText(lang);
   const tiktok = platforms?.tiktok ?? null;
   const google = platforms?.google ?? null;
   const out: string[] = [];
   if (platforms && !platforms.instagram && (tiktok || google)) {
     // Sem Instagram: a primeira plataforma presente abre o resumo; a outra entra depois.
     if (tiktok) {
-      const parts = tiktokSummaryParts(tiktok);
-      out.push(`Resumo de ${monthLabel} no TikTok${parts.length > 0 ? `: ${parts.join(", ")}.` : "."}`);
+      out.push(t.ttSummary(monthLabel, tiktokSummaryParts(tiktok, lang).join(", ")));
     } else {
-      const parts = googleSummaryParts(google!);
-      out.push(
-        `Resumo de ${monthLabel} no Google Meu Negócio${parts.length > 0 ? `: ${parts.join(", ")}.` : "."}`,
-      );
+      out.push(t.googleSummary(monthLabel, googleSummaryParts(google!, lang).join(", ")));
       return out;
     }
   } else {
-    out.push(instagramSummary(kpis, monthLabel));
+    out.push(instagramSummary(kpis, monthLabel, lang));
     if (tiktok) {
-      const parts = tiktokSummaryParts(tiktok);
-      if (parts.length > 0) out.push(`No TikTok: ${parts.join(", ")}.`);
+      const parts = tiktokSummaryParts(tiktok, lang);
+      if (parts.length > 0) out.push(t.ttAlso(parts.join(", ")));
     }
   }
   if (google) {
-    const parts = googleSummaryParts(google);
-    if (parts.length > 0) out.push(`No Google Meu Negócio: ${parts.join(", ")}.`);
+    const parts = googleSummaryParts(google, lang);
+    if (parts.length > 0) out.push(t.googleAlso(parts.join(", ")));
   }
   return out;
 }
 
-function instagramSummary(kpis: Record<ReportKpiId, KpiEntry>, monthLabel: string): string {
+function instagramSummary(kpis: Record<ReportKpiId, KpiEntry>, monthLabel: string, lang: Lang): string {
+  const t = reportDocsText(lang);
+  const fmt = fmtFor(lang);
   const parts: string[] = [];
   if (kpis.posts_count.value !== null) {
-    parts.push(`${fmt.format(kpis.posts_count.value)} publicações no período`);
+    parts.push(t.igPosts(fmt.format(kpis.posts_count.value)));
   }
   if (kpis.reach.value !== null) {
-    parts.push(`alcance total de ${fmt.format(kpis.reach.value)} contas`);
+    parts.push(t.igReach(fmt.format(kpis.reach.value)));
   }
   if (kpis.followers_gained.value !== null) {
     const g = kpis.followers_gained.value;
-    parts.push(g >= 0 ? `${fmt.format(g)} novos seguidores` : `${fmt.format(g)} seguidores no saldo do mês`);
+    parts.push(g >= 0 ? t.gained(fmt.format(g)) : t.netChange(fmt.format(g)));
   }
   if (kpis.engagement_rate.value !== null) {
-    parts.push(`taxa de engajamento de ${kpis.engagement_rate.value.toFixed(1).replace(".", ",")}%`);
+    parts.push(t.igEngagement(pct1(kpis.engagement_rate.value, lang)));
   }
-  const body = parts.length > 0 ? `: ${parts.join(", ")}.` : ".";
-  return `Resumo de ${monthLabel}${body}`;
+  return t.igSummary(monthLabel, parts.join(", "));
 }
 
 export interface AiBlockDocs {

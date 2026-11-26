@@ -80,7 +80,7 @@ const ai: AIOutput = {
 };
 
 Deno.test("renders v2 skeleton: fonts, accent vars, no v1 yellow, no emoji, no leftover placeholders", () => {
-  const html = renderReport({ data: makeData(), branding, aiOutput: ai });
+  const html = renderReport({ lang: "pt", data: makeData(), branding, aiOutput: ai });
   assertStringIncludes(html, "font-family: 'Fraunces'");
   assertStringIncludes(html, "--acc: #7C2D12");
   assertEquals(html.includes("#eab308"), false);
@@ -89,13 +89,13 @@ Deno.test("renders v2 skeleton: fonts, accent vars, no v1 yellow, no emoji, no l
 });
 
 Deno.test("prev values render as previous-month notes; cover teaser carries baseline", () => {
-  const html = renderReport({ data: makeData(), branding, aiOutput: ai });
+  const html = renderReport({ lang: "pt", data: makeData(), branding, aiOutput: ai });
   assertStringIncludes(html, "maio: 35,1"); // reach prev, pt-BR compact
   assertStringIncludes(html, "maio: 310");
 });
 
 Deno.test("AI page renders recommendations, goals, priorities", () => {
-  const html = renderReport({ data: makeData(), branding, aiOutput: ai });
+  const html = renderReport({ lang: "pt", data: makeData(), branding, aiOutput: ai });
   assertStringIncludes(html, "Dobrar Reels");
   assertStringIncludes(html, "Prioridade alta");
   assertStringIncludes(html, "50 mil");
@@ -103,7 +103,7 @@ Deno.test("AI page renders recommendations, goals, priorities", () => {
 });
 
 Deno.test("no AI → plan page dropped and pages renumber", () => {
-  const html = renderReport({ data: makeData(), branding, aiOutput: null });
+  const html = renderReport({ lang: "pt", data: makeData(), branding, aiOutput: null });
   assertEquals(html.includes("Recomendações"), false);
   assertStringIncludes(html, "2 / 5"); // 5 pages total without the plan page
 });
@@ -112,23 +112,23 @@ Deno.test("no audience → audience page dropped", () => {
   const data = makeData();
   data.audience = null;
   data.best_times = [];
-  const html = renderReport({ data, branding, aiOutput: ai });
+  const html = renderReport({ lang: "pt", data, branding, aiOutput: ai });
   assertEquals(html.includes("Quem é a sua audiência"), false);
 });
 
 Deno.test("splash art embedded when present, absent otherwise", () => {
-  const withSplash = renderReport({
+  const withSplash = renderReport({ lang: "pt",
     data: makeData(),
     branding: { ...branding, splash_base64: "data:image/jpeg;base64,AAAA" },
     aiOutput: ai,
   });
   assertStringIncludes(withSplash, 'class="cover-art"');
-  const without = renderReport({ data: makeData(), branding, aiOutput: ai });
+  const without = renderReport({ lang: "pt", data: makeData(), branding, aiOutput: ai });
   assertEquals(without.includes('class="cover-art"'), false);
 });
 
 Deno.test("format colors present as dots; heatmap uses ramp", () => {
-  const html = renderReport({ data: makeData(), branding, aiOutput: ai });
+  const html = renderReport({ lang: "pt", data: makeData(), branding, aiOutput: ai });
   assertStringIncludes(html, "#D97706");
   assertStringIncludes(html, "#0D9488");
   assertStringIncludes(html, "#A21CAF");
@@ -136,7 +136,7 @@ Deno.test("format colors present as dots; heatmap uses ramp", () => {
 });
 
 Deno.test("posts 7+ render as list rows", () => {
-  const html = renderReport({ data: makeData(), branding, aiOutput: ai });
+  const html = renderReport({ lang: "pt", data: makeData(), branding, aiOutput: ai });
   assertStringIncludes(html, 'class="post-rest"');
   assertStringIncludes(html, "Post número 12");
 });
@@ -159,7 +159,7 @@ Deno.test("top-3 share is measured against the month's total reach, not the top_
   }));
   data.kpis["reach"] = { id: "reach", value: 60000, unit: "count" };
 
-  const html = renderReport({ data, branding, aiOutput: ai });
+  const html = renderReport({ lang: "pt", data, branding, aiOutput: ai });
   assertStringIncludes(html, "(5% do total)"); // 3000 / 60000
   assertEquals(html.includes("(25% do total)"), false); // 3000 / 12000, the old bug
 });
@@ -168,13 +168,13 @@ Deno.test("top-3 share falls back to the subset sum when reach is missing or zer
   const data = makeData();
   data.top_posts = data.top_posts.map((p) => ({ ...p, reach: 1000 }));
   delete data.kpis["reach"];
-  const html = renderReport({ data, branding, aiOutput: ai });
+  const html = renderReport({ lang: "pt", data, branding, aiOutput: ai });
   assertStringIncludes(html, "(25% do total)"); // 3000 / 12000
 
   const zero = makeData();
   zero.top_posts = zero.top_posts.map((p) => ({ ...p, reach: 1000 }));
   zero.kpis["reach"] = { id: "reach", value: 0, unit: "count" };
-  assertStringIncludes(renderReport({ data: zero, branding, aiOutput: ai }), "(25% do total)");
+  assertStringIncludes(renderReport({ lang: "pt", data: zero, branding, aiOutput: ai }), "(25% do total)");
 });
 
 Deno.test("plano takeaway count matches the number of recommendation cards rendered", () => {
@@ -188,7 +188,7 @@ Deno.test("plano takeaway count matches the number of recommendation cards rende
       { title: "R5", description: "d", priority: "high" },
     ],
   };
-  const html = renderReport({ data: makeData(), branding, aiOutput: five });
+  const html = renderReport({ lang: "pt", data: makeData(), branding, aiOutput: five });
   const cards = (html.match(/class="reco-card"/g) || []).length;
   assertEquals(cards, 5);
   assertStringIncludes(html, "5 recomendações");
@@ -200,7 +200,7 @@ Deno.test("priority low gets its own neutral label", () => {
     ...ai,
     recommendations: [{ title: "Testar carrossel", description: "d", priority: "low" }],
   };
-  const html = renderReport({ data: makeData(), branding, aiOutput: withLow });
+  const html = renderReport({ lang: "pt", data: makeData(), branding, aiOutput: withLow });
   assertStringIncludes(html, "Prioridade baixa");
   assertEquals(html.includes("Prioridade média"), false);
 });
@@ -213,7 +213,7 @@ Deno.test("user text cannot hijack page numbering", () => {
   ];
   const evilBranding = { ...branding, workspace_name: "Agência {{SEC_NO}}" };
 
-  const html = renderReport({ data, branding: evilBranding, aiOutput: ai });
+  const html = renderReport({ lang: "pt", data, branding: evilBranding, aiOutput: ai });
   // footers still number 2..6 of 6 — nothing consumed a page token
   assertStringIncludes(html, "2 / 6");
   assertStringIncludes(html, "6 / 6");
@@ -243,7 +243,7 @@ Deno.test("truncated lists say so; complete lists do not", () => {
     avg_reach: 1000 - i,
     count: 2,
   }));
-  const html = renderReport({ data, branding, aiOutput: ai });
+  const html = renderReport({ lang: "pt", data, branding, aiOutput: ai });
   assertStringIncludes(html, "Principais faixas etárias");
   assertStringIncludes(html, "Principais cidades");
   assertStringIncludes(html, "Principais países");
@@ -253,7 +253,7 @@ Deno.test("truncated lists say so; complete lists do not", () => {
   // nothing dropped → plain labels
   const small = makeData();
   small.kpis["posts_count"] = { id: "posts_count", value: 12, unit: "count" };
-  const plain = renderReport({ data: small, branding, aiOutput: ai });
+  const plain = renderReport({ lang: "pt", data: small, branding, aiOutput: ai });
   assertStringIncludes(plain, ">Faixa etária<");
   assertStringIncludes(plain, ">Cidades<");
   assertStringIncludes(plain, ">Países<");
@@ -277,7 +277,7 @@ Deno.test("demographic and location rows are ranked before being capped", () => 
     top_cities: [{ name: "Fortaleza", pct: 38.2 }],
     top_countries: [{ name: "Brasil", pct: 95.1 }],
   };
-  const html = renderReport({ data, branding, aiOutput: ai });
+  const html = renderReport({ lang: "pt", data, branding, aiOutput: ai });
   const order = [...html.matchAll(/class="b-l">(\d\d)–(\d\d)</g)].map((m) => `${m[1]}-${m[2]}`);
   assertEquals(order.slice(0, 5), ["25-34", "35-44", "18-24", "45-54", "55-64"]);
   assertEquals(html.includes("13–17"), false); // smallest bucket dropped, not an arbitrary one
@@ -292,7 +292,7 @@ Deno.test("heat chips never name a slot outside the grid", () => {
     { day: "qua", hour: 7, avg_engagement: 9.5 }, // outside 8h–21h
     { day: "seg", hour: 19, avg_engagement: 5.2 },
   ];
-  const html = renderReport({ data, branding, aiOutput: ai });
+  const html = renderReport({ lang: "pt", data, branding, aiOutput: ai });
   assertEquals(html.includes("Quinta · 22h"), false);
   assertEquals(html.includes("Quarta · 7h"), false);
   assertStringIncludes(html, "Segunda · 19h");
@@ -308,7 +308,7 @@ Deno.test("heatmap normalises and ranks only over the in-grid window (8h–21h)"
     { day: "dom", hour: 22, avg_engagement: 9.9 }, // outside window, would-be max
     { day: "seg", hour: 19, avg_engagement: 5.2 }, // the true in-grid max
   ];
-  const html = renderReport({ data, branding, aiOutput: ai });
+  const html = renderReport({ lang: "pt", data, branding, aiOutput: ai });
   assertEquals(html.includes("Domingo · 22h"), false);
   assertStringIncludes(html, "Segunda · 19h");
   // the sole in-grid slot is both the grid's darkest cell AND the "1º" chip —
@@ -319,7 +319,7 @@ Deno.test("heatmap normalises and ranks only over the in-grid window (8h–21h)"
 Deno.test("heatmap section collapses entirely when every slot is outside the grid", () => {
   const none = makeData();
   none.best_times = [{ day: "qui", hour: 23, avg_engagement: 9.9 }];
-  const html = renderReport({ data: none, branding, aiOutput: ai });
+  const html = renderReport({ lang: "pt", data: none, branding, aiOutput: ai });
   assertEquals(html.includes('class="heat-chip'), false); // no chips
   assertEquals(html.includes("Melhores horários para publicar"), false); // no heading
   assertEquals(html.includes('class="heat-table'), false); // no grid
@@ -328,7 +328,7 @@ Deno.test("heatmap section collapses entirely when every slot is outside the gri
 Deno.test("negative follower growth is not phrased as growth", () => {
   const data = makeData();
   data.kpis["followers_gained"] = { id: "followers_gained", value: -120, unit: "count" };
-  const html = renderReport({ data, branding, aiOutput: ai });
+  const html = renderReport({ lang: "pt", data, branding, aiOutput: ai });
   assertStringIncludes(html, "Queda de <span class=\"hit\">120 seguidores</span> no período.");
   assertEquals(html.includes("Crescimento de"), false);
 });
@@ -340,7 +340,7 @@ Deno.test("empty recommendations drop the Recomendações heading with them, but
     ...ai,
     recommendations: [],
   };
-  const html = renderReport({ data: makeData(), branding, aiOutput: goalsOnly });
+  const html = renderReport({ lang: "pt", data: makeData(), branding, aiOutput: goalsOnly });
   assertEquals(html.includes("Recomendações para"), false);
   assertEquals(html.includes('class="reco"'), false);
   assertStringIncludes(html, "Metas para"); // page 6 still renders for the goals
@@ -351,14 +351,14 @@ Deno.test("empty highlights drop the Destaques heading with them", () => {
   const data = makeData();
   data.top_posts = [];
   data.content_breakdown = {};
-  const html = renderReport({ data, branding, aiOutput: ai });
+  const html = renderReport({ lang: "pt", data, branding, aiOutput: ai });
   assertEquals(html.includes("Destaques"), false);
   assertEquals(html.includes('class="hl-grid"'), false);
 });
 
 Deno.test("whitespace-only executive summary falls back to the deterministic summary", () => {
   const blank: AIOutput = { ...ai, executive_summary: "   \n  " };
-  const html = renderReport({ data: makeData(), branding, aiOutput: blank });
+  const html = renderReport({ lang: "pt", data: makeData(), branding, aiOutput: blank });
   assertEquals(html.includes('<div class="summary"></div>'), false);
   assertStringIncludes(html, "<strong>Alcance total:</strong>"); // deterministic fallback bullets
 });
@@ -378,7 +378,7 @@ Deno.test("post grid density steps with the card count when the cards own the pa
     const data = makeData();
     data.top_posts = data.top_posts.slice(0, count);
     data.tags_performance = []; // no topics table → cards own the page
-    const html = renderReport({ data, branding, aiOutput: ai });
+    const html = renderReport({ lang: "pt", data, branding, aiOutput: ai });
     assertStringIncludes(html, expected);
   }
 });
@@ -388,14 +388,14 @@ Deno.test("post grid keeps the tuned 3-up layout when the page also carries list
   const withList = makeData(); // 12 posts → list rows
   withList.tags_performance = [];
   assertStringIncludes(
-    renderReport({ data: withList, branding, aiOutput: ai }),
+    renderReport({ lang: "pt", data: withList, branding, aiOutput: ai }),
     'class="post-grid "',
   );
 
   const withTags = makeData();
   withTags.top_posts = withTags.top_posts.slice(0, 2); // would be pg-duo on its own
   assertStringIncludes(
-    renderReport({ data: withTags, branding, aiOutput: ai }),
+    renderReport({ lang: "pt", data: withTags, branding, aiOutput: ai }),
     'class="post-grid "',
   );
 });
@@ -405,7 +405,7 @@ Deno.test("an empty month gets no density modifier", () => {
   data.top_posts = [];
   data.tags_performance = [];
   assertStringIncludes(
-    renderReport({ data, branding, aiOutput: ai }),
+    renderReport({ lang: "pt", data, branding, aiOutput: ai }),
     'class="post-grid "',
   );
 });

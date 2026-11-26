@@ -4,7 +4,9 @@ import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 import { generateAINarrative, type GenerateResult } from "../_shared/report-template/ai.ts";
 import { type ThumbnailStorage } from "../_shared/instagram-thumbnail-cache.ts";
 import { monthWindow } from "../_shared/report-docs/month-window.ts";
-import { buildDefaultLayout, NEXT_STEPS_TITLE } from "../_shared/report-docs/default-layout.ts";
+import { buildDefaultLayout, isNextStepsTitle } from "../_shared/report-docs/default-layout.ts";
+import type { Lang } from "../_shared/i18n/lang.ts";
+import { reportDocsText } from "../_shared/i18n/catalogs/report-docs.ts";
 import {
   narrativePlatforms, selectPlatformSections, showAllPlatformHeadings,
 } from "../_shared/report-docs/platform-filter.ts";
@@ -57,6 +59,8 @@ export interface GenerateDeps {
   storage: ThumbnailStorage;
   geminiKey: string;
   userId: string;
+  /** Idioma do workspace (workspaceLang, carregado uma vez por requisição). */
+  lang: Lang;
 }
 
 // deno-lint-ignore no-explicit-any
@@ -77,7 +81,7 @@ export async function generateReportDocument(
   const currentMonth = saoPauloDate(new Date()).slice(0, 7);
   let w;
   try {
-    w = monthWindow(month);
+    w = monthWindow(month, deps.lang);
   } catch {
     throw new GenerateError("bad_month");
   }
@@ -177,6 +181,7 @@ export async function generateReportDocument(
     hasTags: snapshot.tags_performance.length > 0,
     hasTikTokBestTimes: (snapshot.tiktok?.best_times.length ?? 0) > 0,
     hasGbpUnits: (snapshot.google?.unit_rows.length ?? 0) > 1,
+    lang: deps.lang,
   };
   // Modelo do workspace (spec 2026-10-28-report-platform-sections §Generation): seções das
   // plataformas desmarcadas (ou sem dados) saem inteiras; só um modelo com alguma seção de
@@ -212,6 +217,7 @@ export async function generateReportDocument(
   let summaryDoc = textDoc(fallbackSummaryParagraphs(
     snapshot.kpis,
     snapshot.period.label,
+    deps.lang,
     narrativeTiktok || narrativeGoogle
       ? { instagram: narrativeInstagram, tiktok: narrativeTiktok, google: narrativeGoogle }
       : undefined,
@@ -269,7 +275,7 @@ export async function generateReportDocument(
         aiContent = output;
         summaryDoc = aiSummaryDoc(output);
         recsDoc = aiRecommendationsDoc(output);
-        goalsDoc = aiGoalsDoc(output);
+        goalsDoc = aiGoalsDoc(output, deps.lang);
       } else {
         const reason = "error" in ai ? ai.error : (ai as GenerateResult).status;
         console.warn(`[report-docs] AI falhou: ${reason}`);
@@ -285,7 +291,7 @@ export async function generateReportDocument(
   const finalBase = !templateLayout && recsDoc === null
     ? fromSections(
       toSections(baseLayout).filter(
-        (sec) => !(sec.kind === "general" && sec.marker.config?.title === NEXT_STEPS_TITLE),
+        (sec) => !(sec.kind === "general" && isNextStepsTitle(sec.marker.config?.title)),
       ),
       baseLayout,
     )
@@ -300,7 +306,7 @@ export async function generateReportDocument(
       client_id: clientId,
       instagram_account_id: igAccountId,
       tiktok_account_id: tiktokAccountId,
-      title: `Relatório de ${w.label}`,
+      title: reportDocsText(deps.lang).docTitle(w.label),
       period_start: w.startDate,
       period_end: w.endDateExclusive,
       layout,

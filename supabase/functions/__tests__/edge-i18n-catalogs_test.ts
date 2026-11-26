@@ -17,6 +17,8 @@ import { clientEventText } from "../_shared/i18n/catalogs/client-event.ts";
 import { agendaText } from "../_shared/i18n/catalogs/agenda.ts";
 import { hubLoginText } from "../_shared/i18n/catalogs/hub-login.ts";
 import { clientUnsubText } from "../_shared/i18n/catalogs/client-unsub.ts";
+import { reportTemplateText } from "../_shared/i18n/catalogs/report-template.ts";
+import { reportDocsText } from "../_shared/i18n/catalogs/report-docs.ts";
 
 type Entry = { name: string; get: (lang: "pt" | "en") => Record<string, unknown> };
 
@@ -34,6 +36,8 @@ const CATALOGS: Entry[] = [
   { name: "agenda", get: agendaText },
   { name: "hub-login", get: hubLoginText },
   { name: "client-unsub", get: clientUnsubText },
+  { name: "report-template", get: reportTemplateText },
+  { name: "report-docs", get: reportDocsText },
   // Append: { name: "<family>", get: <catalogAccessor> },
 ];
 

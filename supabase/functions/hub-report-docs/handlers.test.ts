@@ -227,6 +227,8 @@ Deno.test("token HMAC valido para o docId: payload", async () => {
     layout: { blocks: [] },
     data_snapshot: { kpis: {} },
     period_start: "2026-07-01",
+    // This fake db has no `workspaces` table: the lookup fails and the page falls back to pt.
+    language: "pt",
   });
 });
 
@@ -401,4 +403,62 @@ Deno.test("signImageBlocks: erro na consulta de vínculos loga e nenhum bloco ga
   assertEquals(signed, 0);
   assertEquals(cap.calls.length, 1);
   assertEquals(cap.calls[0][0], "[hub-report-docs] sign-images: link query failed");
+});
+
+// --- printDocHandler: workspace language ---------------------------------------
+
+// report_documents row plus a `workspaces` table: `language` is the stored value, `lookup`
+// controls whether the language query returns a row, an error or throws.
+function makePrintDb(language: unknown, lookup: "row" | "error" | "throw" = "row") {
+  const docRow = {
+    id: "doc-1", title: "July", layout: { blocks: [] }, data_snapshot: {}, period_start: "2026-07-01",
+    client_id: 7, conta_id: "ws", status: "ready",
+  };
+  return {
+    from: (table: string) => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: () => {
+            if (table === "report_documents") return Promise.resolve({ data: docRow, error: null });
+            if (table !== "workspaces") throw new Error(`unexpected table ${table}`);
+            if (lookup === "throw") throw new Error("boom");
+            if (lookup === "error") return Promise.resolve({ data: null, error: { message: "x" } });
+            return Promise.resolve({ data: { language }, error: null });
+          },
+        }),
+      }),
+    }),
+    // deno-lint-ignore no-explicit-any
+  } as any;
+}
+
+Deno.test("print-doc payload carries the workspace language (en)", async () => {
+  const pt = await signPrintToken("doc-1", 2_000_000, SECRET);
+  const payload = await printDocHandler(makePrintDb("en"), SECRET, "doc-1", pt, 1_000_000);
+  assertEquals(payload?.language, "en");
+  // Existing fields are untouched.
+  assertEquals(payload?.id, "doc-1");
+  assertEquals(payload?.title, "July");
+  assertEquals(payload?.period_start, "2026-07-01");
+  assertEquals("conta_id" in (payload ?? {}), false);
+});
+
+Deno.test("print-doc payload language falls back to pt on pt, unknown, null, error and throw", async () => {
+  const pt = await signPrintToken("doc-1", 2_000_000, SECRET);
+  for (const db of [
+    makePrintDb("pt"), makePrintDb("fr"), makePrintDb(null), makePrintDb(undefined),
+    makePrintDb("en", "error"), makePrintDb("en", "throw"),
+  ]) {
+    const payload = await printDocHandler(db, SECRET, "doc-1", pt, 1_000_000);
+    assertEquals(payload?.language, "pt");
+    assertEquals(payload?.id, "doc-1");
+  }
+});
+
+Deno.test("print-doc: invalid token still returns null before any language lookup", async () => {
+  let queried = false;
+  const db = { from: () => { queried = true; throw new Error("no query expected"); } };
+  // deno-lint-ignore no-explicit-any
+  assertEquals(await printDocHandler(db as any, SECRET, "doc-1", "bad", 1_000_000), null);
+  assertEquals(queried, false);
 });

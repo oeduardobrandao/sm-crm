@@ -11,6 +11,7 @@ import type { TikTokKpiId } from "../tiktok-analytics/kpis.ts";
 import type { GbpKpiId, GbpRatingDistribution, GbpSurface } from "../gbp-analytics/kpis.ts";
 import { computeKpis, type KpiEntry, type KpiSources, type ReportKpiId } from "./kpis.ts";
 import { monthWindow } from "./month-window.ts";
+import type { Lang } from "../i18n/lang.ts";
 import type { InstagramHealthSnapshot } from "./health-types.ts";
 
 export interface SnapshotHubTheme {
@@ -206,6 +207,8 @@ export interface SnapshotPrevMonthPost {
 
 export interface SnapshotInput {
   month: string;
+  /** Idioma do workspace (só o `period.label`). Ausente = pt. */
+  lang?: Lang;
   /** ISO timestamp do momento da geração -- alimenta `period.effectiveEnd`.
    * Congelado pelo CHAMADOR (nunca `new Date()` aqui dentro: assembleSnapshot
    * é puro e determinístico para os mesmos argumentos, precisa pra teste). */
@@ -302,7 +305,7 @@ function computeComparison(
 }
 
 export function assembleSnapshot(input: SnapshotInput): ReportDocSnapshot {
-  const w = monthWindow(input.month);
+  const w = monthWindow(input.month, input.lang ?? "pt");
 
   const breakdown: SnapshotContentBreakdown = {};
   for (const p of input.posts) {

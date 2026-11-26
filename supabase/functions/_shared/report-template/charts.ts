@@ -2,21 +2,19 @@
 // Designed for embedding in HTML reports that are converted to PDF via Gotenberg.
 
 import { escapeHtml } from "./escape.ts";
+import type { Lang } from "../i18n/lang.ts";
+import { reportTemplateText } from "../i18n/catalogs/report-template.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-const MONTHS_PT = [
-  "jan", "fev", "mar", "abr", "mai", "jun",
-  "jul", "ago", "set", "out", "nov", "dez",
-];
-
-/** Format an ISO `YYYY-MM-DD` label as pt-BR short date, e.g. "1 jun". Falls back to the raw label. */
-function fmtTick(label: string): string {
+/** Format an ISO `YYYY-MM-DD` label as a short date: "1 jun" (pt), "Jun 1" (en). Falls back to the raw label. */
+function fmtTick(label: string, lang: Lang): string {
   const m = label.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) return label;
-  return `${parseInt(m[3], 10)} ${MONTHS_PT[parseInt(m[2], 10) - 1]}`;
+  const t = reportTemplateText(lang);
+  return t.chartTick(String(parseInt(m[3], 10)), t.monthsShort[parseInt(m[2], 10) - 1]);
 }
 
 /** Round a number to at most `decimals` decimal places. */
@@ -30,6 +28,8 @@ function r(n: number, decimals = 2): number {
 // ---------------------------------------------------------------------------
 
 interface LineChartOptions {
+  /** Workspace language of the report (axis dates). Required so every caller decides it. */
+  lang: Lang;
   data: { label: string; value: number }[];
   width: number;
   height: number;
@@ -42,7 +42,7 @@ interface LineChartOptions {
 }
 
 export function lineChart(opts: LineChartOptions): string {
-  const { data, width, height, color, markers = [], annotation, eventMarker } = opts;
+  const { data, width, height, color, markers = [], annotation, eventMarker, lang } = opts;
 
   const PAD_TOP = 16;
   const PAD_BOTTOM = 32;
@@ -82,7 +82,7 @@ export function lineChart(opts: LineChartOptions): string {
     `${toX(data.length - 1)},${areaBottom}`,
   ].join(" ");
 
-  // X-axis labels: at most 4 ticks (first, ~1/3, ~2/3, last), pt-BR short dates
+  // X-axis labels: at most 4 ticks (first, ~1/3, ~2/3, last), short dates in the report language
   const n = data.length;
   const tickIdx = n <= 4
     ? data.map((_, i) => i)
@@ -90,7 +90,7 @@ export function lineChart(opts: LineChartOptions): string {
   const xLabels = tickIdx
     .map((i) => {
       const isLast = i === n - 1;
-      return `<text x="${toX(i)}" y="${height - 6}" text-anchor="${isLast ? "end" : "middle"}" font-size="9" fill="#8A8A8A" font-family="'Instrument Sans', sans-serif" class="axis-x">${escapeHtml(fmtTick(data[i].label))}</text>`;
+      return `<text x="${toX(i)}" y="${height - 6}" text-anchor="${isLast ? "end" : "middle"}" font-size="9" fill="#8A8A8A" font-family="'Instrument Sans', sans-serif" class="axis-x">${escapeHtml(fmtTick(data[i].label, lang))}</text>`;
     })
     .join("");
 
