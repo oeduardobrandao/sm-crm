@@ -62,25 +62,22 @@ export async function fetchLastActivity(
   return result;
 }
 
+/** One priced paying subscription row (BRL or USD), as aggregateMrr returns it. */
+type MrrPriceableRow = MrrSubRow & { workspace_currency: "brl" | "usd" };
+type MrrPricedSub = Awaited<
+  ReturnType<typeof priceSubscriptionRows<MrrPriceableRow>>
+>[number];
+export type PricedMrrRow = ReturnType<typeof aggregateMrr<MrrPricedSub>>["priced"][number];
+
 /**
- * Monthly recurring revenue + the paying-workspace breakdown behind it, driven by the Stripe
- * subscription mirror (workspace_subscriptions), NOT by plan-assignment counts -- so comped/manual
- * plan grants (which have no subscription row) never inflate it. Only subscriptions actually
- * collecting count (`active` — see MRR_STATUSES); `past_due` (payment failed, provider retrying)
- * is excluded until it recovers. Each is priced from its live Stripe amount, net of coupons; if
- * Stripe is unreachable it falls back to the plan's catalog price. Annual is normalized to monthly, and
- * the total is the exact sum of the per-workspace monthly amounts returned in `workspaces`.
- *
- * Extracted from index.ts (was an inline, un-exported handleGetMrr) so the owner-contact
- * enrichment added here for the admin CSV export is unit-testable. `fetchOwnerContactsFn` is
- * injectable so tests can substitute a fixture without re-testing fetchOwnerContacts itself.
+ * Loads every MRR-counting subscription and prices it (live Stripe amount net of coupons, catalog
+ * fallback). Returns BRL and USD rows together, each carrying `currency` and `monthly_cents`, plus
+ * each workspace's created_at. Shared by the MRR tile and the acquisition-source breakdown.
  */
-export async function handleGetMrr(
+export async function loadPricedMrrRows(
   svc: SupabaseClient,
-  headers: Record<string, string>,
-  fetchOwnerContactsFn: typeof fetchOwnerContacts = fetchOwnerContacts,
   fetchInternalIdsFn: (svc: SupabaseClient) => Promise<Set<string>> = fetchInternalWorkspaceIds,
-) {
+): Promise<{ priced: PricedMrrRow[]; createdByWs: Map<string, string> }> {
   const allRows = await fetchAllRows<MrrSubRow>((from, to) =>
     svc
       .from("workspace_subscriptions")
@@ -138,12 +135,38 @@ export async function handleGetMrr(
 
   const priceable = await priceSubscriptionRows(svc, withCurrency, nameByWs, planById);
 
-  // BRL and USD never share a total: aggregate each currency on its own. The top-level fields
-  // stay BRL-only (the deployed Admin reads them as reais); USD rides in `usd`.
+  // BRL and USD never share a total: each is aggregated on its own by the callers.
   const brlAgg = aggregateMrr(priceable.filter((r) => r.currency !== "usd"));
   const usdAgg = aggregateMrr(priceable.filter((r) => r.currency === "usd"));
+  return { priced: [...brlAgg.priced, ...usdAgg.priced], createdByWs };
+}
+
+/**
+ * Monthly recurring revenue + the paying-workspace breakdown behind it, driven by the Stripe
+ * subscription mirror (workspace_subscriptions), NOT by plan-assignment counts -- so comped/manual
+ * plan grants (which have no subscription row) never inflate it. Only subscriptions actually
+ * collecting count (`active` — see MRR_STATUSES); `past_due` (payment failed, provider retrying)
+ * is excluded until it recovers. Each is priced from its live Stripe amount, net of coupons; if
+ * Stripe is unreachable it falls back to the plan's catalog price. Annual is normalized to monthly, and
+ * the total is the exact sum of the per-workspace monthly amounts returned in `workspaces`.
+ *
+ * Extracted from index.ts (was an inline, un-exported handleGetMrr) so the owner-contact
+ * enrichment added here for the admin CSV export is unit-testable. `fetchOwnerContactsFn` is
+ * injectable so tests can substitute a fixture without re-testing fetchOwnerContacts itself.
+ */
+export async function handleGetMrr(
+  svc: SupabaseClient,
+  headers: Record<string, string>,
+  fetchOwnerContactsFn: typeof fetchOwnerContacts = fetchOwnerContacts,
+  fetchInternalIdsFn: (svc: SupabaseClient) => Promise<Set<string>> = fetchInternalWorkspaceIds,
+) {
+  const { priced, createdByWs } = await loadPricedMrrRows(svc, fetchInternalIdsFn);
+
+  // BRL and USD never share a total: aggregate each currency on its own. The top-level fields
+  // stay BRL-only (the deployed Admin reads them as reais); USD rides in `usd`.
+  const brlAgg = aggregateMrr(priced.filter((r) => r.currency !== "usd"));
+  const usdAgg = aggregateMrr(priced.filter((r) => r.currency === "usd"));
   const { mrr_cents, paying_count } = brlAgg;
-  const priced = [...brlAgg.priced, ...usdAgg.priced];
   const pricedWsIds = [...new Set(priced.map((r) => r.workspace_id))];
   const [ownerContacts, lastActivityByWs] = await Promise.all([
     fetchOwnerContactsFn(svc, pricedWsIds),
