@@ -17,8 +17,16 @@ export interface ConsentChoice {
   marketing?: boolean;
 }
 
+/**
+ * Why the record exists: `choice` is the visitor's own decision (banner, dialog, "Do Not Sell");
+ * `us_default` is the opt-out default written on a first visit to an `/en` page
+ * (lib/usConsentDefault.ts). Records from before this field are choices.
+ */
+export type ConsentBasis = 'choice' | 'us_default';
+
 export interface Consent extends Required<ConsentChoice> {
   decidedAt: string;
+  basis: ConsentBasis;
 }
 
 type Listener = () => void;
@@ -30,7 +38,20 @@ let storageListenerInstalled = false;
 let memoryOnly = false;
 let memoryRaw: string | null = null;
 let cachedRaw: string | null | undefined;
+let cachedGpc: boolean | undefined;
 let cachedValue: Consent | null = null;
+
+/**
+ * Global Privacy Control: the browser asks sites not to sell or share the visitor's data. Honoured
+ * on every page (Brazilian pages and the signed-in app included) as advertising off, whatever the
+ * stored record says.
+ */
+export function gpcEnabled(): boolean {
+  return (
+    typeof navigator !== 'undefined' &&
+    (navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl === true
+  );
+}
 
 function readRaw(): string | null {
   if (memoryOnly) return memoryRaw;
@@ -60,18 +81,26 @@ function parse(raw: string | null): Consent | null {
       support: value.support,
       marketing: value.marketing === true,
       decidedAt: value.decidedAt,
+      basis: value.basis === 'us_default' ? 'us_default' : 'choice',
     };
   } catch {
     return null;
   }
 }
 
-/** Stable reference while the stored value is unchanged (useSyncExternalStore requires it). */
+/**
+ * Stable reference while the stored value and the GPC signal are unchanged (useSyncExternalStore
+ * requires it). With GPC on, `marketing` is always false: every ad loader reads consent through
+ * here, so no ad tag can load under GPC. The stored record itself is left as it was.
+ */
 export function getConsent(): Consent | null {
   const raw = readRaw();
-  if (raw !== cachedRaw) {
+  const gpc = gpcEnabled();
+  if (raw !== cachedRaw || gpc !== cachedGpc) {
     cachedRaw = raw;
-    cachedValue = parse(raw);
+    cachedGpc = gpc;
+    const parsed = parse(raw);
+    cachedValue = parsed && gpc && parsed.marketing ? { ...parsed, marketing: false } : parsed;
   }
   return cachedValue;
 }
@@ -80,12 +109,13 @@ function notify(): void {
   for (const listener of [...listeners]) listener();
 }
 
-export function setConsent(choice: ConsentChoice): void {
+export function setConsent(choice: ConsentChoice, basis: ConsentBasis = 'choice'): void {
   const raw = JSON.stringify({
     analytics: choice.analytics,
     support: choice.support,
     marketing: choice.marketing === true,
     decidedAt: new Date().toISOString(),
+    basis,
   });
   memoryRaw = raw;
   try {

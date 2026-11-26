@@ -63,14 +63,7 @@ function twoTone(title: string): ReactNode {
   );
 }
 
-export default function LandingPage({
-  locale = 'pt',
-  onDoNotSell,
-}: {
-  locale?: SiteLocale;
-  /** CCPA "Do Not Sell or Share" handler for the en footer (wired by the /en route). */
-  onDoNotSell?: () => void;
-}) {
+export default function LandingPage({ locale = 'pt' }: { locale?: SiteLocale }) {
   usePageMeta(localizedPath(locale, 'home'));
   const content = landingContent(locale);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -128,7 +121,7 @@ export default function LandingPage({
         <FaqSection items={[...content.faq]} locale={locale} />
         <CtaFinal locale={locale} />
       </main>
-      <LandingFooter locale={locale} onDoNotSell={onDoNotSell} />
+      <LandingFooter locale={locale} />
     </div>
   );
 }

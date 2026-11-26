@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { OPEN_PREFERENCES_EVENT } from '@/lib/consent';
+import { getConsent, OPEN_PREFERENCES_EVENT, setConsent } from '@/lib/consent';
 
 vi.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: null, loading: false, profile: null, role: 'owner' }),
@@ -21,6 +21,21 @@ describe('landing chrome links', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Preferências de cookies' }));
     window.removeEventListener(OPEN_PREFERENCES_EVENT, handler);
     expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it('en footer "Do Not Sell or Share" turns advertising off as an explicit choice', () => {
+    setConsent({ analytics: true, support: true, marketing: true }, 'us_default');
+    render(<LandingFooter locale="en" />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Do Not Sell or Share My Personal Information' }),
+    );
+    expect(getConsent()).toMatchObject({
+      analytics: true,
+      support: true,
+      marketing: false,
+      basis: 'choice',
+    });
+    localStorage.clear();
   });
 
   it('footer section links work from a subpage (absolute hashes)', () => {

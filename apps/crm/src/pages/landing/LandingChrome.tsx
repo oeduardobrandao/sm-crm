@@ -2,6 +2,7 @@ import { useEffect, useSyncExternalStore } from 'react';
 import { ArrowRight, Instagram, Linkedin, LogIn, Moon, Sun, Youtube } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { CookiePreferencesLink } from '@/components/consent/CookiePreferencesLink';
+import { doNotSellOrShare } from '@/lib/usConsentDefault';
 import { useIsHydrated } from '@/lib/useIsHydrated';
 import { isSsrMount } from '@/lib/ssrMount';
 import { landingContent, localizedPath, signupHref, type SiteLocale } from '@/content/locale';
@@ -219,14 +220,7 @@ function legalHrefs(locale: SiteLocale): string[] {
     : [localizedPath('pt', 'privacy'), localizedPath('pt', 'terms'), '/lgpd'];
 }
 
-export function LandingFooter({
-  locale = 'pt',
-  onDoNotSell = () => {},
-}: {
-  locale?: SiteLocale;
-  /** CCPA "Do Not Sell or Share" entry (en only); wired by the page that owns the flow. */
-  onDoNotSell?: () => void;
-}) {
+export function LandingFooter({ locale = 'pt' }: { locale?: SiteLocale }) {
   const { footer } = landingContent(locale);
   const products = productHrefs(locale);
   const legal = legalHrefs(locale);
@@ -280,7 +274,11 @@ export function LandingFooter({
               </li>
               {footer.doNotSell && (
                 <li>
-                  <button type="button" className="cookie-prefs-link" onClick={onDoNotSell}>
+                  <button
+                    type="button"
+                    className="cookie-prefs-link"
+                    onClick={() => doNotSellOrShare()}
+                  >
                     {footer.doNotSell}
                   </button>
                 </li>

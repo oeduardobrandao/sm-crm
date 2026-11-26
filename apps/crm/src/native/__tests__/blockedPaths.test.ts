@@ -39,6 +39,10 @@ describe('isBlockedInNativeApp', () => {
     'https://mesaas.com.br/comecar?plan=max',
     'https://www.mesaas.com.br/',
     '//www.mesaas.com.br/precos',
+    '/en',
+    '/en/',
+    '/en/pricing',
+    'https://www.mesaas.com.br/en/pricing',
   ])('blocks %s', (path) => {
     expect(isBlockedInNativeApp(path)).toBe(true);
   });
@@ -51,6 +55,8 @@ describe('isBlockedInNativeApp', () => {
     '/lgpd',
     '/precosx',
     '/blogger',
+    '/english',
+    '/enx',
     '/login',
     'https://example.com/precos',
     'https://www.mesaas.com.br/politica-de-privacidade',

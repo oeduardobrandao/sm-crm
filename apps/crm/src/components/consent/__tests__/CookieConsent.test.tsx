@@ -15,9 +15,9 @@ vi.mock('@/lib/supportChat', async (importActual) => ({
 
 const t = (key: string) => i18n.t(key);
 
-function renderBanner() {
+function renderBanner(path = '/') {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[path]}>
       <CookieConsent />
     </MemoryRouter>,
   );
@@ -97,6 +97,14 @@ describe('CookieConsent', () => {
       ).toBeNull();
       await userEvent.click(within(dialog).getByRole('button', { name: t('cookies.dialog.save') }));
       expect(getConsent()).toMatchObject({ analytics: true, support: true, marketing: false });
+    });
+
+    it('omits the Details link (legal pages open in Safari from Perfil instead)', async () => {
+      seedConsent();
+      renderBanner();
+      act(() => openConsentPreferences());
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).queryByRole('link')).toBeNull();
     });
   });
 
@@ -219,5 +227,83 @@ describe('CookieConsent', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: t('cookies.dialog.cancel') }));
     expect(clearPendingSupportChat).toHaveBeenCalled();
     expect(getConsent()).toMatchObject({ analytics: false, support: false });
+  });
+
+  describe('US pages (/en)', () => {
+    it('never shows the Brazilian opt-in banner on /en, even before the US default exists', () => {
+      renderBanner('/en');
+      expect(screen.queryByRole('region', { name: t('cookies.banner.title') })).toBeNull();
+      renderBanner('/en/pricing');
+      expect(screen.queryByRole('region', { name: t('cookies.banner.title') })).toBeNull();
+    });
+
+    it('keeps the banner on Brazilian paths that merely start with "en"', () => {
+      renderBanner('/english');
+      expect(screen.getByRole('region', { name: t('cookies.banner.title') })).toBeInTheDocument();
+    });
+  });
+
+  describe('preferences dialog', () => {
+    afterEach(async () => {
+      Object.defineProperty(navigator, 'globalPrivacyControl', {
+        value: undefined,
+        configurable: true,
+      });
+      await i18n.changeLanguage('pt');
+    });
+
+    it('with GPC, shows advertising off and locked, with the GPC line', async () => {
+      await i18n.changeLanguage('en');
+      Object.defineProperty(navigator, 'globalPrivacyControl', { value: true, configurable: true });
+      seedConsent({ analytics: true, support: true, marketing: true });
+      renderBanner('/en');
+      act(() => openConsentPreferences());
+      const dialog = await screen.findByRole('dialog');
+      const marketing = within(dialog).getByRole('switch', { name: 'Advertising' });
+      expect(marketing).not.toBeChecked();
+      expect(marketing).toBeDisabled();
+      expect(
+        within(dialog).getByText(
+          'Your browser sent Global Privacy Control, so advertising stays off.',
+        ),
+      ).toBeInTheDocument();
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Save preferences' }));
+      expect(getConsent()).toMatchObject({ analytics: true, support: true, marketing: false });
+    });
+
+    it('without GPC, the advertising switch is free and there is no GPC line', async () => {
+      await i18n.changeLanguage('en');
+      seedConsent({ marketing: true });
+      renderBanner('/en');
+      act(() => openConsentPreferences());
+      const dialog = await screen.findByRole('dialog');
+      const marketing = within(dialog).getByRole('switch', { name: 'Advertising' });
+      expect(marketing).toBeChecked();
+      expect(marketing).toBeEnabled();
+      expect(within(dialog).queryByText(/Global Privacy Control/)).toBeNull();
+    });
+
+    it('links Details to the English privacy policy cookies section in English', async () => {
+      await i18n.changeLanguage('en');
+      seedConsent();
+      renderBanner('/en');
+      act(() => openConsentPreferences());
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getByRole('link', { name: 'Details' })).toHaveAttribute(
+        'href',
+        '/en/privacy#cookies',
+      );
+    });
+
+    it('links Details to /lgpd in Portuguese', async () => {
+      seedConsent();
+      renderBanner();
+      act(() => openConsentPreferences());
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getByRole('link', { name: 'Detalhes' })).toHaveAttribute(
+        'href',
+        '/lgpd',
+      );
+    });
   });
 });

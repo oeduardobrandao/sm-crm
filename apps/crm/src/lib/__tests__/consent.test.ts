@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+function setGpc(value: boolean | undefined): void {
+  Object.defineProperty(navigator, 'globalPrivacyControl', { value, configurable: true });
+}
+
 describe('consent store', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -7,6 +11,7 @@ describe('consent store', () => {
   });
   afterEach(() => {
     vi.restoreAllMocks();
+    setGpc(undefined);
     localStorage.clear();
   });
 
@@ -52,6 +57,7 @@ describe('consent store', () => {
       support: true,
       marketing: false,
       decidedAt: '2026-10-01T00:00:00.000Z',
+      basis: 'choice',
     });
   });
 
@@ -108,5 +114,59 @@ describe('consent store', () => {
     window.removeEventListener(OPEN_PREFERENCES_EVENT, handler);
     expect(handler).toHaveBeenCalledTimes(1);
     expect((handler.mock.calls[0][0] as CustomEvent).detail).toEqual({ focus: 'support' });
+  });
+
+  describe('Global Privacy Control', () => {
+    const record = JSON.stringify({
+      analytics: true,
+      support: true,
+      marketing: true,
+      decidedAt: '2026-10-01T00:00:00.000Z',
+    });
+
+    it('forces advertising off for any record while the browser sends GPC', async () => {
+      const { getConsent, gpcEnabled, CONSENT_STORAGE_KEY } = await import('../consent');
+      localStorage.setItem(CONSENT_STORAGE_KEY, record);
+      setGpc(true);
+      expect(gpcEnabled()).toBe(true);
+      expect(getConsent()).toMatchObject({
+        analytics: true,
+        support: true,
+        marketing: false,
+        basis: 'choice',
+      });
+      // The stored record itself is untouched.
+      expect(JSON.parse(localStorage.getItem(CONSENT_STORAGE_KEY) ?? 'null').marketing).toBe(true);
+    });
+
+    it('keeps the stored advertising choice without GPC', async () => {
+      const { getConsent, gpcEnabled, CONSENT_STORAGE_KEY } = await import('../consent');
+      localStorage.setItem(CONSENT_STORAGE_KEY, record);
+      expect(gpcEnabled()).toBe(false);
+      expect(getConsent()?.marketing).toBe(true);
+    });
+
+    it('recomputes the cached value when GPC flips, and stays stable while it does not', async () => {
+      const { getConsent, CONSENT_STORAGE_KEY } = await import('../consent');
+      localStorage.setItem(CONSENT_STORAGE_KEY, record);
+      expect(getConsent()?.marketing).toBe(true);
+      setGpc(true);
+      const masked = getConsent();
+      expect(masked?.marketing).toBe(false);
+      expect(getConsent()).toBe(masked);
+      setGpc(false);
+      expect(getConsent()?.marketing).toBe(true);
+    });
+  });
+
+  it('round-trips the US default basis', async () => {
+    const { getConsent, setConsent, CONSENT_STORAGE_KEY } = await import('../consent');
+    setConsent({ analytics: true, support: true, marketing: true }, 'us_default');
+    expect(getConsent()?.basis).toBe('us_default');
+    expect(JSON.parse(localStorage.getItem(CONSENT_STORAGE_KEY) ?? 'null').basis).toBe(
+      'us_default',
+    );
+    setConsent({ analytics: true, support: true, marketing: false });
+    expect(getConsent()?.basis).toBe('choice');
   });
 });

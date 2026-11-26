@@ -8,6 +8,7 @@ import {
 } from '@mesaas/app-lifecycle';
 import { initSentry } from '@/lib/sentry';
 import { installConsentEffects } from './lib/consentEffects';
+import { applyUsConsentDefault } from './lib/usConsentDefault';
 import { captureReferral } from './lib/referral';
 import { initI18n } from '@mesaas/i18n';
 import { I18N_LAZY, I18N_RESOURCES } from './boot/i18nResources';
@@ -26,6 +27,9 @@ initSentry();
 
 // PostHog and the Crisp widget start only after the visitor's consent (lib/consentEffects.ts);
 // with consent already stored they still load on idle, off the landing page's critical path.
+// US pages (`/en`) are opt-out: a first visit gets the US default stored first, so the effects
+// boot with it and the Brazilian banner never sees an undecided visitor there.
+applyUsConsentDefault(window.location.pathname);
 installConsentEffects();
 
 // Programa de afiliados: grava o ?ref= de qualquer página do site para o cadastro (lib/referral.ts).

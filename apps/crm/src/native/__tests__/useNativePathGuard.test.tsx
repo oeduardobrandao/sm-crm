@@ -46,6 +46,18 @@ describe('useNativePathGuard', () => {
     await waitFor(() => expect(screen.getByTestId('path').textContent).toBe('/dashboard'));
   });
 
+  it('also catches the English US site', async () => {
+    setCapacitor({ isNativePlatform: () => true });
+    renderAt('/en');
+    await waitFor(() => expect(screen.getByTestId('path').textContent).toBe('/dashboard'));
+  });
+
+  it('also catches English pricing', async () => {
+    setCapacitor({ isNativePlatform: () => true });
+    renderAt('/en/pricing');
+    await waitFor(() => expect(screen.getByTestId('path').textContent).toBe('/dashboard'));
+  });
+
   it('leaves app routes alone inside the app', () => {
     setCapacitor({ isNativePlatform: () => true });
     renderAt('/configuracao/notificacoes');

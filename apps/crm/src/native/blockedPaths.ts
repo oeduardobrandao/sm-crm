@@ -2,7 +2,7 @@ import { isNativeApp } from './platform';
 import { getMesaasNative } from './mesaasNative';
 
 // Which CRM paths the iOS app never shows (apps/mobile/DECISIONS.md D5, D33): sign-up,
-// pricing, billing and the marketing site. Nothing here reads `window` at module scope;
+// pricing, billing and the marketing site (the English US site under `/en` included). Nothing here reads `window` at module scope;
 // the entry imports this through useNativePathGuard and the SSR prerender runs it in Node.
 
 /** The public site. Legal pages open here, outside the web view, inside the app. */
@@ -21,6 +21,7 @@ const BLOCKED_PREFIXES = [
   '/afiliados',
   '/blog',
   '/novidades',
+  '/en',
 ];
 
 /**

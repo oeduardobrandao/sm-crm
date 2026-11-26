@@ -181,4 +181,43 @@ describe('installConsentEffects', () => {
     expect(m.disableGoogleAds).not.toHaveBeenCalled();
     expect(m.purgeMarketingStorage).not.toHaveBeenCalled();
   });
+
+  describe('with Global Privacy Control', () => {
+    beforeEach(() =>
+      Object.defineProperty(navigator, 'globalPrivacyControl', { value: true, configurable: true }),
+    );
+    afterEach(() =>
+      Object.defineProperty(navigator, 'globalPrivacyControl', {
+        value: undefined,
+        configurable: true,
+      }),
+    );
+
+    it('never loads an ad tag at boot even with advertising stored as granted', async () => {
+      seedConsent({ analytics: true, support: true, marketing: true });
+      await boot();
+      vi.advanceTimersByTime(5000);
+      for (const loader of [
+        m.loadGoogleAds,
+        m.loadGoogleAdsWhenIdle,
+        m.loadMetaPixel,
+        m.loadMetaPixelWhenIdle,
+        m.loadOpenAiAds,
+        m.loadOpenAiAdsWhenIdle,
+      ]) {
+        expect(loader).not.toHaveBeenCalled();
+      }
+      expect(m.purgeMarketingStorage).toHaveBeenCalledTimes(1);
+      // Only advertising is affected: analytics still boots.
+      expect(m.initAnalytics).toHaveBeenCalledTimes(1);
+    });
+
+    it('never loads an ad tag on a later advertising grant', async () => {
+      const { setConsent } = await boot();
+      setConsent({ analytics: false, support: false, marketing: true });
+      expect(m.loadGoogleAds).not.toHaveBeenCalled();
+      expect(m.loadMetaPixel).not.toHaveBeenCalled();
+      expect(m.loadOpenAiAds).not.toHaveBeenCalled();
+    });
+  });
 });

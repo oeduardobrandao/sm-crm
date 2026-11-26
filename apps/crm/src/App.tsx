@@ -8,6 +8,7 @@ import { Analytics } from '@vercel/analytics/react';
 import { AuthProvider } from './context/AuthContext';
 import { BuildPrefetch } from './components/BuildPrefetch';
 import CookieConsent from './components/consent/CookieConsent';
+import UsCookieNotice from './components/consent/UsCookieNotice';
 import { Toaster } from '@/components/ui/sonner';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
@@ -383,6 +384,7 @@ export default function App() {
             </Routes>
           </Suspense>
           <CookieConsent />
+          <UsCookieNotice />
           <Analytics />
         </AuthProvider>
       </QueryClientProvider>

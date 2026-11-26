@@ -12,7 +12,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { isNativeApp } from '@/native/platform';
-import { setConsent, type ConsentCategory } from '@/lib/consent';
+import { gpcEnabled, setConsent, type ConsentCategory } from '@/lib/consent';
 import { useConsent } from '@/lib/useConsent';
 
 interface Props {
@@ -27,8 +27,11 @@ interface Props {
 // Mounted only while the dialog is open (inside DialogContent), so the switches always start from
 // the stored choice instead of leaking state from a previous open.
 function PreferencesForm({ focus, onClose }: { focus?: ConsentCategory; onClose: () => void }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const consent = useConsent();
+  // Global Privacy Control locks advertising off (getConsent() already reports it as off). Read
+  // here, not at render of the page: this form only mounts once the dialog opens, in the browser.
+  const gpc = gpcEnabled();
   const [analytics, setAnalytics] = useState(consent?.analytics === true);
   const [support, setSupport] = useState(focus === 'support' ? true : consent?.support === true);
   const [marketing, setMarketing] = useState(consent?.marketing === true);
@@ -36,7 +39,7 @@ function PreferencesForm({ focus, onClose }: { focus?: ConsentCategory; onClose:
   const native = isNativeApp();
 
   const save = () => {
-    setConsent({ analytics, support, marketing: native ? false : marketing });
+    setConsent({ analytics, support, marketing: native || gpc ? false : marketing });
     onClose();
   };
 
@@ -86,12 +89,34 @@ function PreferencesForm({ focus, onClose }: { focus?: ConsentCategory; onClose:
               <p className="text-sm text-muted-foreground">
                 {t('cookies.dialog.marketingDescription')}
               </p>
+              {gpc && <p className="mt-1 text-sm font-medium">{t('cookies.dialog.gpc')}</p>}
             </div>
-            <Switch id="cookie-marketing" checked={marketing} onCheckedChange={setMarketing} />
+            <Switch
+              id="cookie-marketing"
+              checked={gpc ? false : marketing}
+              disabled={gpc}
+              onCheckedChange={setMarketing}
+            />
           </div>
         )}
 
-        <p className="text-xs text-muted-foreground">{t('cookies.dialog.revokeNote')}</p>
+        <p className="text-xs text-muted-foreground">
+          {t('cookies.dialog.revokeNote')}
+          {/* Inside the app the legal pages open in Safari from Perfil, never in the web view. */}
+          {!native && (
+            <>
+              {' '}
+              {/* A plain anchor so the English hash lands on the policy's cookies section. */}
+              <a
+                href={i18n.language?.startsWith('en') ? '/en/privacy#cookies' : '/lgpd'}
+                className="underline"
+                onClick={onClose}
+              >
+                {t('cookies.banner.details')}
+              </a>
+            </>
+          )}
+        </p>
       </div>
       <DialogFooter className="mt-4">
         <Button variant="outline" onClick={onClose}>
