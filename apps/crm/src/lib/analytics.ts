@@ -17,6 +17,9 @@ export type AnalyticsEvent =
   | 'signup_existing_account'
   // Post-signup step saved (pages/workspace-setup): company, phone and opt-in collected.
   | 'workspace_setup_completed'
+  // A US signup (`user_metadata.market = 'us'`) whose workspace still reads BRL after the
+  // billing_market_apply() repair on /workspace-setup; the form blocks with "Try again".
+  | 'us_signup_currency_mismatch'
   // Desktop Vidro opt-out/opt-in from the account menu (src/hooks/useVidro.ts).
   | 'vidro_look_toggled'
   // Vidro launch intro (src/components/layout/VidroIntro.tsx); its "back to classic" button
@@ -280,12 +283,20 @@ export interface CaptureOptions {
   sendInstantly?: boolean;
 }
 
+/** `/en` and everything under it is the English US site (spec §11). Read at capture time, never at render. */
+function withSiteLocale(props?: Record<string, unknown>): Record<string, unknown> | undefined {
+  const path = typeof window === 'undefined' ? '' : window.location.pathname;
+  if (path !== '/en' && !path.startsWith('/en/')) return props;
+  return { ...props, site_locale: 'en' };
+}
+
 export function captureEvent(
   event: AnalyticsEvent,
-  props?: Record<string, unknown>,
+  rawProps?: Record<string, unknown>,
   opts?: CaptureOptions,
 ): void {
   if (!capturing) return;
+  const props = withSiteLocale(rawProps);
   if (opts?.sendInstantly) {
     run((ph) => ph.capture(event, props, { send_instantly: true }));
     return;

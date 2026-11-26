@@ -254,6 +254,8 @@ export async function signUp(
     marketing_opt_in?: boolean;
     /** Código de afiliado (lib/referral.ts); validado pelo trigger de atribuição no banco. */
     ref_code?: string;
+    /** Signup from an `/en` CTA (lib/signupMarket.ts); the billing-market trigger makes the workspace USD. */
+    market?: 'us';
   },
   redirectPath = '/login',
 ) {
