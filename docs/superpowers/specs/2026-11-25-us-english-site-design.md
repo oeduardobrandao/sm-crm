@@ -249,8 +249,17 @@ The user picked A.
 - "Do Not Sell or Share My Personal Information" (notice and `/en` footer) sets `marketing:
   false` with `basis: 'choice'` and confirms with a toast. "Cookie settings" opens the existing
   preferences dialog (already translated).
-- Once a record exists, the visitor carries it into `/login` and the app; the Brazilian banner
-  never appears for them (their decision is already recorded).
+- Only an explicit choice (`basis: 'choice'`) carries into `/login`, the app and the
+  Portuguese pages. A `basis: 'us_default'` record applies only on `/en` and `/en/...`;
+  everywhere else `getConsent()` reads it as undecided, so the opt-in banner (translated)
+  shows and nothing non-essential loads until the visitor opts in. This is stricter than the
+  original design (which carried the default everywhere): a Brazilian visitor who once
+  opened `/en` must not end up opted in on LGPD pages, and a US signup pays one extra click.
+  A client-side navigation out of `/en` notifies the consent subscribers
+  (`consentPathChanged()` from `CookieConsent`), so PostHog and the ad tags are disabled and
+  Crisp is reset at once; script tags already injected stay in the page until a reload.
+- Saving the preferences dialog while the browser sends GPC stores `marketing: false` as the
+  visitor's choice (the disabled switch is saved as shown).
 - The dialog's "Details" link points to `/en/privacy#cookies` when the language is English and
   `/lgpd` otherwise.
 - `consentEffects.ts` needs no change: loaders already re-read the stored record.
