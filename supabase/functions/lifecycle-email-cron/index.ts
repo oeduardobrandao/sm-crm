@@ -5,6 +5,8 @@ import { createJsonResponder } from "../_shared/http.ts";
 import { reportCronFailure } from "../_shared/triage.ts";
 import { appBaseUrl } from "../_shared/app-url.ts";
 import { whatsAppSupportUrl } from "../_shared/whatsapp.ts";
+import { ownerLang, workspaceLang } from "../_shared/i18n/workspace-lang.ts";
+import type { Lang } from "../_shared/i18n/lang.ts";
 import { nurtureUnsubPageUrl, nurtureUnsubUrl, signNurtureUnsubToken } from "../_shared/nurture-unsub-token.ts";
 import {
   LIFECYCLE_FROM,
@@ -45,7 +47,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * `null` when it asks for one with an unusable address. The caller must not
  * fall through to the real sweep on `null`.
  */
-async function readPreviewTo(req: Request): Promise<string | null | undefined> {
+async function readPreviewTo(req: Request): Promise<{ to: string; lang: Lang } | null | undefined> {
   let body: unknown = {};
   try {
     const raw = await req.text();
@@ -57,7 +59,10 @@ async function readPreviewTo(req: Request): Promise<string | null | undefined> {
   const to = (body as { nurture_preview_to?: unknown }).nurture_preview_to;
   if (typeof to !== "string") return null;
   const trimmed = to.trim();
-  return EMAIL_RE.test(trimmed) ? trimmed : null;
+  if (!EMAIL_RE.test(trimmed)) return null;
+  // Optional `nurture_preview_lang: "en"` previews the English copy; anything else is pt.
+  const lang: Lang = (body as { nurture_preview_lang?: unknown }).nurture_preview_lang === "en" ? "en" : "pt";
+  return { to: trimmed, lang };
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -90,6 +95,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
       db: svc as unknown as LifecycleCronDeps["db"],
       appBaseUrl: appBaseUrl(),
       now: () => new Date(),
+      lang: {
+        owner: (userId) => ownerLang(svc, userId),
+        workspace: (contaId) => workspaceLang(svc, contaId),
+      },
       sendWelcome: sendWelcomeEmail,
       sendThanks: sendThankYouEmail,
       sendTrialReminder: sendTrialReminderEmail,
@@ -106,6 +115,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         };
       },
       whatsappUrl: whatsAppSupportUrl({ firstName: null }),
+      whatsappUrlFor: (lang) => whatsAppSupportUrl({ firstName: null, lang }),
       sendNurture: (p) =>
         sendViaResend(
           p.to,
@@ -121,7 +131,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       report: (detail) => reportCronFailure(svc, CRON_NAME, detail),
     };
     if (previewTo !== undefined) {
-      const preview = await runNurturePreview(deps, previewTo);
+      const preview = await runNurturePreview(deps, previewTo.to, previewTo.lang);
       return json({ success: true, ...preview });
     }
     const result = await runLifecycleEmailCron(deps);

@@ -4,9 +4,13 @@ import { fetchStripeAmount } from "./stripe-amount.ts";
 import { whatsAppSupportUrl } from "./whatsapp.ts";
 import { mesaasEmail } from "./email/shell.ts";
 import { button, callout, featureGrid, heading, link, paragraph, paragraphHtml, sectionTitle, signature, spacer, steps } from "./email/blocks.ts";
+import { lifecycleText } from "./i18n/catalogs/lifecycle.ts";
+import { formatDate, formatMoney as formatMoneyIntl, type Lang } from "./i18n/lang.ts";
 
-export const WELCOME_SUBJECT = "Boas-vindas ao Mesaas 👋";
-export const THANKYOU_SUBJECT = "Obrigado pela confiança 💚";
+// pt subjects stay exported as constants: the e-mail classifier matches them
+// as a fallback when a send carries no `type` tag.
+export const WELCOME_SUBJECT = lifecycleText("pt").welcome.subject;
+export const THANKYOU_SUBJECT = lifecycleText("pt").thanks.subject;
 
 /** First whitespace-separated word of profiles.nome; null when absent/blank. */
 export function firstNameFrom(nome: string | null | undefined): string | null {
@@ -14,8 +18,8 @@ export function firstNameFrom(nome: string | null | undefined): string | null {
   return first ? first : null;
 }
 
-/** Lead-in of the welcome email when the workspace qualifies for the reverse trial. */
-export const WELCOME_REVERSE_TRIAL_LEAD = "Ao entrar, seu workspace fica no Pro por 14 dias, sem cartão.";
+/** Lead-in of the welcome email when the workspace qualifies for the reverse trial (pt). */
+export const WELCOME_REVERSE_TRIAL_LEAD = lifecycleText("pt").welcome.reverseLead;
 
 export function buildWelcomeEmail(
   p: {
@@ -23,83 +27,82 @@ export function buildWelcomeEmail(
     appBaseUrl: string;
     /** Workspace qualifies for the automatic 14-day Pro (keyed on the offer, not on plan_source). */
     reverseTrialOffer?: boolean;
+    lang: Lang;
   },
 ): string {
+  const lang = p.lang;
+  const t = lifecycleText(lang).welcome;
   const base = p.appBaseUrl.replace(/\/+$/, "");
   // The 30-day card trial block, or the reverse-trial one: the email can go out
   // before the first app visit starts the trial, so it promises what that visit
   // will do, and links straight into the app instead of /comecar.
-  const trialLead = p.reverseTrialOffer
-    ? `${WELCOME_REVERSE_TRIAL_LEAD} Nesse período você também tem:`
-    : "No teste grátis de 30 dias dos planos pagos você também tem:";
+  const trialLead = p.reverseTrialOffer ? t.trialLeadReverse : t.trialLeadCard;
   const trialButton = p.reverseTrialOffer
-    ? button(`${base}/dashboard`, "Entrar no Mesaas", "outline")
-    : button(`${base}/comecar`, "Começar meu teste grátis", "outline");
-  const waUrl = whatsAppSupportUrl({ firstName: p.firstName });
+    ? button(`${base}/dashboard`, t.enterApp, "outline")
+    : button(`${base}/comecar`, t.startTrial, "outline");
+  const waUrl = whatsAppSupportUrl({ firstName: p.firstName, lang });
   // Gated by the same waUrl as the button, so the sentence never mentions a missing button.
-  const closingLine = waUrl
-    ? `Qualquer dúvida, é só <strong>responder este e-mail</strong>. Eu leio e respondo pessoalmente, e se preferir WhatsApp, é só clicar no botão abaixo.`
-    : `Qualquer dúvida, é só <strong>responder este e-mail</strong>. Eu leio e respondo pessoalmente.`;
+  const closingLine = waUrl ? t.closingWa : t.closingNoWa;
   return mesaasEmail({
-    preheader: "Três passos para deixar sua agência rodando.",
-    eyebrow: "Boas-vindas",
+    lang,
+    preheader: t.preheader,
+    eyebrow: t.eyebrow,
     sections: [
-      heading(p.firstName ? `Olá, ${p.firstName}! Que bom ter você aqui.` : "Olá! Que bom ter você aqui.") +
-        paragraph("Aqui é o Eduardo, do Mesaas. Obrigado por criar sua conta.") +
-        paragraphHtml(
-          "O Mesaas é uma <strong>plataforma de gestão para agências de social media</strong>: clientes, entregas e calendário editorial em um lugar só.",
-          "body",
-          "0",
-        ),
-      sectionTitle("Comece em 3 passos") +
+      heading(p.firstName ? t.greetNamed(p.firstName) : t.greetAnon) +
+        paragraph(t.intro1) +
+        paragraphHtml(t.intro2Html, "body", "0"),
+      sectionTitle(t.stepsTitle) +
         steps([
-          "Cadastre seu primeiro cliente.",
-          `<strong>Importe seus dados</strong>: trazemos tudo do Notion, Trello, ClickUp ou CSV em poucos cliques.${spacer(14)}${button(`${base}/importar`, "Importar meus dados")}`,
-          "Crie sua primeira entrega e organize o calendário editorial.",
+          t.step1,
+          `${t.step2Html}${spacer(14)}${button(`${base}/importar`, t.importButton)}`,
+          t.step3,
         ]),
       featureGrid([
-        { title: "Clientes & CRM", text: "Todos os seus clientes, briefings e contratos organizados." },
-        { title: "Entregas", text: "kanban de workflows + calendário editorial." },
+        { title: t.featClientsTitle, text: t.featClientsText },
+        { title: t.featDeliveriesTitle, text: t.featDeliveriesText },
       ]) +
         spacer(8) +
         paragraph(trialLead, "body", "0 0 12px") +
         featureGrid([
-          { title: "Aprovações pelo Hub do cliente", text: "Portal whitelabel, sem login, com a sua marca." },
-          { title: "Equipe", text: "Convide seu time e trabalhe junto nas entregas." },
-          { title: "Analytics de Instagram", text: "Métricas e relatórios prontos para enviar." },
+          { title: t.featHubTitle, text: t.featHubText },
+          { title: t.featTeamTitle, text: t.featTeamText },
+          { title: t.featIgTitle, text: t.featIgText },
         ]) +
         trialButton,
-      callout(`Dúvidas? A ${link(`${base}/ajuda`, "Central de Ajuda")} tem guias passo a passo, e as ${link(`${base}/novidades`, "Novidades")} mostram o que estamos lançando.`),
+      callout(t.callout(link(`${base}/ajuda`, t.helpLabel), link(`${base}/novidades`, t.newsLabel))),
       paragraphHtml(closingLine, "body", "0 0 18px") +
-        (waUrl ? button(waUrl, "Falar no WhatsApp", "outline") + spacer(24) : "") +
-        signature(),
+        (waUrl ? button(waUrl, t.waButton, "outline") + spacer(24) : "") +
+        signature(lang),
     ],
-    footerLines: ["Você recebeu este e-mail porque criou uma conta no Mesaas."],
+    footerLines: [t.footer],
   });
 }
 
 export function buildThankYouEmail(
-  p: { firstName: string | null; workspaceName: string; appBaseUrl: string },
+  p: { firstName: string | null; workspaceName: string; appBaseUrl: string; lang: Lang },
 ): string {
+  const lang = p.lang;
+  const t = lifecycleText(lang).thanks;
   const base = p.appBaseUrl.replace(/\/+$/, "");
   return mesaasEmail({
-    preheader: "Obrigado pela confiança no Mesaas.",
-    eyebrow: "Assinatura",
+    lang,
+    preheader: t.preheader,
+    eyebrow: t.eyebrow,
     sections: [
-      heading(p.firstName ? `Olá, ${p.firstName}!` : "Olá!") +
-        paragraphHtml(`Aqui é o Eduardo, do Mesaas. Vi que o <strong>${escapeHtml(p.workspaceName)}</strong> acabou de ativar um plano e queria agradecer pessoalmente.`) +
-        paragraph("Obrigado por depositar essa confiança no Mesaas. Vamos trabalhar todos os dias para merecer essa escolha e cuidar bem da operação da sua agência.", "body", "0"),
-      sectionTitle("Para aproveitar ao máximo") +
+      heading(p.firstName ? t.greetNamed(p.firstName) : t.greetAnon) +
+        paragraphHtml(t.introHtml(escapeHtml(p.workspaceName))) +
+        paragraph(t.thanks, "body", "0"),
+      sectionTitle(t.stepsTitle) +
         steps([
-          "Conecte o Instagram dos seus clientes e acompanhe as métricas.",
-          `Traga seus dados de outras ferramentas: ${link(`${base}/importar`, "importe do Notion, Trello, ClickUp ou CSV")}.`,
-          "Ative o Hub para os seus clientes aprovarem posts sem precisar de login.",
+          t.step1,
+          t.step2Html(link(`${base}/importar`, t.importLabel)),
+          t.step3,
         ]),
-      paragraphHtml(`Seu plano fica em ${link(`${base}/configuracao`, "Configurações")}, e você pode ajustá-lo quando quiser.`, "small", "0"),
-      paragraphHtml("Me conta: o que faria o Mesaas ser ainda melhor para a sua agência? É só <strong>responder este e-mail</strong>.", "body", "0 0 24px") +
-        signature(),
+      paragraphHtml(t.settingsHtml(link(`${base}/configuracao`, t.settingsLabel)), "small", "0"),
+      paragraphHtml(t.askHtml, "body", "0 0 24px") +
+        signature(lang),
     ],
-    footerLines: [`Você recebeu este e-mail porque o workspace ${p.workspaceName} ativou um plano no Mesaas.`],
+    footerLines: [t.footer(p.workspaceName)],
   });
 }
 
@@ -116,32 +119,37 @@ export interface FirstChargeInput {
  * The first-charge amount as the trial reminder states it, or null when the
  * subscription row carries no amount. Pagar.me stores the ANNUAL total in
  * amount_cents and bills it in 12 installments; Stripe is month or year.
+ * pt keeps the hand-rolled formatting (regular space after "R$", which Intl
+ * pt-BR renders as a no-break space); en uses Intl.
  */
-export function formatFirstCharge(c: FirstChargeInput): string | null {
+export function formatFirstCharge(c: FirstChargeInput, lang: Lang = "pt"): string | null {
   if (c.amount_cents == null) return null;
+  const yearly = c.amount_interval === "year" || c.billing_interval === "year";
+  if (lang === "en") {
+    const money = (cents: number, cur: string) => formatMoneyIntl(cents, cur.toLowerCase() === "usd" ? "usd" : "brl", "en");
+    if (c.provider === "pagarme") {
+      return `12 installments of ${money(Math.round(c.amount_cents / 12), "brl")} (total ${money(c.amount_cents, "brl")})`;
+    }
+    return `${money(c.amount_cents, c.currency ?? "brl")} ${yearly ? "per year" : "per month"}`;
+  }
   if (c.provider === "pagarme") {
     // Pagar.me only bills in reais.
     return `12x de ${formatMoney(Math.round(c.amount_cents / 12), "brl")} (total de ${
       formatMoney(c.amount_cents, "brl")
     })`;
   }
-  const yearly = c.amount_interval === "year" || c.billing_interval === "year";
   return `${formatPlanMoney(c.amount_cents, c.currency ?? "brl")} ${yearly ? "por ano" : "por mês"}`;
 }
 
-/** "26 de novembro", in the São Paulo calendar (not UTC). */
-export function formatChargeDate(iso: string): string {
-  return new Intl.DateTimeFormat("pt-BR", {
-    timeZone: "America/Sao_Paulo",
-    day: "numeric",
-    month: "long",
-  }).format(new Date(iso));
+/** "26 de novembro" / "November 26", in the workspace language's calendar (not UTC). */
+export function formatChargeDate(iso: string, lang: Lang = "pt"): string {
+  return formatDate(iso, lang, { day: "numeric", month: "long" });
 }
 
 /** Subject of the trial reminder. Shared with the e-mail classifier. */
-export function trialReminderSubject(planName: string | null, daysLeft: number): string {
+export function trialReminderSubject(planName: string | null, daysLeft: number, lang: Lang = "pt"): string {
   const name = planName ? sanitizeSubjectValue(planName) : "";
-  return `Seu teste do Mesaas${name ? ` ${name}` : ""} termina em ${daysLeft} dias`;
+  return lifecycleText(lang).reminder.subject(name, daysLeft);
 }
 
 export function buildTrialReminderEmail(p: {
@@ -153,41 +161,29 @@ export function buildTrialReminderEmail(p: {
   firstChargeDate: string;
   daysLeft: number;
   appBaseUrl: string;
+  lang: Lang;
 }): { subject: string; html: string } {
+  const lang = p.lang;
+  const t = lifecycleText(lang).reminder;
   const base = p.appBaseUrl.replace(/\/+$/, "");
   const billingUrl = `${base}/configuracao/cobranca`;
-  const subject = trialReminderSubject(p.planName, p.daysLeft);
-  const trialLead = p.planName?.trim()
-    ? `Seu teste grátis do plano ${p.planName.trim()} no workspace`
-    : "Seu teste grátis no workspace";
-  const chargeLine = p.firstCharge
-    ? `Nesse dia fazemos a primeira cobrança de ${p.firstCharge} no cartão cadastrado.`
-    : "Nesse dia fazemos a primeira cobrança do valor do seu plano no cartão cadastrado.";
+  const subject = trialReminderSubject(p.planName, p.daysLeft, lang);
+  const trialLead = p.planName?.trim() ? t.leadPlan(p.planName.trim()) : t.leadNoPlan;
+  const chargeLine = p.firstCharge ? t.chargeAmount(p.firstCharge) : t.chargeNoAmount;
   const html = mesaasEmail({
-    preheader: `Sua primeira cobrança será em ${p.firstChargeDate}.`,
-    eyebrow: "Seu teste grátis",
+    lang,
+    preheader: t.preheader(p.firstChargeDate),
+    eyebrow: t.eyebrow,
     sections: [
-      paragraph(p.firstName ? `Oi, ${p.firstName},` : "Oi,") +
-        paragraph(
-          `${trialLead} ${p.workspaceName} termina em ${p.firstChargeDate}.`,
-        ) +
+      paragraph(p.firstName ? t.greetNamed(p.firstName) : t.greetAnon) +
+        paragraph(t.ends(trialLead, p.workspaceName, p.firstChargeDate)) +
         paragraph(chargeLine) +
-        paragraph("Se quiser continuar, não precisa fazer nada.", "body", "0 0 20px") +
-        button(billingUrl, "Ver meu plano"),
-      paragraphHtml(
-        `Se preferir cancelar ou trocar de plano, é só acessar Plano e cobrança antes dessa data: ${
-          link(billingUrl, billingUrl)
-        }.`,
-        "small",
-        "0 0 10px",
-      ) +
-        paragraph(
-          "No plano Free você volta a ter 2 clientes, só você na conta e nenhum portal de aprovação ou relatório.",
-          "small",
-          "0",
-        ),
+        paragraph(t.keepGoing, "body", "0 0 20px") +
+        button(billingUrl, t.button),
+      paragraphHtml(t.cancelHtml(link(billingUrl, billingUrl)), "small", "0 0 10px") +
+        paragraph(t.freeNote, "small", "0"),
     ],
-    footerLines: [`Você recebeu este e-mail porque o workspace ${p.workspaceName} está em teste grátis no Mesaas.`],
+    footerLines: [t.footer(p.workspaceName)],
   });
   return { subject, html };
 }
@@ -205,12 +201,12 @@ export const REVERSE_TRIAL_EMAIL_TYPES: readonly ReverseTrialEmailType[] = [
   "reverse_trial_hub_pausing",
 ];
 
-export const REVERSE_TRIAL_ENDED_SUBJECT = "Seu workspace voltou para o plano Free";
-export const REVERSE_TRIAL_HUB_PAUSING_SUBJECT = "Os links do portal dos seus clientes pausam amanhã";
+export const REVERSE_TRIAL_ENDED_SUBJECT = lifecycleText("pt").reverse.endedSubject;
+export const REVERSE_TRIAL_HUB_PAUSING_SUBJECT = lifecycleText("pt").reverse.hubPausingSubject;
 
 /** Subject of `reverse_trial_ending`. Shared with the e-mail classifier. */
-export function reverseTrialEndingSubject(dateLabel: string): string {
-  return `Seu teste do Pro termina em ${sanitizeSubjectValue(dateLabel)}`;
+export function reverseTrialEndingSubject(dateLabel: string, lang: Lang = "pt"): string {
+  return lifecycleText(lang).reverse.endingSubject(sanitizeSubjectValue(dateLabel));
 }
 
 export interface ReverseTrialEmailInput {
@@ -226,108 +222,91 @@ export interface ReverseTrialEmailInput {
   endedAt: string | null;
   hubPauseAt: string | null;
   appBaseUrl: string;
+  lang: Lang;
 }
 
-function requireDate(value: string | null, type: ReverseTrialEmailType, field: string): string {
+function requireDate(value: string | null, type: ReverseTrialEmailType, field: string, lang: Lang): string {
   if (!value) throw new Error(`${type}: missing ${field}`);
-  return formatChargeDate(value);
+  return formatChargeDate(value, lang);
 }
 
 /**
- * The three reverse-trial emails. Every date is the São Paulo calendar day; the
- * add-card link is Plano e cobrança. Throws when the date the email is about is
- * missing, so a malformed candidate is reported instead of sent half-empty.
+ * The three reverse-trial emails. Every date is the São Paulo (pt) or New York
+ * (en) calendar day; the add-card link is Plano e cobrança. Throws when the date
+ * the email is about is missing, so a malformed candidate is reported instead
+ * of sent half-empty.
  */
 export function buildReverseTrialEmail(p: ReverseTrialEmailInput): { subject: string; html: string } {
+  const lang = p.lang;
+  const t = lifecycleText(lang).reverse;
   const base = p.appBaseUrl.replace(/\/+$/, "");
   const billingUrl = `${base}/configuracao/cobranca`;
   const plan = p.planName?.trim() || "Pro";
-  const greet = paragraph(p.firstName ? `Oi, ${p.firstName},` : "Oi,");
-  const footerLines = [`Você recebeu este e-mail porque é dono do workspace ${p.workspaceName} no Mesaas.`];
+  const greet = paragraph(p.firstName ? t.greetNamed(p.firstName) : t.greetAnon);
+  const footerLines = [t.footer(p.workspaceName)];
 
   switch (p.type) {
     case "reverse_trial_ending": {
-      const date = requireDate(p.endsAt, p.type, "ends_at");
+      const date = requireDate(p.endsAt, p.type, "ends_at", lang);
       const price = p.priceCents != null
-        ? `${formatPlanMoney(p.priceCents, p.currency ?? "brl")} por mês`
+        ? t.perMonth(formatPlanMoney(p.priceCents, p.currency ?? "brl", lang))
         : null;
       const html = mesaasEmail({
-        preheader: `Sem cartão, o workspace volta para o plano Free em ${date}.`,
-        eyebrow: "Seu teste do Pro",
+        lang,
+        preheader: t.endingPreheader(date),
+        eyebrow: t.endingEyebrow,
         sections: [
           greet +
-          paragraph(`O teste grátis do ${plan} no workspace ${p.workspaceName} termina em ${date}.`) +
+          paragraph(t.endingLead(plan, p.workspaceName, date)) +
           paragraph(
             // No charge date here: a card added in the last 48h is charged
             // later than the trial end (Stripe floor, Pagar.me rounding); the
             // checkout shows the exact date.
-            price
-              ? `Para continuar no ${plan}, adicione um cartão. Nada é cobrado agora: a primeira cobrança, de ${price}, nunca acontece antes do fim do teste.`
-              : `Para continuar no ${plan}, adicione um cartão. Nada é cobrado agora: a primeira cobrança nunca acontece antes do fim do teste.`,
+            price ? t.endingPrice(plan, price) : t.endingNoPrice(plan),
             "body",
             "0 0 20px",
           ) +
-          button(billingUrl, "Adicionar cartão"),
-          paragraph(
-            "Sem cartão, o workspace volta para o plano Free nesse dia: até 2 clientes, só você na conta, sem portal do cliente e sem relatórios. Nada é apagado.",
-            "small",
-            "0",
-          ),
+          button(billingUrl, t.addCard),
+          paragraph(t.endingSmall, "small", "0"),
         ],
         footerLines,
       });
-      return { subject: reverseTrialEndingSubject(date), html };
+      return { subject: reverseTrialEndingSubject(date, lang), html };
     }
     case "reverse_trial_ended": {
-      const endedDate = requireDate(p.endedAt, p.type, "ended_at");
-      const pauseDate = p.hubPauseAt ? formatChargeDate(p.hubPauseAt) : null;
+      const endedDate = requireDate(p.endedAt, p.type, "ended_at", lang);
+      const pauseDate = p.hubPauseAt ? formatChargeDate(p.hubPauseAt, lang) : null;
       const html = mesaasEmail({
-        preheader: "Nada foi apagado. Adicione um cartão para recuperar o Pro.",
-        eyebrow: "Plano Free",
+        lang,
+        preheader: t.endedPreheader,
+        eyebrow: t.endedEyebrow,
         sections: [
           greet +
-          paragraph(
-            `O teste grátis do ${plan} no workspace ${p.workspaceName} terminou em ${endedDate}, e o workspace voltou para o plano Free.`,
-          ) +
-          paragraph(
-            "Nada foi apagado: seus clientes, posts, entregas e relatórios continuam lá. No Free, cadastrar além dos limites do plano fica bloqueado, e Financeiro e Contratos ficam só para consulta.",
-            "body",
-            "0 0 20px",
-          ) +
-          (pauseDate
-            ? callout(
-              escapeHtml(
-                `Os links do portal dos seus clientes pausam em ${pauseDate}. Recuperando o ${plan} antes disso, eles continuam funcionando.`,
-              ),
-            ) + spacer(20)
-            : "") +
-          button(billingUrl, `Recuperar o ${plan}`),
-          paragraph(`Para recuperar o ${plan}, é só adicionar um cartão em Plano e cobrança.`, "small", "0"),
+          paragraph(t.endedLead(plan, p.workspaceName, endedDate)) +
+          paragraph(t.endedBody, "body", "0 0 20px") +
+          (pauseDate ? callout(escapeHtml(t.endedHubCallout(pauseDate, plan))) + spacer(20) : "") +
+          button(billingUrl, t.recover(plan)),
+          paragraph(t.endedSmall(plan), "small", "0"),
         ],
         footerLines,
       });
-      return { subject: REVERSE_TRIAL_ENDED_SUBJECT, html };
+      return { subject: t.endedSubject, html };
     }
     case "reverse_trial_hub_pausing": {
-      const pauseDate = requireDate(p.hubPauseAt, p.type, "hub_pause_at");
+      const pauseDate = requireDate(p.hubPauseAt, p.type, "hub_pause_at", lang);
       const html = mesaasEmail({
-        preheader: `A partir de ${pauseDate}, os links do portal deixam de abrir.`,
-        eyebrow: "Portal do cliente",
+        lang,
+        preheader: t.hubPreheader(pauseDate),
+        eyebrow: t.hubEyebrow,
         sections: [
           greet +
-          paragraph(
-            `Amanhã, ${pauseDate}, os links do portal dos clientes do workspace ${p.workspaceName} deixam de abrir. Seus clientes vão ver um aviso de que o portal está pausado.`,
-          ) +
-          paragraph(
-            `Nada foi apagado. Assim que você recuperar o ${plan}, os mesmos links voltam a funcionar, sem precisar enviar links novos.`,
-            "body",
-            "0 0 20px",
-          ) +
-          button(billingUrl, `Recuperar o ${plan}`),
+          paragraph(t.hubLead(pauseDate, p.workspaceName)) +
+          paragraph(t.hubBody(plan), "body", "0 0 20px") +
+          button(billingUrl, t.recover(plan)),
         ],
         footerLines,
       });
-      return { subject: REVERSE_TRIAL_HUB_PAUSING_SUBJECT, html };
+      return { subject: t.hubPausingSubject, html };
     }
   }
 }
@@ -418,7 +397,8 @@ function formatMoney(cents: number, currency: string): string {
  * (pt-BR digits; the email language is a later part). formatMoney keeps its generic
  * "14,90 USD" form for the founder notice.
  */
-function formatPlanMoney(cents: number, currency: string): string {
+function formatPlanMoney(cents: number, currency: string, lang: Lang = "pt"): string {
+  if (lang === "en") return formatMoneyIntl(cents, currency.toLowerCase() === "usd" ? "usd" : "brl", "en");
   if (currency.toLowerCase() === "usd") return `US$ ${formatMoney(cents, "brl").slice(3)}`;
   return formatMoney(cents, currency);
 }
@@ -543,15 +523,17 @@ export async function sendWelcomeEmail(
     appBaseUrl: string;
     idempotencyKey: string;
     reverseTrialOffer?: boolean;
+    lang: Lang;
   },
 ): Promise<void> {
   await sendViaResend(
     p.to,
-    WELCOME_SUBJECT,
+    lifecycleText(p.lang).welcome.subject,
     buildWelcomeEmail({
       firstName: p.firstName,
       appBaseUrl: p.appBaseUrl,
       reverseTrialOffer: p.reverseTrialOffer === true,
+      lang: p.lang,
     }),
     p.idempotencyKey,
     LIFECYCLE_FROM,
@@ -603,15 +585,17 @@ export async function sendThankYouEmail(
     workspaceName: string;
     appBaseUrl: string;
     idempotencyKey: string;
+    lang: Lang;
   },
 ): Promise<void> {
   await sendViaResend(
     p.to,
-    THANKYOU_SUBJECT,
+    lifecycleText(p.lang).thanks.subject,
     buildThankYouEmail({
       firstName: p.firstName,
       workspaceName: p.workspaceName,
       appBaseUrl: p.appBaseUrl,
+      lang: p.lang,
     }),
     p.idempotencyKey,
     LIFECYCLE_FROM,

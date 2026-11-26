@@ -22,6 +22,8 @@ import {
 import { EMAIL, NURTURE_SHOTS } from "./email/tokens.ts";
 import { escapeHtml } from "./report-template/escape.ts";
 import { sanitizeSubjectValue } from "./lifecycle-emails.ts";
+import { nurtureText } from "./i18n/catalogs/nurture.ts";
+import type { Lang } from "./i18n/lang.ts";
 
 export type NurtureStep = "a1" | "a2" | "a3" | "a4" | "b1" | "b2" | "b3" | "b4";
 
@@ -41,12 +43,14 @@ export interface NurtureEmailInput {
   whatsappUrl: string | null;
   /** Owner of a workspace whose 14-day reverse trial ended on Free: a3 becomes "Recupere o Pro". */
   exReverseTrial?: boolean;
+  /** Workspace language of the owner; the copy, subject and html lang follow it. */
+  lang: Lang;
 }
 
 /** Day the 30-day trial launched; accounts created before it had no free trial. */
 export const TRIAL_FIRST_LAUNCH = "2026-10-27";
 
-export const NURTURE_SAMPLE: Omit<NurtureEmailInput, "step" | "appBaseUrl" | "unsubUrl" | "whatsappUrl"> = {
+export const NURTURE_SAMPLE: Omit<NurtureEmailInput, "step" | "appBaseUrl" | "unsubUrl" | "whatsappUrl" | "lang"> = {
   firstName: "Ana",
   workspaceName: "Agência Aurora",
   workspaceCreatedAt: "2026-09-01",
@@ -78,324 +82,234 @@ export function nurtureTagType(step: NurtureStep, exReverseTrial: boolean | null
 
 const RECOVER_PATH = "/comecar?recomendado=pro";
 
-const FOOTER_SENTENCE = "Você recebeu este e-mail porque criou uma conta no Mesaas. Não quer mais receber dicas?";
-
 /** Signup names every workspace "Meu Workspace"; never put that (or a blank name) in copy. */
-const DEFAULT_WORKSPACE_NAME = "meu workspace";
+const DEFAULT_WORKSPACE_NAMES: Record<Lang, readonly string[]> = {
+  pt: ["meu workspace"],
+  en: ["my workspace", "meu workspace"],
+};
 
 /** The workspace name for copy, or null when it is blank or still the signup default. */
-export function nurtureWorkspaceName(name: string | null | undefined): string | null {
+export function nurtureWorkspaceName(name: string | null | undefined, lang: Lang = "pt"): string | null {
   const t = (name ?? "").trim();
-  if (!t || t.toLowerCase() === DEFAULT_WORKSPACE_NAME) return null;
+  if (!t || DEFAULT_WORKSPACE_NAMES[lang].includes(t.toLowerCase())) return null;
   return t;
 }
 
-const trialGrid = () =>
-  featureGrid([
-    { title: "Hub do cliente", text: "Aprovação de posts por link, sem login, com a sua marca." },
-    { title: "Equipe", text: "Convide seu time e divida as entregas." },
-    { title: "Instagram", text: "Agendamento, métricas e relatórios em PDF." },
-    { title: "Clientes sem limite", text: "No Free são 2. No teste, quantos você precisar." },
-  ]);
-
-// No plan numbers beyond Free's 2 clients: Pro limits are edited in the Admin.
-const proGrid = () =>
-  featureGrid([
-    { title: "Hub do cliente", text: "Aprovação de posts por link, sem login, com a sua marca." },
-    { title: "Equipe", text: "Convide seu time e divida as entregas." },
-    { title: "Instagram", text: "Agendamento, métricas e relatórios em PDF." },
-    { title: "Mais clientes", text: "No Free são 2. No Pro, cabe a carteira da sua agência." },
-  ]);
-
-const SHOT_ALT = {
-  clientes: "Tela de clientes do Mesaas no celular, com seis clientes cadastrados.",
-  aprovacoes: "Hub do cliente no celular: quatro posts aguardando aprovação.",
-  aprovar: "Post aberto no Hub do cliente, com os botões Corrigir e Aprovar.",
-  hub: "Página inicial do Hub do cliente no celular, com posts do mês e aprovações pendentes.",
-  relatorios: "Relatórios mensais prontos no Hub do cliente, com opção de baixar o PDF.",
-} as const;
-
-const shot = (key: keyof typeof NURTURE_SHOTS) => screenshot(NURTURE_SHOTS[key], SHOT_ALT[key]);
-
-// The reverse trial is used up, so subscribing charges at once.
-const recoverFine = () =>
-  paragraph(
-    "Como o seu teste do Pro já foi usado, a assinatura começa na hora: a primeira cobrança é feita ao assinar, e dá pra cancelar quando quiser.",
-    "small",
-    "14px 0 0",
-  );
-
-const trialFine = () =>
-  paragraph(
-    "O teste pede um cartão, mas você só é cobrado no fim dos 30 dias se continuar. Eu te aviso por e-mail antes da cobrança, e dá pra cancelar em dois cliques.",
-    "small",
-    "14px 0 0",
-  );
-
-/** Subject of the a3 variant for ex-reverse-trial workspaces. Shared with the e-mail classifier. */
-export const NURTURE_A3_EX_TRIAL_SUBJECT = "Recupere o Pro no Mesaas";
-/** Subject of the b1 variant for ex-reverse-trial workspaces (distinct from a3 for the classifier). */
-export const NURTURE_B1_EX_TRIAL_SUBJECT = "Recupere o Pro para a sua agência";
+/** Subject of the a3 variant for ex-reverse-trial workspaces (pt). Shared with the e-mail classifier. */
+export const NURTURE_A3_EX_TRIAL_SUBJECT = nurtureText("pt").subject.a3Ex;
+/** Subject of the b1 variant for ex-reverse-trial workspaces (pt; distinct from a3 for the classifier). */
+export const NURTURE_B1_EX_TRIAL_SUBJECT = nurtureText("pt").subject.b1Ex;
 
 /** Subject line of a nurture step (sanitized). Shared with the e-mail classifier. */
-export function nurtureSubject(step: NurtureStep, p: { clientCount: number; exReverseTrial?: boolean }): string {
+export function nurtureSubject(
+  step: NurtureStep,
+  p: { clientCount: number; exReverseTrial?: boolean },
+  lang: Lang = "pt",
+): string {
+  const s = nurtureText(lang).subject;
   let subject: string;
   switch (step) {
     case "a1":
-      subject = "Seu primeiro cliente no Mesaas leva 3 minutos";
+      subject = s.a1;
       break;
     case "a2":
-      subject = "Como as agências aprovam posts sem WhatsApp";
+      subject = s.a2;
       break;
     case "a3":
       // The reverse trial counts as the trial: an ex-trial owner cannot start
       // another one, so a3 offers the Pro back instead of a 30-day test.
-      subject = p.exReverseTrial ? NURTURE_A3_EX_TRIAL_SUBJECT : "Teste tudo do Mesaas por 30 dias";
+      subject = p.exReverseTrial ? s.a3Ex : s.a3;
       break;
     case "b1": {
       if (p.exReverseTrial) {
-        subject = NURTURE_B1_EX_TRIAL_SUBJECT;
+        subject = s.b1Ex;
         break;
       }
       const n = Number.isFinite(p.clientCount) ? Math.max(0, Math.floor(p.clientCount)) : 0;
-      subject = n === 0
-        ? "Teste tudo do Mesaas por 30 dias"
-        : `Você já tem ${n} ${n === 1 ? "cliente" : "clientes"} no Mesaas. Teste o resto por 30 dias`;
+      subject = n === 0 ? s.b1Zero : s.b1N(n);
       break;
     }
     case "b2":
-      subject = "Seu cliente aprova o post pelo celular";
+      subject = s.b2;
       break;
     case "b3":
-      subject = "Relatório de Instagram pronto para mandar ao cliente";
+      subject = s.b3;
       break;
     case "a4":
     case "b4":
-      subject = "Posso parar de te escrever?";
+      subject = s.a4b4;
       break;
   }
   return sanitizeSubjectValue(subject);
 }
 
 export function buildNurtureEmail(p: NurtureEmailInput): { subject: string; html: string } {
+  const lang = p.lang;
+  const T = nurtureText(lang);
+  const c = T.common;
   const u = (path: string) => nurtureUtm(p.appBaseUrl, path, p.step);
-  const greet = paragraph(p.firstName ? `Oi, ${p.firstName},` : "Oi,");
-  const waBtn = p.whatsappUrl ? button(p.whatsappUrl, "Prefiro falar no WhatsApp", "outline") + spacer(24) : "";
+  const greet = paragraph(p.firstName ? c.greetNamed(p.firstName) : c.greetAnon);
+  const waBtn = p.whatsappUrl ? button(p.whatsappUrl, c.waButton, "outline") + spacer(24) : "";
+  const shot = (key: keyof typeof NURTURE_SHOTS) => screenshot(NURTURE_SHOTS[key], c.shotAlt[key]);
+  const trialGrid = () => featureGrid(c.trialGrid);
+  // No plan numbers beyond Free's 2 clients: Pro limits are edited in the Admin.
+  const proGrid = () => featureGrid(c.proGrid);
+  // The reverse trial is used up, so subscribing charges at once.
+  const recoverFine = () => paragraph(c.recoverFine, "small", "14px 0 0");
+  const trialFine = () => paragraph(c.trialFine, "small", "14px 0 0");
 
   let preheader = "";
   let eyebrow = "";
   let sections: string[] = [];
 
   switch (p.step) {
-    case "a1":
-      preheader = "Cadastre um cliente e o resto do Mesaas começa a fazer sentido.";
-      eyebrow = "Primeiros passos";
+    case "a1": {
+      const t = T.a1;
+      preheader = t.preheader;
+      eyebrow = t.eyebrow;
       sections = [
-        greet +
-        paragraph(
-          "Vi que você criou sua conta no Mesaas mas ainda não cadastrou nenhum cliente. É normal: a parte chata é começar.",
-        ) +
-        paragraph(
-          "Com um cliente cadastrado você já consegue montar o calendário editorial dele, organizar as entregas no kanban e guardar briefing e contrato num lugar só.",
-        ) +
-        shot("clientes"),
-        sectionTitle("Dois jeitos de começar") +
+        greet + paragraph(t.p1) + paragraph(t.p2) + shot("clientes"),
+        sectionTitle(t.title) +
         steps([
-          `<strong>Na mão</strong>: nome, Instagram e pronto. Leva uns 3 minutos.${spacer(12)}${button(u("/clientes"), "Cadastrar meu primeiro cliente")}`,
-          `<strong>Importando</strong>: se seus clientes estão no Notion, Trello, ClickUp ou numa planilha, a gente traz tudo.${spacer(12)}${button(u("/importar"), "Importar meus clientes", "outline")}`,
+          `${t.stepManualHtml}${spacer(12)}${button(u("/clientes"), t.btnManual)}`,
+          `${t.stepImportHtml}${spacer(12)}${button(u("/importar"), t.btnImport, "outline")}`,
         ]),
-        paragraphHtml(
-          "Travou em alguma coisa? É só <strong>responder este e-mail</strong>. Eu leio e respondo pessoalmente.",
-          "body",
-          "0 0 18px",
-        ) + signature(),
+        paragraphHtml(t.closingHtml, "body", "0 0 18px") + signature(lang),
       ];
       break;
-    case "a2":
-      preheader = "Um link, o cliente aprova pelo celular, sem login.";
-      eyebrow = "Dica";
+    }
+    case "a2": {
+      const t = T.a2;
+      preheader = t.preheader;
+      eyebrow = c.eyebrowTip;
       sections = [
-        greet +
-        paragraph(
-          'A parte que mais toma tempo de quem faz social media para cliente não é criar o post. É conseguir a aprovação: print no WhatsApp, áudio de 4 minutos, "pode trocar a cor?" três dias depois.',
-        ) +
-        paragraph(
-          "No Mesaas cada cliente ganha um Hub: um link com a sua marca onde ele vê os posts da semana, aprova ou pede ajuste em cada um, direto do celular e sem criar conta.",
-        ) +
-        shot("aprovacoes"),
-        callout(
-          "Cada aprovação ou pedido de ajuste já atualiza o status do post no seu kanban. Você para de caçar resposta no WhatsApp.",
-        ),
-        paragraph("Para usar, o primeiro passo é ter um cliente cadastrado.", "body", "0 0 18px") +
-        button(u("/clientes"), "Cadastrar um cliente") + spacer(24) + signature(),
+        greet + paragraph(t.p1) + paragraph(t.p2) + shot("aprovacoes"),
+        callout(t.callout),
+        paragraph(t.p3, "body", "0 0 18px") + button(u("/clientes"), t.btn) + spacer(24) + signature(lang),
       ];
       break;
+    }
     case "a3": {
+      const t = T.a3;
       if (p.exReverseTrial) {
-        preheader = "Seus dados continuam lá. Com um cartão, o Pro volta na hora.";
-        eyebrow = "Recupere o Pro";
+        preheader = t.recoverPreheader;
+        eyebrow = c.eyebrowRecover;
         sections = [
-          heading(p.firstName ? `${p.firstName}, o Pro continua a um cartão de distância.` : "O Pro continua a um cartão de distância.") +
-          paragraph(
-            "Seu teste de 14 dias do Pro terminou e o workspace voltou para o plano Free. Nada foi apagado: clientes, posts e relatórios continuam lá.",
-          ) +
-          paragraph(
-            "Com o Pro de volta, você recupera o portal do cliente, a equipe e os relatórios, e os links do portal voltam a abrir.",
-          ) +
+          heading(p.firstName ? t.recoverHeadingNamed(p.firstName) : t.recoverHeadingAnon) +
+          paragraph(t.recoverP1) +
+          paragraph(t.recoverP2) +
           shot("hub") +
-          proGrid() + spacer(8) + button(u(RECOVER_PATH), "Recuperar o Pro") + recoverFine(),
-          paragraphHtml(
-            "Ficou alguma dúvida sobre o plano? É só <strong>responder este e-mail</strong>.",
-            "body",
-            "0 0 18px",
-          ) + signature(),
+          proGrid() + spacer(8) + button(u(RECOVER_PATH), c.recoverButton) + recoverFine(),
+          paragraphHtml(t.recoverClosingHtml, "body", "0 0 18px") + signature(lang),
         ];
         break;
       }
       const trialFirst = p.workspaceCreatedAt.slice(0, 10) >= TRIAL_FIRST_LAUNCH;
-      preheader = "Hub, equipe, Instagram e relatórios liberados por 30 dias.";
-      eyebrow = "Teste grátis";
+      preheader = t.preheader;
+      eyebrow = c.eyebrowTrial;
       sections = [
-        heading(p.firstName ? `${p.firstName}, você pode testar tudo por 30 dias.` : "Você pode testar tudo por 30 dias.") +
-        paragraph(
-          trialFirst
-            ? "Dá pra testar o Mesaas inteiro por 30 dias, com todos os recursos dos planos pagos liberados."
-            : "Quando você criou sua conta, o Mesaas ainda não tinha teste grátis. Agora tem: 30 dias com todos os recursos dos planos pagos liberados.",
-        ) +
+        heading(p.firstName ? t.headingNamed(p.firstName) : t.headingAnon) +
+        paragraph(trialFirst ? t.leadNew : t.leadOld) +
         shot("hub") +
-        trialGrid() + spacer(8) + button(u("/comecar"), "Começar meu teste grátis") + trialFine(),
-        paragraphHtml(
-          "Se ainda não sabe se o Mesaas serve para a sua agência, <strong>me responde contando como você trabalha hoje</strong> que eu digo com sinceridade.",
-          "body",
-          "0 0 18px",
-        ) + signature(),
+        trialGrid() + spacer(8) + button(u("/comecar"), c.trialButton) + trialFine(),
+        paragraphHtml(t.closingHtml, "body", "0 0 18px") + signature(lang),
       ];
       break;
     }
-    case "a4":
-      preheader = "Uma pergunta rápida, e prometo que é a última.";
-      eyebrow = "Uma pergunta";
+    case "a4": {
+      const t = T.a4;
+      preheader = c.lastQuestionPreheader;
+      eyebrow = c.eyebrowLastQuestion;
       sections = [
-        greet +
-        paragraph("Te mandei algumas dicas sobre o Mesaas nas últimas semanas e não quero lotar sua caixa de entrada.") +
-        paragraph(
-          'Se puder, me responde com uma linha só: o que faltou para o Mesaas servir para você? Pode ser "não é o momento", "faltou tal coisa" ou "achei caro". Eu leio todas e isso muda o que a gente constrói.',
-        ) +
-        paragraph("Este é o último e-mail desta série. Sua conta continua lá, do jeito que você deixou.", "body", "0 0 18px") +
-        waBtn + signature(),
+        greet + paragraph(t.p1) + paragraph(t.p2) + paragraph(t.p3, "body", "0 0 18px") + waBtn + signature(lang),
       ];
       break;
+    }
     case "b1": {
+      const t = T.b1;
       const n = Number.isFinite(p.clientCount) ? Math.max(0, Math.floor(p.clientCount)) : 0;
       const atLimit = n >= 2;
       const exTrial = p.exReverseTrial === true;
       preheader = exTrial
-        ? (atLimit ? "Seu Free parou em 2 clientes. O Pro libera o resto." : "O Pro libera o portal do cliente, a equipe e os relatórios.")
-        : (atLimit ? "Seu Free parou em 2 clientes. O teste libera tudo." : "O teste libera tudo do Mesaas por 30 dias.");
-      eyebrow = exTrial ? "Recupere o Pro" : "Teste grátis";
+        ? (atLimit ? t.exPreheaderLimit : t.exPreheader)
+        : (atLimit ? t.preheaderLimit : t.preheader);
+      eyebrow = exTrial ? c.eyebrowRecover : c.eyebrowTrial;
       // No article before user-supplied names: "a Meu Workspace", "o Ana" read wrong.
-      const ws = nurtureWorkspaceName(p.workspaceName);
+      const ws = nurtureWorkspaceName(p.workspaceName, lang);
       const b1Heading = ws
-        ? (p.firstName ? `${p.firstName}, ${ws} já está no Mesaas.` : `${ws} já está no Mesaas.`)
-        : (p.firstName ? `${p.firstName}, sua agência já está no Mesaas.` : "Sua agência já está no Mesaas.");
+        ? (p.firstName ? t.headingWsNamed(p.firstName, ws) : t.headingWs(ws))
+        : (p.firstName ? t.headingNoWsNamed(p.firstName) : t.headingNoWs);
       if (exTrial) {
         sections = [
           heading(b1Heading) +
-          paragraph(
-            atLimit
-              ? `Você já cadastrou ${n} clientes, e esse é o limite do plano Free. Com o Pro de volta, você segue crescendo e recupera o portal do cliente, a equipe e os relatórios.`
-              : "Você já cadastrou seu primeiro cliente. Com o Pro de volta, você recupera o portal do cliente, a equipe e os relatórios.",
-          ) +
+          paragraph(atLimit ? t.exLimit(n) : t.exFirst) +
           shot("hub") +
-          proGrid() + spacer(8) + button(u(RECOVER_PATH), "Recuperar o Pro") + recoverFine(),
-          paragraphHtml("Ficou alguma dúvida sobre o plano? É só <strong>responder este e-mail</strong>.", "body", "0 0 18px") +
-          signature(),
+          proGrid() + spacer(8) + button(u(RECOVER_PATH), c.recoverButton) + recoverFine(),
+          paragraphHtml(c.questionsHtml, "body", "0 0 18px") + signature(lang),
         ];
         break;
       }
       sections = [
         heading(b1Heading) +
-        paragraph(
-          atLimit
-            ? `Você já cadastrou ${n} clientes, e esse é o limite do plano Free. Para seguir crescendo, e para usar o que o Mesaas tem de melhor, dá pra testar tudo por 30 dias.`
-            : "Você já cadastrou seu primeiro cliente. Para usar o que o Mesaas tem de melhor, dá pra testar tudo por 30 dias.",
-        ) +
+        paragraph(atLimit ? t.limit(n) : t.first) +
         shot("hub") +
-        trialGrid() + spacer(8) + button(u("/comecar"), "Começar meu teste grátis") + trialFine(),
-        paragraphHtml("Ficou alguma dúvida sobre o plano? É só <strong>responder este e-mail</strong>.", "body", "0 0 18px") +
-        signature(),
+        trialGrid() + spacer(8) + button(u("/comecar"), c.trialButton) + trialFine(),
+        paragraphHtml(c.questionsHtml, "body", "0 0 18px") + signature(lang),
       ];
       break;
     }
     case "b2": {
+      const t = T.b2;
       const who = p.firstClientName?.trim() || null;
-      preheader = who ? `${who} pode aprovar a semana inteira num link.` : "Seu cliente pode aprovar a semana inteira num link.";
-      eyebrow = "Dica";
+      preheader = who ? t.preheaderWho(who) : t.preheader;
+      eyebrow = c.eyebrowTip;
       sections = [
-        greet +
-        paragraph(
-          `Imagina mandar um link só, com os posts da semana, para o seu cliente${who ? ` ${who}` : ""}. Ele abre no celular, aprova os que estão bons e comenta nos que precisam de ajuste. Sem login, sem print, sem áudio.`,
-        ) +
-        paragraph(
-          "Esse é o Hub do cliente. Ele vem com a sua marca, e cada aprovação já atualiza o status do post no seu kanban.",
-        ) +
-        shot("aprovar"),
+        greet + paragraph(who ? t.p1Who(who) : t.p1) + paragraph(t.p2) + shot("aprovar"),
         ...(p.exReverseTrial
           ? [
-            callout("O Hub, a equipe e o Instagram fazem parte do Pro."),
-            button(u(RECOVER_PATH), "Recuperar o Pro") + recoverFine() + spacer(18) + signature(),
+            callout(t.calloutRecover),
+            button(u(RECOVER_PATH), c.recoverButton) + recoverFine() + spacer(18) + signature(lang),
           ]
           : [
-            callout("O Hub, a equipe e o Instagram fazem parte do teste grátis de 30 dias."),
-            button(u("/comecar"), "Testar o Hub com meu cliente") + spacer(24) + signature(),
+            callout(t.calloutTrial),
+            button(u("/comecar"), t.btnTrial) + spacer(24) + signature(lang),
           ]),
       ];
       break;
     }
-    case "b3":
-      preheader = "Métricas do mês num PDF com a sua marca, sem montar no Canva.";
-      eyebrow = "Dica";
+    case "b3": {
+      const t = T.b3;
+      preheader = t.preheader;
+      eyebrow = c.eyebrowTip;
       sections = [
         greet +
-        paragraph(
-          "Todo fim de mês alguém da agência para um dia para montar o relatório de cada cliente. No Mesaas ele sai pronto: alcance, engajamento, melhores posts e crescimento, num PDF com a sua marca.",
-        ) +
-        paragraph(
-          p.hasInstagram
-            ? `O Instagram de um cliente seu já está conectado, então as métricas já estão sendo atualizadas sozinhas. ${
-              p.exReverseTrial ? "No Pro" : "No teste"
-            }, o relatório em PDF com a sua marca sai pronto todo mês.`
-            : "Você conecta o Instagram do cliente uma vez e as métricas passam a ser atualizadas sozinhas, com os melhores horários para postar.",
-        ) +
+        paragraph(t.p1) +
+        paragraph(p.hasInstagram ? (p.exReverseTrial ? t.p2IgRecover : t.p2IgTrial) : t.p2NoIg) +
         shot("relatorios"),
         (p.exReverseTrial
-          ? button(u(RECOVER_PATH), "Recuperar o Pro") + recoverFine()
-          : button(u("/comecar"), "Começar meu teste grátis") + trialFine()) + spacer(18) + signature(),
+          ? button(u(RECOVER_PATH), c.recoverButton) + recoverFine()
+          : button(u("/comecar"), c.trialButton) + trialFine()) + spacer(18) + signature(lang),
       ];
       break;
-    case "b4":
-      preheader = "Uma pergunta rápida, e prometo que é a última.";
-      eyebrow = "Uma pergunta";
+    }
+    case "b4": {
+      const t = T.b4;
+      preheader = c.lastQuestionPreheader;
+      eyebrow = c.eyebrowLastQuestion;
       sections = [
-        greet +
-        paragraph(
-          "Vi que você já usa o Mesaas com seus clientes, mas ainda não testou os planos pagos. Não quero insistir.",
-        ) +
-        paragraph(
-          "Se puder, me responde com uma linha só: o que faltou para testar? Preço, um recurso, o momento? Eu leio todas e isso muda o que a gente constrói.",
-        ) +
-        paragraph("Este é o último e-mail desta série. Seu plano Free continua funcionando normalmente.", "body", "0 0 18px") +
-        waBtn + signature(),
+        greet + paragraph(t.p1) + paragraph(t.p2) + paragraph(t.p3, "body", "0 0 18px") + waBtn + signature(lang),
       ];
       break;
+    }
   }
 
   const html = mesaasEmail({
+    lang,
     preheader,
     eyebrow,
     sections,
     footerLines: [],
-    footerHtml: [`${escapeHtml(FOOTER_SENTENCE)} ${link(p.unsubUrl, "Descadastrar", EMAIL.muted)}.`],
+    footerHtml: [`${escapeHtml(c.footerSentence)} ${link(p.unsubUrl, c.unsubscribe, EMAIL.muted)}.`],
   });
-  return { subject: nurtureSubject(p.step, p), html };
+  return { subject: nurtureSubject(p.step, p, lang), html };
 }

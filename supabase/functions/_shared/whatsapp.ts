@@ -13,7 +13,7 @@
 /** wa.me rejects anything but digits: no `+`, no spaces, no punctuation. */
 const DIGITS_ONLY = /^\d+$/;
 
-export function whatsAppSupportUrl(p: { firstName: string | null }): string | null {
+export function whatsAppSupportUrl(p: { firstName: string | null; lang?: "pt" | "en" }): string | null {
   const raw = (Deno.env.get("WHATSAPP_SUPPORT_NUMBER") ?? "").trim();
   // Fails closed on malformed as well as missing, so a number pasted from a
   // phone cannot ship a dead link inside an email nobody re-reads.
@@ -21,7 +21,8 @@ export function whatsAppSupportUrl(p: { firstName: string | null }): string | nu
 
   // No article before the name: "Sou o Ana" agrees wrong and any fixed article
   // misgenders half the recipients.
-  const intro = p.firstName ? `Oi! Sou ${p.firstName}.` : "Oi!";
-  const text = `${intro} Acabei de criar minha conta no Mesaas e queria ajuda pra configurar.`;
+  const text = p.lang === "en"
+    ? `${p.firstName ? `Hi! I'm ${p.firstName}.` : "Hi!"} I just created my Mesaas account and would like help getting set up.`
+    : `${p.firstName ? `Oi! Sou ${p.firstName}.` : "Oi!"} Acabei de criar minha conta no Mesaas e queria ajuda pra configurar.`;
   return `https://wa.me/${raw}?text=${encodeURIComponent(text)}`;
 }

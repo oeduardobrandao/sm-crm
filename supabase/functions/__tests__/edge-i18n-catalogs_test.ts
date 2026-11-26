@@ -5,11 +5,17 @@
  */
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { shellText } from "../_shared/email/shell.ts";
+import { lifecycleText } from "../_shared/i18n/catalogs/lifecycle.ts";
+import { nurtureText } from "../_shared/i18n/catalogs/nurture.ts";
+import { nurtureUnsubText } from "../_shared/i18n/catalogs/nurture-unsub.ts";
 
 type Entry = { name: string; get: (lang: "pt" | "en") => Record<string, unknown> };
 
 const CATALOGS: Entry[] = [
   { name: "email/shell", get: shellText },
+  { name: "lifecycle", get: lifecycleText },
+  { name: "nurture", get: nurtureText },
+  { name: "nurture-unsub", get: nurtureUnsubText },
   // Append: { name: "<family>", get: <catalogAccessor> },
 ];
 

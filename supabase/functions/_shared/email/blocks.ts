@@ -10,6 +10,7 @@ import { escapeHtml } from "../report-template/escape.ts";
 import { pickHeaderTextColor } from "../report-template/brand-header.ts";
 import { BADGE_TONES, type BadgeTone, EMAIL, EMAIL_FOUNDER_PHOTO_URL, type EmailImage, FONT_STACK, POST_TIPO_FALLBACK, POST_TIPOS } from "./tokens.ts";
 import { corSegura, linkSeguro } from "./safe.ts";
+import type { Lang } from "../i18n/lang.ts";
 
 const WRAP = "word-break: break-word; overflow-wrap: anywhere;";
 
@@ -196,6 +197,6 @@ export function dateList(items: string[], restantes: number, riscado = false): s
   return `<ul style="margin: 0; padding: 0 0 0 18px; font-size: 14px; line-height: 22px; color: ${EMAIL.text};">${lis}</ul>${mais}`;
 }
 
-export function signature(): string {
-  return `<table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse: separate;"><tr><td valign="middle" style="padding-right: 12px;"><table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse: separate;"><tr><td width="40" height="40" valign="middle" style="width: 40px; height: 40px;"><img src="${EMAIL_FOUNDER_PHOTO_URL}" width="40" height="40" alt="Eduardo" style="display: block; width: 40px; height: 40px; border: 0; border-radius: 20px; background: ${EMAIL.brandMark};"></td></tr></table></td><td valign="middle" style="font-size: 14px; line-height: 20px; color: ${EMAIL.ink};"><strong>Eduardo</strong><br><span style="color: ${EMAIL.muted};">Fundador do Mesaas</span></td></tr></table>`;
+export function signature(lang: Lang = "pt"): string {
+  return `<table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse: separate;"><tr><td valign="middle" style="padding-right: 12px;"><table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse: separate;"><tr><td width="40" height="40" valign="middle" style="width: 40px; height: 40px;"><img src="${EMAIL_FOUNDER_PHOTO_URL}" width="40" height="40" alt="Eduardo" style="display: block; width: 40px; height: 40px; border: 0; border-radius: 20px; background: ${EMAIL.brandMark};"></td></tr></table></td><td valign="middle" style="font-size: 14px; line-height: 20px; color: ${EMAIL.ink};"><strong>Eduardo</strong><br><span style="color: ${EMAIL.muted};">${lang === "en" ? "Founder of Mesaas" : "Fundador do Mesaas"}</span></td></tr></table>`;
 }

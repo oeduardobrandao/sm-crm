@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
+import { ownerLang } from "../_shared/i18n/workspace-lang.ts";
 import { createNurtureUnsubHandler, type NurtureUnsubDb } from "./handler.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -26,5 +27,6 @@ Deno.serve(createNurtureUnsubHandler({
   db: svc as unknown as NurtureUnsubDb,
   tokenSecret: NURTURE_UNSUB_SECRET,
   now: () => new Date(),
+  ownerLang: (userId) => ownerLang(svc, userId),
   buildCorsHeaders,
 }));
