@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, type ComponentType } from 'react';
+import { lazy, Suspense, type ComponentType } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider, MutationCache } from '@tanstack/react-query';
 import { handleEntitlementMutationError } from './lib/entitlement-toast';
@@ -11,7 +11,10 @@ import CookieConsent from './components/consent/CookieConsent';
 import { Toaster } from '@/components/ui/sonner';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
-import { getSavedLanguage, i18n, loadLazyNamespaces } from '@mesaas/i18n';
+import { loadLazyNamespaces } from '@mesaas/i18n';
+import { SavedLanguageSync } from './boot/SavedLanguageSync';
+import type { SiteLocale } from './content/siteLocale';
+import { EnglishPage } from './pages/en/EnglishPage';
 import { isNativeApp } from './native/platform';
 import { useNativePathGuard } from './native/useNativePathGuard';
 
@@ -60,17 +63,21 @@ const PoliticaPage = lazy(() => import('./pages/politica-privacidade/PoliticaPag
 const TermosPage = lazy(() => import('./pages/termos-de-uso/TermosPage'));
 const LgpdPage = lazy(() => import('./pages/lgpd/LgpdPage'));
 const LandingPageLazy = lazy(() => import('./pages/landing/LandingPage'));
-// Set by preloadLanding() before the first render on `/`, so the hero paints in the same frame
+// Set by preloadLanding() before the first render on `/` and `/en`, so the hero paints in the same frame
 // as the rest of the shell. A plain lazy() always suspends once: the cookie banner (entry chunk)
 // painted first and the hero one async step later, which made the banner the mobile LCP element.
-let LandingPageReady: ComponentType | null = null;
+let LandingPageReady: ComponentType<{ locale?: SiteLocale }> | null = null;
 export function preloadLanding(): Promise<void> {
   return import('./pages/landing/LandingPage').then((mod) => {
     LandingPageReady = mod.default;
   });
 }
-function LandingPage() {
-  return LandingPageReady ? <LandingPageReady /> : <LandingPageLazy />;
+function LandingPage({ locale }: { locale?: SiteLocale }) {
+  return LandingPageReady ? (
+    <LandingPageReady locale={locale} />
+  ) : (
+    <LandingPageLazy locale={locale} />
+  );
 }
 const NovidadesPage = lazy(() => import('./pages/novidades/NovidadesPage'));
 const BlogIndexPage = lazy(() => import('./pages/blog/BlogIndexPage'));
@@ -172,17 +179,6 @@ export const queryClient = new QueryClient({
   }),
 });
 
-// The prerendered landing hydrates in `pt` (main.tsx passes `initialLanguage: 'pt'` on that path,
-// matching the server HTML); the visitor's saved language is applied right after hydration. On
-// every other boot i18n already starts in the saved language, so this is a no-op there.
-function SavedLanguageSync() {
-  useEffect(() => {
-    const saved = getSavedLanguage();
-    if (i18n.language !== saved) void i18n.changeLanguage(saved);
-  }, []);
-  return null;
-}
-
 // Inside the iOS app, sends pricing, sign-up, billing and marketing paths to /dashboard. An
 // effect, so the hydrated landing's first render is untouched. Its own component so only it,
 // not the whole provider tree in App, subscribes to the location.
@@ -221,6 +217,22 @@ export default function App() {
               {/* Public routes */}
               <Route path="/" element={<LandingPage />} />
               <Route path="/precos" element={<PrecosPage />} />
+              <Route
+                path="/en"
+                element={
+                  <EnglishPage>
+                    <LandingPage locale="en" />
+                  </EnglishPage>
+                }
+              />
+              <Route
+                path="/en/pricing"
+                element={
+                  <EnglishPage>
+                    <PrecosPage locale="en" />
+                  </EnglishPage>
+                }
+              />
               <Route path="/sobre" element={<MarketingRoute slug="sobre" />} />
               <Route
                 path="/aprovacao-de-post"

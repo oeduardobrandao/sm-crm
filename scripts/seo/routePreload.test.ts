@@ -4,6 +4,7 @@ import {
   imagePreloadTag,
   preloadTagsFor,
   routePreloadTags,
+  ROUTE_CHUNKS,
   type BuildManifest,
 } from './routePreload';
 
@@ -89,6 +90,12 @@ describe('preloadTagsFor', () => {
 });
 
 describe('routePreloadTags', () => {
+  it('maps the English routes to the same page chunks as their Portuguese twins', () => {
+    expect(ROUTE_CHUNKS['/en']).toBe(ROUTE_CHUNKS['/']);
+    expect(ROUTE_CHUNKS['/en/pricing']).toBe(ROUTE_CHUNKS['/precos']);
+    expect(routePreloadTags(manifest, '/en')).toBe(routePreloadTags(manifest, '/'));
+  });
+
   it('returns an empty string for routes without a mapped chunk', () => {
     expect(routePreloadTags(manifest, '/sobre')).toBe('');
   });

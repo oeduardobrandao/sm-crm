@@ -13,6 +13,7 @@ import { initI18n } from '@mesaas/i18n';
 import { I18N_LAZY, I18N_RESOURCES } from './boot/i18nResources';
 import { mountApp } from './boot/mountApp';
 import { markSsrMount } from './lib/ssrMount';
+import { siteLocaleForPath } from './content/siteLocale';
 import App, { preloadLanding, queryClient } from './App';
 import '../style.css';
 
@@ -31,13 +32,19 @@ installConsentEffects();
 captureReferral(window.location.search);
 
 const container = document.getElementById('root')!;
-// The prerendered landing (scripts/seo writes the marker) is hydrated, not re-rendered. Its HTML
-// is in `pt`, so i18n starts in `pt` there; App's SavedLanguageSync applies the saved language
-// right after hydration.
-const isSsr = container.dataset.ssr === 'landing' && window.location.pathname === '/';
+const { pathname } = window.location;
+// `/` and `/en` are the two server-rendered landings.
+const isLandingPath = pathname === '/' || pathname === '/en';
+// The prerendered landing (scripts/seo writes the marker) is hydrated, not re-rendered. `/`'s
+// HTML is in `pt`, so i18n starts in `pt` there and App's SavedLanguageSync applies the saved
+// language right after hydration. Every `/en` page is English whatever was saved: it starts in
+// `en` (matching `/en`'s server HTML) and EnglishPage saves `en` on mount.
+const isSsr = container.dataset.ssr === 'landing' && isLandingPath;
 if (isSsr) markSsrMount();
 
-initI18n(I18N_RESOURCES, { lazy: I18N_LAZY, ...(isSsr ? { initialLanguage: 'pt' as const } : {}) });
+const initialLanguage =
+  siteLocaleForPath(pathname) === 'en' ? ('en' as const) : isSsr ? ('pt' as const) : undefined;
+initI18n(I18N_RESOURCES, { lazy: I18N_LAZY, ...(initialLanguage ? { initialLanguage } : {}) });
 
 // Minimal DATA router (single splat route; App keeps its own descendant <Routes>). It was
 // introduced because `useBlocker` needs data-router context, for the Estúdio autosave's
@@ -59,6 +66,6 @@ void mountApp({
   container,
   element: <RouterProvider router={router} />,
   isSsr,
-  preload: window.location.pathname === '/' ? preloadLanding : () => Promise.resolve(),
+  preload: isLandingPath ? preloadLanding : () => Promise.resolve(),
   report: (err) => Sentry.captureException(err, { tags: { boot: 'ssr-hydration' } }),
 });

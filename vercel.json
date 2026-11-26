@@ -86,6 +86,7 @@
       ]
     }
   ],
+  "redirects": [{ "source": "/en/", "destination": "/en", "permanent": true }],
   "rewrites": [
     {
       "source": "/oauth/google/callback",

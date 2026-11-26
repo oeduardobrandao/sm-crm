@@ -104,6 +104,9 @@ jobs:
       - name: Assert / is the server-rendered landing
         run: grep -q 'data-ssr="landing"' dist/index.html && grep -q 'lp2-hero' dist/index.html
 
+      - name: Assert /en is the server-rendered English landing
+        run: grep -q 'data-ssr="landing"' dist/en.html && grep -q 'lp2-hero' dist/en.html && grep -q '<html lang="en">' dist/en.html
+
   e2e:
     # Pinned: ubuntu-latest became Ubuntu 26.04 (runner image 20261025), and the
     # installed @playwright/test 1.59 has no chromium build for it ("Playwright

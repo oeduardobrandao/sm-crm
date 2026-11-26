@@ -4,16 +4,11 @@ import { LANDING, type LandingContent } from './landing.content';
 import { LANDING_EN } from './landing.content.en';
 import { PRECOS, type PrecosContent } from './precos.content';
 import { PRECOS_EN } from './precos.content.en';
+import type { SiteLocale } from './siteLocale';
 
-/** Market of a public page: Portuguese (Brazil, root paths) or English (US, under `/en`). */
-export type SiteLocale = 'pt' | 'en';
+export { siteLocaleForPath, type SiteLocale } from './siteLocale';
 
 export type SitePageKey = 'home' | 'pricing' | 'privacy' | 'terms';
-
-/** `/en` and `/en/...` are English; everything else (`/english`, `/enx`, `/`) is Portuguese. */
-export function siteLocaleForPath(pathname: string): SiteLocale {
-  return pathname === '/en' || pathname.startsWith('/en/') ? 'en' : 'pt';
-}
 
 const PATHS: Record<SiteLocale, Record<SitePageKey, string>> = {
   pt: {

@@ -19,6 +19,30 @@ describe('entry-server render', () => {
     expect(html).not.toContain('__staticRouterHydrationData');
   });
 
+  // One process renders both landings (scripts/seo/prerender.tsx), and the i18n singleton is
+  // shared: each render must set its own language, whatever ran before it.
+  it('renders / in Portuguese and /en in English, in either order', async () => {
+    const PT_HERO = 'Começar teste grátis';
+    const EN_NOTE = '14 days of Pro free, no card required.';
+    const pt1 = await render('/');
+    const en1 = await render('/en');
+    const en2 = await render('/en');
+    const pt2 = await render('/');
+    for (const { html } of [pt1, pt2]) {
+      expect(html).toContain('class="lp2-hero"');
+      expect(html).toContain(PT_HERO);
+      expect(html).not.toContain(EN_NOTE);
+    }
+    for (const { html } of [en1, en2]) {
+      expect(html).toContain('class="lp2-hero"');
+      expect(html).toContain(EN_NOTE);
+      expect(html).not.toContain(PT_HERO);
+      expect(html).not.toContain('__staticRouterHydrationData');
+    }
+    expect(pt2.html).toBe(pt1.html);
+    expect(en2.html).toBe(en1.html);
+  });
+
   it('is deterministic across renders', async () => {
     const first = await render('/');
     const second = await render('/');

@@ -3,7 +3,8 @@
  * - dist/404.html    = branded 404 (Vercel serves it with HTTP 404 for unmatched paths)
  * - dist/<file>.html = shell + per-route head tags + semantic HTML in #root
  * - dist/sitemap.xml, dist/llms.txt
- * `/` is the real landing page, server-rendered from apps/crm/src/entry-server.tsx: this
+ * `/` and `/en` are the real landing page (Portuguese and English), server-rendered from
+ * apps/crm/src/entry-server.tsx: this
  * script first runs a Vite SSR build of it (apps/crm/vite.ssr.config.ts) into
  * node_modules/.cache/landing-ssr, never dist/, then imports that bundle. The client hydrates
  * the markup (main.tsx), so landing render code must be hydration-stable: no render-time
@@ -23,7 +24,7 @@
  * but the fix is a fresh `vite build`, not a retry: run `npm run build`
  * again before re-running `npm run prerender`. */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { build } from 'vite';
@@ -52,6 +53,7 @@ import {
 import {
   HERO_MACBOOK_SIZES,
   HERO_MACBOOK_SRCSET,
+  localizeSrcSet,
 } from '../../apps/crm/src/pages/landing/landing-visuals';
 import {
   blogRevisionMetaTag,
@@ -76,29 +78,41 @@ const posts = loadPostsFromDisk();
 // Must match build.outDir + entryFileNames in apps/crm/vite.ssr.config.ts.
 const LANDING_SSR_ENTRY = resolve('node_modules/.cache/landing-ssr/entry-server.mjs');
 
+type LandingPath = '/' | '/en';
+
 interface LandingServerEntry {
-  render(url: string): Promise<{ html: string }>;
+  render(url: LandingPath): Promise<{ html: string }>;
 }
 
-async function renderLanding(): Promise<string> {
+/** The server-rendered (and client-hydrated) routes: the landing in each language. */
+function isLandingPath(path: string): path is LandingPath {
+  return path === '/' || path === '/en';
+}
+
+async function renderLandings(): Promise<Record<LandingPath, string>> {
   await build({ configFile: resolve('apps/crm/vite.ssr.config.ts'), logLevel: 'warn' });
   const entry = (await import(pathToFileURL(LANDING_SSR_ENTRY).href)) as LandingServerEntry;
-  const { html } = await entry.render('/');
-  // entry-server already throws on a render error; these guard the contract main.tsx hydrates.
-  if (!html.includes('lp2-hero')) {
-    throw new Error('prerender: server-rendered landing has no lp2-hero (Suspense fallback?)');
+  const out = {} as Record<LandingPath, string>;
+  for (const path of ['/', '/en'] as const) {
+    const { html } = await entry.render(path);
+    // entry-server already throws on a render error; these guard the contract main.tsx hydrates.
+    if (!html.includes('lp2-hero')) {
+      throw new Error(`prerender: server-rendered ${path} has no lp2-hero (Suspense fallback?)`);
+    }
+    if (html.includes('__staticRouterHydrationData')) {
+      throw new Error(`prerender: ${path} must render with hydrate={false}`);
+    }
+    out[path] = html;
   }
-  if (html.includes('__staticRouterHydrationData')) {
-    throw new Error('prerender: landing must render with hydrate={false}');
-  }
-  return html;
+  return out;
 }
 
-const landingHtml = await renderLanding();
+const landingHtml = await renderLandings();
 
 function bodyFor(path: string): string | undefined {
-  if (path === '/') return landingHtml;
+  if (isLandingPath(path)) return landingHtml[path];
   if (path === '/precos') return renderPrecosHtml();
+  if (path === '/en/pricing') return renderPrecosHtml('en');
   if (path === '/novidades') return renderChangelogHtml(releases);
   if (path === '/blog') return renderBlogIndexHtml(posts);
   if (path === '/politica-de-privacidade') return renderToStaticMarkup(<PoliticaPage />);
@@ -156,12 +170,19 @@ for (const route of PUBLIC_ROUTES) {
   }
   let html = stripBaseMeta(shell);
   const jsonLd = route.path === '/blog' ? [blogIndexJsonLd(posts)] : jsonLdForPath(route.path);
-  // The landing is always dark, so its LCP image is the dark MacBook render.
+  const landing = isLandingPath(route.path);
+  // The landing is always dark, so its LCP image is the dark MacBook render. The srcset must
+  // equal the <img>'s exactly (English images live under /landing/en/ when they exist).
   const preload = [
-    route.path === '/' ? imagePreloadTag(HERO_MACBOOK_SRCSET, HERO_MACBOOK_SIZES) : '',
-    // `/` is server-rendered: it paints from HTML + CSS, so only its stylesheets are preloaded
-    // and its JS starts after the first paint (deferEntryScript below).
-    routePreloadTags(manifest, route.path, { scripts: route.path !== '/' }),
+    landing
+      ? imagePreloadTag(
+          localizeSrcSet(route.locale ?? 'pt', HERO_MACBOOK_SRCSET),
+          HERO_MACBOOK_SIZES,
+        )
+      : '',
+    // The landings are server-rendered: they paint from HTML + CSS, so only their stylesheets
+    // are preloaded and their JS starts after the first paint (deferEntryScript below).
+    routePreloadTags(manifest, route.path, { scripts: !landing }),
   ]
     .filter(Boolean)
     .join('\n    ');
@@ -171,16 +192,19 @@ for (const route of PUBLIC_ROUTES) {
     `    ${buildHeadTags(route, jsonLd)}\n${preload ? `    ${preload}\n` : ''}  </head>`,
     `${route.path}:head`,
   );
-  if (route.path === '/') {
+  if (route.locale === 'en') {
+    html = mustReplace(html, '<html lang="pt-BR">', '<html lang="en">', `${route.path}:lang`);
+  }
+  if (landing) {
     // `data-ssr` tells main.tsx to hydrate; LandingPage removes it on mount. `landing-page` on
     // <body> is what LandingChrome adds on mount, present from the first paint here.
-    html = mustReplace(html, '<body>', '<body class="landing-page">', '/:body-class');
+    html = mustReplace(html, '<body>', '<body class="landing-page">', `${route.path}:body-class`);
     html = deferEntryScript(html);
     html = mustReplace(
       html,
       '<div id="root"></div>',
       `<div id="root" data-ssr="landing">${body}</div>`,
-      '/:body',
+      `${route.path}:body`,
     );
   } else {
     html = mustReplace(
@@ -190,6 +214,7 @@ for (const route of PUBLIC_ROUTES) {
       `${route.path}:body`,
     );
   }
+  mkdirSync(dirname(`dist/${route.file}`), { recursive: true });
   writeFileSync(`dist/${route.file}`, html);
   written++;
 }
