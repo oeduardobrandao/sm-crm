@@ -18,6 +18,7 @@ import { WorkspaceAvatar } from '../../components/WorkspaceAvatar';
 import { KpiGrid } from '../../components/shell/KpiTile';
 import { GlassPanel } from '../../components/shell/GlassPanel';
 import { AffiliateRow } from './AffiliateRow';
+import { DangerZonePanel } from './DangerZone';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import {
@@ -212,6 +213,7 @@ export function WorkspaceDetailDesktop(props: WorkspaceDetailViewProps) {
               <OverridesPanel {...props} />
             </div>
           </div>
+          <DangerZonePanel onDelete={props.onDeleteWorkspace} />
         </>,
       )}
       {panel('funcionalidades', <FeaturesPanel {...props} />)}

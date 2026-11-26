@@ -25,6 +25,8 @@ vi.mock('../../lib/api', async (importOriginal) => ({
   listWorkspaceNotes: vi.fn(),
   addWorkspaceNote: vi.fn(),
   deleteWorkspaceNote: vi.fn(),
+  previewDeleteWorkspace: vi.fn(),
+  deleteWorkspace: vi.fn(),
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
@@ -32,6 +34,7 @@ import {
   addWorkspaceNote,
   deleteWorkspaceNote,
   getWorkspace,
+  previewDeleteWorkspace,
   resendDemoAccess,
   revokeMcpKey,
   setWorkspaceOverrides,
@@ -53,6 +56,22 @@ describe('WorkspaceDetailPage (desktop)', () => {
     primeApi();
   });
   afterEach(() => vi.restoreAllMocks());
+
+  it('the danger zone opens the typed-confirmation delete dialog', async () => {
+    vi.mocked(previewDeleteWorkspace).mockResolvedValue({
+      workspace: { id: 'ws1', name: 'Social Bee' },
+      counts: { clientes: 1, posts: 2, arquivos: 3, membros: 1 },
+      members: [],
+      blocker: null,
+    });
+    renderPage();
+    await screen.findByRole('heading', { name: 'Social Bee', level: 1 });
+    const zone = screen.getByRole('region', { name: 'Zona de perigo' });
+    fireEvent.click(within(zone).getByRole('button', { name: 'Excluir workspace' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Excluir workspace' });
+    expect(within(dialog).getByLabelText(/Para confirmar, digite/)).toBeTruthy();
+    expect(previewDeleteWorkspace).toHaveBeenCalledWith('ws1');
+  });
 
   it('renders the hero: back link, name, owner line, usage tiles and the section tabs', async () => {
     renderPage();

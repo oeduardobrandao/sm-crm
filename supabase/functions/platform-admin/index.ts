@@ -65,6 +65,7 @@ import {
 import { createStreamDirectUpload, deleteStreamVideo, getStreamVideo, isStreamCleanupEnabled } from "../_shared/stream.ts";
 import { createDemoWorkspace, type DemoDeps, resendDemoAccess } from "./demo-workspace.ts";
 import { handleSetWorkspaceAffiliate } from "./workspace-affiliate.ts";
+import { createLiveBilling, deleteWorkspace, type DeleteWorkspaceDeps, previewWorkspaceDelete } from "./workspace-delete.ts";
 import { handleSetWorkspaceCurrency } from "./workspace-currency.ts";
 import { handleAddWorkspaceNote, handleDeleteWorkspaceNote, handleListWorkspaceNotes } from "./workspace-notes.ts";
 import { findAuthUserByEmail } from "../_shared/invite-actions.ts";
@@ -181,6 +182,14 @@ Deno.serve(async (req: Request) => {
         return await handleEndReverseTrial(svc, body, user.id, headers);
       case "create-demo-workspace": {
         const r = await createDemoWorkspace(demoDeps(svc), body, { adminId: admin.id, userId: user.id });
+        return new Response(JSON.stringify(r.body), { status: r.status, headers });
+      }
+      case "delete-workspace-preview": {
+        const r = await previewWorkspaceDelete(deleteWorkspaceDeps(svc), body);
+        return new Response(JSON.stringify(r.body), { status: r.status, headers });
+      }
+      case "delete-workspace": {
+        const r = await deleteWorkspace(deleteWorkspaceDeps(svc), body, user.id);
         return new Response(JSON.stringify(r.body), { status: r.status, headers });
       }
       case "set-workspace-currency":
@@ -471,6 +480,17 @@ async function handleDeletePlan(
 }
 
 // ─── Conta demo (spec 2026-10-26-conta-demo-admin §2) ───────────
+
+function deleteWorkspaceDeps(svc: SupabaseClient): DeleteWorkspaceDeps {
+  return {
+    db: svc,
+    billing: createLiveBilling(),
+    deleteUser: async (userId) => {
+      const { error } = await svc.auth.admin.deleteUser(userId);
+      if (error) throw error;
+    },
+  };
+}
 
 function demoDeps(svc: SupabaseClient): DemoDeps {
   return {

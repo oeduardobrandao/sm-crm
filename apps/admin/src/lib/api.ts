@@ -735,6 +735,49 @@ export function resendDemoAccess(workspaceId: string) {
   return adminApi<{ message: string }>('resend-demo-access', { workspace_id: workspaceId });
 }
 
+/** The word the admin types to confirm a workspace delete. Same constant on the server
+ *  (supabase/functions/platform-admin/workspace-delete.ts DELETE_CONFIRM_WORD). */
+export const DELETE_WORKSPACE_CONFIRM_WORD = 'delete';
+
+export interface DeleteWorkspacePreview {
+  workspace: { id: string; name: string };
+  counts: { clientes: number; posts: number; arquivos: number; membros: number };
+  members: Array<{
+    user_id: string;
+    role: string;
+    email: string | null;
+    name: string | null;
+    /** No membership or data in another workspace and not a platform admin: the login is
+     *  deleted too (re-checked after the delete, so it can only turn into a kept login). */
+    login_deleted: boolean;
+  }>;
+  /** Why the delete is refused right now (active or unverifiable subscription), or null. */
+  blocker: { reason: 'active_subscription' | 'billing_unverified'; message: string } | null;
+}
+
+export interface DeleteWorkspaceResult {
+  workspace_id: string;
+  workspace_name: string;
+  logins_deleted: number;
+  /** Joined another workspace between the preview and the delete: login kept. */
+  logins_kept: string[];
+  /** Delete failed after the workspace was gone (audited server-side). */
+  logins_failed: string[];
+}
+
+export function previewDeleteWorkspace(workspaceId: string) {
+  return adminApi<DeleteWorkspacePreview>('delete-workspace-preview', {
+    workspace_id: workspaceId,
+  });
+}
+
+export function deleteWorkspace(workspaceId: string, confirm: string) {
+  return adminApi<DeleteWorkspaceResult>('delete-workspace', {
+    workspace_id: workspaceId,
+    confirm,
+  });
+}
+
 export function setWorkspaceAffiliate(workspaceId: string, refCode: string | null) {
   return adminApi<{ affiliate: { id: string; name: string; code: string } | null }>(
     'set-workspace-affiliate',

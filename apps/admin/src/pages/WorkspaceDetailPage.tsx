@@ -32,6 +32,7 @@ import { WorkspaceDetailPhone } from './workspace-detail/WorkspaceDetailPhone';
 import { WorkspaceDetailDesktop } from './workspace-detail/WorkspaceDetailDesktop';
 import { OverridesSheets } from './workspace-detail/OverridesSheets';
 import { ExtendTrialDialog } from './workspace-detail/ExtendTrialDialog';
+import { DeleteWorkspaceDialog } from './workspace-detail/DeleteWorkspaceDialog';
 import { isReverseTrial } from '../lib/reverse-trial';
 import type { WorkspaceDetailViewProps } from './workspace-detail/types';
 
@@ -137,6 +138,7 @@ export default function WorkspaceDetailPage() {
   const [selectedPlanId, setSelectedPlanId] = useState('');
   const [openPanel, setOpenPanel] = useState<'limits' | 'features' | null>(null);
   const [extendOpen, setExtendOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   useEffect(() => {
     if (data) {
@@ -317,6 +319,7 @@ export default function WorkspaceDetailPage() {
     endTrialPending: endTrialMutation.isPending,
     onResendAccess: () => resendMutation.mutate(),
     resendPending: resendMutation.isPending,
+    onDeleteWorkspace: () => setDeleteOpen(true),
     notes: {
       items: notesQuery.data?.notes,
       loadError: notesQuery.isError,
@@ -378,6 +381,12 @@ export default function WorkspaceDetailPage() {
         savePending={saveOverridesMutation.isPending}
         onClear={() => clearMutation.mutate()}
         clearPending={clearMutation.isPending}
+      />
+      <DeleteWorkspaceDialog
+        workspaceId={id!}
+        workspaceName={data.workspace.name}
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
       />
       {isReverseTrial(data.workspace.plan_source) &&
       data.workspace.reverse_trial_started_at &&
