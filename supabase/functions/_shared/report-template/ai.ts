@@ -69,6 +69,7 @@ const LANGUAGE_LINE_EN =
 const EN_TERMS: ReadonlyArray<readonly [string, string]> = [
   ['"engajamento por visualização"', '"engagement per view"'],
   ['"visualizações do perfil"', '"profile views"'],
+  ['"pessoas alcançadas"', '"people reached"'],
   ['"no período anterior"', '"in the previous period"'],
   ['"no mês anterior"', '"in the previous month"'],
   ["Ligar, Rotas, Site, Mensagem and Agendar", "Call, Directions, Website, Message and Book"],
@@ -124,7 +125,7 @@ export function buildAIPrompt(data: ReportData, lang: Lang, opts?: AIPromptOpts)
     )
     : "";
   const gbpName = localizeText("Google Meu Negócio", lang);
-  const systemPrompt = `You are a social media analytics specialist writing a monthly performance report for a client of a Brazilian social media agency.
+  const systemPrompt = `You are a social media analytics specialist writing a monthly performance report for a client of a${lang === "en" ? "" : " Brazilian"} social media agency.
 
 ${lang === "en" ? LANGUAGE_LINE_EN : LANGUAGE_LINE_PT}
 

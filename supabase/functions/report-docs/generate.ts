@@ -26,14 +26,16 @@ import { saoPauloDate } from "../_shared/sao-paulo-date.ts";
 
 export { GenerateError } from "./errors.ts";
 
-const METRIC_PRIORITY_INSTAGRAM =
-  "METRIC PRIORITY: 'views' (visualizações) is the primary performance metric for " +
+const viewsLabel = (lang: Lang) => (lang === "en" ? "'views'" : "'views' (visualizações)");
+
+const metricPriorityInstagram = (lang: Lang) =>
+  `METRIC PRIORITY: ${viewsLabel(lang)} is the primary performance metric for ` +
   "this report. Lead the executive summary, analysis, recommendations and " +
   "suggested_goals with views wherever the data provides them; treat reach as " +
   "secondary context.";
 
-const metricPriorityWithOthers = (others: string) =>
-  "METRIC PRIORITY: on Instagram, 'views' (visualizações) is the primary performance metric. " +
+const metricPriorityWithOthers = (others: string, lang: Lang) =>
+  `METRIC PRIORITY: on Instagram, ${viewsLabel(lang)} is the primary performance metric. ` +
   "Lead the Instagram part of the executive summary, analysis, recommendations and " +
   "suggested_goals with Instagram views wherever the data provides them; treat reach as " +
   `secondary context. This priority does not apply to the ${others} data.`;
@@ -46,12 +48,12 @@ export function metricPriorityGuidance(n: {
   tiktok: boolean;
   google?: boolean;
   instagramHasViews: boolean;
-}, lang: Lang = "pt"): string | undefined {
+}, lang: Lang): string | undefined {
   if (!n.instagram || !n.instagramHasViews) return undefined;
   const others = [n.tiktok ? "TikTok" : null, n.google ? (lang === "en" ? "Google Business Profile" : "Google Meu Negócio") : null].filter(
     (x): x is string => x !== null,
   );
-  return others.length > 0 ? metricPriorityWithOthers(others.join(" or ")) : METRIC_PRIORITY_INSTAGRAM;
+  return others.length > 0 ? metricPriorityWithOthers(others.join(" or "), lang) : metricPriorityInstagram(lang);
 }
 
 export interface GenerateDeps {
@@ -257,7 +259,7 @@ export async function generateReportDocument(
       const promptOpts = guidance ? { extraGuidance: guidance } : undefined;
       const ai = await Promise.race([
         generateAINarrative(
-          snapshotToReportData(snapshot, narrative),
+          snapshotToReportData(snapshot, narrative, deps.lang),
           deps.geminiKey,
           deps.lang,
           controller.signal,

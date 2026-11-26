@@ -6,6 +6,7 @@ import type {
 import { TIKTOK_KPI_IDS, type TikTokKpiId } from "../tiktok-analytics/kpis.ts";
 import { GBP_KPI_IDS, type GbpKpiId } from "../gbp-analytics/kpis.ts";
 import type { GoogleReportSnapshot, ReportDocSnapshot, TikTokReportSnapshot } from "./snapshot.ts";
+import type { Lang } from "../i18n/lang.ts";
 import type { SectionPlatform } from "./sections.ts";
 
 // Instrução curta em pt-BR, embutida no payload de DADOS que vai pro modelo
@@ -13,19 +14,24 @@ import type { SectionPlatform } from "./sections.ts";
 // só quando o mês anterior teve um post fora da curva (spec §4.3), pra
 // parar de tratar a queda pós-viral como fracasso de conteúdo. Sem em-dash
 // (regra da casa pra texto de usuário): "." e ";" no lugar.
-function comparisonNote(prevTopSharePct: number): string {
+function comparisonNote(prevTopSharePct: number, lang: Lang): string {
+  if (lang === "en") {
+    return `The previous month had an outlier post with ${prevTopSharePct}% of the total; ` +
+      "put declines in context instead of treating them as a failure.";
+  }
   return `O mês anterior teve um post fora da curva com ${prevTopSharePct}% do total; ` +
     "contextualize quedas em vez de tratá-las como fracasso.";
 }
 
 function buildComparison(
   comparison: ReportDocSnapshot["comparison"],
+  lang: Lang,
 ): ReportDataComparison | null {
   if (!comparison) return null;
   const { prev_outlier, prev_top_share } = comparison;
   if (!prev_outlier) return { prev_outlier, prev_top_share };
   const pct = Math.round(prev_top_share * 100);
-  return { prev_outlier, prev_top_share, note: comparisonNote(pct) };
+  return { prev_outlier, prev_top_share, note: comparisonNote(pct, lang) };
 }
 
 /** KPIs TikTok que a IA pode comparar com o mês anterior (spec §A3). As somas dos vídeos
@@ -97,6 +103,7 @@ function googleToReportData(g: GoogleReportSnapshot): ReportDataGoogle {
 export function snapshotToReportData(
   snap: ReportDocSnapshot,
   platforms?: readonly SectionPlatform[],
+  lang: Lang = "pt",
 ): ReportData {
   const kpis: Record<string, KpiValue> = {};
   for (const [id, entry] of Object.entries(snap.kpis)) {
@@ -110,7 +117,7 @@ export function snapshotToReportData(
     report_month: snap.period.month,
     kpis,
     kpi_deltas: {},
-    comparison: buildComparison(snap.comparison),
+    comparison: buildComparison(snap.comparison, lang),
     top_posts: snap.top_posts.map((post) => ({
       type: post.type,
       views: post.views,

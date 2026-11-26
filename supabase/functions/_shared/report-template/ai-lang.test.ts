@@ -100,7 +100,7 @@ Deno.test("en prompt keeps the metric ids and JSON contract", () => {
   const pt = buildAIPrompt(fixture, "pt").systemPrompt;
   const en = buildAIPrompt(fixture, "en").systemPrompt;
   assertEquals(en.replace("LANGUAGE: Write in US English. All text, including labels and section headers, must be in US English.", ""),
-    pt.replace(/LANGUAGE: Write entirely in Brazilian Portuguese \(pt-BR\)\. All text, including labels and section headers, must be in pt-BR\./, ""));
+    pt.replace("a Brazilian social media agency", "a social media agency").replace(/LANGUAGE: Write entirely in Brazilian Portuguese \(pt-BR\)\. All text, including labels and section headers, must be in pt-BR\./, ""));
 });
 
 Deno.test("en prompt does not rewrite the client's own data in the user prompt", () => {

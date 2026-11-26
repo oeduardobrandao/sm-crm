@@ -212,3 +212,7 @@ Nenhuma do lado do Auth: os templates foram aplicados em staging e prod em 2026-
 - As análises de IA dentro do app (`instagram-analytics`) seguem em português.
 - `refresh-data` grava o rótulo no idioma atual, enquanto o título armazenado mantém o idioma
   de quando o documento foi gerado (mistura possível).
+- Dados em português ainda podem aparecer em relatórios em inglês: o rótulo "Cliente do Google"
+  (avaliador anônimo) gravado nos snapshots (`report-docs/google-section.ts`), os nomes de países
+  em português do relatório legado (`instagram-report-generator-v2/mappers.ts`, `COUNTRY_NAMES`)
+  e os melhores horários, que usam o relógio de São Paulo e aparecem sem fuso em inglês.

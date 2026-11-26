@@ -1167,7 +1167,7 @@ Deno.test("narrative follows the final layout: a full template that cannot take 
 });
 
 Deno.test("metricPriorityGuidance: Instagram-only text unchanged; with TikTok it is scoped to Instagram; none without views", () => {
-  const igOnly = metricPriorityGuidance({ instagram: true, tiktok: false, instagramHasViews: true });
+  const igOnly = metricPriorityGuidance({ instagram: true, tiktok: false, instagramHasViews: true }, "pt");
   assertEquals(
     igOnly,
     "METRIC PRIORITY: 'views' (visualizações) is the primary performance metric for " +
@@ -1175,14 +1175,14 @@ Deno.test("metricPriorityGuidance: Instagram-only text unchanged; with TikTok it
       "suggested_goals with views wherever the data provides them; treat reach as " +
       "secondary context.",
   );
-  const both = metricPriorityGuidance({ instagram: true, tiktok: true, instagramHasViews: true }) ?? "";
+  const both = metricPriorityGuidance({ instagram: true, tiktok: true, instagramHasViews: true }, "pt") ?? "";
   assert(both.includes("Instagram"), both);
   assert(!both.includes("for this report"), both);
-  const withGoogle = metricPriorityGuidance({ instagram: true, tiktok: false, google: true, instagramHasViews: true }) ?? "";
+  const withGoogle = metricPriorityGuidance({ instagram: true, tiktok: false, google: true, instagramHasViews: true }, "pt") ?? "";
   assert(withGoogle.endsWith("does not apply to the Google Meu Negócio data."), withGoogle);
   assert(!withGoogle.includes("for this report"), withGoogle);
-  assertEquals(metricPriorityGuidance({ instagram: true, tiktok: true, instagramHasViews: false }), undefined);
-  assertEquals(metricPriorityGuidance({ instagram: false, tiktok: true, instagramHasViews: true }), undefined);
+  assertEquals(metricPriorityGuidance({ instagram: true, tiktok: true, instagramHasViews: false }, "pt"), undefined);
+  assertEquals(metricPriorityGuidance({ instagram: false, tiktok: true, instagramHasViews: true }, "pt"), undefined);
 });
 
 // ─── Fix round 2: só modelo com bloco de plataforma ganha seção ───────────────────────
@@ -1356,4 +1356,22 @@ Deno.test("lang en: AI failure still drops the English 'Next steps' section", as
   const row = db.inserts[0] as InsertedDoc;
   assert(!row.layout.blocks.some((b) => b.config?.title === "Next steps"));
   assert(!row.layout.blocks.some((b) => b.type === "ai_recommendations"));
+});
+
+Deno.test("en prompt with the real metric guidance has no Portuguese and no Brazilian", async () => {
+  const { buildAIPrompt } = await import("../_shared/report-template/ai.ts");
+  const mk = (o: { tiktok: boolean; google: boolean }) =>
+    metricPriorityGuidance({ instagram: true, ...o, instagramHasViews: true }, "en") ?? "";
+  for (const o of [{ tiktok: false, google: false }, { tiktok: true, google: true }]) {
+    const guidance = mk(o);
+    const data = {
+      handle: "@x", specialty: "", period: "June 2026", report_month: "2026-06", kpis: {}, kpi_deltas: {},
+      top_posts: [], content_breakdown: [], audience: null, comparison: null,
+      ...(o.google ? { google: { units: 1, window: null, kpis: {}, kpis_previous_period: {} } } : {}),
+    } as never;
+    const { systemPrompt } = buildAIPrompt(data, "en", { extraGuidance: guidance });
+    assert(!/[À-ÿ]/.test(systemPrompt), systemPrompt.match(/\S*[À-ÿ]\S*/)?.[0]);
+    assert(!systemPrompt.includes("Brazilian"));
+    assert(!systemPrompt.includes("visualizações"));
+  }
 });
