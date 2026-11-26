@@ -23,7 +23,8 @@ interface HubBootstrapHandlerDeps {
   trackPaused?: (contaId: string) => void;
 }
 
-// Anything but 'en' reads as Portuguese (missing column, null, unknown value).
+// Anything but 'en' reads as Portuguese (null or an unknown value). A missing column is not
+// covered: the select errors and `conta` comes back null (404), so deploy the migration first.
 const workspaceLanguage = (value: unknown): "pt" | "en" => (value === "en" ? "en" : "pt");
 
 const NEUTRAL_HUB_THEME = {

@@ -66,6 +66,7 @@ type SendInput = {
   workspaceName: string;
   brandColor: string | null;
   logoUrl: string | null;
+  language?: "pt" | "en";
 };
 
 function setup(
@@ -196,7 +197,17 @@ Deno.test("request_code, listed email: { ok: true }, normalized email + code, em
     workspaceName: "Agência Sol",
     brandColor: "#ff6600",
     logoUrl: "https://cdn.example.com/logo.png",
+    language: "pt",
   }]);
+});
+
+Deno.test("request_code, en workspace: the code email is sent with language en", async () => {
+  const t = setup({ workspace: { ...WORKSPACE_ROW, language: "en" } });
+  const res = await t.handler(reqCode("marina@clinica.com"));
+  assertEquals(res.status, 200);
+  await t.flush();
+  assertEquals(t.sent.length, 1);
+  assertEquals(t.sent[0].language, "en");
 });
 
 Deno.test("request_code, unlisted email: same status and same body bytes, no email", async () => {

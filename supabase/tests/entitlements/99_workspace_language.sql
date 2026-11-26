@@ -151,10 +151,10 @@ begin
 
   insert into auth.users (id, email, raw_user_meta_data)
     values (v_br, 'wl-br@example.com', jsonb_build_object('empresa', 'BR Co'));
-  select w.language into v_lang
+  select w.language, w.language_set_at into v_lang, v_set
     from workspaces w join profiles p on p.conta_id = w.id where p.id = v_br;
-  if v_lang is distinct from 'pt' then
-    raise exception 'signup without market must stay pt, got %', v_lang;
+  if v_lang is distinct from 'pt' or v_set is not null then
+    raise exception 'signup without market must stay pt with null language_set_at, got % %', v_lang, v_set;
   end if;
 
   -- 6a. dono dos EUA escolhe pt; billing_market_apply() respeita.
@@ -186,6 +186,15 @@ begin
   end if;
   if has_function_privilege('anon', v_fn, 'EXECUTE') then
     raise exception 'anon must not execute workspace_set_language';
+  end if;
+  if exists (
+    select 1
+      from pg_proc p, aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+     where p.oid = v_fn::regprocedure
+       and a.grantee = 0
+       and a.privilege_type = 'EXECUTE'
+  ) then
+    raise exception 'PUBLIC must not EXECUTE %', v_fn;
   end if;
 
   raise notice 'workspace language: ok';
