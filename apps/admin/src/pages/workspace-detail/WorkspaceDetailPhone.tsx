@@ -20,6 +20,7 @@ import { Badge } from '../../components/ui/badge';
 import WorkspaceInvitesCard from '../WorkspaceInvitesCard';
 import WorkspaceEventsCard from '../WorkspaceEventsCard';
 import { ConnectionsPhone } from './ConnectionsPhone';
+import { DangerZonePhone } from './DangerZone';
 import {
   PagarmeLiveNotes,
   UsageTile,
@@ -325,6 +326,8 @@ export function WorkspaceDetailPhone(props: WorkspaceDetailViewProps) {
         />
         <NotesList notes={props.notes} />
       </section>
+
+      <DangerZonePhone onDelete={props.onDeleteWorkspace} />
     </div>
   );
 }

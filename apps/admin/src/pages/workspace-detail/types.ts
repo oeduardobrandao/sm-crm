@@ -46,6 +46,8 @@ export interface WorkspaceDetailViewProps {
   /** Re-sends the demo owner's set-password e-mail (only offered when demo_created_at is set). */
   onResendAccess: () => void;
   resendPending: boolean;
+  /** Opens the permanent-delete dialog (typed confirmation). */
+  onDeleteWorkspace: () => void;
   notes: NotesModel;
   onOpenLimits: () => void;
   onOpenFeatures: () => void;
