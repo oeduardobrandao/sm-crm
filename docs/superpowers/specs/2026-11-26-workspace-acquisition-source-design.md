@@ -170,9 +170,20 @@ the affiliate commission (`affiliate_referrals`, separate 60-day storage) but is
 (`platform-admin/workspace-affiliate.ts`), that action recomputes the row's `channel` with the
 classifier (skipped when `captured` is false), so `has_affiliate` never goes stale.
 
-**`acq` must not stay in `auth.users.raw_user_meta_data`.** Left there, every owner could read
-their own touches through `user_metadata` and they would ride in every access token. So capture
-happens in two triggers:
+**`acq` should not stay in `auth.users.raw_user_meta_data`.** Left there, every owner could read
+their own touches through `user_metadata` and they would ride in every access token.
+
+> **Open, first task of the plan: verify the stash on the local Supabase stack before building
+> on it.** Check that a `BEFORE INSERT` trigger on `auth.users` can be created by a migration and
+> rewrite `NEW.raw_user_meta_data`; that `acq` is absent after signup, after email confirmation,
+> and after a second `signUp` with the same still-unconfirmed email (GoTrue then **updates** the
+> existing user's metadata, so the stash probably also needs a `BEFORE UPDATE OF
+> raw_user_meta_data` branch that strips `acq` without writing a new pending row); and that the
+> access token carries no `acq`. **Fallback if any check fails:** leave `acq` in the metadata,
+> as `ref_code` and `market` are today, and read it straight in the AFTER trigger. Cost: the
+> owner can read their own campaign labels and every token grows by a few hundred bytes.
+
+Planned design, pending that check: capture happens in two triggers:
 
 - **`on_auth_user_created_aaa_acquisition_stash`** (`BEFORE INSERT ON auth.users`): sanitizes
   `NEW.raw_user_meta_data -> 'acq'` (rules below), writes it to
@@ -230,7 +241,7 @@ the list filter offers `demo` as a value.
   ```ts
   {
     channels: {
-      channel: string;            // classifier value, or 'no_data' for workspaces without a row
+      channel: string;            // classifier value, 'unknown', 'demo', or 'no_data' (no row)
       signups: number;
       ever_paid: number;
       paying_now: number;
@@ -254,12 +265,16 @@ the list filter offers `demo` as a value.
   - Aggregation of the priced rows, acquisition rows and paid signals lives in a pure module
     (`acquisition-logic.ts`) with Deno tests.
 - **`get-workspace`** gains `acquisition: { channel, campaign, captured, first_touch, last_touch } | null`.
-- **`admin_list_workspaces`** gains `acquisition_channel` per row (LEFT JOIN, `'no_data'` when
-  no row) and a `p_channels text` filter (comma-separated, the same encoding
-  `20261127000001_admin_list_workspaces_multi_filters` uses for plans and statuses).
-  - Filter values: every classifier value plus `unknown` (captured false) and `no_data` (no
-    row). Each value matches only itself; `direct` does not include `unknown`. The "Direto /
+- **`admin_list_workspaces`** gains `acquisition_channel` per row, computed as
+  `CASE WHEN w.demo_created_at IS NOT NULL THEN 'demo' ELSE COALESCE(a.channel, 'no_data') END`
+  (the same bucketing the report uses), and a `p_channels text` filter (comma-separated, the
+  same encoding `20261127000001_admin_list_workspaces_multi_filters` uses for plans and
+  statuses) applied to that computed value.
+  - Filter values: every classifier value plus `unknown` (captured false), `demo` and `no_data`
+    (no row). Each value matches only itself; `direct` does not include `unknown`. The "Direto /
     desconhecido" grouping exists only in the report card.
+  - `get-workspace` returns the same computed channel next to the raw row, so the detail panel
+    shows "Demo (vendas)" and still lists the stored touches.
   - Signature change: the current function has 11 parameters
     (`text,text,int,int,timestamptz,text,boolean,text,timestamptz,text,text`, body from
     `20261205000002_usd_billing_rpcs.sql`). The migration `DROP FUNCTION`s that exact signature,
@@ -271,6 +286,8 @@ the list filter offers `demo` as a value.
     parameter defaulted (`p_channels text DEFAULT NULL`) that call still resolves.
 
 ### 5. Admin frontend
+
+Mockups (sample data): https://claude.ai/artifact/Eg3TZYFrMC9X3JBpyuW2AN
 
 - **Métricas page**: a "Canais de aquisição" card. Month range picker (default: current month).
   Table: Canal, Cadastros, Assinaram, Pagando hoje, MRR (R$), MRR (US$). A row expands to its
@@ -297,6 +314,9 @@ ids or visitor identifiers stored. Copy changes (no em-dashes in user-facing cop
   domain, without ad identifiers), and attach it to the account at signup to measure which
   channels bring customers. Add the `mesaas:acq` entry wherever the page lists storage keys.
 - `PrivacyPageEn.tsx`: same sentence in English.
+- Capture also runs on `/en` without consent. The US site is still pending legal review
+  (`docs/us-english-site-runbook.md`); add this item to that review. It does not block this
+  work.
 
 ## Deploy order
 
@@ -320,7 +340,10 @@ Rollback: frontend first; the function and the table can stay.
   one row for an owner signup, strip `acq` from `raw_user_meta_data`, leave no pending row,
   skip invites, sanitize junk, never raise; `anon`/`authenticated` cannot select either table;
   the `admin_list_workspaces` overload count is 1.
-- Deno: `acquisition-logic.ts` aggregation (ever paid, paying now, currency split, `no_data`).
+- Deno: `acquisition-logic.ts` aggregation (ever paid, paying now, currency split, `no_data`,
+  `demo` bucket, `is_internal` excluded, São Paulo month bounds).
+- Deno: `workspace-affiliate.ts` recomputes the channel after set, change and removal of an
+  affiliate, and leaves `unknown` rows alone.
 - Browser: open the landing with `?utm_source=meta&utm_medium=paid&utm_campaign=x`, navigate,
   sign up on staging, confirm the row and the Admin card.
 
