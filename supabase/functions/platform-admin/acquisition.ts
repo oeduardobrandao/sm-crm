@@ -8,6 +8,10 @@ import {
   monthBounds,
 } from "./acquisition-logic.ts";
 
+// UUIDs are 36 chars: 200 per .in() keeps the PostgREST URL well under the gateway limit
+// (same as reverse-trial-funnel.ts).
+const ID_CHUNK = 200;
+
 /**
  * Signups per acquisition channel for workspaces created in [from_month, to_month] (São Paulo
  * months), with ever-paid, paying-now and MRR (per currency). Paying/MRR reuse get-mrr's pipeline.
@@ -37,7 +41,7 @@ export async function handleGetAcquisitionChannels(
 
   const acquisition = new Map<string, AcqRow>();
   const everPaidIds = new Set<string>();
-  for (const part of chunk(ids)) {
+  for (const part of chunk(ids, ID_CHUNK)) {
     const { data, error } = await svc
       .from("workspace_acquisition")
       .select("workspace_id, channel, campaign")

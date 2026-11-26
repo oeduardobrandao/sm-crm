@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { formatCents, type DisplayRow } from './channels-view';
-import { CHANNELS_FOOTNOTE, RowLabel } from './ChannelsDesktop';
+import { CHANNELS_FOOTNOTE, RowText, splitDetail } from './ChannelsDesktop';
 
 function Stats({
   t,
@@ -40,6 +40,8 @@ export function ChannelsPhone({ rows }: { rows: DisplayRow[] }) {
       {rows.map((r) => {
         const expandable = !r.isTotal && r.campaigns.length > 0;
         const isOpen = open.has(r.key);
+        // Tooltips do not open on tap, so the direct/unknown split is a visible line here.
+        const split = splitDetail(r);
         return (
           <div
             key={r.key}
@@ -47,7 +49,10 @@ export function ChannelsPhone({ rows }: { rows: DisplayRow[] }) {
             className="admin-glass space-y-2 rounded-2xl border border-border bg-card p-3.5"
           >
             <div className="flex items-center justify-between gap-2">
-              <RowLabel row={r} />
+              <div className="min-w-0">
+                <RowText row={r} />
+                {split ? <p className="mt-0.5 text-xs text-muted-foreground">{split}</p> : null}
+              </div>
               {expandable ? (
                 <button
                   type="button"

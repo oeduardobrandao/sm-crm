@@ -30,6 +30,14 @@ function touchSource(touch: Touch): string | null {
   return source ?? medium;
 }
 
+/** Which ad click parameter came (never its value) and whether it was an affiliate link. */
+function touchClick(touch: Touch): string | null {
+  const parts = [text(touch, 'click'), touch?.ref === true ? 'Link de afiliado' : null].filter(
+    (v): v is string => v !== null,
+  );
+  return parts.length ? parts.join(' · ') : null;
+}
+
 function TouchBox({
   title,
   touch,
@@ -43,6 +51,7 @@ function TouchBox({
     { label: 'Data', value: touchDate(touch) },
     { label: 'Fonte', value: touchSource(touch) },
     { label: 'Campanha', value: text(touch, 'utm_campaign') },
+    { label: 'Clique', value: touchClick(touch), mono: true },
     { label: 'Veio de', value: text(touch, 'referrer_host') },
     { label: 'Página', value: text(touch, 'landing_path'), mono: true },
   ];
@@ -95,7 +104,7 @@ export function OriginBody({ acquisition }: { acquisition: WorkspaceDetail['acqu
           <strong className="font-semibold">Sem dados:</strong> workspace criado antes do rastreio.
         </p>
       )}
-      {a && !a.captured && (
+      {a && !a.captured && a.channel !== 'demo' && (
         <p className="text-xs text-muted-foreground">
           <strong className="font-semibold">Não capturado:</strong> o navegador não guardou a visita
           (modo privado, outro aparelho).

@@ -21,14 +21,24 @@ import { formatCents, type DisplayRow } from './channels-view';
 export const CHANNELS_FOOTNOTE =
   'Assinaram: pagou ao menos uma vez. Pagando hoje: mesma regra do MRR. Clique num canal para ver as campanhas (utm_campaign).';
 
-export function RowLabel({ row }: { row: DisplayRow }) {
-  const text = row.channel ? (
+/** The channel badge (or plain text for the merged and total rows), with no split detail. */
+export function RowText({ row }: { row: DisplayRow }) {
+  return row.channel ? (
     <Badge variant={channelTone(row.channel as AcquisitionChannel)}>{row.label}</Badge>
   ) : (
     <span className={row.isTotal ? 'font-semibold' : 'font-medium'}>{row.label}</span>
   );
-  if (!row.split) return text;
-  const detail = row.split.map((s) => `${s.label}: ${s.signups}`).join(' · ');
+}
+
+/** "Direto: 4 · Não capturado: 2" for the merged row, null otherwise. */
+export function splitDetail(row: DisplayRow): string | null {
+  return row.split ? row.split.map((s) => `${s.label}: ${s.signups}`).join(' · ') : null;
+}
+
+export function RowLabel({ row }: { row: DisplayRow }) {
+  const text = <RowText row={row} />;
+  const detail = splitDetail(row);
+  if (!detail) return text;
   return (
     <TooltipProvider>
       <Tooltip>

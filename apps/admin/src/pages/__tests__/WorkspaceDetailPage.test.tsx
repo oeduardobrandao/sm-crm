@@ -456,4 +456,43 @@ describe('WorkspaceDetailPage Origem panel (desktop)', () => {
     expect(within(panel).getByText('Demo (vendas)')).toBeTruthy();
     expect(within(panel).getByText('ig / social')).toBeTruthy();
   });
+
+  it('demo without a captured visit: no "Não capturado" explanation', async () => {
+    withAcquisition({
+      channel: 'demo',
+      campaign: null,
+      captured: false,
+      first_touch: null,
+      last_touch: null,
+    });
+    renderPage();
+    const panel = (await screen.findByRole('region', { name: 'Origem' })) as HTMLElement;
+    expect(within(panel).getByText('Demo (vendas)')).toBeTruthy();
+    expect(within(panel).queryByText(/o navegador não guardou a visita/)).toBeNull();
+    expect(within(panel).queryByText('Não capturado:')).toBeNull();
+  });
+
+  it('shows the click parameter name and the affiliate link flag', async () => {
+    withAcquisition({
+      channel: 'google_ads',
+      campaign: null,
+      captured: true,
+      first_touch: { landing_path: '/', at: '2026-11-10T12:00:00Z', click: 'gclid', ref: false },
+      last_touch: {
+        landing_path: '/precos',
+        at: '2026-11-20T12:00:00Z',
+        click: 'gclid',
+        ref: true,
+      },
+    });
+    renderPage();
+    const panel = (await screen.findByRole('region', { name: 'Origem' })) as HTMLElement;
+    const first = within(panel).getByRole('group', { name: 'Primeira visita' });
+    expect(within(first).getByText('Clique')).toBeTruthy();
+    expect(within(first).getByText('gclid')).toBeTruthy();
+    const last = within(panel).getByRole('group', {
+      name: 'Último clique (conta para o canal)',
+    });
+    expect(within(last).getByText('gclid · Link de afiliado')).toBeTruthy();
+  });
 });

@@ -191,8 +191,9 @@ Deno.test("handler: ever paid comes from the ever_paid_workspace_ids RPC, called
   );
   assertEquals(res.status, 200);
   const body = await res.json();
-  assertEquals(rpcSizes, [500, 500, 250]);
-  assertEquals(inSizes, [500, 500, 250]);
+  // 200 UUIDs per batch keeps the PostgREST URL under the gateway limit.
+  assertEquals(rpcSizes, [200, 200, 200, 200, 200, 200, 50]);
+  assertEquals(inSizes, [200, 200, 200, 200, 200, 200, 50]);
   assertEquals(body.channels[0].signups, N);
   assertEquals(body.channels[0].ever_paid, 3);
   assertEquals(body.channels[0].paying_now, 1);

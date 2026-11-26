@@ -21,6 +21,9 @@ vi.mock('react-chartjs-2', () => ({
 
 vi.mock('../../lib/api', () => ({ getMetricsHistory: vi.fn(), getAcquisitionChannels: vi.fn() }));
 
+const phone = vi.hoisted(() => ({ value: false }));
+vi.mock('../../hooks/useIsPhone', () => ({ useIsPhone: () => phone.value }));
+
 import {
   getAcquisitionChannels,
   getMetricsHistory,
@@ -92,7 +95,10 @@ const DATA: MetricsHistoryResponse = {
   ],
 };
 
-beforeEach(() => vi.mocked(getMetricsHistory).mockReset());
+beforeEach(() => {
+  vi.mocked(getMetricsHistory).mockReset();
+  phone.value = false;
+});
 
 const usdMonth = (over: Partial<MetricsMonth> = {}): MetricsMonth => ({
   month: '2026-09',
@@ -291,6 +297,48 @@ describe('ChannelsSection', () => {
     expect(from).toBe(to);
     fireEvent.change(screen.getByLabelText('Cadastros de'), { target: { value: '2026-01' } });
     await waitFor(() => expect(getAcquisitionChannels).toHaveBeenCalledWith('2026-01', to));
+  });
+
+  it('blocks a range over 24 months with its own message, without calling the API', async () => {
+    vi.mocked(getAcquisitionChannels).mockReset();
+    vi.mocked(getAcquisitionChannels).mockResolvedValue({ channels: CHANNELS });
+    wrap(<ChannelsSection />);
+    await screen.findByText('Meta Ads');
+    fireEvent.change(screen.getByLabelText('até'), { target: { value: '2026-12' } });
+    // 2025-01..2026-12 is exactly 24 months: allowed.
+    fireEvent.change(screen.getByLabelText('Cadastros de'), { target: { value: '2025-01' } });
+    await waitFor(() => expect(getAcquisitionChannels).toHaveBeenCalledWith('2025-01', '2026-12'));
+    const calls = vi.mocked(getAcquisitionChannels).mock.calls.length;
+    // 2024-12..2026-12 is 25 months: blocked.
+    fireEvent.change(screen.getByLabelText('Cadastros de'), { target: { value: '2024-12' } });
+    expect(await screen.findByText('Período longo demais')).toBeInTheDocument();
+    expect(screen.getByText('Escolha até 24 meses.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /tentar/i })).not.toBeInTheDocument();
+    expect(vi.mocked(getAcquisitionChannels).mock.calls.length).toBe(calls);
+  });
+
+  it('on a phone shows the direct/unknown split as a visible line and expands campaigns', async () => {
+    phone.value = true;
+    vi.mocked(getAcquisitionChannels).mockResolvedValue({
+      channels: [
+        ...CHANNELS,
+        {
+          channel: 'unknown',
+          signups: 2,
+          ever_paid: 0,
+          paying_now: 0,
+          mrr_cents: { brl: 0, usd: 0 },
+          campaigns: [],
+        },
+      ],
+    });
+    wrap(<ChannelsSection />);
+    const card = await screen.findByTestId('channel-card-direct_unknown');
+    expect(card).toHaveTextContent('Direto: 5 · Não capturado: 2');
+    expect(screen.queryByRole('columnheader')).not.toBeInTheDocument();
+    expect(screen.queryByText('black-friday')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Meta Ads, campanhas' }));
+    expect(screen.getByTestId('channel-card-meta_ads')).toHaveTextContent('black-friday');
   });
 
   it('shows the error state when the request fails', async () => {

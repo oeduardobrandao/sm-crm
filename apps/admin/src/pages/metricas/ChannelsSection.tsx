@@ -45,11 +45,22 @@ function RangePicker({
   );
 }
 
+/** The backend (platform-admin `monthBounds`) answers 400 above this many months, both ends in. */
+const MAX_MONTHS = 24;
+
+/** Months in [from, to], both inclusive; NaN when a value is not YYYY-MM. */
+function monthSpan(r: MonthRange): number {
+  const idx = (v: string) => Number(v.slice(0, 4)) * 12 + Number(v.slice(5, 7)) - 1;
+  return idx(r.to) - idx(r.from) + 1;
+}
+
 /** "Canais de aquisição" on Métricas. Spec: 2026-11-26-workspace-acquisition-source-design.md §5. */
 export function ChannelsSection() {
   const isPhone = useIsPhone();
   const [range, setRange] = useState<MonthRange>(() => defaultRange(new Date()));
-  const valid = range.from <= range.to;
+  const ordered = range.from <= range.to;
+  const tooLong = ordered && monthSpan(range) > MAX_MONTHS;
+  const valid = ordered && !tooLong;
   const q = useQuery({
     queryKey: ['acquisition-channels', range.from, range.to],
     queryFn: () => getAcquisitionChannels(range.from, range.to),
@@ -63,9 +74,13 @@ export function ChannelsSection() {
 
   const View = isPhone ? ChannelsPhone : ChannelsDesktop;
   let body;
-  if (!valid) {
+  if (!ordered) {
     body = (
       <EmptyState title="Período inválido" description="O mês inicial vem depois do mês final." />
+    );
+  } else if (tooLong) {
+    body = (
+      <EmptyState title="Período longo demais" description={`Escolha até ${MAX_MONTHS} meses.`} />
     );
   } else if (q.isPending) {
     body = <Skeleton className="h-64 w-full rounded-2xl" />;
