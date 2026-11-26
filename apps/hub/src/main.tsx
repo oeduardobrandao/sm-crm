@@ -8,7 +8,7 @@ import {
   installSilentUpdate,
   installTranslateGuard,
 } from '@mesaas/app-lifecycle';
-import { initI18n } from '@mesaas/i18n';
+import { initI18n, migrateLegacyLanguageKey } from '@mesaas/i18n';
 import ptCommon from '../../../packages/i18n/locales/pt/common.json';
 import enCommon from '../../../packages/i18n/locales/en/common.json';
 import ptHubHome from '../../../packages/i18n/locales/pt/hubHome.json';
@@ -46,6 +46,9 @@ import '../../crm/app.css';
 installDeployRecovery();
 // Browser page translation rewrites text nodes React still owns; keep it from crashing the app.
 installTranslateGuard();
+
+// The old explicit key becomes a hint, so only a toggle made from now on counts as a choice.
+migrateLegacyLanguageKey();
 
 initI18n({
   pt: {

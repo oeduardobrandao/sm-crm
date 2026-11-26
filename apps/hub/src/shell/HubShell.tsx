@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import { useTouchSafeToaster } from '@mesaas/ui/toast/touchSafeToaster';
 import { useTranslation } from 'react-i18next';
+import { effectiveLanguage, i18n, setActiveWorkspaceLanguage } from '@mesaas/i18n';
 import { HubContext } from '../HubContext';
 import { HubSidebar } from './HubSidebar';
 import { HubMobileNav } from './HubMobileNav';
@@ -90,6 +91,16 @@ export function HubShell() {
   const look: HubLook =
     !loginPayload && bootstrap?.feature_hub_pauta === true ? 'pauta' : 'classic';
   const appliedDefaultAppearance = useRef(false);
+
+  // Opens the portal (and the login screen) in the workspace's language; an explicit choice made
+  // with the toggles still wins because `effectiveLanguage()` ranks it first.
+  const workspaceLanguage = loginPayload ? loginPayload.workspace.language : bootstrap?.language;
+  useEffect(() => {
+    if (!workspaceLanguage) return;
+    setActiveWorkspaceLanguage(workspaceLanguage === 'en' ? 'en' : 'pt');
+    const target = effectiveLanguage();
+    if (i18n.language !== target) void i18n.changeLanguage(target);
+  }, [workspaceLanguage]);
 
   useEffect(() => {
     if (!bootstrap?.workspace.logo_url) return;
