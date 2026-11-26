@@ -35,6 +35,20 @@ describe('EditorCanvas', () => {
     expect(screen.getAllByLabelText('Excluir bloco')).toHaveLength(2);
   });
 
+  it('saúde do Instagram: largura cheia, sem botões de largura', () => {
+    const l = sectionizeLayout({
+      version: 1,
+      blocks: [{ id: 'h', type: 'account_health', size: 'third' }],
+    });
+    const { container } = render(
+      <EditorCanvas layout={l} snapshot={makeSnapshotFixture()} onChange={() => {}} />,
+    );
+    expect(screen.queryByLabelText('Aumentar largura')).toBeNull();
+    expect(screen.queryByLabelText('Diminuir largura')).toBeNull();
+    expect(container.querySelector('[data-block-id="h"]')?.className).toContain('rb-full');
+    expect(screen.getByText('Saúde do Instagram')).toBeInTheDocument();
+  });
+
   it('excluir chama onChange com o bloco removido', () => {
     const onChange = vi.fn();
     render(<EditorCanvas layout={layout()} snapshot={makeSnapshotFixture()} onChange={onChange} />);

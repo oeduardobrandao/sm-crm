@@ -34,6 +34,7 @@ import {
   TEXT_BLOCK_TYPES,
   toSections,
 } from '@mesaas/report-blocks/types';
+import { isFullWidthOnly } from '@mesaas/report-blocks/catalog';
 
 export const SIZE_ORDER: readonly BlockSize[] = ['third', 'half', 'full'];
 
@@ -92,8 +93,8 @@ export function moveBlock(layout: ReportLayout, activeId: string, overId: string
 
 export function resizeBlock(layout: ReportLayout, id: string, delta: 1 | -1): ReportLayout {
   const idx = contentIndex(layout, id);
-  // Capa é sempre full (como em setBlockSize).
-  if (idx < 0 || layout.blocks[idx].type === 'cover') return layout;
+  // Capa e saúde do Instagram são sempre full (como em setBlockSize).
+  if (idx < 0 || isFullWidthOnly(layout.blocks[idx].type)) return layout;
   const current = SIZE_ORDER.indexOf(layout.blocks[idx].size);
   const next = Math.min(Math.max(current + delta, 0), SIZE_ORDER.length - 1);
   if (next === current) return layout;
@@ -102,13 +103,13 @@ export function resizeBlock(layout: ReportLayout, id: string, delta: 1 | -1): Re
   return { ...layout, blocks };
 }
 
-/** Largura direta (o "Usar meia largura" do bloco de imagem). Capa é sempre
- * full; mesmo valor, id inexistente ou capa = MESMA referência. */
+/** Largura direta (o "Usar meia largura" do bloco de imagem). Capa e saúde do
+ * Instagram são sempre full; mesmo valor, id inexistente ou tipo só-full = MESMA referência. */
 export function setBlockSize(layout: ReportLayout, id: string, size: BlockSize): ReportLayout {
   const idx = contentIndex(layout, id);
   if (idx < 0) return layout;
   const b = layout.blocks[idx];
-  if (b.type === 'cover' || b.size === size) return layout;
+  if (isFullWidthOnly(b.type) || b.size === size) return layout;
   const blocks = [...layout.blocks];
   blocks[idx] = { ...b, size };
   return { ...layout, blocks };

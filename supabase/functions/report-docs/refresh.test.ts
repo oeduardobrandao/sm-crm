@@ -8,7 +8,11 @@ import { DocActionError } from "./errors.ts";
 // db.updates para report_documents.
 function makeDb(
   rows: Record<string, unknown>,
-  opts: { errors?: Record<string, { message: string }>; featureByKey?: Record<string, boolean> } = {},
+  opts: {
+    errors?: Record<string, { message: string }>;
+    featureByKey?: Record<string, boolean>;
+    rpcData?: Record<string, unknown>;
+  } = {},
 ) {
   const updates: Record<string, unknown>[] = [];
   const rpcCalls: { name: string; args: Record<string, unknown> }[] = [];
@@ -41,9 +45,10 @@ function makeDb(
     },
     rpc: (name: string, args: Record<string, unknown> = {}) => {
       rpcCalls.push({ name, args });
-      return name === "effective_plan_feature"
-        ? Promise.resolve({ data: opts.featureByKey?.[args.feature_key as string] ?? true, error: null })
-        : Promise.resolve({ data: [], error: null });
+      if (name === "effective_plan_feature") {
+        return Promise.resolve({ data: opts.featureByKey?.[args.feature_key as string] ?? true, error: null });
+      }
+      return Promise.resolve({ data: opts.rpcData?.[name] ?? [], error: null });
     },
     // deno-lint-ignore no-explicit-any
   } as any;
@@ -80,6 +85,44 @@ Deno.test("refresh re-snapshota e grava data_snapshot sem tocar layout", async (
   const patch = db.updates[0] as { data_snapshot?: unknown; layout?: unknown };
   assert(patch.data_snapshot !== undefined);
   assert(patch.layout === undefined);
+});
+
+Deno.test("refresh de mês fechado grava instagram_health com o corte no fim do mês", async () => {
+  const cuts = Array.from({ length: 99 }, (_, i) => String(i + 1));
+  const db = makeDb({
+    report_documents: { id: "d1", conta_id: "c", client_id: 1, period_start: "2026-07-01" },
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: "Derma", include_ai_analysis: false },
+    instagram_accounts: { id: "ig-1", username: "x", follower_count: 9274 },
+    instagram_posts: [],
+    instagram_follower_history: [],
+    ig_peer_benchmarks: [{ metric: "posts_30d", source: "mercado", sample_size: null, cuts }],
+    workspaces: { name: "W", logo_url: null, brand_color: "#123456", report_splash_url: null },
+  }, {
+    rpcData: {
+      ig_account_health_metrics: [{
+        engagement_rate: "0.02", posts_30d: 8, reel_views: null, reels_share: null,
+        best_post_id: null, best_post_ratio: null,
+      }],
+      ig_follower_band: "5k_20k",
+    },
+  });
+  await refreshReportDocument(db, deps, "c", "d1");
+  type HealthPatch = {
+    data_snapshot: {
+      period: { endExclusive: string };
+      instagram_health?: { as_of: string; followers: number; band: string; benchmarks: Record<string, unknown> } | null;
+    };
+  };
+  const snap = (db.updates[0] as HealthPatch).data_snapshot;
+  const endExclusive = snap.period.endExclusive;
+  assert(Date.parse(endExclusive) < Date.now());
+  assert(snap.instagram_health?.as_of === new Date(Date.parse(endExclusive)).toISOString());
+  assert(snap.instagram_health?.followers === 9274);
+  assert(snap.instagram_health?.band === "5k_20k");
+  assert(snap.instagram_health?.benchmarks.posts_30d !== undefined);
+  const call = db.rpcCalls.find((r: { name: string }) => r.name === "ig_account_health_metrics");
+  assert(call?.args.p_as_of === snap.instagram_health?.as_of);
+  assert(call?.args.p_account_id === "ig-1");
 });
 
 Deno.test("cliente do doc pertence a outro workspace: not_found", async () => {
@@ -200,6 +243,7 @@ const FROZEN = {
   instagram_connected: true,
   kpis: { reach: { value: 123, unit: "count", prev: null } },
   top_posts: [{ caption_preview: "post antigo" }],
+  instagram_health: { as_of: "2026-07-01T03:00:00.000Z", followers: 9100 },
   tiktok: { account: { handle: "old.tt", display_name: null, avatar_url: null }, top_posts: [] },
 };
 type CarryPatch = {
@@ -208,6 +252,7 @@ type CarryPatch = {
     account: { handle: string };
     kpis: { reach: { value: number | null } };
     top_posts: unknown[];
+    instagram_health?: { followers: number } | null;
     tiktok?: { account: { handle: string } } | null;
   };
   instagram_account_id: string | null;
@@ -254,6 +299,7 @@ Deno.test("refresh: Instagram desconectado mantém a seção Instagram congelada
   assert(patch.data_snapshot.kpis.reach.value === 123);
   assert(patch.data_snapshot.top_posts.length === 1);
   assert(patch.instagram_account_id === "ig-old");
+  assert(patch.data_snapshot.instagram_health?.followers === 9100);
   assert(patch.data_snapshot.tiktok?.account.handle === "dra.tt");
   assert(patch.tiktok_account_id === "tt-1");
 });

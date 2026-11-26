@@ -5,6 +5,7 @@
 import type { GbpKpiId, ReportBlock, ReportDocSnapshot, ReportKpiId, ReportSection } from './types';
 import { BLOCK_TYPES, GBP_BLOCK_PREFIX, TIKTOK_BLOCK_PREFIX, blockPlatform } from './types';
 import { instagramAbsent, tiktokBlockView } from './platform';
+import { healthHasData, readInstagramHealth } from './health';
 
 /** gbp_*: lê só snapshot.google (sem seção = sem dado), nunca a raiz do Instagram. */
 function gbpHasData(type: string, snapshot: ReportDocSnapshot): boolean {
@@ -71,6 +72,9 @@ export function blockHasData(block: ReportBlock, snapshot: ReportDocSnapshot): b
       return snapshot.top_posts.length > 0;
     case 'tags_table':
       return snapshot.tags_performance.length > 0;
+    case 'account_health':
+      // Snapshot antigo sem o campo, nulo, sem faixa ou sem métrica comparável: sem dado.
+      return healthHasData(readInstagramHealth(snapshot));
     case 'image':
       // Sem arquivo = bloco vazio. O editor mostra a área de soltar
       // (ImageBlockEditor), nunca o placeholder genérico.

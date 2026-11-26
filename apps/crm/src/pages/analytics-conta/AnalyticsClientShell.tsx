@@ -25,6 +25,15 @@ import { GoogleAnalyticsTab } from './google/GoogleAnalyticsTab';
 const ANALYTICS_TABS = ['instagram', 'tiktok', 'youtube', 'google', 'relatorios'] as const;
 export type AnalyticsTab = (typeof ANALYTICS_TABS)[number];
 
+/** Desktop tab icons: the same Phosphor glyphs the sidebar uses for each destination. */
+const ANALYTICS_TAB_ICONS: Record<AnalyticsTab, string> = {
+  instagram: 'ph-instagram-logo',
+  tiktok: 'ph-tiktok-logo',
+  youtube: 'ph-youtube-logo',
+  google: 'ph-storefront',
+  relatorios: 'ph-presentation-chart',
+};
+
 const isAnalyticsTab = (v: string | undefined): v is AnalyticsTab =>
   (ANALYTICS_TABS as readonly string[]).includes(v ?? '');
 
@@ -276,10 +285,23 @@ export default function AnalyticsClientShell() {
         </header>
       )}
 
-      <nav className="analytics-tabs animate-up" aria-label={tabsLabel}>
+      <nav className="analytics-tabs analytics-tabs--icons animate-up" aria-label={tabsLabel}>
         {visibleTabs.map((k) => (
-          <NavLink key={k} to={`/analytics/${clientId}/${k}`} className="analytics-tab" end>
-            {tabLabel(k)}
+          <NavLink
+            key={k}
+            to={`/analytics/${clientId}/${k}`}
+            className={`analytics-tab analytics-tab--${k}`}
+            end
+          >
+            {({ isActive }) => (
+              <>
+                <i
+                  className={`${isActive ? 'ph-fill' : 'ph-bold'} ${ANALYTICS_TAB_ICONS[k]}`}
+                  aria-hidden="true"
+                />
+                {tabLabel(k)}
+              </>
+            )}
           </NavLink>
         ))}
       </nav>

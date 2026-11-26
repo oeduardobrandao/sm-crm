@@ -325,6 +325,7 @@ async function syncAccount(
             instagram_post_id: post.id,
             caption: post.caption || '',
             media_type: post.media_type,
+            media_product_type: post.media_product_type ?? null,
             thumbnail_url: cachedThumb,
             permalink: post.permalink,
             posted_at: post.timestamp,

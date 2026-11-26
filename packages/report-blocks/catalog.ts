@@ -103,6 +103,12 @@ export const WIDGET_CATALOG: readonly WidgetCatalogEntry[] = [
     category: 'Conteúdo',
     platform: 'instagram',
   },
+  {
+    type: 'account_health',
+    label: 'Saúde do Instagram',
+    category: 'Conteúdo',
+    platform: 'instagram',
+  },
   // TikTok (spec 2026-10-28 §B2): o drawer filtra por platform.
   {
     type: 'tiktok_kpi_followers_gained',
@@ -252,3 +258,11 @@ export const WIDGET_CATALOG: readonly WidgetCatalogEntry[] = [
   { type: 'section_header', label: 'Subtítulo', category: 'Estrutura', platform: null },
   { type: 'divider', label: 'Divisor de página', category: 'Estrutura', platform: null },
 ];
+
+/** Tipos que só existem em largura cheia: o editor não oferece redimensionar e os renderers
+ * forçam rb-full mesmo com outro size persistido. */
+export const FULL_WIDTH_ONLY_TYPES: readonly BlockType[] = ['cover', 'account_health'];
+
+export function isFullWidthOnly(type: string): boolean {
+  return (FULL_WIDTH_ONLY_TYPES as readonly string[]).includes(type);
+}

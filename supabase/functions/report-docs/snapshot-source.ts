@@ -26,6 +26,7 @@ import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 import { isTikTokConnected, loadTikTokReportSection } from "./tiktok-section.ts";
 import { loadTikTokAccount } from "../_shared/tiktok-analytics/queries.ts";
 import { hasGoogleUnits, loadGoogleReportSection } from "./google-section.ts";
+import { loadInstagramHealth, reportCutoffIso } from "./health-section.ts";
 import type { ReportPlatform } from "./client-id.ts";
 
 // As 7 métricas de conta que a cadeia (Graph ao vivo -> linha mensal -> soma
@@ -364,7 +365,7 @@ async function loadInstagramSnapshot(
   const [
     postsRes, followerHistoryRes, demographicsRes, bestTimesRes, tagPerformanceRes,
     workspaceRes, monthlyRowRes, prevMonthlyRowRes, dailyRowsRes, prevDailyRowsRes,
-    prevMonthPostsRes,
+    prevMonthPostsRes, instagramHealth,
   ] = await Promise.all([
     db.from("instagram_posts").select("*")
       .eq("instagram_account_id", igAccountId)
@@ -394,6 +395,10 @@ async function loadInstagramSnapshot(
     db.from("instagram_posts").select("reach, saved, likes, comments, shares, impressions")
       .eq("instagram_account_id", igAccountId)
       .gte("posted_at", prevW.start).lt("posted_at", prevW.endExclusive),
+    // Saúde da conta no corte do relatório; nunca lança (devolve null).
+    loadInstagramHealth(
+      db, deps, igAccountId, reportCutoffIso(w.endExclusive, nowIso), account.follower_count,
+    ),
   ]);
 
   // Fontes OBRIGATÓRIAS: erro aqui não é "sem dados", é geração inválida.
@@ -527,5 +532,5 @@ async function loadInstagramSnapshot(
     tagsPerformance: (tagPerformanceRes.data as TagPerformance[] | null) ?? [],
   });
 
-  return snapshot;
+  return { ...snapshot, instagram_health: instagramHealth };
 }

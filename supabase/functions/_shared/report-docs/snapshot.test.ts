@@ -328,4 +328,5 @@ Deno.test("emptyInstagramSection: todo KPI null, listas vazias e instagram_conne
   assertEquals(empty.content_breakdown, {});
   assertEquals(empty.audience, null);
   assertEquals(empty.comparison, null);
+  assertEquals(empty.instagram_health, null);
 });
