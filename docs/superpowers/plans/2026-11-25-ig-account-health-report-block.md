@@ -33,7 +33,7 @@
 ### Task 1: Sobrecarga SQL ancorada em data
 
 **Files:**
-- Create: `supabase/migrations/20261201000004_ig_account_health_metrics_as_of.sql`
+- Create: `supabase/migrations/20261206000001_ig_account_health_metrics_as_of.sql`
 - Modify: `supabase/tests/entitlements/99_ig_account_health_metrics.sql`
 
 **Interfaces:**

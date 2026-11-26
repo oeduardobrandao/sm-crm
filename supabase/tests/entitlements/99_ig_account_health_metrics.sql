@@ -495,7 +495,7 @@ rollback;
 
 -- =====================================================================
 -- ig_account_health_metrics(uuid, timestamptz, int): ancorada numa data
--- (20261201000004_ig_account_health_metrics_as_of.sql). Janelas de 30/90 d
+-- (20261206000001_ig_account_health_metrics_as_of.sql). Janelas de 30/90 d
 -- terminam em p_as_of (exclusivo); p_followers nulo = follower_count atual.
 -- =====================================================================
 
