@@ -114,7 +114,8 @@ Deno.test("en: agenda invite (client) with .ics", () => {
   assertStringIncludes(e.html, "Organized by Ana Souza");
   assertStringIncludes(e.html, "I no longer want to receive these notices");
   assertEquals(e.attachments.length, 1);
-  assertEquals(e.attachments[0].filename, "evento.ics");
+  assertEquals(e.attachments[0].filename, "event.ics");
+  assertEquals(montarEmailAgendaCliente(AGENDA_ITEMS.convite, { ...CTX, lang: "pt" }).attachments[0].filename, "evento.ics");
   const ics = new TextDecoder().decode(Uint8Array.from(atob(e.attachments[0].content), (c) => c.charCodeAt(0)));
   assertStringIncludes(ics, "PRODID:-//Mesaas//Agenda//EN");
   assertStringIncludes(ics, "BEGIN:VEVENT");
@@ -182,7 +183,7 @@ Deno.test("en: reminder body", () => {
   assertStringIncludes(html, "Your event starts in 90 minutes");
   assertStringIncludes(html, "Monday, October 5 · 1:00 PM to 3:00 PM");
   assertStringIncludes(html, "Join the meeting");
-  assertStringIncludes(html, "Open in Agenda");
+  assertStringIncludes(html, "Open in Events");
   assertStringIncludes(html, "You are receiving this reminder because you are part of this event.");
   assertStringIncludes(buildLembreteEmail({ ...LB, minutos: 60 }).html, "Your event starts in 1 hour");
   assertStringIncludes(buildLembreteEmail({ ...LB, minutos: 1440 }).html, "Your event starts tomorrow");

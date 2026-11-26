@@ -96,6 +96,10 @@ function makeSelectChain(rows: Row[]) {
       limitCount = count;
       return chain;
     },
+    maybeSingle() {
+      const [first] = rows.filter((r) => matchesRow(r, filters));
+      return Promise.resolve({ data: first ?? null, error: null });
+    },
     then(onFulfilled: (v: { data: Row[] | null; error: { message: string } | null }) => unknown) {
       let result = rows.filter((r) => matchesRow(r, filters));
       if (orders.length > 0) {
@@ -1693,6 +1697,18 @@ Deno.test("language: the digest follows the workspace language (en), unknown val
   assert(en.sent[0].html.includes('<html lang="en"'));
   assert(en.sent[0].html.includes("1 post is waiting for your approval"));
   assertEquals(en.sent[0].tags, { type: "client_event" });
+  // Language lookup failing (db error) must not stop or change the digest: pt.
+  const failing = mk("en");
+  const origFrom = failing.from.bind(failing);
+  let wsCalls = 0;
+  failing.from = ((table: string) => {
+    if (table === "workspaces" && ++wsCalls === 2) throw new Error("db down");
+    return origFrom(table);
+  }) as never;
+  const f = makeDeps(failing);
+  const fr = await runClientEventEmailCron(f.deps);
+  assertEquals(fr.emailed, 1);
+  assertEquals(f.sent[0].subject, "Você tem pendências com Agencia X");
   for (const v of ["fr", undefined, null]) {
     const pt = makeDeps(mk(v));
     await runClientEventEmailCron(pt.deps);

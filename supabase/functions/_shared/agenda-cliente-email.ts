@@ -468,7 +468,7 @@ export function montarEmailAgendaCliente(
   const anexar = ativas.length > 0 && variante !== "remarcacao_recusada";
   const attachments: ResendAttachment[] = anexar
     ? [{
-      filename: "evento.ics",
+      filename: lang === "en" ? "event.ics" : "evento.ics",
       content: base64Utf8(
         gerarCalendario({ nome: workspaceName, eventos: ativas.map((o) => paraIcs(o, lang)), agora: ctx.agora, lang }),
       ),

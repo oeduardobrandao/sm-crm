@@ -113,7 +113,7 @@ export const agendaText = defineCatalog({
     organizedBy: (org: string) => `Organized by ${org}`,
     sentBy: (wsHtml: string) => `Sent by ${wsHtml} via Mesaas`,
     unsub: "I no longer want to receive these notices",
-    reminderEyebrow: "Agenda",
+    reminderEyebrow: "Events",
     leadToday: "Today",
     leadTomorrow: "Tomorrow",
     leadNow: "Starting now",
@@ -126,7 +126,7 @@ export const agendaText = defineCatalog({
     headingNow: "Your event is starting now",
     headingTomorrow: "Your event starts tomorrow",
     headingStartsIn: (lead: string) => `Your event starts in ${lead}`,
-    reminderCta: "Open in Agenda",
+    reminderCta: "Open in Events",
     reminderFooter:
       "You are receiving this reminder because you are part of this event. To turn it off, go to Settings, Notifications.",
   },

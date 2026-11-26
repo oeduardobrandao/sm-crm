@@ -91,7 +91,8 @@ import {
   signUnsubToken,
 } from "../_shared/client-event-email.ts";
 import { sanitizeFromName } from "../_shared/email-headers.ts";
-import { resolveLang } from "../_shared/i18n/lang.ts";
+import type { Lang } from "../_shared/i18n/lang.ts";
+import { workspaceLang } from "../_shared/i18n/workspace-lang.ts";
 
 interface DbError {
   message: string;
@@ -391,6 +392,8 @@ export async function runClientEventEmailCron(
   const clockNow = deps.nowMs ?? Date.now;
   const startedAt = clockNow();
   const now = deps.now();
+  // One language lookup per workspace per run.
+  const langs = new Map<string, Lang>();
 
   const { data, error } = await deps.db.rpc("claim_client_event_emails", {
     p_now: now.toISOString(),
@@ -627,17 +630,22 @@ export async function runClientEventEmailCron(
       // ---- workspace branding ---------------------------------------------------
       const { data: wsRows, error: wsErr } = await deps.db
         .from("workspaces")
-        .select("name, brand_color, logo_url, language")
+        .select("name, brand_color, logo_url")
         .eq("id", row.conta_id);
       if (wsErr) throw new Error(`workspaces query failed: ${wsErr.message}`);
       const branding = wsRows?.[0] as
-        | { name: string | null; brand_color: string | null; logo_url: string | null; language?: unknown }
+        | { name: string | null; brand_color: string | null; logo_url: string | null }
         | undefined;
       const workspaceName = branding?.name ?? "Mesaas";
       const brandColor = branding?.brand_color ?? "#eab308";
       const logoUrl = branding?.logo_url ?? null;
       // The digest follows the client's workspace language; a missing row or value is pt.
-      const lang = resolveLang(branding?.language);
+      // workspaceLang never throws (failure logs and answers pt), so it cannot fail a digest.
+      let lang = langs.get(row.conta_id);
+      if (!lang) {
+        lang = await workspaceLang(deps.db as never, row.conta_id);
+        langs.set(row.conta_id, lang);
+      }
 
       const unsubToken = await signUnsubToken(row.id, deps.tokenSecret);
       const unsubUrl = clientUnsubFunctionUrl(deps.unsubBaseUrl, unsubToken);

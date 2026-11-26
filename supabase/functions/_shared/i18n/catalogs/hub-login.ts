@@ -30,6 +30,6 @@ export const hubLoginText = defineCatalog({
     badRequest: "Invalid request.",
     internal: "Internal error.",
     workspaceNotFound: "Workspace not found.",
-    hubDisabled: "Hub disabled.",
+    hubDisabled: "This portal is unavailable.",
   },
 });

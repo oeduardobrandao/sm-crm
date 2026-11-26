@@ -28,6 +28,7 @@ interface DbOpts {
   verify?: { data: unknown; error: unknown };
   sessionDelete?: { data: unknown; error: unknown };
   paused?: boolean;
+  langError?: boolean;
 }
 
 function makeDb(opts: DbOpts = {}) {
@@ -42,9 +43,21 @@ function makeDb(opts: DbOpts = {}) {
   return {
     rpcCalls,
     from: (table: string) => ({
-      select: () =>
+      select: (cols?: string) =>
         table === "workspaces"
-          ? { eq: () => ({ maybeSingle: async () => ({ data: workspace }) }) }
+          ? {
+            eq: () => ({
+              maybeSingle: async () => {
+                // The language lookup is its own query ("language" only).
+                if (cols === "language") {
+                  if (opts.langError) return { data: null, error: { message: "boom" } };
+                  const ws = workspace as { language?: unknown } | null;
+                  return { data: ws ? { language: ws.language } : null, error: null };
+                }
+                return { data: workspace };
+              },
+            }),
+          }
           : tokenQuery,
     }),
     rpc: async (fn: string, params: Record<string, unknown>) => {
@@ -549,7 +562,7 @@ Deno.test("language: an en workspace gets English messages and the code e-mail l
   const off = setup({ workspace: { ...WORKSPACE_ROW, language: "en", hub_enabled: false } });
   const r2 = await off.handler(reqCode("a@b.co"));
   assertEquals(r2.status, 403);
-  assertEquals(await r2.json(), { error: "Hub disabled." });
+  assertEquals(await r2.json(), { error: "This portal is unavailable." });
 });
 
 Deno.test("language: missing or unknown workspace language, and an unknown workspace, stay pt", async () => {
@@ -565,4 +578,15 @@ Deno.test("language: missing or unknown workspace language, and an unknown works
   assertEquals(await r.json(), { error: "Workspace não encontrado." });
   const malformed = await t.handler(post("not json"));
   assertEquals(await malformed.json(), { error: "Requisição inválida." });
+});
+
+Deno.test("language: a failing language lookup keeps the login working in pt", async () => {
+  const t = setup({ workspace: { ...WORKSPACE_ROW, language: "en" }, langError: true });
+  await t.handler(reqCode("marina@clinica.com"));
+  await t.flush();
+  assertEquals(t.sent.length, 1);
+  assertEquals((t.sent[0] as { lang?: string }).lang, "pt");
+  const res = await t.handler(verify("12"));
+  assertEquals(res.status, 400);
+  assertEquals(await res.json(), { error: "Código inválido ou expirado.", code: "invalid_code" });
 });
