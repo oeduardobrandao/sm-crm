@@ -8,7 +8,6 @@ const { useAuthMock, storeMock, changeLanguageMock, toastMock } = vi.hoisted(() 
   useAuthMock: vi.fn(),
   storeMock: {
     getCurrentWorkspace: vi.fn(),
-    updateWorkspace: vi.fn(async () => {}),
     setWorkspaceLanguage: vi.fn(),
   },
   changeLanguageMock: vi.fn(),

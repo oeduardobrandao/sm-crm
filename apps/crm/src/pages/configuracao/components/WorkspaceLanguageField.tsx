@@ -41,7 +41,8 @@ export function WorkspaceLanguageField({ variant }: { variant: 'desktop' | 'phon
     if (next === current) return;
     try {
       const saved = await setWorkspaceLanguage(next);
-      await queryClient.invalidateQueries({ queryKey: ['currentWorkspace'] });
+      // Not awaited: a refetch failure must not look like the save failed.
+      void queryClient.invalidateQueries({ queryKey: ['currentWorkspace'] });
       // Saves the owner's explicit choice for this browser and switches the UI.
       changeLanguage(saved);
       toast.success(t('workspace.languageUpdated'));
@@ -53,7 +54,7 @@ export function WorkspaceLanguageField({ variant }: { variant: 'desktop' | 'phon
   if (variant === 'phone') {
     return (
       <>
-        <GroupedList header={t('workspace.language')} footer={t('workspace.languageHint')}>
+        <GroupedList footer={t('workspace.languageHint')}>
           <Cell
             label={t('workspace.language')}
             value={languageLabel(current)}
