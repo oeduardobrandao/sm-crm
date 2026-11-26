@@ -11,6 +11,7 @@ import {
   type PagarmeLive,
 } from "./pagarme-detail.ts";
 import { loadWorkspaceAffiliate } from "./workspace-affiliate.ts";
+import { bucketOf } from "./acquisition-logic.ts";
 
 type PlanRow = Record<string, unknown>;
 
@@ -58,7 +59,7 @@ export async function handleGetWorkspace(
   const { data: ws, error } = await svc
     .from("workspaces")
     .select(
-      "id, name, logo_url, created_at, plan_id, plan_source, demo_created_at, storage_used_bytes, reverse_trial_started_at, reverse_trial_ends_at, reverse_trial_ended_at, reverse_trial_outcome, reverse_trial_card_added_at, reverse_trial_first_paid_at, billing_currency",
+      "id, name, logo_url, created_at, plan_id, plan_source, demo_created_at, storage_used_bytes, reverse_trial_started_at, reverse_trial_ends_at, reverse_trial_ended_at, reverse_trial_outcome, reverse_trial_card_added_at, reverse_trial_first_paid_at, billing_currency, is_internal",
     )
     .eq("id", workspace_id)
     .single();
@@ -144,7 +145,34 @@ export async function handleGetWorkspace(
   });
   const affiliate = await loadWorkspaceAffiliate(svc, workspace_id);
 
-  const { storage_used_bytes: storageUsed, ...rest } = ws;
+  const { data: acqRow, error: acqErr } = await svc
+    .from("workspace_acquisition")
+    .select("channel, campaign, captured, first_touch, last_touch")
+    .eq("workspace_id", workspace_id)
+    .maybeSingle();
+  if (acqErr) console.error("[platform-admin] acquisition read failed:", acqErr.message);
+  const demoAt = (ws as { demo_created_at?: string | null }).demo_created_at ?? null;
+  // null only when there is no row and the workspace is not a demo ("Sem dados" in the UI).
+  const acquisition = acqRow || demoAt
+    ? {
+      channel: bucketOf(
+        {
+          id: workspace_id,
+          created_at: ws.created_at as string,
+          demo_created_at: demoAt,
+          is_internal: (ws as { is_internal?: boolean | null }).is_internal === true,
+        },
+        acqRow ? { workspace_id, channel: acqRow.channel as string, campaign: (acqRow.campaign as string | null) ?? null } : undefined,
+      ),
+      campaign: (acqRow?.campaign as string | null | undefined) ?? null,
+      captured: acqRow?.captured === true,
+      first_touch: (acqRow?.first_touch as Record<string, unknown> | null | undefined) ?? null,
+      last_touch: (acqRow?.last_touch as Record<string, unknown> | null | undefined) ?? null,
+    }
+    : null;
+
+  // is_internal is read only to bucket the acquisition; it is not part of the payload.
+  const { storage_used_bytes: storageUsed, is_internal: _isInternal, ...rest } = ws as typeof ws & { is_internal?: boolean | null };
   const r = rest as Record<string, unknown>;
   const orNull = (k: string) => (r[k] as string | null | undefined) ?? null;
   // Reverse trial (spec 2026-11-24-reverse-trial-design Part 4): the Admin badge and the
@@ -175,6 +203,7 @@ export async function handleGetWorkspace(
     resolved_features: resolvedFeatures,
     subscription,
     affiliate,
+    acquisition,
     usage: {
       client_count: clientCount || 0,
       member_count: enrichedMembers.length,

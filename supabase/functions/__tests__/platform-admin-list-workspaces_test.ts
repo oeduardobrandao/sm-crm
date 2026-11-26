@@ -52,6 +52,7 @@ Deno.test("list-workspaces delegates to admin_list_workspaces and passes filters
     p_created_since: null,
     p_sort: "created_at",
     p_dir: "desc",
+    p_channels: null,
   });
 });
 
@@ -76,6 +77,7 @@ Deno.test("list-workspaces forwards as_of as the RPC's snapshot timestamp", asyn
     p_created_since: null,
     p_sort: "created_at",
     p_dir: "desc",
+    p_channels: null,
   });
 });
 
@@ -112,6 +114,7 @@ Deno.test("list-workspaces defaults offset 0 / limit 20 and null filters", async
     p_created_since: null,
     p_sort: "created_at",
     p_dir: "desc",
+    p_channels: null,
   });
 });
 
@@ -159,5 +162,16 @@ Deno.test("list-workspaces forwards the filter and sort params to the RPC", asyn
     p_created_since: "2026-08-01T00:00:00.000Z",
     p_sort: "client_count",
     p_dir: "asc",
+    p_channels: null,
   });
+});
+
+Deno.test("list-workspaces forwards channels as p_channels, null when omitted", async () => {
+  const a = makeFakeRpcDb({ total: 0, workspaces: [] });
+  await handleListWorkspaces(a.db as unknown as SupabaseClient, { channels: "meta_ads,no_data" }, HEADERS);
+  assertEquals((a.rpcCalls[0].params as Record<string, unknown>).p_channels, "meta_ads,no_data");
+
+  const b = makeFakeRpcDb({ total: 0, workspaces: [] });
+  await handleListWorkspaces(b.db as unknown as SupabaseClient, {}, HEADERS);
+  assertEquals((b.rpcCalls[0].params as Record<string, unknown>).p_channels, null);
 });

@@ -377,3 +377,56 @@ Deno.test("handleGetWorkspace: selects and returns billing_currency (brl when un
   assert(usd.sel.includes("billing_currency"), "billing_currency must be selected");
   assertEquals((await run(undefined)).body.workspace.billing_currency, "brl");
 });
+
+function acqDetailDb(wsExtra: Record<string, unknown>, acq: Record<string, unknown> | null) {
+  return makeFakeDb({
+    workspaces: [{
+      data: {
+        id: "w1", name: "X", logo_url: null, created_at: "t", plan_id: null, plan_source: null,
+        storage_used_bytes: 0, is_internal: false, ...wsExtra,
+      },
+      error: null,
+    }],
+    workspace_members: [{ data: [], error: null }],
+    workspace_subscriptions: [{ data: null, error: null }],
+    workspace_acquisition: [{ data: acq, error: null }],
+  });
+}
+
+Deno.test("handleGetWorkspace: acquisition carries the channel bucket, campaign and both touches", async () => {
+  const { handleGetWorkspace } = await import("../platform-admin/workspace-detail.ts");
+  const { db, calls } = acqDetailDb({}, {
+    channel: "meta_ads", campaign: "black-friday", captured: true,
+    first_touch: { utm_source: "facebook" }, last_touch: { utm_source: "instagram" },
+  });
+  const res = await handleGetWorkspace(db as never, { workspace_id: "w1" }, {}, { readOnly: true });
+  const body = await res.json();
+  assertEquals(body.acquisition, {
+    channel: "meta_ads", campaign: "black-friday", captured: true,
+    first_touch: { utm_source: "facebook" }, last_touch: { utm_source: "instagram" },
+  });
+  assert(!("is_internal" in body.workspace), "is_internal is read for bucketing, not exposed");
+  assert(
+    calls.some((c) => c.table === "workspace_acquisition" && c.method === "eq" &&
+      JSON.stringify(c.args) === JSON.stringify(["workspace_id", "w1"])),
+    "the acquisition lookup must be scoped to the workspace",
+  );
+});
+
+Deno.test("handleGetWorkspace: a demo workspace reports channel demo", async () => {
+  const { handleGetWorkspace } = await import("../platform-admin/workspace-detail.ts");
+  const { db } = acqDetailDb({ demo_created_at: "2026-10-26T12:00:00Z" }, {
+    channel: "meta_ads", campaign: null, captured: true, first_touch: null, last_touch: null,
+  });
+  const res = await handleGetWorkspace(db as never, { workspace_id: "w1" }, {}, { readOnly: true });
+  const body = await res.json();
+  assertEquals(body.acquisition.channel, "demo");
+});
+
+Deno.test("handleGetWorkspace: no acquisition row and not a demo gives acquisition null", async () => {
+  const { handleGetWorkspace } = await import("../platform-admin/workspace-detail.ts");
+  const { db } = acqDetailDb({}, null);
+  const res = await handleGetWorkspace(db as never, { workspace_id: "w1" }, {}, { readOnly: true });
+  const body = await res.json();
+  assertEquals(body.acquisition, null);
+});
