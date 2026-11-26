@@ -54,6 +54,17 @@ describe('useGuideProgress', () => {
     expect(stored.dismissedAt).toBeTruthy();
   });
 
+  it('recordWhatsAppOpened grava o primeiro clique e não o sobrescreve', () => {
+    const { result } = renderHook(() => useGuideProgress('ws-1', NO_SIGNALS, ALL_ON));
+    act(() => result.current.recordWhatsAppOpened());
+    const first = loadGuideProgress('ws-1').whatsappOpenedAt;
+    expect(first).toBeTruthy();
+    act(() => result.current.recordWhatsAppOpened());
+    expect(loadGuideProgress('ws-1').whatsappOpenedAt).toBe(first);
+    // Não é página: o contador não muda.
+    expect(result.current.totals.done).toBe(0);
+  });
+
   it('signalsSatisfied exige só os sinais da trilha filtrada', () => {
     const semHub = (f: string) => f !== 'feature_hub_portal';
     const signals = {

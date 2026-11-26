@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { MessageCircle, X } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { isWhatsAppSupportEnabled } from '@/lib/whatsapp';
+import { useGuide } from '@/components/guide/GuideContext';
 import { WhatsAppSupportButton } from './WhatsAppSupportButton';
 
 /**
@@ -27,10 +28,13 @@ export function WhatsAppSupportCard() {
   const storageKey = `whatsapp_support_dismissed_${profile?.conta_id ?? 'unknown'}`;
 
   const [dismissed, setDismissed] = useState(() => isDismissed(localStorage.getItem(storageKey)));
+  // The open guide carries the same invite on its home screen: don't repeat it
+  // behind the dialog. The card comes back once the guide closes.
+  const guideOpen = useGuide()?.isOpen === true;
 
   // Checked here as well as in the button: without it the card would render its
   // title and body with no CTA.
-  if (!isOwner || dismissed || !isWhatsAppSupportEnabled()) return null;
+  if (!isOwner || dismissed || guideOpen || !isWhatsAppSupportEnabled()) return null;
 
   function handleDismiss() {
     localStorage.setItem(storageKey, new Date().toISOString());

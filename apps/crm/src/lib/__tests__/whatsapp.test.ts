@@ -36,6 +36,14 @@ describe('buildWhatsAppSupportUrl', () => {
     );
   });
 
+  it('uses the onboarding wording for the first-steps guide', async () => {
+    const { buildWhatsAppSupportUrl } = await load(NUMBER);
+    const url = buildWhatsAppSupportUrl({ nome: 'Ana', empresa: 'Acme', context: 'guide' });
+    expect(textOf(url!)).toBe(
+      'Oi! Sou Ana, da Acme. Acabei de criar minha conta no Mesaas e queria ajuda pra configurar.',
+    );
+  });
+
   it('uses the dashboard wording for the dashboard context', async () => {
     const { buildWhatsAppSupportUrl } = await load(NUMBER);
     const url = buildWhatsAppSupportUrl({

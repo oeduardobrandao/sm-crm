@@ -10,6 +10,8 @@ export interface GuideProgress {
   trailsCompleted: string[];
   lastPageId?: string;
   concludedAt?: string;
+  /** Primeiro clique no "Abrir WhatsApp" da tela inicial do guia. */
+  whatsappOpenedAt?: string;
 }
 
 export const EMPTY_PROGRESS: GuideProgress = {
