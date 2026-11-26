@@ -23,9 +23,11 @@ export function applyUsConsentDefault(pathname: string): void {
 }
 
 /**
- * "Do Not Sell or Share My Personal Information" (US notice and `/en` footer): advertising off as
- * the visitor's own choice, the other two kept. With no record at all (storage gone or the
- * default skipped), the other two follow the US default.
+ * "Do Not Sell or Share My Personal Information" (US notice and `/en` footer): advertising off,
+ * the other two kept, and the record's basis kept too. A `us_default` record stays `us_default`
+ * (valid only on `/en`, so the click never leaks a Brazilian "choice"); a `choice` stays a
+ * `choice`. With no record at all (storage gone or the default skipped), the other two follow
+ * the US default.
  */
 export function doNotSellOrShare(): void {
   const current = getConsent();
@@ -35,7 +37,7 @@ export function doNotSellOrShare(): void {
       support: current ? current.support : true,
       marketing: false,
     },
-    'choice',
+    current?.basis ?? 'us_default',
   );
   toast.success(i18n.t('common:cookies.us.doNotSellDone'));
 }

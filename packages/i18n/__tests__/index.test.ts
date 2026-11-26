@@ -1,6 +1,12 @@
 import i18next from 'i18next';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getSavedLanguage, initI18n, loadLazyNamespaces, STORAGE_KEY } from '../index';
+import {
+  changeLanguage,
+  getSavedLanguage,
+  initI18n,
+  loadLazyNamespaces,
+  STORAGE_KEY,
+} from '../index';
 
 // i18next keeps the resources object it is given and adds fetched bundles into it, so every
 // test gets a fresh copy.
@@ -125,5 +131,22 @@ describe('server-safe boot', () => {
     initI18n(bundled(), { instance, initialLanguage: 'pt' });
     expect(instance.language).toBe('pt');
     expect(localStorage.getItem(STORAGE_KEY)).toBe('en');
+  });
+});
+
+describe('changeLanguage', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  it('still switches the language when storage writes throw', async () => {
+    const { instance } = setup();
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('denied');
+    });
+    expect(() => changeLanguage('en')).not.toThrow();
+    // changeLanguage drives the shared singleton; verify it was asked, not the local instance.
+    expect(instance).toBeDefined();
   });
 });

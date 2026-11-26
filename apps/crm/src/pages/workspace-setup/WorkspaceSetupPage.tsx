@@ -105,6 +105,8 @@ export default function WorkspaceSetupPage() {
       return;
     }
     captureEvent('us_signup_currency_mismatch', { result });
+    // Analytics is consent-gated and a us_default record reads undecided on /login: log it here too.
+    console.error('[workspace-setup] us_signup_currency_mismatch', { result });
     setRepair('failed');
   }, [queryClient]);
   // Latched so StrictMode's double effect (and a refetch still reading BRL) never repeats it;

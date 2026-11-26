@@ -6,8 +6,10 @@
 -- uma falha dele vira só WARNING e o cadastro segue em BRL. billing_market_apply()
 -- é o reparo que o /workspace-setup chama do lado do servidor:
 --
---   * sem argumentos: o market vem do próprio auth.users do chamador (auth.uid()),
---     nunca de um valor do cliente;
+--   * sem argumentos: o market vem do raw_user_meta_data do próprio auth.users do
+--     chamador (auth.uid()). Esse metadata é gravável pelo usuário (auth.updateUser), então o
+--     efeito se limita ao workspace do próprio chamador, nunca pago e destravado, só para USD
+--     (sem volta) e recusado depois de qualquer trava ou linha de provedor;
 --   * workspace = o ativo do chamador (profiles.active_workspace_id, senão
 --     profiles.conta_id), e só se ele é owner dele em workspace_members (convidado
 --     não muda a moeda do workspace que o recebe);

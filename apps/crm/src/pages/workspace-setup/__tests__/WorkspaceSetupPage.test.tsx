@@ -345,6 +345,7 @@ describe('WorkspaceSetupPage', () => {
       ['a rejection', () => mockedRpc.mockRejectedValue(new Error('network'))],
     ])('blocks with Try again on %s, and Try again re-runs the repair', async (_label, arrange) => {
       await act(() => i18n.changeLanguage('en'));
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       arrange();
       renderPage();
 
@@ -354,6 +355,13 @@ describe('WorkspaceSetupPage', () => {
       expect(screen.queryByRole('button', { name: /Continue/ })).not.toBeInTheDocument();
       expect(mockedCapture).toHaveBeenCalledTimes(1);
       expect(mockedCapture).toHaveBeenCalledWith('us_signup_currency_mismatch', expect.anything());
+      // Analytics is consent-gated and a us_default record reads undecided on /login, so the
+      // failure must also reach the console.
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('us_signup_currency_mismatch'),
+        expect.anything(),
+      );
+      errorSpy.mockRestore();
 
       mockedRpc.mockReset();
       mockedRpc.mockResolvedValue({ data: 'usd', error: null } as never);

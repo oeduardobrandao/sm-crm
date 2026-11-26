@@ -247,7 +247,7 @@ The user picked A.
   hydration cannot mismatch. Dismiss stores nothing about consent; the notice stays dismissed
   for that browser (`localStorage`, try/catch).
 - "Do Not Sell or Share My Personal Information" (notice and `/en` footer) sets `marketing:
-  false` with `basis: 'choice'` and confirms with a toast. "Cookie settings" opens the existing
+  false` and keeps the record's basis (a US default stays `/en`-only) and confirms with a toast. "Cookie settings" opens the existing
   preferences dialog (already translated).
 - Only an explicit choice (`basis: 'choice'`) carries into `/login`, the app and the
   Portuguese pages. A `basis: 'us_default'` record applies only on `/en` and `/en/...`;

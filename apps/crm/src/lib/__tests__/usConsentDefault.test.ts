@@ -120,7 +120,7 @@ describe('doNotSellOrShare', () => {
     await i18n.changeLanguage('pt');
   });
 
-  it('turns advertising off as an explicit choice, keeps the rest, and confirms', async () => {
+  it('turns advertising off keeping the US default basis, the rest, and confirms', async () => {
     const { applyUsConsentDefault, doNotSellOrShare, getConsent } = await load();
     applyUsConsentDefault('/en');
     doNotSellOrShare();
@@ -128,11 +128,26 @@ describe('doNotSellOrShare', () => {
       analytics: true,
       support: true,
       marketing: false,
-      basis: 'choice',
+      basis: 'us_default',
     });
     expect(toast.success).toHaveBeenCalledWith(
       "Done. We won't sell or share your personal information for advertising.",
     );
+  });
+
+  it('a us_default record stays /en-only: on a Brazilian path it still reads undecided', async () => {
+    const { applyUsConsentDefault, doNotSellOrShare, getConsent } = await load();
+    applyUsConsentDefault('/en');
+    doNotSellOrShare();
+    window.history.replaceState(null, '', '/precos');
+    expect(getConsent()).toBeNull();
+  });
+
+  it('an existing choice record stays a choice', async () => {
+    seedConsent({ analytics: false, support: true, marketing: true });
+    const { doNotSellOrShare, getConsent } = await load();
+    doNotSellOrShare();
+    expect(getConsent()).toMatchObject({ marketing: false, basis: 'choice' });
   });
 
   it('keeps analytics and support as the visitor had them', async () => {
@@ -149,7 +164,7 @@ describe('doNotSellOrShare', () => {
       analytics: true,
       support: true,
       marketing: false,
-      basis: 'choice',
+      basis: 'us_default',
     });
   });
 });

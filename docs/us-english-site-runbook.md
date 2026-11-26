@@ -21,6 +21,16 @@ Depende da cobrança em USD (`docs/usd-billing-runbook.md`). Este runbook é int
   indeciso e o banner brasileiro aparece. GPC (`navigator.globalPrivacyControl`) desliga a
   publicidade dentro do `getConsent()`, em qualquer página.
 
+## Antes do merge: preview da Vercel
+
+Na URL de preview do deploy do PR, confira:
+
+- `/en` responde 200 com `lang="en"`.
+- `/en/` redireciona (301/308) para `/en`, sem loop.
+- `/en/x` dá 404.
+- `/en/pricing`, `/en/privacy` e `/en/terms` respondem 200.
+- `/` e `/precos` seguem como estavam (sem mudança).
+
 ## Ordem de deploy
 
 1. **Migration `20261206000001_billing_market_apply.sql` em staging e depois em prod.**
@@ -120,7 +130,11 @@ Nada disto está feito por este deploy. Os anúncios esperam tudo:
 4. Revisão de um advogado de `/en/privacy` e `/en/terms` (os textos foram rascunhados pelo
    Claude).
 5. Screenshots em inglês (`EN_LANDING_IMAGES`, `apps/crm/public/landing/en/`).
-6. Parte 3: lacunas de inglês no app e nos e-mails de ciclo de vida e transacionais. Um
+6. Conversões e analytics do cadastro dos EUA só disparam depois que o visitante aceita em
+   `/login` (um registro `us_default` vale só em `/en` e em `/login` lê como indeciso;
+   decisão de consentimento). Decida isso antes dos anúncios; até lá, o único sinal sem
+   consentimento é o `console.error` de `us_signup_currency_mismatch`.
+7. Parte 3: lacunas de inglês no app e nos e-mails de ciclo de vida e transacionais. Um
    cadastro orgânico em `/en` antes da Parte 3 recebe esses e-mails em português.
 
 ## Pendências conhecidas (fora desta fase)
