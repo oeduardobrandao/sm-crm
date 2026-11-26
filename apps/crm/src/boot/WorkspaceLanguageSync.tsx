@@ -5,7 +5,9 @@ import { getCurrentWorkspace } from '@/store/workspace';
 
 /** Inside the signed-in layout: opens the app in the workspace's language (unless the user made
  * an explicit choice, which `effectiveLanguage()` ranks first). Shares the `currentWorkspace`
- * query with the settings tabs, so there is one fetch. Cleared on unmount (sign-out). */
+ * query with the settings tabs, so there is one fetch. Mounted by ProtectedRoute, so it
+ * lives exactly while a signed-in user is on a protected page; leaving that tree (sign-out, or a
+ * public page) clears the workspace language on unmount. */
 export function WorkspaceLanguageSync() {
   const { data } = useQuery({ queryKey: ['currentWorkspace'], queryFn: getCurrentWorkspace });
   const language = data?.language ?? null;

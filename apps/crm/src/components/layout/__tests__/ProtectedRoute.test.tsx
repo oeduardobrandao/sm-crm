@@ -10,6 +10,10 @@ vi.mock('../../../hooks/useWorkspaceLimits', () => ({
   useWorkspaceLimits: vi.fn(),
 }));
 
+// The real sync reads the workspace query, which this suite has no QueryClient for
+// (ProtectedRouteLanguage.test.tsx covers it).
+vi.mock('../../../boot/WorkspaceLanguageSync', () => ({ WorkspaceLanguageSync: () => null }));
+
 vi.mock('../useTrialOfferRedirect', () => ({
   useTrialOfferRedirect: vi.fn(),
 }));

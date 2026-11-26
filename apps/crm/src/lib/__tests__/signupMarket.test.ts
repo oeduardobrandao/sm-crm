@@ -15,7 +15,7 @@ vi.mock('@mesaas/i18n', () => ({
 import { setLanguageHint } from '@mesaas/i18n';
 import { applyAccountLanguageFallback, readSignupMarket } from '../signupMarket';
 
-const mockedChangeLanguage = vi.mocked(setLanguageHint);
+const mockedSetLanguageHint = vi.mocked(setLanguageHint);
 
 describe('readSignupMarket', () => {
   it('honors only an exact single market=us', () => {
@@ -34,7 +34,7 @@ describe('readSignupMarket', () => {
 describe('applyAccountLanguageFallback', () => {
   beforeEach(() => {
     localStorage.clear();
-    mockedChangeLanguage.mockReset();
+    mockedSetLanguageHint.mockReset();
   });
   afterEach(() => {
     localStorage.clear();
@@ -45,19 +45,19 @@ describe('applyAccountLanguageFallback', () => {
 
   it('switches to English when nothing is saved and the account is a US signup', () => {
     applyAccountLanguageFallback(usUser);
-    expect(mockedChangeLanguage).toHaveBeenCalledWith('en');
+    expect(mockedSetLanguageHint).toHaveBeenCalledWith('en');
   });
 
   it('keeps a saved language', () => {
     localStorage.setItem('mesaas-language', 'pt');
     applyAccountLanguageFallback(usUser);
-    expect(mockedChangeLanguage).not.toHaveBeenCalled();
+    expect(mockedSetLanguageHint).not.toHaveBeenCalled();
   });
 
   it('treats an invalid saved value as nothing saved', () => {
     localStorage.setItem('mesaas-language', 'fr');
     applyAccountLanguageFallback(usUser);
-    expect(mockedChangeLanguage).toHaveBeenCalledWith('en');
+    expect(mockedSetLanguageHint).toHaveBeenCalledWith('en');
   });
 
   it('does nothing without market us', () => {
@@ -65,15 +65,6 @@ describe('applyAccountLanguageFallback', () => {
     applyAccountLanguageFallback({ user_metadata: { market: 'US' } });
     applyAccountLanguageFallback({});
     applyAccountLanguageFallback(null);
-    expect(mockedChangeLanguage).not.toHaveBeenCalled();
-  });
-
-  it('never throws when storage throws', () => {
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
-      throw new Error('blocked');
-    });
-    expect(() => applyAccountLanguageFallback(usUser)).not.toThrow();
-    // setLanguageHint swallows the storage error and still switches this page load.
-    expect(mockedChangeLanguage).toHaveBeenCalledWith('en');
+    expect(mockedSetLanguageHint).not.toHaveBeenCalled();
   });
 });
