@@ -77,7 +77,7 @@ interface GlobalSearchDialogProps {
  * em "Tudo" cada tipo mostra só uma prévia.
  */
 export default function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogProps) {
-  const { t } = useTranslation();
+  const { t } = useTranslation(['common', 'shell']);
   const navigate = useNavigate();
   const { canSeeFinancials, can } = useAuth();
   const financialsAllowed = canSeeFinancials === true;
@@ -254,7 +254,7 @@ export default function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchD
       {hasQuery && matches.length > 0 && (
         <div
           role="group"
-          aria-label="Filtrar por tipo"
+          aria-label={t('shell:search.filterByType')}
           className={cn(
             'flex gap-1.5 overflow-x-auto border-b px-3 py-2 [scrollbar-width:none]',
             isPhone && 'phone-search__types',

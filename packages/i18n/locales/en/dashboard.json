@@ -159,7 +159,8 @@
       "noneConnected": "No Instagram account connected. Connect one to see client health.",
       "filtered": "No clients in this filter."
     },
-    "error": "Could not load client health."
+    "error": "Could not load client health.",
+    "actionsLabel": "Actions"
   },
   "today": {
     "title": "Today",
@@ -284,6 +285,7 @@
       "showing": "Showing {{shown}} of {{total}}",
       "showAll": "Show all",
       "showLess": "Show less"
-    }
+    },
+    "title": "Home"
   }
 }

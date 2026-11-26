@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { computeMeterState, METER_FILL } from '@/components/usage/usage-meter-state';
 import { isNativeApp } from '@/native/platform';
 import './entityListPhone.css';
@@ -25,6 +26,7 @@ export function PhoneUsageLine({
   limit,
   showUpgradeCta = false,
 }: PhoneUsageLineProps) {
+  const { t } = useTranslation();
   if (limit === null) return null;
   const meter = computeMeterState(used, limit);
   const danger = meter.state === 'danger' || meter.state === 'blocked';
@@ -34,7 +36,7 @@ export function PhoneUsageLine({
         <span
           className="phone-el-usage__bar"
           role="progressbar"
-          aria-label={`Uso do plano: ${label}`}
+          aria-label={t('usage.planUsageAria', { label })}
           aria-valuemin={0}
           aria-valuemax={limit}
           aria-valuenow={Math.min(used, limit)}
@@ -46,14 +48,14 @@ export function PhoneUsageLine({
         </span>
       )}
       <span className={danger ? 'phone-el-usage__text--danger' : undefined}>
-        {limit > 0 ? `${used} de ${limit} ${label}` : 'Não incluído no plano'}
+        {limit > 0 ? t('usage.ofLabel', { used, limit, label }) : t('usage.notIncluded')}
       </span>
       {/* Never inside the iOS app (apps/mobile DECISIONS.md D33). */}
       {showUpgradeCta && meter.showCta && !isNativeApp() && (
         <>
           <span aria-hidden="true">·</span>
           <Link to="/configuracao/cobranca" className="phone-el-usage__cta">
-            Fazer upgrade
+            {t('usage.upgrade')}
           </Link>
         </>
       )}

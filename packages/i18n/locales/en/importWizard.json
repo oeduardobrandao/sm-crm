@@ -243,5 +243,19 @@
     "title": "Moving from Notion, Trello or ClickUp?",
     "body": "Import your clients, calendar and deliveries in minutes.",
     "cta": "Import data"
+  },
+  "errors": {
+    "upgradeRequired": "Data import is not available on your plan.",
+    "jobNotFound": "We couldn't find this import.",
+    "alreadyUndone": "This import has already been undone.",
+    "undoInProgress": "An undo is already in progress for this import.",
+    "undoWindowExpired": "The 7-day window to undo this import has passed.",
+    "invalidSource": "Invalid source.",
+    "invalidPayload": "We couldn't build the data for this import.",
+    "previewTooLarge": "The file has too many rows to preview.",
+    "commitTooLarge": "The batch sent is too large.",
+    "unauthorized": "Your session expired. Please sign in again.",
+    "sessionExpired": "Session expired",
+    "generic": "Import failed. Please try again."
   }
 }

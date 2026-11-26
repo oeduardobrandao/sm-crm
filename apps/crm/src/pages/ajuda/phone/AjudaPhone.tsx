@@ -1,4 +1,5 @@
 import { Navigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { FileText, PlayCircle, Rocket, Search } from 'lucide-react';
 import { PhonePageHeader } from '@/components/mobile/PhonePageHeader';
 import { GroupedList, Cell } from '@/components/mobile/GroupedList';
@@ -47,6 +48,7 @@ const SECTION_COLORS = [
  * the progress, lives on /ajuda/video/:slug, which the row opens.
  */
 function TutorialsGroup() {
+  const { t } = useTranslation('help');
   const { data: series = [], isLoading, isError } = useKbVideoSeries();
   const { progress, isLoading: progressLoading } = useVideoProgress();
   if (isLoading || progressLoading || isError || series.length === 0) return null;
@@ -60,17 +62,22 @@ function TutorialsGroup() {
 
   return (
     <GroupedList
-      header="Tutoriais em vídeo"
+      header={t('video.tutorials')}
       footer={
         done
-          ? 'Você já assistiu todos os vídeos.'
-          : `${watched} de ${current.videos.length} assistidos nesta série.`
+          ? t('video.allWatched')
+          : t('video.watchedInSeries', { watched, total: current.videos.length })
       }
     >
       <Cell
         to={`/ajuda/video/${video.slug}`}
         className="phone-ajuda-tutorial"
-        aria-label={`Tutoriais em vídeo. ${current.title}, vídeo ${position} de ${current.videos.length}: ${video.title}`}
+        aria-label={t('video.tutorialAria', {
+          series: current.title,
+          position,
+          total: current.videos.length,
+          title: video.title,
+        })}
         icon={
           <span className="phone-ajuda-tutorial__thumb">
             {video.thumbnail_url ? (
@@ -91,7 +98,11 @@ function TutorialsGroup() {
             <span className="phone-ajuda-tutorial__title">{video.title}</span>
           </>
         }
-        value={done ? 'Rever' : `${position} de ${current.videos.length}`}
+        value={
+          done
+            ? t('video.review')
+            : t('video.positionOf', { position, total: current.videos.length })
+        }
       />
     </GroupedList>
   );
@@ -99,6 +110,7 @@ function TutorialsGroup() {
 
 /** Central de Ajuda on phones (FAjuda): search, the tutorials row, sections as a list. */
 export function AjudaPhone(props: AjudaPhoneProps) {
+  const { t } = useTranslation('help');
   // A video deep link (`?video=`, e.g. from a tutorial popup) opens the player screen.
   if (props.requestedVideoSlug) {
     return <Navigate to={`/ajuda/video/${encodeURIComponent(props.requestedVideoSlug)}`} replace />;
@@ -106,14 +118,14 @@ export function AjudaPhone(props: AjudaPhoneProps) {
 
   return (
     <div className="phone-kit phone-ajuda">
-      <PhonePageHeader title="Central de Ajuda">
+      <PhonePageHeader title={t('title')}>
         <label className="phone-ajuda-search">
           <Search aria-hidden="true" />
           <input
             type="search"
             enterKeyHint="search"
-            aria-label="Buscar vídeos e artigos"
-            placeholder="Buscar vídeos e artigos"
+            aria-label={t('searchLabel')}
+            placeholder={t('searchLabel')}
             value={props.search}
             onChange={(e) => props.onSearchChange(e.target.value)}
           />
@@ -125,12 +137,12 @@ export function AjudaPhone(props: AjudaPhoneProps) {
       ) : props.isSearching ? (
         props.articles.length === 0 && props.videos.length === 0 ? (
           <p className="phone-ajuda-empty" role="status">
-            Nenhum vídeo ou artigo encontrado para esta busca.
+            {t('noResults')}
           </p>
         ) : (
           <>
             {props.videos.length > 0 && (
-              <GroupedList header="Vídeos">
+              <GroupedList header={t('videos')}>
                 {props.videos.map(({ video, seriesTitle }) => (
                   <Cell
                     key={video.id}
@@ -138,7 +150,7 @@ export function AjudaPhone(props: AjudaPhoneProps) {
                     icon={<PlayCircle />}
                     iconColor="#ff3b30"
                     label={video.title}
-                    subtitle={`Vídeo · ${seriesTitle}`}
+                    subtitle={t('video.videoSeries', { series: seriesTitle })}
                     value={
                       video.duration_seconds != null
                         ? formatDuration(video.duration_seconds)
@@ -149,7 +161,7 @@ export function AjudaPhone(props: AjudaPhoneProps) {
               </GroupedList>
             )}
             {props.articles.length > 0 && (
-              <GroupedList header="Artigos">
+              <GroupedList header={t('articles')}>
                 {props.articles.map((article) => (
                   <ArticleCell key={article.id} article={article} />
                 ))}
@@ -161,9 +173,9 @@ export function AjudaPhone(props: AjudaPhoneProps) {
         <>
           <TutorialsGroup />
           {props.sections.length === 0 ? (
-            <p className="phone-ajuda-empty">Nenhum artigo publicado ainda.</p>
+            <p className="phone-ajuda-empty">{t('noArticles')}</p>
           ) : (
-            <GroupedList header="Seções">
+            <GroupedList header={t('sections')}>
               {props.sections.map((s, i) => {
                 const Icon = SECTION_ICONS[s.category] ?? Rocket;
                 return (
@@ -173,7 +185,7 @@ export function AjudaPhone(props: AjudaPhoneProps) {
                     icon={<Icon />}
                     iconColor={SECTION_COLORS[i % SECTION_COLORS.length]}
                     label={s.label}
-                    subtitle={`${s.count} ${s.count === 1 ? 'artigo' : 'artigos'}`}
+                    subtitle={t('article.count', { count: s.count })}
                   />
                 );
               })}
@@ -187,13 +199,14 @@ export function AjudaPhone(props: AjudaPhoneProps) {
 
 /** An article as a list row: title, reading time, draft tag. */
 export function ArticleCell({ article }: { article: KbArticle }) {
+  const { t } = useTranslation('help');
   const minutes = readingMinutes(article.content_plain);
   return (
     <Cell
       to={`/ajuda/${article.slug}`}
       icon={<FileText />}
       label={article.title}
-      subtitle={`${minutes} min de leitura${article.status === 'draft' ? ' · Rascunho' : ''}`}
+      subtitle={`${t('article.readMinutes', { minutes })}${article.status === 'draft' ? ` · ${t('article.draft')}` : ''}`}
     />
   );
 }

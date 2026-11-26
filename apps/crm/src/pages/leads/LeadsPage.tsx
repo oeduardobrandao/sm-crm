@@ -442,7 +442,7 @@ export default function LeadsPage() {
         <HelpCircle className="h-4 w-4" style={{ color: 'var(--text-muted)', cursor: 'pointer' }} />
       </span>
       {canEditLeads && (
-        <FeatureGate flag="feature_csv_import" label="Importação CSV">
+        <FeatureGate flag="feature_csv_import" label={t('common:gate.csvImport')}>
           <Button variant="outline" onClick={handleCSVImport}>
             <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} />{' '}
             {tc('actions.importCsv')}

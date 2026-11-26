@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Check, Youtube } from 'lucide-react';
 import {
   COMING_SOON_PLATFORMS,
@@ -34,6 +35,7 @@ export function PlatformChips({
   onChange: (next: PlatformId[]) => void;
   id?: string;
 }) {
+  const { t } = useTranslation();
   const { features } = useWorkspaceLimits();
   const [emptyHint, setEmptyHint] = useState(false);
 
@@ -76,17 +78,17 @@ export function PlatformChips({
         {COMING_SOON_PLATFORMS.map((p) => (
           <button key={p.id} type="button" disabled className="platform-chip platform-chip--soon">
             <Youtube size={14} aria-hidden="true" />
-            {p.label} <span className="platform-chip__soon">em breve</span>
+            {p.label} <span className="platform-chip__soon">{t('platformChips.soon')}</span>
           </button>
         ))}
       </div>
       {emptyHint && (
         <p style={{ fontSize: '0.72rem', color: 'var(--danger-text)', margin: '0.35rem 0 0' }}>
-          Escolha pelo menos uma plataforma.
+          {t('platformChips.pickOne')}
         </p>
       )}
       <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '0.35rem 0 0' }}>
-        Geral é conteúdo para baixar, sem publicação automática.
+        {t('platformChips.generalHint')}
       </p>
     </div>
   );

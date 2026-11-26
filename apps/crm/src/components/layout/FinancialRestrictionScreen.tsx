@@ -1,17 +1,7 @@
 import { Lock } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export type RestrictionVariant = 'financeiro' | 'contratos';
-
-const COPY: Record<RestrictionVariant, { title: string; body: string }> = {
-  financeiro: {
-    title: 'Acesso financeiro restrito',
-    body: 'O proprietário do workspace desativou seu acesso aos dados financeiros. Fale com ele se você precisa visualizar esta área.',
-  },
-  contratos: {
-    title: 'Acesso a contratos restrito',
-    body: 'O proprietário do workspace não liberou contratos para a sua função. Fale com ele se você precisa visualizar esta área.',
-  },
-};
 
 /**
  * Shown inside AppLayout's <Outlet /> slot, so the sidebar and nav survive.
@@ -28,7 +18,9 @@ export default function FinancialRestrictionScreen({
 }: {
   variant?: RestrictionVariant;
 }) {
-  const { title, body } = COPY[variant];
+  const { t } = useTranslation('shell');
+  const title = t(`restriction.${variant}.title`);
+  const body = t(`restriction.${variant}.body`);
   return (
     <div className="page-content">
       <div className="card" style={{ maxWidth: 520, margin: '3rem auto', textAlign: 'center' }}>

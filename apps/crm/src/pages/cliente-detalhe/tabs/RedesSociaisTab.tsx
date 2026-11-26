@@ -82,14 +82,16 @@ const GMN_ERROR_CODES = ['denied', 'missing_scope', 'no_refresh_token', 'unknown
 
 const REDES = ['instagram', 'tiktok', 'youtube', 'google'] as const;
 type Rede = (typeof REDES)[number];
-const REDE_LABEL: Record<Rede, string> = {
+const redeLabel = (r: Rede, t: (key: string) => string): string =>
+  r === 'google' ? t('detail.googleBusiness') : REDE_BRAND_LABEL[r];
+const REDE_BRAND_LABEL: Record<Exclude<Rede, 'google'>, string> = {
   instagram: 'Instagram',
   tiktok: 'TikTok',
   youtube: 'YouTube',
-  google: 'Google Meu Negócio',
 };
 // The phone segmented control truncates the full name at four segments.
-const REDE_LABEL_PHONE: Record<Rede, string> = { ...REDE_LABEL, google: 'Google' };
+const redeLabelPhone = (r: Rede, t: (key: string) => string): string =>
+  r === 'google' ? 'Google' : redeLabel(r, t);
 const isRede = (v: string | null): v is Rede => (REDES as readonly string[]).includes(v ?? '');
 
 export default function RedesSociaisTab() {
@@ -276,7 +278,7 @@ export default function RedesSociaisTab() {
         semantics="tablist"
         aria-label={tabsLabel}
         className="analytics-phone-tabs"
-        options={visibleRedes.map((r) => ({ value: r, label: REDE_LABEL_PHONE[r] }))}
+        options={visibleRedes.map((r) => ({ value: r, label: redeLabelPhone(r, t) }))}
         value={rede ?? 'instagram'}
         onChange={(r) => navigate(redeHref(r), { replace: true })}
       />
@@ -290,7 +292,7 @@ export default function RedesSociaisTab() {
             className={r === rede ? 'analytics-tab active' : 'analytics-tab'}
             aria-current={r === rede ? 'page' : undefined}
           >
-            {REDE_LABEL[r]}
+            {redeLabel(r, t)}
           </Link>
         ))}
       </nav>

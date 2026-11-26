@@ -120,6 +120,10 @@ import ptContracts from '../packages/i18n/locales/pt/contracts.json';
 import enContracts from '../packages/i18n/locales/en/contracts.json';
 import ptGuide from '../packages/i18n/locales/pt/guide.json';
 import enGuide from '../packages/i18n/locales/en/guide.json';
+import ptHelp from '../packages/i18n/locales/pt/help.json';
+import enHelp from '../packages/i18n/locales/en/help.json';
+import ptShell from '../packages/i18n/locales/pt/shell.json';
+import enShell from '../packages/i18n/locales/en/shell.json';
 
 initI18n({
   pt: {
@@ -177,6 +181,8 @@ initI18n({
     importWizard: ptImportWizard,
     contracts: ptContracts,
     guide: ptGuide,
+    help: ptHelp,
+    shell: ptShell,
   },
   en: {
     common: enCommon,
@@ -233,6 +239,8 @@ initI18n({
     importWizard: enImportWizard,
     contracts: enContracts,
     guide: enGuide,
+    help: enHelp,
+    shell: enShell,
   },
 });
 

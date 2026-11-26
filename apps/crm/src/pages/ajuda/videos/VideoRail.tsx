@@ -1,4 +1,5 @@
 import { CheckCircle2, Circle, PlayCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import type { KbVideoSeries } from '@/store/kbVideos';
 import { completedCount, formatDuration, isCompleted, type ProgressMap } from './playlist';
@@ -20,6 +21,7 @@ export function VideoRail({
   onSelectSeries,
   onSelectVideo,
 }: VideoRailProps) {
+  const { t } = useTranslation('help');
   const done = completedCount(currentSeries, progress);
   const total = currentSeries.videos.length;
 
@@ -27,7 +29,7 @@ export function VideoRail({
     <div className="flex min-w-0 flex-col gap-3 self-start rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)] p-4">
       {series.length > 1 && (
         // Every series stays visible: a closed dropdown hid everything past the first one.
-        <div role="tablist" aria-label="Séries de vídeos" className="flex flex-wrap gap-1.5">
+        <div role="tablist" aria-label={t('video.seriesTabs')} className="flex flex-wrap gap-1.5">
           {series.map((s) => {
             const selected = s.id === currentSeries.id;
             return (
@@ -62,19 +64,19 @@ export function VideoRail({
       )}
       <div className="flex items-center justify-between gap-3">
         {series.length > 1 ? (
-          <p className="text-[0.78rem] text-[var(--text-light)]">Seu progresso</p>
+          <p className="text-[0.78rem] text-[var(--text-light)]">{t('video.yourProgress')}</p>
         ) : (
           <p className="min-w-0 truncate text-[0.95rem] font-semibold text-[var(--text-main)]">
             {currentSeries.title}
           </p>
         )}
         <span className="shrink-0 text-[0.78rem] tabular-nums text-[var(--text-light)]">
-          {done} de {total}
+          {t('video.doneOfTotal', { done, total })}
         </span>
       </div>
       <div
         role="progressbar"
-        aria-label="Progresso da série"
+        aria-label={t('video.progressAria')}
         aria-valuemin={0}
         aria-valuemax={total}
         aria-valuenow={done}
@@ -119,7 +121,7 @@ export function VideoRail({
                 <span className="tabular-nums text-[0.75rem]">
                   {formatDuration(video.duration_seconds)}
                 </span>
-                {completed && <span className="sr-only">(assistido)</span>}
+                {completed && <span className="sr-only">{t('video.watchedSr')}</span>}
               </button>
             </li>
           );

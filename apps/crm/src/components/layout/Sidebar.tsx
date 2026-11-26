@@ -71,7 +71,7 @@ export default function Sidebar({
   const { user, profile, signOut, workspaceRole, can } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const { t, i18n } = useTranslation();
+  const { t, i18n } = useTranslation(['common', 'shell']);
   const { features: rawFeatures, planName } = useWorkspaceLimits();
   const features = useEffectiveNavFeatures(rawFeatures as Record<string, boolean> | null);
   const mensagensUnread = useMensagensUnread();
@@ -366,7 +366,7 @@ export default function Sidebar({
               <Link
                 to="/dashboard"
                 className="vidro-sidebar-logo"
-                aria-label="Mesaas, ir para o início"
+                aria-label={t('shell:sidebar.home')}
               >
                 <img
                   className="vidro-sidebar-wordmark"

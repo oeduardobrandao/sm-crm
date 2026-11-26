@@ -108,7 +108,7 @@ export default function DashboardPage() {
   // ever see their own, so they get no toggle.
   const [onlyMine, setOnlyMine] = useState(false);
   const inToolbar = usePageToolbar({
-    title: 'Início',
+    title: t('inicio.title'),
     subtitle: today.charAt(0).toUpperCase() + today.slice(1),
     actions: !isAgent && (
       <div data-slot="toggle-group" role="group" aria-label={t('inicio.scope.label')}>

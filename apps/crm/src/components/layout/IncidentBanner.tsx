@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 /**
  * Hardcoded incident banner, deliberately not a global_banners row: the
@@ -28,6 +29,7 @@ function readDismissed(): boolean {
 }
 
 export function IncidentBanner() {
+  const { t } = useTranslation();
   const [dismissed, setDismissed] = useState(readDismissed);
 
   if (!INCIDENT_BANNER_ACTIVE || dismissed) return null;
@@ -52,11 +54,9 @@ export function IncidentBanner() {
       }}
     >
       <div className="banner-content">
-        <strong>Instabilidade no acesso ao workspace:</strong> alguns usuários viram o erro
-        {' "Não foi possível confirmar seu acesso". '}A correção já está no ar — se o erro aparecer,
-        recarregue a página.
+        <strong>{t('incident.lead')}</strong> {t('incident.body')}
       </div>
-      <button className="banner-dismiss" onClick={dismiss} aria-label="Dispensar aviso">
+      <button className="banner-dismiss" onClick={dismiss} aria-label={t('incident.dismiss')}>
         ×
       </button>
     </div>

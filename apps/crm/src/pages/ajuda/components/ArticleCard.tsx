@@ -1,9 +1,10 @@
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { Clock, FileText } from 'lucide-react';
 import type { KbArticle } from '@/store/kb';
 import { resolveInlineImageUrls } from '@/services/inlineImage';
-import { CATEGORY_LABELS } from './CategoryFilter';
+import { categoryLabel } from '../categoryConfig';
 
 function useCoverUrl(raw: string | null) {
   const isR2 = !!raw && !raw.startsWith('http');
@@ -27,8 +28,9 @@ function readingTime(plainText: string): number {
 }
 
 export function ArticleCard({ article }: ArticleCardProps) {
+  const { t } = useTranslation('help');
   const minutes = readingTime(article.content_plain);
-  const categoryLabel = CATEGORY_LABELS[article.category] ?? article.category;
+  const categoryText = categoryLabel(t, article.category);
   const coverSrc = useCoverUrl(article.cover_image_url);
 
   return (
@@ -53,11 +55,11 @@ export function ArticleCard({ article }: ArticleCardProps) {
       <div className="p-5">
         <div className="mb-2 flex items-center gap-2">
           <span className="inline-block rounded-sm px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wider bg-[rgba(234,179,8,0.1)] text-[var(--primary-color)]">
-            {categoryLabel}
+            {categoryText}
           </span>
           {article.status === 'draft' && (
             <span className="inline-block rounded-sm px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wider bg-[rgba(107,114,128,0.1)] text-[var(--text-light)]">
-              Rascunho
+              {t('article.draft')}
             </span>
           )}
         </div>
@@ -74,7 +76,7 @@ export function ArticleCard({ article }: ArticleCardProps) {
 
         <div className="flex items-center gap-1 text-[0.72rem] text-[var(--text-light)]">
           <Clock className="h-3 w-3" />
-          <span>{minutes} min de leitura</span>
+          <span>{t('article.readMinutes', { minutes })}</span>
         </div>
       </div>
     </Link>

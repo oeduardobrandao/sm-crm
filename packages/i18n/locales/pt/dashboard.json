@@ -159,7 +159,8 @@
       "noneConnected": "Nenhuma conta do Instagram conectada. Conecte uma conta para ver a saúde dos clientes.",
       "filtered": "Nenhum cliente neste filtro."
     },
-    "error": "Não foi possível carregar a saúde dos clientes."
+    "error": "Não foi possível carregar a saúde dos clientes.",
+    "actionsLabel": "Ações"
   },
   "today": {
     "title": "Hoje",
@@ -284,6 +285,7 @@
       "showing": "Mostrando {{shown}} de {{total}}",
       "showAll": "Mostrar todos",
       "showLess": "Mostrar menos"
-    }
+    },
+    "title": "Início"
   }
 }

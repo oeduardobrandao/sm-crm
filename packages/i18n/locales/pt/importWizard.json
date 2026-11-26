@@ -243,5 +243,19 @@
     "title": "Migrando do Notion, Trello ou ClickUp?",
     "body": "Importe seus clientes, calendário e entregas em minutos.",
     "cta": "Importar dados"
+  },
+  "errors": {
+    "upgradeRequired": "A importação de dados não está disponível no seu plano.",
+    "jobNotFound": "Não encontramos esta importação.",
+    "alreadyUndone": "Esta importação já foi desfeita.",
+    "undoInProgress": "Já existe um \"desfazer\" em andamento para esta importação.",
+    "undoWindowExpired": "O prazo de 7 dias para desfazer esta importação já passou.",
+    "invalidSource": "Origem inválida.",
+    "invalidPayload": "Não conseguimos montar os dados desta importação.",
+    "previewTooLarge": "O arquivo tem linhas demais para a prévia.",
+    "commitTooLarge": "O lote enviado é grande demais.",
+    "unauthorized": "Sua sessão expirou. Entre novamente.",
+    "sessionExpired": "Sessão expirada",
+    "generic": "Falha na importação. Tente novamente."
   }
 }

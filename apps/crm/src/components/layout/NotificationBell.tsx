@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Bell } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useNotifications } from '../../hooks/useNotifications';
@@ -11,6 +12,7 @@ export default function NotificationBell({
 }: {
   buttonClassName?: string;
 }) {
+  const { t } = useTranslation('shell');
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   const { notifications, unreadCount, isLoading, markAsRead, markAllAsRead, dismiss } =
@@ -25,7 +27,7 @@ export default function NotificationBell({
       <Tooltip>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
-            <button type="button" className={buttonClassName} aria-label="Notificações">
+            <button type="button" className={buttonClassName} aria-label={t('notifications.title')}>
               <Bell size={18} />
               {unreadCount > 0 && (
                 <span
@@ -52,7 +54,7 @@ export default function NotificationBell({
             </button>
           </PopoverTrigger>
         </TooltipTrigger>
-        {!open && <TooltipContent>Notificações</TooltipContent>}
+        {!open && <TooltipContent>{t('notifications.title')}</TooltipContent>}
       </Tooltip>
       <PopoverContent
         align="end"

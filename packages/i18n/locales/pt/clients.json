@@ -557,7 +557,8 @@
     "calendarDayWithPosts_other": "{{day}} de {{month}}, {{count}} posts",
     "notInformed": "Não informado",
     "fileOpenError": "Erro ao abrir arquivo",
-    "socialTabs": "Redes sociais"
+    "socialTabs": "Redes sociais",
+    "googleBusiness": "Google Meu Negócio"
   },
   "connect": {
     "title": "Conectar Instagram",

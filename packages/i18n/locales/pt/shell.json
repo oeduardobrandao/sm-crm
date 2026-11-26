@@ -1,0 +1,60 @@
+{
+  "banner": {
+    "dismiss": "Dispensar aviso"
+  },
+  "search": {
+    "filterByType": "Filtrar por tipo"
+  },
+  "mobileNav": {
+    "primary": "Navegação principal",
+    "tabUnread": "{{label}}, {{count}} não lidas",
+    "locked": "Bloqueado",
+    "shortcuts": "Atalhos",
+    "quickActions": "Ações rápidas",
+    "search": "Buscar",
+    "guide": "Guia de primeiros passos",
+    "guideProgress": "{{done}} de {{total}}",
+    "preferences": "Preferências",
+    "account": "Conta",
+    "closeMenu": "Fechar menu",
+    "openMenu": "Abrir menu"
+  },
+  "notifications": {
+    "title": "Notificações",
+    "onlyUnread": "Apenas não lidas",
+    "showAll": "Mostrar todas",
+    "markAllRead": "Marcar todas como lidas",
+    "viewAll": "Ver todas",
+    "empty": "Nenhuma notificação",
+    "emptyHint": "Notificações sobre sua conta e atividades aparecerão aqui",
+    "dismiss": "Dispensar",
+    "buttonUnread": "Notificações, {{count}} não lidas",
+    "close": "Fechar",
+    "readAll": "Ler tudo",
+    "show": "Mostrar",
+    "filterAll": "Todas",
+    "filterUnread": "Não lidas",
+    "emptyUnread": "Nenhuma notificação não lida",
+    "today": "Hoje",
+    "yesterday": "Ontem",
+    "earlier": "Anteriores"
+  },
+  "topbar": {
+    "chat": "Chat",
+    "notificationsAndSupport": "Notificações e suporte",
+    "logoAlt": "Logo"
+  },
+  "sidebar": {
+    "home": "Mesaas, ir para o início"
+  },
+  "restriction": {
+    "financeiro": {
+      "title": "Acesso financeiro restrito",
+      "body": "O proprietário do workspace desativou seu acesso aos dados financeiros. Fale com ele se você precisa visualizar esta área."
+    },
+    "contratos": {
+      "title": "Acesso a contratos restrito",
+      "body": "O proprietário do workspace não liberou contratos para a sua função. Fale com ele se você precisa visualizar esta área."
+    }
+  }
+}

@@ -1,13 +1,14 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { CardGridSkeleton } from '@/components/ui/skeletons';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { usePageToolbar } from '@/components/layout/PageToolbarContext';
 import { getPublishedArticles } from '@/store/kb';
-import { ALL_CATEGORIES, CATEGORY_LABELS } from './categoryConfig';
+import { ALL_CATEGORIES, categoryLabel } from './categoryConfig';
 import { filterArticles } from './filterArticles';
 import { SectionCard } from './components/SectionCard';
 import { ArticleCard } from './components/ArticleCard';
@@ -18,6 +19,7 @@ import { filterVideos } from './videos/playlist';
 import { AjudaPhone } from './phone/AjudaPhone';
 
 export default function AjudaPage() {
+  const { t } = useTranslation('help');
   // `?q=` vem do item "Ver todos em Ajuda" da busca global (⌘K).
   const [searchParams] = useSearchParams();
   const isDesktop = useIsDesktop(768);
@@ -31,10 +33,10 @@ export default function AjudaPage() {
   const sections = useMemo(() => {
     return ALL_CATEGORIES.map((cat) => ({
       category: cat,
-      label: CATEGORY_LABELS[cat] ?? cat,
+      label: categoryLabel(t, cat),
       count: articles.filter((a) => a.category === cat).length,
     })).filter((s) => s.count > 0);
-  }, [articles]);
+  }, [articles, t]);
 
   const filteredArticles = useMemo(() => filterArticles(articles, search), [articles, search]);
 
@@ -43,7 +45,7 @@ export default function AjudaPage() {
 
   const isSearching = search.trim().length > 0;
 
-  const inToolbar = usePageToolbar({ title: 'Central de Ajuda' });
+  const inToolbar = usePageToolbar({ title: t('title') });
 
   if (!isDesktop) {
     return (
@@ -65,7 +67,7 @@ export default function AjudaPage() {
       {!inToolbar && (
         <div className="header">
           <div className="header-title">
-            <h1>Central de Ajuda</h1>
+            <h1>{t('title')}</h1>
           </div>
         </div>
       )}
@@ -75,7 +77,7 @@ export default function AjudaPage() {
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-light)]" />
         <Input
-          placeholder="Buscar vídeos e artigos..."
+          placeholder={t('searchPlaceholder')}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="pl-9"
@@ -87,9 +89,7 @@ export default function AjudaPage() {
       ) : isSearching ? (
         filteredArticles.length === 0 && filteredVideos.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
-            <p className="text-[0.9rem] text-[var(--text-light)]">
-              Nenhum vídeo ou artigo encontrado para esta busca.
-            </p>
+            <p className="text-[0.9rem] text-[var(--text-light)]">{t('noResults')}</p>
           </div>
         ) : (
           <div
@@ -106,7 +106,7 @@ export default function AjudaPage() {
         )
       ) : sections.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
-          <p className="text-[0.9rem] text-[var(--text-light)]">Nenhum artigo publicado ainda.</p>
+          <p className="text-[0.9rem] text-[var(--text-light)]">{t('noArticles')}</p>
         </div>
       ) : (
         <div

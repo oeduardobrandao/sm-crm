@@ -133,7 +133,7 @@ function HealthDetail({ c }: { c: ClientHealth }) {
           {isReconnectState ? t('health.reconectarMsg') : t('health.empty.noneConnected')}
         </p>
       )}
-      <GroupedList aria-label="Ações">
+      <GroupedList aria-label={t('health.actionsLabel')}>
         {isConnectState && (
           <Cell
             icon={<Plug aria-hidden="true" />}

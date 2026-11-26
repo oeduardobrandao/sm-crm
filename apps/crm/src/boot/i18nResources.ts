@@ -60,6 +60,8 @@ const LAZY_LOCALES: Record<string, Record<string, () => LocaleModule>> = {
     importWizard: () => import('../../../../packages/i18n/locales/pt/importWizard.json'),
     contracts: () => import('../../../../packages/i18n/locales/pt/contracts.json'),
     guide: () => import('../../../../packages/i18n/locales/pt/guide.json'),
+    help: () => import('../../../../packages/i18n/locales/pt/help.json'),
+    shell: () => import('../../../../packages/i18n/locales/pt/shell.json'),
   },
   en: {
     dashboard: () => import('../../../../packages/i18n/locales/en/dashboard.json'),
@@ -110,6 +112,8 @@ const LAZY_LOCALES: Record<string, Record<string, () => LocaleModule>> = {
     importWizard: () => import('../../../../packages/i18n/locales/en/importWizard.json'),
     contracts: () => import('../../../../packages/i18n/locales/en/contracts.json'),
     guide: () => import('../../../../packages/i18n/locales/en/guide.json'),
+    help: () => import('../../../../packages/i18n/locales/en/help.json'),
+    shell: () => import('../../../../packages/i18n/locales/en/shell.json'),
   },
 };
 

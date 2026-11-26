@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { List } from 'lucide-react';
 import { PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
 import { BottomSheet } from '@/components/mobile/BottomSheet';
@@ -7,9 +8,10 @@ import { useSheetActions } from '@/components/mobile/sheetActions';
 import type { TocItem } from '../components/TableOfContents';
 
 function TocList({ items }: { items: TocItem[] }) {
+  const { t } = useTranslation('help');
   const { closeThen } = useSheetActions();
   return (
-    <GroupedList aria-label="Neste artigo">
+    <GroupedList aria-label={t('toc.inArticle')}>
       {items.map((item) => (
         <Cell
           key={item.id}
@@ -32,24 +34,25 @@ function TocList({ items }: { items: TocItem[] }) {
  * articles with fewer than two headings, like the rail.
  */
 export function ArticleTocButton({ items }: { items: TocItem[] }) {
+  const { t } = useTranslation('help');
   const [open, setOpen] = useState(false);
   if (items.length < 2) return null;
   return (
     <>
       <PhoneIconButton
-        label="Índice"
+        label={t('toc.button')}
         aria-haspopup="dialog"
         className="phone-ajuda-toc-button"
         onClick={() => setOpen(true)}
       >
         <List aria-hidden="true" />
-        <span>Índice</span>
+        <span>{t('toc.button')}</span>
       </PhoneIconButton>
       {open && (
         <BottomSheet
           open={open}
           onOpenChange={setOpen}
-          title="Neste artigo"
+          title={t('toc.inArticle')}
           detents={['medium', 'large']}
         >
           <TocList items={items} />

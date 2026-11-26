@@ -384,7 +384,7 @@ export default function ClientesPage() {
         <HelpCircle className="h-4 w-4" style={{ color: 'var(--text-muted)', cursor: 'pointer' }} />
       </span>
       {canEditClients && (
-        <FeatureGate flag="feature_csv_import" label="Importação CSV">
+        <FeatureGate flag="feature_csv_import" label={t('common:gate.csvImport')}>
           <Button
             variant="outline"
             size="icon"
