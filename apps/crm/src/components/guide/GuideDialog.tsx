@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ElementType, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { ArrowLeft, ArrowRight, Check, ExternalLink } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle } from '../ui/dialog';
 import { Button } from '../ui/button';
@@ -47,6 +48,7 @@ function PhoneGuideLeave({
 }
 
 export default function GuideDialog() {
+  const { t } = useTranslation('guide');
   const g = useGuide();
   const navigate = useNavigate();
   // On phones (inside the shell) the guide is a bottom sheet; outside the shell, and on
@@ -134,7 +136,7 @@ export default function GuideDialog() {
             g.close();
           }
         }}
-        title="Guia de primeiros passos"
+        title={t('sheetTitle')}
         hideTitle
         className="guide-sheet"
       >
@@ -187,17 +189,17 @@ function HomeView({
   onStart(t: GuideTrail): void;
   onClose(): void;
 }) {
+  const { t: tr } = useTranslation('guide');
   const Title: ElementType = phone ? 'h2' : DialogTitle;
   const pct = totals.total > 0 ? Math.round((totals.done / totals.total) * 100) : 0;
   return (
     <div>
       <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0 }}>
-        Guia de primeiros passos
+        {tr('home.eyebrow')}
       </p>
-      <Title style={{ fontSize: '1.25rem', margin: '4px 0 0' }}>Bem-vindo ao Mesaas</Title>
+      <Title style={{ fontSize: '1.25rem', margin: '4px 0 0' }}>{tr('home.title')}</Title>
       <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: '6px 0 0' }}>
-        Três trilhas curtas, em páginas rápidas de ler. Feche quando quiser: o guia continua de onde
-        parou.
+        {tr('home.intro')}
       </p>
       <GuideVideoSlot slug={GUIDE_HOME_VIDEO} pageId="home" variant="featured" />
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '16px 0 4px' }}>
@@ -214,7 +216,7 @@ function HomeView({
           <div style={{ width: `${pct}%`, height: '100%', background: 'var(--primary-color)' }} />
         </div>
         <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-          {totals.done} de {totals.total} páginas
+          {tr('home.progress', { done: totals.done, total: totals.total })}
         </span>
       </div>
       <div style={{ display: 'grid', gap: 10, marginTop: 12 }}>
@@ -256,7 +258,7 @@ function HomeView({
                   {t.title}
                 </p>
                 <p style={{ margin: '2px 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                  {t.subtitle} · {done} de {t.pages.length} páginas
+                  {tr('home.trailMeta', { subtitle: t.subtitle, done, total: t.pages.length })}
                 </p>
               </div>
               <Button
@@ -264,7 +266,11 @@ function HomeView({
                 size="sm"
                 onClick={() => onStart(t)}
               >
-                {started ? 'Continuar' : done === t.pages.length ? 'Rever' : 'Começar'}
+                {started
+                  ? tr('home.continue')
+                  : done === t.pages.length
+                    ? tr('home.review')
+                    : tr('home.start')}
               </Button>
             </div>
           );
@@ -293,10 +299,10 @@ function HomeView({
             padding: 0,
           }}
         >
-          Fechar por enquanto
+          {tr('home.closeForNow')}
         </button>
         <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-          Seu progresso fica salvo
+          {tr('home.progressSaved')}
         </span>
       </div>
     </div>
@@ -324,6 +330,7 @@ function PageView({
   signalValues: Partial<Record<string, boolean>>;
   trails: GuideTrail[];
 }) {
+  const { t: tr } = useTranslation('guide');
   const Title: ElementType = phone ? 'h2' : DialogTitle;
   const idx = trail.pages.findIndex((p) => p.id === page.id);
   // Só recapitula sinais de páginas que de fato existem no plano do workspace: um t1p4
@@ -358,7 +365,7 @@ function PageView({
           {trail.title}
         </button>
         <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-          Página {idx + 1} de {trail.pages.length}
+          {tr('page.pageOf', { current: idx + 1, total: trail.pages.length })}
         </span>
       </div>
       <div aria-hidden="true" style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
@@ -450,21 +457,21 @@ function PageView({
       >
         <Button variant="ghost" size="sm" onClick={onBack}>
           <ArrowLeft className="h-3.5 w-3.5" />
-          Voltar
+          {tr('page.back')}
         </Button>
         {page.conclude ? (
           <Button size="sm" onClick={onNext}>
-            Concluir guia
+            {tr('page.concludeGuide')}
             <Check className="h-3.5 w-3.5" />
           </Button>
         ) : page.bridgeTo ? (
           <Button size="sm" onClick={onNext}>
-            {page.bridgeTo === 't2' ? 'Montar sua equipe' : 'Criar suas entregas'}
+            {tr(page.bridgeTo === 't2' ? 't2.title' : 't3.title')}
             <ArrowRight className="h-3.5 w-3.5" />
           </Button>
         ) : (
           <Button variant="outline" size="sm" onClick={onNext}>
-            Continuar
+            {tr('page.continue')}
             <ArrowRight className="h-3.5 w-3.5" />
           </Button>
         )}

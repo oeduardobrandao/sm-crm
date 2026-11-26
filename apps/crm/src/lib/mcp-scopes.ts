@@ -75,6 +75,12 @@ export function scopeLabel(scope: string): string {
   return i18n.t(`mcp:scopes.${scope.replace(':', '_')}`, { defaultValue: pt });
 }
 
+/** `ADMIN_SCOPE_OPTIONS` label in the current UI language (platform admin consent). */
+export function adminScopeLabel(scope: string): string {
+  const pt = ADMIN_SCOPE_OPTIONS.find((s) => s.value === scope)?.label ?? scope;
+  return i18n.t(`mcp:scopes.admin.${scope.replace(':', '_')}`, { defaultValue: pt });
+}
+
 export function ownerOnlyHelp(): string {
   return i18n.t('mcp:scopes.ownerOnlyHelp', { defaultValue: OWNER_ONLY_HELP });
 }

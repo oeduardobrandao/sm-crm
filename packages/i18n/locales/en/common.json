@@ -327,5 +327,12 @@
     "pushOffTitle": "Notifications are off on this iPhone",
     "pushOffEnable": "Turn on",
     "pushOffSettings": "Open Settings"
+  },
+  "notFound": {
+    "documentTitle": "Page not found | Mesaas",
+    "title": "Page not found",
+    "body": "The address you visited doesn't exist or has moved.",
+    "home": "Go to the homepage",
+    "login": "Log in to Mesaas"
   }
 }

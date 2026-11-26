@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { supabase } from '../../lib/supabase';
@@ -13,9 +14,11 @@ import {
   AGENT_PRESET,
   ADMIN_SCOPE_OPTIONS,
   ADMIN_READ_PRESET,
-  OWNER_ONLY_HELP,
-  OWNER_ONLY_SCOPE_ERROR,
+  adminScopeLabel,
   isOwnerOnlyScope,
+  ownerOnlyHelp,
+  ownerOnlyScopeError,
+  scopeLabel,
 } from '@/lib/mcp-scopes';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -42,6 +45,7 @@ function hostOf(uri: string): string {
 }
 
 export default function ConsentPage() {
+  const { t } = useTranslation('mcp');
   const [params] = useSearchParams();
   const authorizationId = params.get('authorization_id') || params.get('authorizationId') || '';
 
@@ -56,7 +60,7 @@ export default function ConsentPage() {
   useEffect(() => {
     let cancelled = false;
     if (!authorizationId) {
-      setErrorMsg('Pedido de autorização inválido ou expirado.');
+      setErrorMsg(t('consent.invalidRequest'));
       setPhase('error');
       return;
     }
@@ -69,9 +73,7 @@ export default function ConsentPage() {
       const { data, error } = await supabase.auth.oauth.getAuthorizationDetails(authorizationId);
       if (cancelled) return;
       if (error || !data) {
-        setErrorMsg(
-          'Não foi possível carregar o pedido de autorização. Tente reconectar pelo Claude.',
-        );
+        setErrorMsg(t('consent.loadFailed'));
         setPhase('error');
         return;
       }
@@ -113,6 +115,7 @@ export default function ConsentPage() {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authorizationId]);
 
   const toggleScope = (value: string, checked: boolean) =>
@@ -156,12 +159,12 @@ export default function ConsentPage() {
       const msg = e instanceof Error ? e.message : '';
       toast.error(
         msg.includes('feature_disabled')
-          ? 'O plano deste workspace não inclui a integração MCP.'
+          ? t('consent.featureDisabled')
           : msg.includes('owner_only_scope')
-            ? OWNER_ONLY_SCOPE_ERROR
+            ? ownerOnlyScopeError()
             : msg.includes('Insufficient permissions')
-              ? 'Uma das permissões escolhidas não faz parte do seu papel neste workspace.'
-              : 'Não foi possível registrar a autorização.',
+              ? t('consent.insufficientRole')
+              : t('consent.recordFailed'),
       );
       setPhase('consent');
       return;
@@ -169,7 +172,7 @@ export default function ConsentPage() {
     // Supabase mints the code and redirects the browser back to Claude.
     const { data, error } = await supabase.auth.oauth.approveAuthorization(authorizationId);
     if (error) {
-      toast.error('Falha ao concluir a autorização.');
+      toast.error(t('consent.approveFailed'));
       setPhase('consent');
       return;
     }
@@ -181,7 +184,7 @@ export default function ConsentPage() {
     setPhase('submitting');
     const { data, error } = await supabase.auth.oauth.denyAuthorization(authorizationId);
     if (error) {
-      toast.error('Não foi possível recusar o pedido.');
+      toast.error(t('consent.denyFailed'));
       setPhase('consent');
       return;
     }
@@ -201,7 +204,7 @@ export default function ConsentPage() {
     return (
       <div className="flex h-screen items-center justify-center p-6">
         <div className="max-w-sm text-center">
-          <h1 className="mb-2 text-xl font-bold">Algo deu errado</h1>
+          <h1 className="mb-2 text-xl font-bold">{t('consent.errorTitle')}</h1>
           <p className="text-muted-foreground">{errorMsg}</p>
         </div>
       </div>
@@ -230,31 +233,30 @@ export default function ConsentPage() {
           )}
           <div className="min-w-0">
             <h1 className="truncate text-lg font-bold leading-tight">
-              Conectar {client.name || 'aplicativo'}
+              {t('consent.connectTitle', { name: client.name || t('consent.defaultAppLower') })}
             </h1>
             <p className="truncate text-xs text-muted-foreground">
-              Redireciona para {hostOf(details!.redirect_uri)}
+              {t('consent.redirectsTo', { host: hostOf(details!.redirect_uri) })}
             </p>
           </div>
         </div>
 
         <p className="mb-5 text-sm text-muted-foreground">
-          <span className="font-medium text-foreground">{client.name || 'O aplicativo'}</span>{' '}
-          {isPlatform
-            ? 'está solicitando acesso à administração da plataforma Mesaas. Escolha as permissões abaixo.'
-            : 'está solicitando acesso aos dados de um workspace no Mesaas. Escolha o workspace e as permissões abaixo.'}
+          <span className="font-medium text-foreground">
+            {client.name || t('consent.defaultAppUpper')}
+          </span>{' '}
+          {isPlatform ? t('consent.requestPlatform') : t('consent.requestWorkspace')}
         </p>
 
         {noEligible ? (
           <p className="mb-5 rounded-lg bg-[hsl(var(--muted))] p-3 text-sm text-muted-foreground">
-            Seu papel não dá acesso a nenhum dado que o Claude possa usar. Peça ao dono do workspace
-            para ajustar suas permissões.
+            {t('consent.noEligible')}
           </p>
         ) : (
           <>
             <div className="mb-5">
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Workspace
+                {t('consent.workspace')}
               </p>
               <div className="space-y-2">
                 {platformAdmin && (
@@ -269,10 +271,10 @@ export default function ConsentPage() {
                   >
                     <span className="min-w-0">
                       <span className="block truncate font-medium">
-                        Administração da plataforma
+                        {t('consent.platformName')}
                       </span>
                       <span className="block text-xs text-muted-foreground">
-                        Banners, popups, artigos de suporte e leitura de workspaces
+                        {t('consent.platformHelp')}
                       </span>
                     </span>
                   </button>
@@ -299,7 +301,7 @@ export default function ConsentPage() {
                       </span>
                       {!w.feature_mcp && (
                         <span className="shrink-0 text-xs text-muted-foreground">
-                          Plano sem MCP
+                          {t('consent.planWithoutMcp')}
                         </span>
                       )}
                     </button>
@@ -307,15 +309,13 @@ export default function ConsentPage() {
                 })}
               </div>
               {noMcpWorkspace && (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Nenhum dos seus workspaces inclui a integração MCP no plano atual.
-                </p>
+                <p className="mt-2 text-xs text-muted-foreground">{t('consent.noMcpWorkspace')}</p>
               )}
             </div>
 
             <div className="mb-6">
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Permissões
+                {t('consent.permissions')}
               </p>
               <div className="space-y-2">
                 {scopeOptions.map((s) => {
@@ -331,10 +331,10 @@ export default function ConsentPage() {
                           disabled={!allowed}
                           onCheckedChange={(c) => toggleScope(s.value, c === true)}
                         />
-                        {s.label}
+                        {isPlatform ? adminScopeLabel(s.value) : scopeLabel(s.value)}
                       </label>
                       {locked && (
-                        <p className="ml-6 text-xs text-muted-foreground">{OWNER_ONLY_HELP}</p>
+                        <p className="ml-6 text-xs text-muted-foreground">{ownerOnlyHelp()}</p>
                       )}
                     </div>
                   );
@@ -345,7 +345,7 @@ export default function ConsentPage() {
                   (o) => !isOwnerOnlyScope(o.value) && !allowedScopes.includes(o.value),
                 ) && (
                   <p className="mt-2 text-xs text-muted-foreground">
-                    As permissões desabilitadas não fazem parte do seu papel neste workspace.
+                    {t('consent.disabledScopesNote')}
                   </p>
                 )}
             </div>
@@ -359,10 +359,10 @@ export default function ConsentPage() {
             onClick={deny}
             disabled={phase === 'submitting'}
           >
-            Negar
+            {t('consent.deny')}
           </Button>
           <Button className="flex-1" onClick={approve} disabled={!canApprove}>
-            {phase === 'submitting' ? <Spinner size="sm" /> : 'Autorizar'}
+            {phase === 'submitting' ? <Spinner size="sm" /> : t('consent.approve')}
           </Button>
         </div>
       </div>

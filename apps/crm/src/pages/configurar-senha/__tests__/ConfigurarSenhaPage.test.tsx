@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { i18n } from '@mesaas/i18n';
 
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
@@ -301,5 +302,28 @@ describe('ConfigurarSenhaPage', () => {
         'Sessão expirada. Solicite um novo link.',
       );
     });
+  });
+});
+
+describe('ConfigurarSenhaPage in English', () => {
+  beforeEach(() => {
+    __resetSupabaseMock();
+    __setCurrentSession(null);
+    void i18n.changeLanguage('en');
+  });
+  afterEach(() => {
+    void i18n.changeLanguage('pt');
+  });
+
+  it('renders the recovery heading and form in English', async () => {
+    renderPage();
+    act(() => {
+      __emitAuthChange('PASSWORD_RECOVERY', RECOVERY_SESSION as any);
+    });
+    await waitFor(() => {
+      expect(screen.getByText('Set password')).toBeInTheDocument();
+    });
+    expect(screen.getByLabelText('New password')).toBeInTheDocument();
+    expect(screen.queryByText('Configurar Senha')).not.toBeInTheDocument();
   });
 });

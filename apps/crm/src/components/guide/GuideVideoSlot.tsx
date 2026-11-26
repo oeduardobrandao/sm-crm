@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { ExternalLink } from 'lucide-react';
 import { Button } from '../ui/button';
@@ -67,6 +68,7 @@ export function GuideVideoSlot({
 
 /** Bloco da página de fechamento que aponta para a próxima série. */
 export function GuideMoreVideos({ seriesSlug, pageId }: { seriesSlug: string; pageId: string }) {
+  const { t } = useTranslation('guide');
   const { data: series } = useKbVideoSeries();
   const openInHelpCenter = useOpenInHelpCenter(pageId);
   const s = series?.find((x) => x.slug === seriesSlug);
@@ -82,10 +84,10 @@ export function GuideMoreVideos({ seriesSlug, pageId }: { seriesSlug: string; pa
       }}
     >
       <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-        Série {s.title} · {count} {count === 1 ? 'vídeo' : 'vídeos'}
+        {t('video.seriesCount', { title: s.title, count })}
       </p>
       <p style={{ margin: '3px 0 0', fontSize: '0.875rem', fontWeight: 600 }}>
-        Quando quiser ir além
+        {t('video.goFurther')}
       </p>
       <ul
         className="grid grid-cols-2 gap-2 sm:grid-cols-4"
@@ -133,10 +135,10 @@ export function GuideMoreVideos({ seriesSlug, pageId }: { seriesSlug: string; pa
         }}
       >
         <p style={{ margin: 0, fontSize: '0.76rem', color: 'var(--text-muted)' }}>
-          Ficam na Central de Ajuda, junto com os vídeos do guia.
+          {t('video.seriesNote')}
         </p>
         <Button variant="outline" size="sm" onClick={() => openInHelpCenter(s.videos[0].slug)}>
-          Ver vídeos
+          {t('video.seeVideos')}
           <ExternalLink className="h-3.5 w-3.5" />
         </Button>
       </div>

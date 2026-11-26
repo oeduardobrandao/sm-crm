@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Compass } from 'lucide-react';
 import { useGuide, type GuideOpenSource } from './GuideContext';
 
@@ -6,14 +7,15 @@ import { useGuide, type GuideOpenSource } from './GuideContext';
  *  drawer do tablet clássico). jsdom não avalia media queries: a visibilidade
  *  responsiva se verifica no browser, não em teste. */
 export function GuidePill() {
+  const { t } = useTranslation('guide');
   const g = useGuide();
   if (!g || !g.showEntryPoint) return null;
   return (
     <button type="button" className="guide-pill" onClick={() => g.open('pill')}>
       <Compass className="h-4 w-4" aria-hidden="true" />
-      <span style={{ fontWeight: 600 }}>Guia</span>
+      <span style={{ fontWeight: 600 }}>{t('pill.label')}</span>
       <span style={{ color: 'var(--text-muted)' }}>
-        {g.totals.done} de {g.totals.total}
+        {t('pill.count', { done: g.totals.done, total: g.totals.total })}
       </span>
       <span className="guide-pill-dot" aria-hidden="true" />
     </button>
@@ -31,6 +33,7 @@ export function GuideNavItem({
   className?: string;
   onBeforeOpen?: () => void;
 }) {
+  const { t } = useTranslation('guide');
   const g = useGuide();
   if (!g || !g.showEntryPoint) return null;
   return (
@@ -43,9 +46,7 @@ export function GuideNavItem({
       }}
     >
       <Compass size={18} aria-hidden="true" />
-      <span>
-        Guia de primeiros passos · {g.totals.done} de {g.totals.total}
-      </span>
+      <span>{t('pill.navItem', { done: g.totals.done, total: g.totals.total })}</span>
       <span className="guide-pill-dot" aria-hidden="true" />
     </button>
   );

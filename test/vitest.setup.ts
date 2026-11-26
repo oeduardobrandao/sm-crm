@@ -118,6 +118,8 @@ import ptImportWizard from '../packages/i18n/locales/pt/importWizard.json';
 import enImportWizard from '../packages/i18n/locales/en/importWizard.json';
 import ptContracts from '../packages/i18n/locales/pt/contracts.json';
 import enContracts from '../packages/i18n/locales/en/contracts.json';
+import ptGuide from '../packages/i18n/locales/pt/guide.json';
+import enGuide from '../packages/i18n/locales/en/guide.json';
 
 initI18n({
   pt: {
@@ -174,6 +176,7 @@ initI18n({
     reportEditor: ptReportEditor,
     importWizard: ptImportWizard,
     contracts: ptContracts,
+    guide: ptGuide,
   },
   en: {
     common: enCommon,
@@ -229,6 +232,7 @@ initI18n({
     reportEditor: enReportEditor,
     importWizard: enImportWizard,
     contracts: enContracts,
+    guide: enGuide,
   },
 });
 

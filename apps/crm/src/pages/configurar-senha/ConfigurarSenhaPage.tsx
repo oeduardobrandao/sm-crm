@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,23 +10,24 @@ import { Progress } from '@/components/ui/progress';
 import { Spinner } from '@/components/ui/spinner';
 import { supabase } from '../../lib/supabase';
 
-function getPasswordStrength(password: string): { percent: number; label: string } {
-  if (!password) return { percent: 0, label: '' };
+function getPasswordStrength(password: string): { percent: number; key: string } {
+  if (!password) return { percent: 0, key: '' };
   let score = 0;
   if (password.length >= 8) score++;
   if (/[A-Z]/.test(password)) score++;
   if (/[0-9]/.test(password)) score++;
   if (/[^A-Za-z0-9]/.test(password)) score++;
   const map = [
-    { percent: 25, label: 'Fraca' },
-    { percent: 50, label: 'Razoável' },
-    { percent: 75, label: 'Boa' },
-    { percent: 100, label: 'Forte' },
+    { percent: 25, key: 'weak' },
+    { percent: 50, key: 'fair' },
+    { percent: 75, key: 'good' },
+    { percent: 100, key: 'strong' },
   ];
-  return map[score - 1] ?? { percent: 0, label: '' };
+  return map[score - 1] ?? { percent: 0, key: '' };
 }
 
 export default function ConfigurarSenhaPage() {
+  const { t } = useTranslation('auth');
   const navigate = useNavigate();
   const redirectTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [loading, setLoading] = useState(false);
@@ -133,7 +135,7 @@ export default function ConfigurarSenhaPage() {
       data: { session },
     } = await supabase.auth.getSession();
     if (!session) {
-      toast.error('Sessão expirada. Solicite um novo link.');
+      toast.error(t('setPassword.sessionExpired'));
       return;
     }
 
@@ -195,7 +197,7 @@ export default function ConfigurarSenhaPage() {
         }
       }
       if (!accepted) {
-        toast.error('Não foi possível finalizar o convite. Entre em contato com o administrador.');
+        toast.error(t('setPassword.acceptFailed'));
       }
     }
 
@@ -260,17 +262,16 @@ export default function ConfigurarSenhaPage() {
             </div>
           )}
           <h1 style={{ color: '#fff', fontSize: 20, fontWeight: 600, margin: '0 0 0.35rem' }}>
-            {isInvite ? 'Você foi convidado' : 'Configurar Senha'}
+            {isInvite ? t('setPassword.invitedTitle') : t('setPassword.title')}
           </h1>
           {isInvite && inviterName && (
             <p style={{ color: '#9dbfa9', fontSize: 14, margin: 0 }}>
-              <strong style={{ color: '#fff' }}>{inviterName}</strong> te convidou para
+              <strong style={{ color: '#fff' }}>{inviterName}</strong>{' '}
+              {t('setPassword.invitedBySuffix')}
             </p>
           )}
           {!isInvite && (
-            <p style={{ color: '#9dbfa9', fontSize: 14, margin: 0 }}>
-              Defina sua nova senha para acessar a plataforma.
-            </p>
+            <p style={{ color: '#9dbfa9', fontSize: 14, margin: 0 }}>{t('setPassword.subtitle')}</p>
           )}
           {isInvite && workspaceName && (
             <div
@@ -318,10 +319,10 @@ export default function ConfigurarSenhaPage() {
               </svg>
             </div>
             <h2 style={{ fontSize: 18, fontWeight: 600, color: '#1a3d2b', margin: '0 0 0.5rem' }}>
-              Link inválido ou expirado
+              {t('setPassword.invalidLinkTitle')}
             </h2>
             <p style={{ fontSize: 14, color: '#888780', lineHeight: 1.6, margin: '0 0 1.5rem' }}>
-              Este link é inválido ou já expirou. Solicite um novo link de redefinição de senha.
+              {t('setPassword.invalidLinkBody')}
             </p>
             <Button
               onClick={() => navigate('/login?tab=forgot')}
@@ -335,14 +336,14 @@ export default function ConfigurarSenhaPage() {
                 fontWeight: 600,
               }}
             >
-              Solicitar novo link
+              {t('setPassword.requestNewLink')}
             </Button>
           </div>
         ) : !success ? (
           <div style={{ padding: '2rem' }}>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-1">
-                <Label>Seu e-mail</Label>
+                <Label>{t('setPassword.yourEmail')}</Label>
                 <Input
                   value={email}
                   readOnly
@@ -352,10 +353,10 @@ export default function ConfigurarSenhaPage() {
 
               {isInvite && (
                 <div className="space-y-1">
-                  <Label htmlFor="conf-nome">Seu nome completo</Label>
+                  <Label htmlFor="conf-nome">{t('setPassword.fullName')}</Label>
                   <Input
                     id="conf-nome"
-                    placeholder="Como prefere ser chamado?"
+                    placeholder={t('setPassword.fullNamePlaceholder')}
                     value={nome}
                     onChange={(e) => setNome(e.target.value)}
                     required
@@ -364,10 +365,12 @@ export default function ConfigurarSenhaPage() {
               )}
 
               <div className="space-y-1">
-                <Label htmlFor="conf-password">{isInvite ? 'Crie sua senha' : 'Nova senha'}</Label>
+                <Label htmlFor="conf-password">
+                  {isInvite ? t('setPassword.createPassword') : t('setPassword.newPassword')}
+                </Label>
                 <PasswordInput
                   id="conf-password"
-                  placeholder="Mínimo 8 caracteres"
+                  placeholder={t('setPassword.passwordPlaceholder')}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
@@ -378,7 +381,9 @@ export default function ConfigurarSenhaPage() {
               {password && (
                 <div style={{ marginTop: -8 }}>
                   <Progress value={strength.percent} className="h-1.5" />
-                  <span style={{ fontSize: 12, color: '#888780' }}>{strength.label}</span>
+                  <span style={{ fontSize: 12, color: '#888780' }}>
+                    {strength.key ? t(`setPassword.strength.${strength.key}`) : ''}
+                  </span>
                 </div>
               )}
 
@@ -396,20 +401,20 @@ export default function ConfigurarSenhaPage() {
                 }}
               >
                 {loading && <Spinner size="sm" />}
-                {isInvite ? 'Aceitar convite e entrar' : 'Salvar senha'}
+                {isInvite ? t('setPassword.acceptAndEnter') : t('setPassword.save')}
               </Button>
 
               {isInvite && (
                 <p style={{ textAlign: 'center', fontSize: 12, color: '#888780', lineHeight: 1.6 }}>
-                  Ao aceitar, você concorda com os{' '}
+                  {t('setPassword.termsPrefix')}{' '}
                   <a href="/politica-de-privacidade" style={{ color: '#1a3d2b' }}>
-                    Termos de Uso
+                    {t('setPassword.termsLink')}
                   </a>{' '}
-                  e a{' '}
+                  {t('setPassword.termsAnd')}{' '}
                   <a href="/politica-de-privacidade" style={{ color: '#1a3d2b' }}>
-                    Política de Privacidade
+                    {t('setPassword.privacyLink')}
                   </a>{' '}
-                  do Mesaas.
+                  {t('setPassword.termsSuffix')}
                 </p>
               )}
             </form>
@@ -439,17 +444,17 @@ export default function ConfigurarSenhaPage() {
               </svg>
             </div>
             <h2 style={{ fontSize: 18, fontWeight: 600, color: '#1a3d2b', margin: '0 0 0.5rem' }}>
-              Conta criada com sucesso!
+              {t('setPassword.successTitle')}
             </h2>
             <p style={{ fontSize: 14, color: '#888780', lineHeight: 1.6, margin: '0 0 1.5rem' }}>
               {isInvite && workspaceName ? (
                 <>
-                  Bem-vindo ao workspace{' '}
-                  <strong style={{ color: '#444441' }}>{workspaceName}</strong>. Redirecionando você
-                  agora...
+                  {t('setPassword.welcomeWorkspace')}{' '}
+                  <strong style={{ color: '#444441' }}>{workspaceName}</strong>.{' '}
+                  {t('setPassword.redirecting')}
                 </>
               ) : (
-                'Senha atualizada. Redirecionando você agora...'
+                t('setPassword.passwordUpdated')
               )}
             </p>
             <div
@@ -483,9 +488,7 @@ export default function ConfigurarSenhaPage() {
           }}
         >
           <p style={{ fontSize: 12, color: '#888780', margin: 0 }}>
-            {isInvite
-              ? 'Não esperava este convite? Ignore este e-mail — nenhuma conta será criada.'
-              : ''}
+            {isInvite ? t('setPassword.notExpected') : ''}
           </p>
         </div>
       </div>

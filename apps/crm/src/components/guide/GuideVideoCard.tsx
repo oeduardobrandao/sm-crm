@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useTranslation } from 'react-i18next';
+import { i18n } from '@mesaas/i18n';
 import { Check, Play, RotateCcw } from 'lucide-react';
 import { VideoPlayer } from '@mesaas/ui/VideoPlayer';
 import { Button, buttonVariants } from '../ui/button';
@@ -15,13 +17,17 @@ import {
 export function videoLengthLabel(seconds: number | null | undefined): string {
   if (seconds == null || !Number.isFinite(seconds) || seconds <= 0) return '';
   const min = Math.max(1, Math.round(seconds / 60));
-  return min === 1 ? '1 minuto' : `${min} minutos`;
+  return i18n.t('guide:video.minutes', { count: min });
 }
 
 function eyebrow(variant: 'featured' | 'inline', length: string): string {
   if (variant === 'featured')
-    return length ? `Comece por aqui · vídeo de ${length}` : 'Comece por aqui';
-  return length ? `Prefere ver? Vídeo de ${length}` : 'Prefere ver? Assista ao vídeo';
+    return length
+      ? i18n.t('guide:video.featuredEyebrowLength', { length })
+      : i18n.t('guide:video.featuredEyebrow');
+  return length
+    ? i18n.t('guide:video.inlineEyebrowLength', { length })
+    : i18n.t('guide:video.inlineEyebrow');
 }
 
 export interface GuideVideoCardProps {
@@ -57,6 +63,7 @@ export function GuideVideoCard({
   onOpenInHelpCenter,
   onFirstPlay,
 }: GuideVideoCardProps) {
+  const { t } = useTranslation('guide');
   const [expanded, setExpanded] = useState(false);
   const cardRef = useRef<HTMLButtonElement>(null);
   // Set only by "Fechar vídeo", so the card never takes focus when the guide page first renders.
@@ -94,7 +101,7 @@ export function GuideVideoCard({
     <button
       ref={cardRef}
       type="button"
-      aria-label={`${watched ? 'Ver de novo' : 'Assistir'} o vídeo ${video.title}`}
+      aria-label={t(watched ? 'video.watchedAria' : 'video.unwatchedAria', { title: video.title })}
       onClick={() => {
         captureEvent('guide_video_played', { page: pageId, slug: video.slug });
         setExpanded(true);
@@ -192,7 +199,7 @@ export function GuideVideoCard({
             }}
           >
             <Check className="h-3 w-3" style={{ color: 'var(--success)' }} />
-            Assistido
+            {t('video.watched')}
           </span>
         ) : (
           <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
@@ -219,7 +226,7 @@ export function GuideVideoCard({
               color: 'var(--text-muted)',
             }}
           >
-            Um tour rápido antes das trilhas. Os outros vídeos aparecem em cada passo.
+            {t('video.featuredBlurb')}
           </span>
         )}
       </span>
@@ -235,7 +242,7 @@ export function GuideVideoCard({
         ) : (
           <Play className="h-3 w-3 fill-current" />
         )}
-        {watched ? 'Ver de novo' : 'Assistir'}
+        {watched ? t('video.watchAgain') : t('video.watch')}
       </span>
     </button>
   );
@@ -256,6 +263,7 @@ function ExpandedVideo({
   onOpenInHelpCenter: (slug: string) => void;
   onFirstPlay?: (videoId: number) => void;
 }) {
+  const { t } = useTranslation('guide');
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const { handlers, positionRef, resumeRef } = usePlaybackProgress(video.id, progress, onSave);
@@ -285,7 +293,7 @@ function ExpandedVideo({
             role="alert"
             className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center text-white"
           >
-            <p className="text-[0.9rem]">Não foi possível carregar este vídeo.</p>
+            <p className="text-[0.9rem]">{t('video.loadFailed')}</p>
             <Button
               size="sm"
               variant="outline"
@@ -297,7 +305,7 @@ function ExpandedVideo({
                 setAttempt((a) => a + 1);
               }}
             >
-              Tentar novamente
+              {t('video.retry')}
             </Button>
           </div>
         ) : (
@@ -332,10 +340,10 @@ function ExpandedVideo({
         <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{video.title}</span>
         <span style={{ display: 'flex', gap: 14 }}>
           <button type="button" style={linkButton} onClick={() => onOpenInHelpCenter(video.slug)}>
-            Ver na Central de Ajuda
+            {t('video.openInHelp')}
           </button>
           <button ref={closeRef} type="button" style={linkButton} onClick={onClose}>
-            Fechar vídeo
+            {t('video.closeVideo')}
           </button>
         </span>
       </div>

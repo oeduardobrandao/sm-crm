@@ -126,6 +126,43 @@
     "financeiro_read": "Financial (read, owners only)",
     "financeiro_write": "Financial (write, owners only)",
     "ownerOnlyHelp": "Workspace owner only",
-    "ownerOnlyError": "Financial permissions are for the workspace owner only."
+    "ownerOnlyError": "Financial permissions are for the workspace owner only.",
+    "admin": {
+      "banners_read": "Banners (read)",
+      "banners_write": "Banners (write)",
+      "popups_read": "Popups (read)",
+      "popups_write": "Popups (write)",
+      "kb_read": "Support articles (read)",
+      "kb_write": "Support articles (write)",
+      "platform_read": "Platform: workspaces, plans and dashboard (read)",
+      "blog_read": "Blog (read)",
+      "blog_write": "Blog (write)"
+    }
+  },
+  "consent": {
+    "invalidRequest": "Invalid or expired authorization request.",
+    "loadFailed": "We couldn't load the authorization request. Try reconnecting from Claude.",
+    "featureDisabled": "This workspace's plan doesn't include the MCP integration.",
+    "insufficientRole": "One of the permissions you chose isn't part of your role in this workspace.",
+    "recordFailed": "We couldn't record the authorization.",
+    "approveFailed": "Failed to complete the authorization.",
+    "denyFailed": "We couldn't decline the request.",
+    "errorTitle": "Something went wrong",
+    "connectTitle": "Connect {{name}}",
+    "defaultAppLower": "app",
+    "defaultAppUpper": "The app",
+    "redirectsTo": "Redirects to {{host}}",
+    "requestPlatform": "is requesting access to Mesaas platform administration. Choose the permissions below.",
+    "requestWorkspace": "is requesting access to a workspace's data in Mesaas. Choose the workspace and the permissions below.",
+    "noEligible": "Your role doesn't give access to any data Claude can use. Ask the workspace owner to adjust your permissions.",
+    "workspace": "Workspace",
+    "platformName": "Platform administration",
+    "platformHelp": "Banners, popups, support articles and workspace read access",
+    "planWithoutMcp": "Plan without MCP",
+    "noMcpWorkspace": "None of your workspaces includes the MCP integration on the current plan.",
+    "permissions": "Permissions",
+    "disabledScopesNote": "Disabled permissions aren't part of your role in this workspace.",
+    "deny": "Deny",
+    "approve": "Authorize"
   }
 }

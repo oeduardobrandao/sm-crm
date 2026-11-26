@@ -327,5 +327,12 @@
     "pushOffTitle": "Notificações desligadas neste iPhone",
     "pushOffEnable": "Ativar",
     "pushOffSettings": "Abrir Ajustes"
+  },
+  "notFound": {
+    "documentTitle": "Página não encontrada — Mesaas",
+    "title": "Página não encontrada",
+    "body": "O endereço que você acessou não existe ou mudou de lugar.",
+    "home": "Ir para a página inicial",
+    "login": "Entrar no Mesaas"
   }
 }
