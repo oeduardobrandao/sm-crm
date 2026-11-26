@@ -229,7 +229,9 @@ export default function Sidebar({
 
   const renderItem = (item: NavGroup['items'][number]) => {
     const isActiveItem = isNavRouteActive(activeRoute, item.route, item.id);
-    const ItemIcon = isActiveItem ? `ph-fill ${item.icon}` : `ph ${item.icon}`;
+    // Bold, not regular: the 1.5px regular stroke washes out on low-density screens.
+    const restIcon = `ph-bold ${item.icon}`;
+    const ItemIcon = isActiveItem ? `ph-fill ${item.icon}` : restIcon;
     return (
       <li key={item.id} className="sidebar-sub-item">
         {item.disabled ? (
@@ -238,7 +240,7 @@ export default function Sidebar({
             aria-disabled="true"
             title={t(item.labelKey, item.label)}
           >
-            <i className={`ph ${item.icon}`} />
+            <i className={restIcon} />
             <span className="sidebar-sub-label">{t(item.labelKey, item.label)}</span>
             <span className="nav-badge">{t('sidebar.comingSoon', 'Em breve')}</span>
           </div>
@@ -253,7 +255,7 @@ export default function Sidebar({
               handleNavClick(item.route);
             }}
           >
-            <i className={`ph ${item.icon}`} />
+            <i className={restIcon} />
             <span className="sidebar-sub-label">{t(item.labelKey, item.label)}</span>
             <i className="ph ph-lock nav-lock-icon" aria-hidden="true" />
           </a>
@@ -268,7 +270,7 @@ export default function Sidebar({
               if (isDrawer) onClose?.();
             }}
           >
-            <i className={`ph ${item.icon}`} />
+            <i className={restIcon} />
             <span className="sidebar-sub-label">{t(item.labelKey, item.label)}</span>
           </a>
         ) : (
