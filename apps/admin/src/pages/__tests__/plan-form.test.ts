@@ -92,6 +92,28 @@ describe('plan-form mapping', () => {
     expect(form.sort_order).toBe(1);
   });
 
+  it('formToPayload sends price_usd and price_usd_annual in cents', () => {
+    const payload = formToPayload(
+      planToForm(makePlan({ price_usd: 4900, price_usd_annual: 47000 })),
+    );
+    expect(payload.price_usd).toBe(4900);
+    expect(payload.price_usd_annual).toBe(47000);
+  });
+
+  it('planToForm shows USD prices as dollar strings; a missing or null price is empty', () => {
+    const form = planToForm(makePlan({ price_usd: 4900, price_usd_annual: null }));
+    expect(form.price_usd_input).toBe('49.00');
+    expect(form.price_usd_annual_input).toBe('');
+    expect(planToForm(makePlan()).price_usd_input).toBe('');
+  });
+
+  it('an empty USD field is sent as null, and a typed comma decimal is parsed', () => {
+    const form = { ...emptyFormState(), price_usd_input: '49,5' };
+    const payload = formToPayload(form);
+    expect(payload.price_usd).toBe(4950);
+    expect(payload.price_usd_annual).toBeNull();
+  });
+
   it('preserves existing behavior: name, limits, features still round-trip', () => {
     const payload = formToPayload(planToForm(makePlan({ max_clients: 15, feature_mcp: false })));
     expect(payload.name).toBe('Pro');

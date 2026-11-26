@@ -6,6 +6,14 @@ describe('isPagarme12xEnabled', () => {
     vi.unstubAllEnvs();
   });
 
+  it('is false for a USD workspace even when everything else is on', () => {
+    vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
+    const plan = { pagarme_12x_enabled: true, pagarme_installment_cents: 9900 };
+    expect(isPagarme12xEnabled(plan, 'usd')).toBe(false);
+    expect(isPagarme12xEnabled(plan, 'brl')).toBe(true);
+    expect(isPagarme12xEnabled(plan)).toBe(true);
+  });
+
   it('is false when the plan flag is off and the env key is unset', () => {
     vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', '');
     expect(isPagarme12xEnabled({ pagarme_12x_enabled: false })).toBe(false);

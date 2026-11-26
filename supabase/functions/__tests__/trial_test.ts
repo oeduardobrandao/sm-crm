@@ -43,24 +43,24 @@ Deno.test("resolveCheckoutSource normalises anything unrecognised to billing", (
 
 Deno.test("buildCheckoutIdempotencyKey is stable inside an hour, different across hours", () => {
   const base = Date.UTC(2026, 7, 3, 10, 0, 0);
-  const a = buildCheckoutIdempotencyKey("ws-1", "pro", "month", "billing", base);
-  const b = buildCheckoutIdempotencyKey("ws-1", "pro", "month", "billing", base + 59 * 60_000);
-  const c = buildCheckoutIdempotencyKey("ws-1", "pro", "month", "billing", base + 61 * 60_000);
+  const a = buildCheckoutIdempotencyKey("ws-1", "pro", "month", "billing", base, "", "brl");
+  const b = buildCheckoutIdempotencyKey("ws-1", "pro", "month", "billing", base + 59 * 60_000, "", "brl");
+  const c = buildCheckoutIdempotencyKey("ws-1", "pro", "month", "billing", base + 61 * 60_000, "", "brl");
   assertEquals(a, b);
   assertEquals(a === c, false);
 });
 
 Deno.test("buildCheckoutIdempotencyKey separates workspace, plan, interval and source", () => {
   const now = Date.UTC(2026, 7, 3, 10, 0, 0);
-  const a = buildCheckoutIdempotencyKey("ws-1", "pro", "month", "billing", now);
-  assertEquals(a === buildCheckoutIdempotencyKey("ws-2", "pro", "month", "billing", now), false);
-  assertEquals(a === buildCheckoutIdempotencyKey("ws-1", "max", "month", "billing", now), false);
-  assertEquals(a === buildCheckoutIdempotencyKey("ws-1", "pro", "year", "billing", now), false);
+  const a = buildCheckoutIdempotencyKey("ws-1", "pro", "month", "billing", now, "", "brl");
+  assertEquals(a === buildCheckoutIdempotencyKey("ws-2", "pro", "month", "billing", now, "", "brl"), false);
+  assertEquals(a === buildCheckoutIdempotencyKey("ws-1", "max", "month", "billing", now, "", "brl"), false);
+  assertEquals(a === buildCheckoutIdempotencyKey("ws-1", "pro", "year", "billing", now, "", "brl"), false);
   // The source changes success_url/cancel_url, so it MUST change the key:
   // reusing one key with different parameters is an idempotency_error at
   // Stripe. Cancelling an /comecar checkout and retrying the same plan from
   // Plano e Cobrança inside the hour is the real path that hits this.
-  assertEquals(a === buildCheckoutIdempotencyKey("ws-1", "pro", "month", "onboarding", now), false);
+  assertEquals(a === buildCheckoutIdempotencyKey("ws-1", "pro", "month", "onboarding", now, "", "brl"), false);
 });
 
 Deno.test("isWorkspaceOwner accepts only an owner membership row", () => {
@@ -74,7 +74,7 @@ Deno.test("isWorkspaceOwner accepts only an owner membership row", () => {
 Deno.test("idempotency_key_changes_with_trial_state", async () => {
   const { checkoutTrialTag } = await import("../_shared/trial.ts");
   const now = Date.UTC(2026, 11, 1, 10, 0, 0);
-  const key = (tag: string) => buildCheckoutIdempotencyKey("ws-1", "pro", "month", "billing", now, tag);
+  const key = (tag: string) => buildCheckoutIdempotencyKey("ws-1", "pro", "month", "billing", now, tag, "brl");
   const running = checkoutTrialTag({ kind: "reverse", trialEnd: new Date("2026-12-10T15:00:00Z") });
   const extended = checkoutTrialTag({ kind: "reverse", trialEnd: new Date("2026-12-20T15:00:00Z") });
   const ended = checkoutTrialTag({ kind: "none" });
@@ -85,6 +85,26 @@ Deno.test("idempotency_key_changes_with_trial_state", async () => {
   // Same state inside the hour: same key (two racing tabs still share one session).
   assertEquals(
     key(running),
-    buildCheckoutIdempotencyKey("ws-1", "pro", "month", "billing", now + 30 * 60_000, running),
+    buildCheckoutIdempotencyKey("ws-1", "pro", "month", "billing", now + 30 * 60_000, running, "brl"),
+  );
+});
+
+Deno.test("idempotency_key_changes_with_currency", () => {
+  const now = Date.UTC(2026, 11, 1, 10, 0, 0);
+  const brl = buildCheckoutIdempotencyKey("ws-1", "pro", "month", "billing", now, "d30", "brl");
+  const usd = buildCheckoutIdempotencyKey("ws-1", "pro", "month", "billing", now, "d30", "usd");
+  // currency changes the Stripe parameters, so it MUST change the key.
+  assertEquals(brl === usd, false);
+  assertEquals(usd.includes("usd"), true);
+  // Same inputs inside the hour: same key.
+  assertEquals(
+    usd,
+    buildCheckoutIdempotencyKey("ws-1", "pro", "month", "billing", now + 30 * 60_000, "d30", "usd"),
+  );
+  // No trial tag still carries the currency.
+  assertEquals(
+    buildCheckoutIdempotencyKey("ws-1", "pro", "month", "billing", now, "", "usd") ===
+      buildCheckoutIdempotencyKey("ws-1", "pro", "month", "billing", now, "", "brl"),
+    false,
   );
 });

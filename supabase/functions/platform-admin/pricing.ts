@@ -50,12 +50,23 @@ export interface PriceableSub {
   currency: string | null;
   amount_interval: string | null;
   discount_label: string | null;
+  /** workspaces.billing_currency: picks the catalog column when the mirror is empty. */
+  workspace_currency: "brl" | "usd";
 }
 
 export interface PlanMeta {
   name: string;
   price_brl: number | null;
   price_brl_annual: number | null;
+  price_usd: number | null;
+  price_usd_annual: number | null;
+}
+
+export type BillingCurrency = "brl" | "usd";
+
+/** Normalizes a stored/Stripe currency code; anything that is not USD is BRL. */
+export function normalizeCurrency(c: string | null | undefined): BillingCurrency {
+  return typeof c === "string" && c.toLowerCase() === "usd" ? "usd" : "brl";
 }
 
 /**
@@ -73,30 +84,40 @@ export function resolveMirrorAmount(
     | "discount_label"
     | "billing_interval"
     | "stripe_subscription_id"
+    | "workspace_currency"
   >,
   planMeta: PlanMeta | undefined,
 ): {
   amount_cents: number | null;
+  currency: BillingCurrency;
   interval: string | null;
   discount_label: string | null;
   amount_source: "stripe" | "pagarme" | "catalog" | null;
   needsLiveFetch: boolean;
 } {
   const isPagarme = s.provider === "pagarme";
+  // Pagar.me bills only in reais. Otherwise the workspace's currency decides the catalog column
+  // (missing -> BRL, the pre-USD behaviour).
+  const wsCurrency: BillingCurrency = isPagarme ? "brl" : normalizeCurrency(s.workspace_currency);
   if (s.amount_cents != null) {
     return {
       amount_cents: s.amount_cents,
+      currency: isPagarme ? "brl" : s.currency ? normalizeCurrency(s.currency) : wsCurrency,
       interval: s.amount_interval ?? s.billing_interval,
       discount_label: s.discount_label,
       amount_source: isPagarme ? "pagarme" : "stripe",
       needsLiveFetch: false,
     };
   }
-  const catalog = planMeta
-    ? (s.billing_interval === "year" ? planMeta.price_brl_annual : planMeta.price_brl)
-    : null;
+  // A USD workspace never falls back to the BRL price: no USD price means unpriced.
+  const catalog = !planMeta
+    ? null
+    : wsCurrency === "usd"
+      ? (s.billing_interval === "year" ? planMeta.price_usd_annual : planMeta.price_usd)
+      : (s.billing_interval === "year" ? planMeta.price_brl_annual : planMeta.price_brl);
   return {
     amount_cents: catalog ?? null,
+    currency: wsCurrency,
     interval: s.billing_interval,
     discount_label: null,
     amount_source: catalog != null ? "catalog" : null,
@@ -127,6 +148,7 @@ export async function priceSubscriptionRows<T extends PriceableSub>(
       plan_name: string | null;
       interval: string | null;
       amount_cents: number | null;
+      currency: BillingCurrency;
       discount_label: string | null;
       amount_source: "stripe" | "pagarme" | "catalog" | null;
     }
@@ -153,6 +175,7 @@ export async function priceSubscriptionRows<T extends PriceableSub>(
       );
       r.result = {
         amount_cents: amt.amount_cents,
+        currency: normalizeCurrency(amt.currency),
         interval: amt.interval ?? r.row.billing_interval,
         discount_label: amt.discount_label,
         amount_source: "stripe",
@@ -195,6 +218,7 @@ export async function priceSubscriptionRows<T extends PriceableSub>(
     plan_name: r.planMeta?.name ?? null,
     interval: r.result.interval,
     amount_cents: r.result.amount_cents,
+    currency: r.result.currency,
     discount_label: r.result.discount_label,
     amount_source: r.result.amount_source,
   }));

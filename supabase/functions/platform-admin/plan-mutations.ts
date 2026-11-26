@@ -43,6 +43,20 @@ function validatePagarme12x(
   return null;
 }
 
+// USD list prices (cents): non-negative integers or null, like the plans.price_usd* CHECKs.
+const USD_PRICE_FIELDS = ["price_usd", "price_usd_annual"] as const;
+
+function validateUsdPrices(rest: Record<string, unknown>): string | null {
+  for (const f of USD_PRICE_FIELDS) {
+    const v = rest[f];
+    if (v === undefined || v === null) continue;
+    if (typeof v !== "number" || !Number.isInteger(v) || v < 0) {
+      return `${f} must be a non-negative integer or null`;
+    }
+  }
+  return null;
+}
+
 export async function handleCreatePlan(
   svc: SupabaseClient,
   body: Record<string, unknown>,
@@ -52,6 +66,9 @@ export async function handleCreatePlan(
   if (!name) {
     return new Response(JSON.stringify({ error: "name is required" }), { status: 400, headers });
   }
+
+  const usdError = validateUsdPrices(rest);
+  if (usdError) return new Response(JSON.stringify({ error: usdError }), { status: 400, headers });
 
   // A fresh row has no prior state to merge over: the payload alone determines
   // whether the resulting row would be enabled without a valid config.
@@ -78,6 +95,9 @@ export async function handleCreatePlan(
   }
   if (rest.price_brl !== undefined) insert.price_brl = rest.price_brl;
   if (rest.price_brl_annual !== undefined) insert.price_brl_annual = rest.price_brl_annual;
+  for (const f of USD_PRICE_FIELDS) {
+    if (rest[f] !== undefined) insert[f] = rest[f];
+  }
   if (rest.sort_order !== undefined) insert.sort_order = rest.sort_order;
   if (rest.is_active !== undefined) insert.is_active = rest.is_active;
   if (rest.stripe_product_id !== undefined) insert.stripe_product_id = rest.stripe_product_id;
@@ -106,6 +126,9 @@ export async function handleUpdatePlan(
   if (!plan_id) {
     return new Response(JSON.stringify({ error: "plan_id is required" }), { status: 400, headers });
   }
+
+  const usdError = validateUsdPrices(rest);
+  if (usdError) return new Response(JSON.stringify({ error: usdError }), { status: 400, headers });
 
   // Explicitly disabling never needs validation. Otherwise, if the payload alone
   // doesn't fully determine the resulting enabled/id/price trio, read the current
@@ -166,7 +189,7 @@ export async function handleUpdatePlan(
   const updatePayload: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
   const allowedScalar = [
-    "name", "is_default", "price_brl", "price_brl_annual", "sort_order", "is_active",
+    "name", "is_default", "price_brl", "price_brl_annual", "price_usd", "price_usd_annual", "sort_order", "is_active",
     "stripe_product_id", "stripe_price_id", "stripe_price_id_annual",
     "pagarme_12x_enabled", "pagarme_plan_id_annual", "pagarme_installment_cents",
   ];

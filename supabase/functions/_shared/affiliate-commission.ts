@@ -113,7 +113,8 @@ export type CommissionOutcome =
   | "skipped:affiliate_inactive"
   | "skipped:unknown_plan"
   | "skipped:no_rule"
-  | "skipped:window_closed";
+  | "skipped:window_closed"
+  | "skipped:non_brl_currency";
 
 export interface RecordCommissionDeps {
   /** Relê a fatura pelo SDK quando o payload não traz o preço das linhas. */
@@ -132,6 +133,14 @@ export async function recordInvoiceCommission(
   deps: RecordCommissionDeps,
 ): Promise<CommissionOutcome> {
   if (!(invoice.amount_paid > 0)) return "skipped:zero_amount";
+
+  // O repasse é uma transferência Stripe Connect em BRL e os saldos somam centavos entre
+  // moedas: fatura em outra moeda (USD) não gera comissão na v1. Moeda ausente conta como BRL.
+  const currency = (invoice.currency || "brl").toLowerCase();
+  if (currency !== "brl") {
+    console.log(`affiliate: invoice ${invoice.id} in ${currency}, no commission recorded`);
+    return "skipped:non_brl_currency";
+  }
 
   const customerId = typeof invoice.customer === "string"
     ? invoice.customer

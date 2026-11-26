@@ -42,6 +42,8 @@ export interface WorkspaceDetail {
     logo_url: string | null;
     created_at: string;
     plan_source?: string;
+    /** `workspaces.billing_currency`; absent until platform-admin is redeployed (read as brl). */
+    billing_currency?: 'brl' | 'usd';
     /** Set when the Admin created the workspace as a demo account. */
     demo_created_at?: string | null;
     /** Reverse trial (14 dias do Pro sem cartão); absent until platform-admin is redeployed. */
@@ -90,6 +92,9 @@ export interface Plan {
   name: string;
   price_brl: number | null;
   price_brl_annual: number | null;
+  /** USD catalog prices in cents; absent on an older payload, null = not set. */
+  price_usd?: number | null;
+  price_usd_annual?: number | null;
   stripe_product_id: string | null;
   stripe_price_id: string | null;
   stripe_price_id_annual: string | null;
@@ -445,7 +450,7 @@ export interface ProviderDeposits {
   error?: 'unavailable';
   /** Pagination hit its cap: `upcoming` is incomplete. */
   truncated: boolean;
-  balance: { available_cents: number; pending_cents: number; currency: 'brl' } | null;
+  balance: { available_cents: number; pending_cents: number; currency: 'brl' | 'usd' } | null;
   meta: Record<string, string | number | boolean | null>;
   upcoming: { next30: DepositDayRow[]; byMonth: DepositMonthRow[] };
   in_transit: { id: string; amount_cents: number; expected_on: string | null; status: string }[];
@@ -463,6 +468,8 @@ export interface DepositsResponse {
     partial: boolean;
   };
   stripe: ProviderDeposits;
+  /** Stripe USD money, never summed with BRL; null when there is none. */
+  stripe_usd?: ProviderDeposits | null;
   pagarme: ProviderDeposits;
 }
 
@@ -511,6 +518,8 @@ export interface MetricsHistoryResponse {
   generated_at: string;
   first_month: string | null;
   months: MetricsMonth[];
+  /** Same shape for USD subscriptions; absent on an older payload. */
+  months_usd?: MetricsMonth[];
 }
 
 export interface BackfillReport {
@@ -535,6 +544,8 @@ export interface PayingWorkspace {
   status: string | null;
   /** Billing interval ("month" | "year"). */
   interval: string | null;
+  /** Currency of monthly_cents; absent on an older payload (brl). */
+  currency?: string;
   /** This workspace's monthly contribution to MRR, in centavos. */
   monthly_cents: number;
   /** Coupon/discount label when the live Stripe amount is discounted. */
@@ -557,8 +568,10 @@ export interface MrrSummary {
   /** Number of paid subscriptions counted (status 'active' only — past_due/failed payments are excluded). */
   paying_count: number;
   currency: string;
-  /** Per-workspace breakdown, highest monthly contribution first. Sums to mrr_cents. */
+  /** Per-workspace breakdown, highest monthly contribution first. Sums to mrr_cents (BRL) + usd.mrr_cents. */
   workspaces: PayingWorkspace[];
+  /** USD subscriptions, never summed into the BRL headline above. */
+  usd?: { mrr_cents: number; paying_count: number };
 }
 
 export function getMrr() {
@@ -575,6 +588,8 @@ export interface TrialWorkspace {
   trial_ends_at: string | null;
   /** Expected monthly contribution once converted (catalog price, annual→monthly). Null if unpriced. */
   monthly_cents: number | null;
+  /** Currency of monthly_cents; absent on an older payload (brl). */
+  currency?: string;
   owner_name: string | null;
   owner_email: string | null;
   owner_telefone: string | null;
@@ -591,6 +606,8 @@ export interface TrialsSummary {
   /** Sum of the trials' expected monthly contributions, in centavos. */
   trial_mrr_cents: number;
   currency: string;
+  /** USD trials. `trials` lists both currencies: headline counts come from these fields. */
+  usd?: { trial_mrr_cents: number; trial_count: number };
 }
 
 export function getTrials() {
@@ -612,6 +629,8 @@ export interface EndedWorkspace {
   ended_at: string;
   /** Last paid monthly amount, in centavos; null unless kind is 'churn'. */
   monthly_cents: number | null;
+  /** Currency of monthly_cents; absent on an older payload (brl). */
+  currency?: string;
   created_at: string | null;
   last_activity_at: string | null;
   owner_name: string | null;
@@ -628,6 +647,7 @@ export interface ChurnedSummary {
   lost_mrr_cents: number;
   window_days: number;
   currency: string;
+  usd?: { lost_mrr_cents: number; churn_count: number };
 }
 
 export function getChurned() {
@@ -644,6 +664,15 @@ export function updatePlan(params: Record<string, unknown>) {
 
 export function deletePlan(plan_id: string) {
   return adminApi<{ message: string }>('delete-plan', { plan_id });
+}
+
+/**
+ * 409 `currency_locked` once the workspace reached a provider: currency locked at checkout
+ * (Stripe or Pagar.me, backfilled for existing subscribers) or a Stripe/Pagar.me customer or
+ * subscription id on its workspace_subscriptions row.
+ */
+export function setWorkspaceCurrency(workspace_id: string, currency: 'brl' | 'usd') {
+  return adminApi<{ ok: true }>('set-workspace-currency', { workspace_id, currency });
 }
 
 export function setWorkspacePlan(workspace_id: string, plan_id: string) {

@@ -3,7 +3,13 @@ import { SegmentedControl } from '@mesaas/ios-kit';
 import { GlassPanel } from '../../components/shell/GlassPanel';
 import { formatMoney } from '../../lib/subscription';
 import { getPlanColor } from '../../lib/plan-colors';
-import { latestMonth, monthLabel, REVENUE_MODE_OPTIONS, type RevenueMode } from './metrics-view';
+import {
+  latestMonth,
+  monthLabel,
+  REVENUE_MODE_OPTIONS,
+  type MetricsCurrency,
+  type RevenueMode,
+} from './metrics-view';
 import { MrrChart } from './charts';
 import { RevenueKpis } from './RevenueKpis';
 
@@ -11,24 +17,27 @@ interface Props {
   months: MetricsMonth[];
   mode: RevenueMode;
   onModeChange: (mode: RevenueMode) => void;
+  currency?: MetricsCurrency;
 }
 
-export function RevenueDesktop({ months, mode, onModeChange }: Props) {
+export function RevenueDesktop({ months, mode, onModeChange, currency = 'brl' }: Props) {
+  const sfx = currency === 'usd' ? '-usd' : '';
+  const usdTag = currency === 'usd' ? ' (USD)' : '';
   const current = latestMonth(months);
   const plans = [...(current?.by_plan ?? [])].sort((a, b) => b.mrr_cents - a.mrr_cents);
   const total = current?.mrr_cents ?? 0;
 
   return (
     <div>
-      <RevenueKpis months={months} />
+      <RevenueKpis months={months} currency={currency} />
       <div className="flex flex-wrap items-start gap-4">
         <GlassPanel
-          title="MRR por mês"
-          titleId="mrr-chart-title"
+          title={`MRR por mês${usdTag}`}
+          titleId={`mrr-chart-title${sfx}`}
           className="flex-[1.8_1_520px]"
           actions={
             <SegmentedControl
-              aria-label="Empilhar por"
+              aria-label={currency === 'usd' ? 'Empilhar por (USD)' : 'Empilhar por'}
               options={REVENUE_MODE_OPTIONS}
               value={mode}
               onChange={onModeChange}
@@ -36,13 +45,13 @@ export function RevenueDesktop({ months, mode, onModeChange }: Props) {
           }
         >
           <div className="h-72">
-            <MrrChart months={months} mode={mode} />
+            <MrrChart months={months} mode={mode} currency={currency} />
           </div>
         </GlassPanel>
         {plans.length > 0 ? (
           <GlassPanel
-            title="Por plano"
-            titleId="mrr-plans-title"
+            title={`Por plano${usdTag}`}
+            titleId={`mrr-plans-title${sfx}`}
             className="flex-[1_1_280px]"
             flush
             actions={
@@ -51,7 +60,7 @@ export function RevenueDesktop({ months, mode, onModeChange }: Props) {
               ) : undefined
             }
           >
-            <ul aria-labelledby="mrr-plans-title">
+            <ul aria-labelledby={`mrr-plans-title${sfx}`}>
               {plans.map((p) => (
                 <li
                   key={p.plan_id ?? p.name}
@@ -60,7 +69,7 @@ export function RevenueDesktop({ months, mode, onModeChange }: Props) {
                   <div className="flex items-center justify-between gap-3">
                     <span className="min-w-0 truncate font-medium">{p.name}</span>
                     <span className="font-semibold tabular-nums">
-                      {formatMoney(p.mrr_cents, 'brl')}
+                      {formatMoney(p.mrr_cents, currency)}
                     </span>
                   </div>
                   <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">

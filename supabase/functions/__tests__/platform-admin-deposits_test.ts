@@ -441,3 +441,17 @@ Deno.test("listInFlightTransfers: rows returned by both status sweeps (filter ig
   assertEquals(rows.map((r) => r.id).sort(), ["tr_1", "tr_2"]);
 });
 
+
+Deno.test("buildDepositsResponse: stripe_usd is null without USD money, filled (and BRL untouched) with it", async () => {
+  const none = await buildDepositsResponse(gateways());
+  assertEquals(none.stripe_usd, null);
+  const withUsd: StripeRaw = {
+    ...STRIPE_RAW,
+    payouts: [{ id: "po_usd", amount: 100, arrival_date: ts("2026-09-29"), status: "pending", currency: "usd" }],
+  };
+  const out = await buildDepositsResponse(gateways({ stripe: { fetchRaw: () => Promise.resolve(withUsd) } }));
+  assertEquals(out.stripe_usd?.upcoming.next30.map((r) => r.net_cents), [100]);
+  assertEquals(out.stripe_usd?.balance, null);
+  assertEquals(out.stripe.upcoming, none.stripe.upcoming);
+  assertEquals(out.summary, none.summary);
+});

@@ -8,7 +8,17 @@ import {
   resolveReturnPaths,
 } from "../_shared/trial.ts";
 import { isWorkspaceOwner } from "../_shared/workspace-role.ts";
-import { pendingPagarmeAttemptBlocksCheckout, quarantinedAttemptBlocksCheckout, resolveCheckoutTrial } from "../_shared/billing-logic.ts";
+import {
+  buildCheckoutSessionParams,
+  customerCurrencyConflict,
+  lockedCurrencyMismatch,
+  parseBillingCurrency,
+  pendingPagarmeAttemptBlocksCheckout,
+  quarantinedAttemptBlocksCheckout,
+  resolveCheckoutTrial,
+  usdPriceConfigured,
+} from "../_shared/billing-logic.ts";
+import { STRIPE_TIMEOUT_MS } from "../_shared/stripe-amount.ts";
 import { crossProviderCheckoutBlocked } from "../_shared/pagarme-logic.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -59,7 +69,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: plan } = await svc
       .from("plans")
-      .select("id, stripe_price_id, stripe_price_id_annual")
+      .select("id, stripe_price_id, stripe_price_id_annual, price_usd, price_usd_annual")
       .eq("id", planId).single();
 
     // Fase 8: Stripe annual à vista now coexists with the Pagar.me 12x (the Fase 2 rejection
@@ -88,11 +98,22 @@ Deno.serve(async (req: Request) => {
     // columns decide the trial end (resolveCheckoutTrial).
     const { data: trialWs, error: trialWsErr } = await svc
       .from("workspaces")
-      .select("demo_created_at, plan_source, reverse_trial_ends_at, reverse_trial_started_at")
+      .select("demo_created_at, plan_source, reverse_trial_ends_at, reverse_trial_started_at, billing_currency")
       .eq("id", workspaceId)
       .abortSignal(AbortSignal.timeout(10_000)).single();
     if (trialWsErr) {
       console.error("[billing-checkout] workspace read failed:", trialWsErr.message);
+      return json({ error: "Internal server error" }, 500, headers);
+    }
+    // Every refusal below runs with the currency as READ here; it is only locked
+    // (billing_currency_lock) right before the Stripe customer, so a refused checkout never
+    // locks it. Fail closed on an unknown value.
+    const currency = parseBillingCurrency(trialWs?.billing_currency);
+    if (!currency) {
+      console.error(
+        "[billing-checkout] unexpected billing currency:",
+        String(trialWs?.billing_currency),
+      );
       return json({ error: "Internal server error" }, 500, headers);
     }
     // A workspace mid-subscription belongs in the billing portal, not a second
@@ -173,8 +194,78 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // USD rides the same Stripe price through its currency_options.usd entry. Refuse before
+    // any session when either the plan's USD amount (what the app shows) or the Stripe-side
+    // option (what Checkout would charge) is missing: Stripe would otherwise reject the
+    // pinned currency, or charge an amount the pricing page never showed. BRL makes no
+    // extra Stripe call here.
+    if (currency === "usd") {
+      if (!plan || !usdPriceConfigured(plan, interval)) {
+        return json({ error: "Plan price not configured" }, 400, headers);
+      }
+      const price = await stripe.prices.retrieve(
+        priceId,
+        { expand: ["currency_options"] },
+        { timeout: STRIPE_TIMEOUT_MS },
+      );
+      if (!price.currency_options?.usd) {
+        console.error("[billing-checkout] price without a USD currency option:", priceId);
+        return json({ error: "Plan price not configured" }, 400, headers);
+      }
+    }
+
+    // Lock the workspace's billing currency now that every refusal has passed: from here on a
+    // later market change (landing/signup metadata) can never move a workspace that reached
+    // Stripe. The RPC sets billing_currency_locked_at when still null and returns the
+    // currency. If it is not the one every check above used (changed in between), stop
+    // before creating anything.
+    const { data: lockedCurrency, error: lockErr } = await svc.rpc("billing_currency_lock", {
+      p_workspace_id: workspaceId,
+    });
+    if (lockErr) {
+      console.error("[billing-checkout] billing currency lock failed:", lockErr.message);
+      return json({ error: "Internal server error" }, 500, headers);
+    }
+    if (lockedCurrencyMismatch(currency, lockedCurrency)) {
+      console.error(
+        "[billing-checkout] billing currency changed before the lock:",
+        currency,
+        String(lockedCurrency),
+      );
+      return json(
+        {
+          error:
+            "A moeda de cobrança deste workspace mudou. Recarregue a página e tente de novo.",
+        },
+        409,
+        headers,
+      );
+    }
+
     let customerId = subRow?.stripe_customer_id as string | undefined;
-    if (!customerId) {
+    if (customerId) {
+      // A Stripe customer is fixed to the currency of its first subscription/invoice and can
+      // never be billed in another one: a reused customer in the other currency would fail
+      // inside Checkout (or after payment). Refuse up front; support moves the workspace.
+      const existing = await stripe.customers.retrieve(customerId, {}, { timeout: STRIPE_TIMEOUT_MS });
+      const existingCurrency = "deleted" in existing && existing.deleted ? null : existing.currency;
+      if (customerCurrencyConflict(existingCurrency, currency)) {
+        console.error(
+          "[billing-checkout] customer currency conflict:",
+          customerId,
+          existingCurrency,
+          currency,
+        );
+        return json(
+          {
+            error:
+              "Não foi possível abrir o checkout na moeda deste workspace. Fale com o suporte.",
+          },
+          409,
+          headers,
+        );
+      }
+    } else {
       const customer = await stripe.customers.create({
         email: user.email ?? undefined,
         metadata: { workspace_id: workspaceId },
@@ -196,40 +287,36 @@ Deno.serve(async (req: Request) => {
     const returnPaths = resolveReturnPaths(source);
 
     const appBaseUrl = resolveAllowedOrigin(req);
-    const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
-      customer: customerId,
-      client_reference_id: workspaceId,
-      line_items: [{ price: priceId, quantity: 1 }],
-      subscription_data: {
-        metadata: { workspace_id: workspaceId, plan_id: planId },
-        ...(trial.kind === "reverse"
-          ? { trial_end: Math.floor(trial.trialEnd.getTime() / 1000) }
-          : trial.kind === "days"
-          ? { trial_period_days: trial.days }
-          : {}),
-      },
-      // Stripe's own promo box stays open for any real future coupon.
-      allow_promotion_codes: true,
-      // Always collect the card: a trial has to convert on day 30.
-      payment_method_collection: "always",
-      success_url: `${appBaseUrl}${returnPaths.success}`,
-      cancel_url: `${appBaseUrl}${returnPaths.cancel}`,
-    }, {
-      // Two tabs racing inside the hour resolve to one session, not two. The
-      // source is part of the key because it changes success_url/cancel_url:
-      // reusing a key with different parameters is an idempotency_error at
-      // Stripe, which would hard-block a user retrying the same plan from a
-      // different surface within the hour.
-      idempotencyKey: buildCheckoutIdempotencyKey(
+    // Currency and locale are always pinned (buildCheckoutSessionParams): without `currency`
+    // Checkout picks it from the buyer's location once the price carries a USD option.
+    const session = await stripe.checkout.sessions.create(
+      buildCheckoutSessionParams({
+        customerId,
         workspaceId,
         planId,
-        interval,
-        source,
-        nowMs,
-        checkoutTrialTag(trial),
-      ),
-    });
+        priceId,
+        trial,
+        currency,
+        successUrl: `${appBaseUrl}${returnPaths.success}`,
+        cancelUrl: `${appBaseUrl}${returnPaths.cancel}`,
+      }),
+      {
+        // Two tabs racing inside the hour resolve to one session, not two. The
+        // source is part of the key because it changes success_url/cancel_url:
+        // reusing a key with different parameters is an idempotency_error at
+        // Stripe, which would hard-block a user retrying the same plan from a
+        // different surface within the hour. The currency is in it for the same reason.
+        idempotencyKey: buildCheckoutIdempotencyKey(
+          workspaceId,
+          planId,
+          interval,
+          source,
+          nowMs,
+          checkoutTrialTag(trial),
+          currency,
+        ),
+      },
+    );
 
     if (!session.url) throw new Error("Stripe returned no checkout URL");
 

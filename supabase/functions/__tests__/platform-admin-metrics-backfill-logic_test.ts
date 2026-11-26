@@ -77,7 +77,7 @@ Deno.test("buildBackfill: month-end rows from first start through the last close
   assertEquals(plan.dates.map((d) => d.date), ["2026-06-30", "2026-07-31", "2026-08-31"]);
   assertEquals(plan.dates[0].rows, [{
     workspace_id: "w1", provider: "stripe", plan_id: "pro", plan_name: "Pro", status: "active",
-    billing_interval: "month", monthly_cents: 9900, amount_source: "backfill", provider_switch: false,
+    billing_interval: "month", monthly_cents: 9900, amount_source: "backfill", provider_switch: false, currency: "brl",
   }]);
   assertEquals(plan.dates[2].rows, []); // ended in August: empty close, still written
 });
@@ -160,4 +160,30 @@ Deno.test("buildBackfill: skips paused Stripe subs (trial ended without a paymen
     todaySP: "2026-09-25",
   });
   assertEquals(plan.dates.flatMap((d) => d.rows).length, 0);
+});
+
+Deno.test("buildBackfill: rows carry the Stripe subscription currency; Pagar.me is always brl", () => {
+  const plan = buildBackfill({
+    stripe: [stripeSub({ currency: "usd", amount_cents: 4900 })],
+    pagarme: [pagarmeSub()],
+    local: local(),
+    internalIds: new Set(),
+    todaySP: "2026-09-25",
+  });
+  const aug = plan.dates.find((d) => d.date === "2026-08-31")!;
+  const byWs = new Map(aug.rows.map((r) => [r.workspace_id, r]));
+  assertEquals(byWs.get("w1")!.currency, "usd");
+  assertEquals(byWs.get("w1")!.monthly_cents, 4900);
+  assertEquals(byWs.get("w2")!.currency, "brl");
+});
+
+Deno.test("buildBackfill: a Stripe sub without a currency is brl", () => {
+  const plan = buildBackfill({
+    stripe: [stripeSub()],
+    pagarme: [],
+    local: local(),
+    internalIds: new Set(),
+    todaySP: "2026-07-25",
+  });
+  assertEquals(plan.dates[0].rows[0].currency, "brl");
 });

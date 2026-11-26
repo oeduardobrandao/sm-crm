@@ -23,6 +23,16 @@ describe('trialCandidates', () => {
   it('keeps paid self-serve plans only, cheapest first', () => {
     expect(trialCandidates(catalog).map((p) => p.id)).toEqual(['start', 'pro', 'max']);
   });
+  it('reads the USD prices for a USD workspace and drops plans without one', () => {
+    const plans = [
+      { ...max, price_usd: 9900, price_usd_annual: null },
+      { ...pro, price_usd: 4900, price_usd_annual: null },
+      { ...start, price_usd: null, price_usd_annual: null },
+      free,
+    ];
+    expect(trialCandidates(plans, 'usd').map((p) => p.id)).toEqual(['pro', 'max']);
+    expect(trialCandidates(plans).map((p) => p.id)).toEqual(['start', 'pro', 'max']);
+  });
   it('breaks price ties by sort_order, then id', () => {
     const a = { ...pro, id: 'b', sort_order: 1 };
     const b = { ...pro, id: 'a', sort_order: 1 };

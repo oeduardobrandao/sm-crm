@@ -4,6 +4,12 @@
  */
 
 import { hasUsedTrial, type EffectivePlan, type WorkspaceSubscription } from '@/services/billing';
+import {
+  planAnnualCents,
+  planMonthlyCents,
+  type BillingCurrency,
+  type PlanPrices,
+} from '@/lib/planPrice';
 
 /**
  * Plans that are assigned only by an admin (comp / internal arrangements) and are
@@ -107,17 +113,17 @@ export function checkoutBlocked(
  * price check is belt-and-braces — a future zero-priced catalog entry must not
  * silently become something you can start a trial on. Accepts a plan priced on
  * either the monthly or annual interval, so an annual-only plan is not hidden
- * from the trial step while the landing page offers it.
+ * from the trial step while the landing page offers it. Prices are read in `currency`, the
+ * workspace's billing currency (a USD workspace never trials a plan with no USD price).
  */
-export function isSelectableTrialPlan(plan: {
-  id: string;
-  price_brl: number | null;
-  price_brl_annual: number | null;
-}): boolean {
+export function isSelectableTrialPlan(
+  plan: { id: string } & PlanPrices,
+  currency: BillingCurrency = 'brl',
+): boolean {
   return (
     plan.id !== 'free' &&
     !isInternalPlan(plan.id) &&
-    ((plan.price_brl ?? 0) > 0 || (plan.price_brl_annual ?? 0) > 0)
+    ((planMonthlyCents(plan, currency) ?? 0) > 0 || (planAnnualCents(plan, currency) ?? 0) > 0)
   );
 }
 

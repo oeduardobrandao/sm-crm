@@ -4,6 +4,7 @@ import {
   businessToday,
   buildPagarmeDeposits,
   buildStripeDeposits,
+  stripeHasUsd,
   groupByDay,
   nextBusinessDay,
   notConfigured,
@@ -652,4 +653,37 @@ Deno.test("buildPagarmeDeposits: payables with an unparsable payment_date are sk
   );
   assertEquals(out.upcoming.next30, []);
   assertEquals(out.upcoming.byMonth, []);
+});
+
+Deno.test("buildStripeDeposits: usd build holds only USD entries and the brl build excludes them", () => {
+  const raw = stripeRaw({
+    pendingTransactions: [
+      { id: "txn_usd", net: 970, amount: 1000, fee: 30, available_on: ts("2026-09-28"), status: "pending", currency: "usd", type: "charge" },
+      { id: "txn_brl", net: 9700, amount: 10000, fee: 300, available_on: ts("2026-09-28"), status: "pending", currency: "brl", type: "charge" },
+    ],
+    payouts: [
+      { id: "po_usd", amount: 100, arrival_date: ts("2026-09-25"), status: "pending", currency: "usd" },
+      { id: "po_usd_done", amount: 70, arrival_date: ts("2026-09-23"), status: "paid", currency: "usd" },
+      { id: "po_brl", amount: 20000, arrival_date: ts("2026-09-25"), status: "pending", currency: "brl" },
+    ],
+  });
+  const usd = buildStripeDeposits(raw, TODAY, "usd");
+  assertEquals(usd.balance, { available_cents: 99, pending_cents: 0, currency: "usd" });
+  assertEquals(usd.upcoming.next30.map((r) => [r.kind, r.net_cents]), [["payout", 100], ["projected", 970]]);
+  assertEquals(usd.recent, [{ id: "po_usd_done", date: "2026-09-23", amount_cents: 70, status: "paid" }]);
+  const brl = buildStripeDeposits(raw, TODAY);
+  assertEquals(brl.balance?.currency, "brl");
+  assertEquals(brl.upcoming.next30.map((r) => [r.kind, r.net_cents]), [["payout", 20000], ["projected", 9700]]);
+  assertEquals(brl.recent, []);
+});
+
+Deno.test("stripeHasUsd: any usd balance, payout or pending transaction; none otherwise", () => {
+  const none = stripeRaw({
+    balance: { available: [{ amount: 1, currency: "brl" }], pending: [] },
+    payouts: [],
+    pendingTransactions: [],
+  });
+  assertEquals(stripeHasUsd(none), false);
+  assertEquals(stripeHasUsd(stripeRaw({ ...none, payouts: [{ id: "p", amount: 1, arrival_date: 0, status: "paid", currency: "USD" }] })), true);
+  assertEquals(stripeHasUsd(stripeRaw({ ...none, balance: { available: [], pending: [{ amount: 5, currency: "usd" }] } })), true);
 });

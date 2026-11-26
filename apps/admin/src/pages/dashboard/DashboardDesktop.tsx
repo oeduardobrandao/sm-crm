@@ -5,6 +5,8 @@ import {
   intervalLabel,
   statusMeta,
   STATUS_BADGE_VARIANT,
+  totalCount,
+  usdSegment,
 } from '../../lib/subscription';
 import { workspaceDetailPath, metricasPath } from '../../lib/routes';
 import { ACTIVITY_TONE_CLASS } from '../workspace-activity';
@@ -115,7 +117,7 @@ export function DashboardDesktop({
               <span className="font-normal text-muted-foreground">
                 {mrr.loading
                   ? ''
-                  : ` · ${mrrData?.paying_count ?? 0} · ${formatMoney(mrrData?.mrr_cents ?? null, mrrData?.currency)}/mês`}
+                  : ` · ${totalCount(mrrData?.paying_count, mrrData?.usd?.paying_count)} · ${formatMoney(mrrData?.mrr_cents ?? null, mrrData?.currency)}/mês${usdSegment(mrrData?.usd)}`}
               </span>
             </>
           }
@@ -191,7 +193,7 @@ export function DashboardDesktop({
                         <ActivityCell ws={ws} />
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-right font-sf text-sm">
-                        {formatMoney(ws.monthly_cents, mrrData?.currency)}
+                        {formatMoney(ws.monthly_cents, ws.currency ?? mrrData?.currency)}
                       </TableCell>
                     </TableRow>
                   );
@@ -211,7 +213,7 @@ export function DashboardDesktop({
             <span className="text-sm text-muted-foreground">
               {trials.loading
                 ? '—'
-                : `${trialsData?.trial_count ?? 0} · ${formatMoney(trials.mrrCents, trials.currency)}/mês`}
+                : `${totalCount(trialsData?.trial_count, trialsData?.usd?.trial_count)} · ${formatMoney(trials.mrrCents, trials.currency)}/mês${usdSegment(trialsData?.usd)}`}
             </span>
             <Button variant="secondary" size="sm" onClick={onExportTrials}>
               <Download size={14} aria-hidden="true" />
@@ -269,7 +271,7 @@ export function DashboardDesktop({
                       <ActivityCell ws={ws} />
                     </TableCell>
                     <TableCell className="text-right font-sf text-sm">
-                      {formatMoney(ws.monthly_cents, trials.currency)}
+                      {formatMoney(ws.monthly_cents, ws.currency ?? trials.currency)}
                     </TableCell>
                   </TableRow>
                 );

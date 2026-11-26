@@ -6,7 +6,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { ErrorState } from '../../components/ErrorState';
 import { useIsPhone } from '../../hooks/useIsPhone';
 import { useMetricsHistory } from './useMetricsHistory';
-import type { RevenueMode } from './metrics-view';
+import { hasUsdHistory, type RevenueMode } from './metrics-view';
 import { RevenueDesktop } from './RevenueDesktop';
 import { RevenuePhone } from './RevenuePhone';
 
@@ -15,7 +15,10 @@ export function RevenueSection() {
   const isPhone = useIsPhone();
   // Lives here, not in a view, so the choice survives crossing the phone/desktop breakpoint.
   const [mode, setMode] = useState<RevenueMode>('provider');
+  const [modeUsd, setModeUsd] = useState<RevenueMode>('provider');
   const months = useMemo(() => q.data?.months ?? [], [q.data]);
+  const monthsUsd = useMemo(() => q.data?.months_usd ?? [], [q.data]);
+  const showUsd = hasUsdHistory(monthsUsd);
 
   if (q.isPending) return <Skeleton className="h-80 w-full rounded-2xl" />;
   if (q.isError)
@@ -24,7 +27,7 @@ export function RevenueSection() {
         <ErrorState message="Não foi possível carregar o histórico." onRetry={() => q.refetch()} />
       </GlassPanel>
     );
-  if (!months.length) {
+  if (!months.length && !showUsd) {
     return (
       <GlassPanel flush>
         <EmptyState
@@ -36,9 +39,15 @@ export function RevenueSection() {
     );
   }
 
-  return isPhone ? (
-    <RevenuePhone months={months} mode={mode} onModeChange={setMode} />
-  ) : (
-    <RevenueDesktop months={months} mode={mode} onModeChange={setMode} />
+  const View = isPhone ? RevenuePhone : RevenueDesktop;
+  return (
+    <div className="space-y-6">
+      {months.length ? <View months={months} mode={mode} onModeChange={setMode} /> : null}
+      {showUsd ? (
+        <div data-testid="revenue-usd">
+          <View months={monthsUsd} mode={modeUsd} onModeChange={setModeUsd} currency="usd" />
+        </div>
+      ) : null}
+    </div>
   );
 }

@@ -63,6 +63,15 @@ begin
   exception when sqlstate '22023' then v_raised := true;
   end;
   assert v_raised, 'invalid source must raise 22023';
+
+  -- 9. currency is persisted per row; a row without the key (pre-USD writer) is 'brl'
+  v_res := admin_metrics_write_snapshot('2026-06-30', 'cron', jsonb_build_array(
+    v_row1 || jsonb_build_object('currency', 'usd', 'monthly_cents', 4900), v_row2));
+  assert (v_res->>'written')::int = 2;
+  assert (select currency from workspace_subscription_snapshots
+          where workspace_id = v_ws and snapshot_date = '2026-06-30') = 'usd', 'usd stored';
+  assert (select currency from workspace_subscription_snapshots
+          where workspace_id = v_ws2 and snapshot_date = '2026-06-30') = 'brl', 'missing currency -> brl';
 end $$;
 
 -- 8. only service_role may execute

@@ -11,7 +11,8 @@ export const PAYING_WORKSPACE_EXPORT_COLUMNS: CsvColumn[] = [
   { key: 'plan_name', label: 'Plano' },
   { key: 'status', label: 'Status' },
   { key: 'interval', label: 'Intervalo' },
-  { key: 'monthly_amount_brl', label: 'Valor mensal (R$)' },
+  { key: 'monthly_amount_brl', label: 'Valor mensal' },
+  { key: 'currency', label: 'Moeda' },
   { key: 'discount_label', label: 'Desconto' },
   { key: 'amount_source', label: 'Origem do valor' },
   { key: 'last_activity_at', label: 'Última atividade' },
@@ -30,6 +31,7 @@ export function buildPayingWorkspaceExportRows(
     status: statusMeta(ws.status).label,
     interval: ws.interval ?? '',
     monthly_amount_brl: centsToReais(ws.monthly_cents),
+    currency: (ws.currency ?? 'brl').toUpperCase(),
     discount_label: ws.discount_label ?? '',
     amount_source: ws.amount_source ?? '',
     last_activity_at: isoDate(ws.last_activity_at),
@@ -45,7 +47,8 @@ export const TRIAL_EXPORT_COLUMNS: CsvColumn[] = [
   { key: 'plan_name', label: 'Plano' },
   { key: 'interval', label: 'Intervalo' },
   { key: 'trial_ends_at', label: 'Fim do teste' },
-  { key: 'monthly_amount_brl', label: 'MRR mensal (R$)' },
+  { key: 'monthly_amount_brl', label: 'MRR mensal' },
+  { key: 'currency', label: 'Moeda' },
   { key: 'last_activity_at', label: 'Última atividade' },
 ];
 
@@ -60,6 +63,7 @@ export function buildTrialExportRows(trials: TrialWorkspace[]): Record<string, s
     interval: t.interval ?? '',
     trial_ends_at: isoDate(t.trial_ends_at),
     monthly_amount_brl: centsToReais(t.monthly_cents),
+    currency: (t.currency ?? 'brl').toUpperCase(),
     last_activity_at: isoDate(t.last_activity_at),
   }));
 }

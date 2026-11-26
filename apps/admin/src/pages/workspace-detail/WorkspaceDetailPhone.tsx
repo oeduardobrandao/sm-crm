@@ -6,6 +6,7 @@ import { Cell, GroupedList, PickerCell } from '@mesaas/ios-kit';
 import { FEATURE_FLAG_KEYS, type McpKeyRow, type OAuthGrantRow } from '../../lib/api';
 import { hasSubscription, providerLabel } from '../../lib/subscription';
 import { sanitizeExternalUrl } from '../../lib/security';
+import { WorkspaceCurrencyControl } from './WorkspaceCurrencyControl';
 import { getPlanColor } from '../../lib/plan-colors';
 import {
   isReverseTrial,
@@ -93,6 +94,13 @@ export function WorkspaceDetailPhone(props: WorkspaceDetailViewProps) {
             </p>
           ) : null}
         </div>
+      </div>
+
+      <div className="px-4 py-2">
+        <WorkspaceCurrencyControl
+          workspaceId={props.workspaceId}
+          currency={data.workspace.billing_currency ?? 'brl'}
+        />
       </div>
 
       <GroupedList aria-label="Plano do workspace">

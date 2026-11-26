@@ -426,6 +426,103 @@ describe('CobrancaPage', () => {
     expect(screen.queryByText(HINT)).not.toBeInTheDocument();
   });
 
+  describe('USD workspace', () => {
+    const PRO_USD: BillingPlan = {
+      ...PRO_PLAN_PAGARME,
+      price_usd: 4900,
+      price_usd_annual: 49000,
+    };
+
+    function mockUsdWorkspace() {
+      vi.mocked(getEffectivePlanWithSource).mockResolvedValue({
+        planId: 'free',
+        planSource: 'system',
+        wasDemo: false,
+        trialOfferSeenAt: null,
+        hasWorkspace: true,
+        billingCurrency: 'usd',
+        reverseTrial: {
+          startedAt: null,
+          endsAt: null,
+          endedAt: null,
+          outcome: null,
+          cardAddedAt: null,
+          firstPaidAt: null,
+        },
+      });
+    }
+
+    it('shows the Pro monthly price in dollars', async () => {
+      mockUsdWorkspace();
+      vi.mocked(listActivePlans).mockResolvedValue([PRO_USD]);
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(subscription({}));
+      renderPage();
+      expect(await screen.findByText('$49.00')).toBeInTheDocument();
+      expect(screen.queryByText('R$ 99,90')).not.toBeInTheDocument();
+    });
+
+    it('never shows the 12x offer, even with the gate configured', async () => {
+      vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
+      mockUsdWorkspace();
+      vi.mocked(listActivePlans).mockResolvedValue([PRO_USD]);
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(subscription({}));
+      renderPage();
+      fireEvent.click(await screen.findByRole('button', { name: 'Anual' }));
+      expect(await screen.findByText('cobrado anualmente,')).toBeInTheDocument();
+      expect(screen.queryByText('em 12x de')).not.toBeInTheDocument();
+      expect(screen.queryByText(/12x/)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Assinar à vista' })).not.toBeInTheDocument();
+      // 49000 / 12 = 4083.33 cents.
+      expect(screen.getByText('$40.83')).toBeInTheDocument();
+    });
+
+    it('a paid plan with no USD price shows no price and no checkout button', async () => {
+      mockUsdWorkspace();
+      vi.mocked(listActivePlans).mockResolvedValue([
+        FREE_PLAN,
+        { ...PRO_PLAN, price_usd: null, price_usd_annual: null },
+      ]);
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(subscription({}));
+      renderPage();
+      await screen.findByText('Pro');
+      // Only the Free card reads "Grátis"; Pro shows the not-self-serve note instead.
+      expect(screen.getAllByText('Grátis')).toHaveLength(1);
+      expect(screen.getByText('Plano exclusivo')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /Começar teste|Fazer upgrade|Assinar/ }),
+      ).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Anual' }));
+      expect(
+        screen.queryByRole('button', { name: /Começar teste|Fazer upgrade|Assinar/ }),
+      ).toBeNull();
+    });
+
+    it("a BRL plan with no price keeps today's rendering", async () => {
+      vi.mocked(listActivePlans).mockResolvedValue([
+        { ...PRO_PLAN, price_brl: null, price_brl_annual: null },
+      ]);
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(subscription({}));
+      renderPage();
+      expect(await screen.findByText('Grátis')).toBeInTheDocument();
+      expect(screen.queryByText('Plano exclusivo')).toBeNull();
+      expect(screen.getByRole('button', { name: /Começar teste/ })).toBeInTheDocument();
+    });
+
+    it('a year upgrade goes to Stripe and remembers the USD value', async () => {
+      vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');
+      sessionStorage.clear();
+      mockUsdWorkspace();
+      vi.mocked(listActivePlans).mockResolvedValue([PRO_USD]);
+      vi.mocked(getWorkspaceSubscription).mockResolvedValue(subscription({}));
+      renderPage();
+      fireEvent.click(await screen.findByRole('button', { name: 'Anual' }));
+      fireEvent.click(await screen.findByRole('button', { name: /Começar teste/ }));
+      await waitFor(() => expect(startCheckout).toHaveBeenCalledWith('pro', 'year', 'billing'));
+      expect(sessionStorage.getItem('gads_checkout_value_cents')).toBe('49000');
+      expect(sessionStorage.getItem('gads_checkout_value_currency')).toBe('usd');
+    });
+  });
+
   describe('Pagar.me 12x', () => {
     it('gate ON: a year upgrade opens the checkout dialog instead of calling startCheckout', async () => {
       vi.stubEnv('VITE_PAGARME_PUBLIC_KEY', 'pk_test_abc');

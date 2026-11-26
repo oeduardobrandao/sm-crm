@@ -2,7 +2,7 @@ import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { aggregateMrr, MRR_STATUSES, toMonthlyCents } from "../_shared/billing-logic.ts";
 import { chunk, fetchAllRows } from "../_shared/paginate.ts";
 import { fetchInternalWorkspaceIds } from "../_shared/internal-workspaces.ts";
-import { priceSubscriptionRows } from "./pricing.ts";
+import { type PlanMeta, priceSubscriptionRows } from "./pricing.ts";
 import { fetchOwnerContacts } from "./owner-contact.ts";
 
 // workspace_subscriptions' primary key is workspace_id alone (migration
@@ -100,26 +100,25 @@ export async function handleGetMrr(
 
   const nameByWs = new Map<string, string>();
   const createdByWs = new Map<string, string>();
+  const currencyByWs = new Map<string, "brl" | "usd">();
   for (const ids of chunk(wsIds)) {
     const { data: wsRows, error: wsErr } = await svc
       .from("workspaces")
-      .select("id, name, created_at")
+      .select("id, name, created_at, billing_currency")
       .in("id", ids);
     if (wsErr) throw wsErr; // was silently ignored; a missing name must not zero a paying row
     for (const w of wsRows ?? []) {
       nameByWs.set(w.id, w.name);
       createdByWs.set(w.id, w.created_at);
+      currencyByWs.set(w.id, w.billing_currency === "usd" ? "usd" : "brl");
     }
   }
 
-  const planById = new Map<
-    string,
-    { name: string; price_brl: number | null; price_brl_annual: number | null }
-  >();
+  const planById = new Map<string, PlanMeta>();
   for (const ids of chunk(planIds)) {
     const { data: planRows, error: planErr } = await svc
       .from("plans")
-      .select("id, name, price_brl, price_brl_annual")
+      .select("id, name, price_brl, price_brl_annual, price_usd, price_usd_annual")
       .in("id", ids);
     if (planErr) throw planErr;
     for (const p of planRows ?? []) {
@@ -127,13 +126,24 @@ export async function handleGetMrr(
         name: p.name,
         price_brl: p.price_brl ?? null,
         price_brl_annual: p.price_brl_annual ?? null,
+        price_usd: p.price_usd ?? null,
+        price_usd_annual: p.price_usd_annual ?? null,
       });
     }
   }
+  const withCurrency = rows.map((s) => ({
+    ...s,
+    workspace_currency: currencyByWs.get(s.workspace_id) ?? ("brl" as const),
+  }));
 
-  const priceable = await priceSubscriptionRows(svc, rows, nameByWs, planById);
+  const priceable = await priceSubscriptionRows(svc, withCurrency, nameByWs, planById);
 
-  const { mrr_cents, paying_count, priced } = aggregateMrr(priceable);
+  // BRL and USD never share a total: aggregate each currency on its own. The top-level fields
+  // stay BRL-only (the deployed Admin reads them as reais); USD rides in `usd`.
+  const brlAgg = aggregateMrr(priceable.filter((r) => r.currency !== "usd"));
+  const usdAgg = aggregateMrr(priceable.filter((r) => r.currency === "usd"));
+  const { mrr_cents, paying_count } = brlAgg;
+  const priced = [...brlAgg.priced, ...usdAgg.priced];
   const pricedWsIds = [...new Set(priced.map((r) => r.workspace_id))];
   const [ownerContacts, lastActivityByWs] = await Promise.all([
     fetchOwnerContactsFn(svc, pricedWsIds),
@@ -149,6 +159,7 @@ export async function handleGetMrr(
         status: r.status,
         interval: r.interval,
         monthly_cents: r.monthly_cents,
+        currency: r.currency,
         discount_label: r.discount_label,
         amount_source: r.amount_source,
         created_at: createdByWs.get(r.workspace_id) ?? null,
@@ -161,10 +172,16 @@ export async function handleGetMrr(
     })
     .sort((a, b) => b.monthly_cents - a.monthly_cents);
 
-  return new Response(JSON.stringify({ mrr_cents, paying_count, currency: "brl", workspaces }), {
-    status: 200,
-    headers,
-  });
+  return new Response(
+    JSON.stringify({
+      mrr_cents,
+      paying_count,
+      currency: "brl",
+      workspaces,
+      usd: { mrr_cents: usdAgg.mrr_cents, paying_count: usdAgg.paying_count },
+    }),
+    { status: 200, headers },
+  );
 }
 
 /**
@@ -198,26 +215,25 @@ export async function handleGetTrials(
 
   const nameByWs = new Map<string, string>();
   const createdByWs = new Map<string, string>();
+  const currencyByWs = new Map<string, "brl" | "usd">();
   for (const ids of chunk(wsIds)) {
     const { data: wsRows, error: wsErr } = await svc
       .from("workspaces")
-      .select("id, name, created_at")
+      .select("id, name, created_at, billing_currency")
       .in("id", ids);
     if (wsErr) throw wsErr; // was silently ignored; a missing name must not zero a paying row
     for (const w of wsRows ?? []) {
       nameByWs.set(w.id, w.name);
       createdByWs.set(w.id, w.created_at);
+      currencyByWs.set(w.id, w.billing_currency === "usd" ? "usd" : "brl");
     }
   }
 
-  const planById = new Map<
-    string,
-    { name: string; price_brl: number | null; price_brl_annual: number | null }
-  >();
+  const planById = new Map<string, PlanMeta>();
   for (const ids of chunk(planIds)) {
     const { data: planRows, error: planErr } = await svc
       .from("plans")
-      .select("id, name, price_brl, price_brl_annual")
+      .select("id, name, price_brl, price_brl_annual, price_usd, price_usd_annual")
       .in("id", ids);
     if (planErr) throw planErr;
     for (const p of planRows ?? []) {
@@ -225,11 +241,17 @@ export async function handleGetTrials(
         name: p.name,
         price_brl: p.price_brl ?? null,
         price_brl_annual: p.price_brl_annual ?? null,
+        price_usd: p.price_usd ?? null,
+        price_usd_annual: p.price_usd_annual ?? null,
       });
     }
   }
+  const withCurrency = rows.map((s) => ({
+    ...s,
+    workspace_currency: currencyByWs.get(s.workspace_id) ?? ("brl" as const),
+  }));
 
-  const priced = await priceSubscriptionRows(svc, rows, nameByWs, planById);
+  const priced = await priceSubscriptionRows(svc, withCurrency, nameByWs, planById);
   const pricedWsIds = [...new Set(priced.map((r) => r.workspace_id))];
   const [ownerContacts, lastActivityByWs] = await Promise.all([
     fetchOwnerContactsFn(svc, pricedWsIds),
@@ -245,6 +267,7 @@ export async function handleGetTrials(
         interval: r.interval,
         trial_ends_at: r.current_period_end ?? null,
         monthly_cents: toMonthlyCents(r.interval, r.amount_cents),
+        currency: r.currency,
         created_at: createdByWs.get(r.workspace_id) ?? null,
         last_activity_at: lastActivityByWs.get(r.workspace_id) ?? null,
         owner_name: owner?.name ?? null,
@@ -259,10 +282,20 @@ export async function handleGetTrials(
       return a.trial_ends_at < b.trial_ends_at ? -1 : a.trial_ends_at > b.trial_ends_at ? 1 : 0;
     });
 
-  const trial_mrr_cents = trials.reduce((sum, t) => sum + (t.monthly_cents ?? 0), 0);
+  // Top-level totals are BRL-only; USD trials are summed apart in `usd`.
+  const sumMonthly = (list: typeof trials) =>
+    list.reduce((sum, t) => sum + (t.monthly_cents ?? 0), 0);
+  const brlTrials = trials.filter((t) => t.currency !== "usd");
+  const usdTrials = trials.filter((t) => t.currency === "usd");
 
   return new Response(
-    JSON.stringify({ trials, trial_count: trials.length, trial_mrr_cents, currency: "brl" }),
+    JSON.stringify({
+      trials,
+      trial_count: brlTrials.length,
+      trial_mrr_cents: sumMonthly(brlTrials),
+      currency: "brl",
+      usd: { trial_mrr_cents: sumMonthly(usdTrials), trial_count: usdTrials.length },
+    }),
     { status: 200, headers },
   );
 }

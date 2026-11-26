@@ -1,6 +1,7 @@
 // Shared shape of one admin-metrics snapshot row and the single writer through the
 // admin_metrics_write_snapshot RPC (migration 20260925130001). Used by metrics-snapshot-cron
-// (daily close) and platform-admin backfill-metrics (month-end rebuild).
+// (daily close) and platform-admin backfill-metrics (month-end rebuild). `currency` is persisted
+// by the redefinition in 20261205000002_usd_billing_rpcs.sql.
 
 import { toMonthlyCents } from "./billing-logic.ts";
 
@@ -16,6 +17,8 @@ export interface SnapshotRow {
   monthly_cents: number;
   amount_source: AmountSource;
   provider_switch: boolean;
+  /** Currency of monthly_cents. History never sums BRL with USD cents. */
+  currency: "brl" | "usd";
 }
 
 /** One workspace_subscriptions row after priceSubscriptionRows. */
@@ -29,6 +32,8 @@ export interface PricedSnapshotSource {
   amount_cents: number | null;
   amount_source: "stripe" | "pagarme" | "catalog" | null;
   switched_from_stripe_subscription_id: string | null;
+  /** Resolved currency of amount_cents; null/missing -> brl. */
+  currency: "brl" | "usd" | null;
 }
 
 export function toSnapshotRows(
@@ -51,6 +56,7 @@ export function toSnapshotRows(
         monthly_cents: toMonthlyCents(r.interval, r.amount_cents) ?? 0,
         amount_source: r.amount_cents == null || r.amount_source == null ? "unpriced" : r.amount_source,
         provider_switch: !!r.switched_from_stripe_subscription_id,
+        currency: r.currency === "usd" ? "usd" : "brl",
       };
     });
 }

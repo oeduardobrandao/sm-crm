@@ -897,3 +897,35 @@ Deno.test("sendReverseTrialEmail tags the email with its type and keeps the key"
   assertEquals(seen[0].body.from, LIFECYCLE_FROM);
   assertEquals(seen[0].key, "reverse_trial/reverse_trial_ended/w/2026-12-08T02:45:00Z");
 });
+
+Deno.test("formatFirstCharge renders USD as US$ and keeps BRL byte-identical", () => {
+  const base = { provider: "stripe", amount_interval: "month", billing_interval: "month" };
+  assertEquals(
+    formatFirstCharge({ ...base, amount_cents: 2900, currency: "usd" }),
+    "US$ 29,00 por mês",
+  );
+  assertEquals(
+    formatFirstCharge({ ...base, amount_cents: 290000, amount_interval: "year", billing_interval: "year", currency: "usd" }),
+    "US$ 2.900,00 por ano",
+  );
+  assertEquals(
+    formatFirstCharge({ ...base, amount_cents: 14900, currency: "brl" }),
+    "R$ 149,00 por mês",
+  );
+});
+
+Deno.test("reverse-trial ending email states the price in the workspace currency", () => {
+  const input = {
+    type: "reverse_trial_ending" as const,
+    firstName: "Ana",
+    workspaceName: "Acme",
+    planName: "Pro",
+    priceCents: 2900,
+    endsAt: "2026-12-10T15:00:00Z",
+    endedAt: null,
+    hubPauseAt: null,
+    appBaseUrl: "https://app.test",
+  };
+  assert(buildReverseTrialEmail({ ...input, currency: "usd" }).html.includes("US$ 29,00 por mês"));
+  assert(buildReverseTrialEmail({ ...input, priceCents: 14900 }).html.includes("R$ 149,00 por mês"));
+});

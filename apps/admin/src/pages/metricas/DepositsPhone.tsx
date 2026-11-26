@@ -29,8 +29,8 @@ import { DepositsToolbar } from './DepositsToolbar';
 const PROVIDERS: DepositProvider[] = ['stripe', 'pagarme'];
 
 const items = (n: number) => `${n} ${n === 1 ? 'item' : 'itens'}`;
-const grossFee = (gross: number, fee: number) =>
-  `bruto ${formatMoney(gross)} · taxas ${formatMoney(fee)}`;
+const grossFee = (gross: number, fee: number, currency: string) =>
+  `bruto ${formatMoney(gross, currency)} · taxas ${formatMoney(fee, currency)}`;
 
 export function DepositsPhone({
   data,
@@ -109,6 +109,16 @@ export function DepositsPhone({
               </section>
             ))
           : null}
+      {data?.stripe_usd ? (
+        <section data-testid="deposits-card-stripe-usd">
+          <ProviderBlock
+            provider="stripe"
+            deposits={data.stripe_usd}
+            onRetry={refetch}
+            currency="usd"
+          />
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -158,12 +168,14 @@ function ProviderBlock({
   provider,
   deposits,
   onRetry,
+  currency = 'brl',
 }: {
   provider: DepositProvider;
   deposits: ProviderDeposits;
   onRetry: () => void;
+  currency?: string;
 }) {
-  const name = providerName(provider);
+  const name = currency === 'usd' ? `${providerName(provider)} (USD)` : providerName(provider);
   if (!deposits.configured) {
     return (
       <GroupedList header={name}>
@@ -190,8 +202,8 @@ function ProviderBlock({
       <GroupedList header={name} footer={caption ?? undefined}>
         {balance ? (
           <>
-            <Cell label="Disponível" value={formatMoney(balance.available_cents)} />
-            <Cell label="A compensar" value={formatMoney(balance.pending_cents)} />
+            <Cell label="Disponível" value={formatMoney(balance.available_cents, currency)} />
+            <Cell label="A compensar" value={formatMoney(balance.pending_cents, currency)} />
           </>
         ) : (
           <Cell label="Saldo indisponível" />
@@ -214,14 +226,16 @@ function ProviderBlock({
         {upcoming.next30.length === 0 ? (
           <Cell label={nothingUpcoming ? 'Nada previsto' : 'Nada nos próximos 30 dias'} />
         ) : (
-          upcoming.next30.map((row) => <DayCell key={`${row.kind}-${row.date}`} row={row} />)
+          upcoming.next30.map((row) => (
+            <DayCell key={`${row.kind}-${row.date}`} row={row} currency={currency} />
+          ))
         )}
       </GroupedList>
 
       {upcoming.byMonth.length > 0 ? (
         <GroupedList header="Meses seguintes" headerAs="h3">
           {upcoming.byMonth.map((m) => (
-            <MonthCell key={m.month} row={m} />
+            <MonthCell key={m.month} row={m} currency={currency} />
           ))}
         </GroupedList>
       ) : null}
@@ -240,7 +254,9 @@ function ProviderBlock({
                   </Badge>
                 }
                 value={
-                  <span className="font-semibold tabular-nums">{formatMoney(t.amount_cents)}</span>
+                  <span className="font-semibold tabular-nums">
+                    {formatMoney(t.amount_cents, currency)}
+                  </span>
                 }
               />
             );
@@ -262,7 +278,9 @@ function ProviderBlock({
                   </Badge>
                 }
                 value={
-                  <span className="font-semibold tabular-nums">{formatMoney(r.amount_cents)}</span>
+                  <span className="font-semibold tabular-nums">
+                    {formatMoney(r.amount_cents, currency)}
+                  </span>
                 }
               />
             );
@@ -273,26 +291,30 @@ function ProviderBlock({
   );
 }
 
-function DayCell({ row }: { row: DepositDayRow }) {
+function DayCell({ row, currency }: { row: DepositDayRow; currency: string }) {
   return (
     <Cell
       label={rowDateLabel(row)}
       subtitle={
         row.kind === 'payout'
           ? 'Repasse já criado'
-          : `${items(row.count)} · ${grossFee(row.gross_cents, row.fee_cents)}`
+          : `${items(row.count)} · ${grossFee(row.gross_cents, row.fee_cents, currency)}`
       }
-      value={<span className="font-semibold tabular-nums">{formatMoney(row.net_cents)}</span>}
+      value={
+        <span className="font-semibold tabular-nums">{formatMoney(row.net_cents, currency)}</span>
+      }
     />
   );
 }
 
-function MonthCell({ row }: { row: DepositMonthRow }) {
+function MonthCell({ row, currency }: { row: DepositMonthRow; currency: string }) {
   return (
     <Cell
       label={formatMonth(row.month)}
-      subtitle={`${items(row.count)} · ${grossFee(row.gross_cents, row.fee_cents)}`}
-      value={<span className="font-semibold tabular-nums">{formatMoney(row.net_cents)}</span>}
+      subtitle={`${items(row.count)} · ${grossFee(row.gross_cents, row.fee_cents, currency)}`}
+      value={
+        <span className="font-semibold tabular-nums">{formatMoney(row.net_cents, currency)}</span>
+      }
     />
   );
 }

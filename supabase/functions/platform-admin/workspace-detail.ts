@@ -39,6 +39,9 @@ export interface SubscriptionDetailOpts {
   pagarme?: PagarmeDetailGateway;
   /** Injected in tests; `undefined` means read PAGARME_DASHBOARD_BASE from the env. */
   pagarmeDashboardBase?: string | null;
+  /** workspaces.billing_currency as the caller already read it (catalog fallback column).
+   * Omitted means brl. */
+  billingCurrency?: "brl" | "usd";
 }
 
 export async function handleGetWorkspace(
@@ -55,7 +58,7 @@ export async function handleGetWorkspace(
   const { data: ws, error } = await svc
     .from("workspaces")
     .select(
-      "id, name, logo_url, created_at, plan_id, plan_source, demo_created_at, storage_used_bytes, reverse_trial_started_at, reverse_trial_ends_at, reverse_trial_ended_at, reverse_trial_outcome, reverse_trial_card_added_at, reverse_trial_first_paid_at",
+      "id, name, logo_url, created_at, plan_id, plan_source, demo_created_at, storage_used_bytes, reverse_trial_started_at, reverse_trial_ends_at, reverse_trial_ended_at, reverse_trial_outcome, reverse_trial_card_added_at, reverse_trial_first_paid_at, billing_currency",
     )
     .eq("id", workspace_id)
     .single();
@@ -135,7 +138,10 @@ export async function handleGetWorkspace(
     }
   }
 
-  const subscription = await buildSubscriptionDetail(svc, workspace_id, opts);
+  const subscription = await buildSubscriptionDetail(svc, workspace_id, {
+    ...opts,
+    billingCurrency: (ws as { billing_currency?: string | null }).billing_currency === "usd" ? "usd" : "brl",
+  });
   const affiliate = await loadWorkspaceAffiliate(svc, workspace_id);
 
   const { storage_used_bytes: storageUsed, ...rest } = ws;
@@ -146,6 +152,7 @@ export async function handleGetWorkspace(
   const workspace = {
     ...rest,
     demo_created_at: orNull("demo_created_at"),
+    billing_currency: r.billing_currency === "usd" ? "usd" : "brl",
     reverse_trial_started_at: orNull("reverse_trial_started_at"),
     reverse_trial_ends_at: orNull("reverse_trial_ends_at"),
     reverse_trial_ended_at: orNull("reverse_trial_ended_at"),
@@ -257,7 +264,13 @@ export async function buildSubscriptionDetail(
       info.discount_label = (row.discount_label as string | null) ?? null;
       info.amount_source = "pagarme";
     } else {
-      await applyCatalogFallback(svc, info, row.plan_id ?? null, row.billing_interval ?? null);
+      await applyCatalogFallback(
+        svc,
+        info,
+        row.plan_id ?? null,
+        row.billing_interval ?? null,
+        opts.billingCurrency ?? "brl",
+      );
     }
     return attachPagarmeLive(
       info,
@@ -316,7 +329,13 @@ export async function buildSubscriptionDetail(
     }
   }
 
-  return applyCatalogFallback(svc, info, row.plan_id ?? null, row.billing_interval ?? null);
+  return applyCatalogFallback(
+    svc,
+    info,
+    row.plan_id ?? null,
+    row.billing_interval ?? null,
+    opts.billingCurrency ?? "brl",
+  );
 }
 
 /**
@@ -365,6 +384,7 @@ async function attachPagarmeLive<
 /** Fills amount from the plan's list price when neither mirror nor live fetch produced one. */
 export async function applyCatalogFallback<
   T extends {
+    provider?: string;
     amount_cents: number | null;
     currency: string | null;
     amount_source: "stripe" | "pagarme" | "catalog" | null;
@@ -374,17 +394,30 @@ export async function applyCatalogFallback<
   info: T,
   planId: string | null,
   billingInterval: string | null,
+  billingCurrency: "brl" | "usd",
 ): Promise<T> {
   if (!planId) return info;
   const { data: plan } = await svc
     .from("plans")
-    .select("price_brl, price_brl_annual")
+    .select("price_brl, price_brl_annual, price_usd, price_usd_annual")
     .eq("id", planId)
     .single();
-  const cents = billingInterval === "year" ? plan?.price_brl_annual : plan?.price_brl;
+  // A USD workspace reads the USD catalog column and never falls back to the BRL price.
+  // A Pagar.me row is always reais. The currency comes from the caller's workspaces read
+  // (handleGetWorkspace), never from a second read here.
+  const currency: "brl" | "usd" =
+    billingCurrency === "usd" && info.provider !== "pagarme" ? "usd" : "brl";
+  const cents =
+    currency === "usd"
+      ? billingInterval === "year"
+        ? plan?.price_usd_annual
+        : plan?.price_usd
+      : billingInterval === "year"
+        ? plan?.price_brl_annual
+        : plan?.price_brl;
   if (cents != null) {
     info.amount_cents = cents as number;
-    info.currency = "brl";
+    info.currency = currency;
     info.amount_source = "catalog";
   }
   return info;

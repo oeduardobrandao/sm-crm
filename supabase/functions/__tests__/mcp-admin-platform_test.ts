@@ -99,7 +99,7 @@ Deno.test("getDashboard: só agregados — nenhuma chave owner_* ou lista de wor
     { admin_list_workspaces: [{ data: { workspaces: [WS], total: 12, total_members: 30, total_clients: 70, total_with_overrides: 2, total_instagram_accounts: 9, total_instagram_accounts_active: 8 }, error: null }] },
   );
   const r = await getDashboard(makeDeps(db));
-  assertEquals(r, { totals: { workspaces: 12, members: 30, clients: 70, with_overrides: 2, instagram_accounts: 9, instagram_accounts_active: 8, active_plans: 2 }, mrr: { mrr_cents: 0, paying_count: 0 }, trials: { trial_mrr_cents: 0, trial_count: 0 } });
+  assertEquals(r, { totals: { workspaces: 12, members: 30, clients: 70, with_overrides: 2, instagram_accounts: 9, instagram_accounts_active: 8, active_plans: 2 }, mrr: { mrr_cents: 0, paying_count: 0, usd: { mrr_cents: 0, paying_count: 0 } }, trials: { trial_mrr_cents: 0, trial_count: 0, usd: { trial_mrr_cents: 0, trial_count: 0 } } });
   assert(!JSON.stringify(r).includes("owner_"));
 });
 
@@ -142,8 +142,8 @@ Deno.test("getDashboard: com assinatura paga, nunca faz fan-out de contato do do
     throw new Error("must not be called");
   };
   const r = await getDashboard(makeDeps(db));
-  assertEquals(r.mrr, { mrr_cents: 29900, paying_count: 1 });
-  assertEquals(r.trials, { trial_mrr_cents: 29900, trial_count: 1 });
+  assertEquals(r.mrr, { mrr_cents: 29900, paying_count: 1, usd: { mrr_cents: 0, paying_count: 0 } });
+  assertEquals(r.trials, { trial_mrr_cents: 29900, trial_count: 1, usd: { trial_mrr_cents: 0, trial_count: 0 } });
 });
 
 Deno.test("getDashboard: workspace interno fica fora do MRR e dos trials", async () => {
@@ -162,6 +162,36 @@ Deno.test("getDashboard: workspace interno fica fora do MRR e dos trials", async
     { admin_list_workspaces: [{ data: { workspaces: [WS], total: 1, total_members: 1, total_clients: 1, total_with_overrides: 0 }, error: null }] },
   );
   const r = await getDashboard(makeDeps(db));
-  assertEquals(r.mrr, { mrr_cents: 0, paying_count: 0 });
-  assertEquals(r.trials, { trial_mrr_cents: 0, trial_count: 0 });
+  assertEquals(r.mrr, { mrr_cents: 0, paying_count: 0, usd: { mrr_cents: 0, paying_count: 0 } });
+  assertEquals(r.trials, { trial_mrr_cents: 0, trial_count: 0, usd: { trial_mrr_cents: 0, trial_count: 0 } });
+});
+
+Deno.test("getDashboard: assinatura em dólar vai só para o bloco usd, nunca para o total em reais", async () => {
+  const sub = (id: string, currency: string, amount: number) => ({
+    workspace_id: id, provider: "stripe", status: "active", plan_id: "pro",
+    billing_interval: "month", stripe_subscription_id: null,
+    amount_cents: amount, currency, amount_interval: "month", discount_label: null,
+    current_period_end: "2026-10-01T00:00:00.000Z",
+  });
+  const subs = [sub("w-brl", "brl", 9900), sub("w-usd", "usd", 4900)];
+  const plan = { id: "pro", name: "Pro", price_brl: 9900, price_brl_annual: null, price_usd: 4900, price_usd_annual: null };
+  const wsRows = [
+    { id: "w-brl", name: "R", created_at: "2026-01-01T00:00:00.000Z", billing_currency: "brl" },
+    { id: "w-usd", name: "D", created_at: "2026-01-01T00:00:00.000Z", billing_currency: "usd" },
+  ];
+  const { db } = makeFakeDb(
+    {
+      plans: [{ data: [], error: null }, { data: [plan], error: null }, { data: [plan], error: null }],
+      workspaces: [{ data: wsRows, error: null }, { data: wsRows, error: null }],
+      workspace_subscriptions: [{ data: subs, error: null }, { data: subs, error: null }],
+      "workspaces[is_internal=true]": [{ data: [], error: null }, { data: [], error: null }],
+    },
+    {
+      admin_list_workspaces: [{ data: { workspaces: [WS], total: 2, total_members: 2, total_clients: 1, total_with_overrides: 0 }, error: null }],
+      admin_workspace_last_activity: [{ data: [], error: null }, { data: [], error: null }],
+    },
+  );
+  const r = await getDashboard(makeDeps(db));
+  assertEquals(r.mrr, { mrr_cents: 9900, paying_count: 1, usd: { mrr_cents: 4900, paying_count: 1 } });
+  assertEquals(r.trials, { trial_mrr_cents: 9900, trial_count: 1, usd: { trial_mrr_cents: 4900, trial_count: 1 } });
 });

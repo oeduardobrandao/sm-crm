@@ -27,6 +27,12 @@ import { captureEvent } from '@/lib/analytics';
 import { captureCheckoutStarted } from '@/lib/checkout-analytics';
 import { rememberCheckoutValue } from '@/lib/googleAdsLoader';
 import { isPagarme12xEnabled } from '@/lib/pagarme-gate';
+import {
+  formatPlanPrice,
+  planAnnualCents,
+  planMonthlyCents,
+  type BillingCurrency,
+} from '@/lib/planPrice';
 import { isWhatsAppSupportEnabled } from '@/lib/whatsapp';
 import { WhatsAppSupportButton } from '@/components/support/WhatsAppSupportButton';
 import { PagarmeCheckoutDialog } from '@/components/billing/PagarmeCheckoutDialog';
@@ -44,11 +50,6 @@ type CheckoutExtra = {
   reverse_trial?: boolean;
   days_left?: number;
 };
-
-/** plans.price_brl is stored in centavos (e.g. 9990 = R$ 99,90). */
-function formatBRL(centavos: number): string {
-  return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
 
 function planHighlights(p: BillingPlan): string[] {
   const out: string[] = [];
@@ -162,6 +163,8 @@ export default function ComecarPage() {
   // would let a workspace that already subscribed reopen a trial checkout.
   // `eligible` stays false while any query has errored.
   const eligible = ready && !hasError && isTrialOfferEligible(effectivePlan, subscription);
+  // The workspace's billing currency: prices, the 12x gate and the conversion value follow it.
+  const currency: BillingCurrency = effectivePlan?.billingCurrency ?? 'brl';
 
   // Reverse trial (14 days of Pro without a card). A running trial, or one that ended on Free,
   // is admitted here as a plan picker even though the card trial is spent: during the trial
@@ -231,8 +234,15 @@ export default function ComecarPage() {
     // lagging webhook can never bounce someone who just entered a card back here.
     await ensureTrialOfferSeen();
     const plan = plans?.find((p) => p.id === planId);
-    rememberCheckoutValue(interval === 'year' ? plan?.price_brl_annual : plan?.price_brl);
-    if (interval === 'year' && plan && isPagarme12xEnabled(plan)) {
+    rememberCheckoutValue(
+      plan
+        ? interval === 'year'
+          ? planAnnualCents(plan, currency)
+          : planMonthlyCents(plan, currency)
+        : null,
+      currency,
+    );
+    if (interval === 'year' && plan && isPagarme12xEnabled(plan, currency)) {
       if (reverseExtra) {
         captureCheckoutStarted(planId, 'year', 'onboarding', 'pagarme', reverseExtra);
       } else {
@@ -326,9 +336,9 @@ export default function ComecarPage() {
     );
   }
 
-  const selectable = (plans ?? []).filter(isSelectableTrialPlan);
+  const selectable = (plans ?? []).filter((p) => isSelectableTrialPlan(p, currency));
   // No monthly-priced candidate means a misconfigured catalog: fall back to the grid.
-  const hasPicker = trialCandidates(plans ?? []).length > 0;
+  const hasPicker = trialCandidates(plans ?? [], currency).length > 0;
   const showPicker = hasPicker && view === 'picker';
 
   async function handleStart(planId: string) {
@@ -382,6 +392,7 @@ export default function ComecarPage() {
         <div className="comecar-inner">
           <TrialPlanPicker
             plans={plans ?? []}
+            currency={currency}
             busyPlanId={busy}
             now={now}
             mode={mode}
@@ -459,10 +470,10 @@ export default function ComecarPage() {
               // actionable CTA behind it. Falling back to the monthly figure
               // under the Anual toggle would price the card wrong on top of
               // offering something unbuyable. Matches PricingSection.
-              const amount = isYear ? p.price_brl_annual : p.price_brl;
+              const amount = isYear ? planAnnualCents(p, currency) : planMonthlyCents(p, currency);
               const unpriced = amount == null || amount <= 0;
               const monthly = unpriced ? null : isYear ? amount / 12 : amount;
-              const gated = isYear && isPagarme12xEnabled(p);
+              const gated = isYear && isPagarme12xEnabled(p, currency);
               return (
                 <div
                   key={p.id}
@@ -483,8 +494,8 @@ export default function ComecarPage() {
                       ? 'Sob consulta'
                       : gated
                         ? // PRIMARY AMOUNT RULE: the 12x's own parcela, never price_brl_annual / 12.
-                          `12x de ${formatBRL(p.pagarme_installment_cents ?? 0)} no cartão ou ${formatBRL(amount ?? 0)} à vista`
-                        : `${formatBRL(monthly)}/mês`}
+                          `12x de ${formatPlanPrice(p.pagarme_installment_cents ?? 0, currency)} no cartão ou ${formatPlanPrice(amount ?? 0, currency)} à vista`
+                        : `${formatPlanPrice(monthly, currency)}/mês`}
                   </p>
                   <ul className="comecar-card__features">
                     {planHighlights(p).map((f) => (

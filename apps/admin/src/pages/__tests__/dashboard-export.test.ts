@@ -40,6 +40,16 @@ function trialWorkspace(overrides: Partial<TrialWorkspace> = {}): TrialWorkspace
   };
 }
 
+describe('export currency column', () => {
+  it('labels each row with its own currency (BRL when the payload predates USD)', () => {
+    expect(buildPayingWorkspaceExportRows([payingWorkspace()])[0].currency).toBe('BRL');
+    expect(buildPayingWorkspaceExportRows([payingWorkspace({ currency: 'usd' })])[0].currency).toBe(
+      'USD',
+    );
+    expect(buildTrialExportRows([trialWorkspace({ currency: 'usd' })])[0].currency).toBe('USD');
+  });
+});
+
 describe('buildPayingWorkspaceExportRows', () => {
   it('maps owner contact and consent, and converts monthly_cents to reais', () => {
     const rows = buildPayingWorkspaceExportRows([payingWorkspace()]);
