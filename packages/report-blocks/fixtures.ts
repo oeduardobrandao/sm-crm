@@ -74,7 +74,8 @@ const HEALTH_FIXTURE: InstagramHealthSnapshot = {
   best_post: {
     ratio: 2.2,
     permalink: 'https://www.instagram.com/p/DExemplo123/',
-    thumbnail_url: 'https://cdn.example.com/thumbs/melhor-post.jpg',
+    // Sem miniatura na amostra (como os demais posts da fixture): o editor mostra só a frase.
+    thumbnail_url: null,
   },
 };
 

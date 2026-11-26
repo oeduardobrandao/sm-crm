@@ -2,6 +2,7 @@
 // conteúdo e copy do cartão da Analytics da conta, com o tema do relatório. Lê só o
 // data_snapshot.instagram_health congelado; sem dado retorna null (Hub e PDF omitem, o editor
 // mostra o placeholder pelo blockHasData). Cores de veredito fixas em styles.css (rb-health-*).
+import { useState } from 'react';
 import { Minus, TrendingDown, TrendingUp } from 'lucide-react';
 import type { BlockProps } from '../BlockRenderer';
 import { safeHttpsUrl } from '../format';
@@ -73,6 +74,13 @@ function HealthBar({
       <span className="rb-health-bar__dot" style={{ left: `${clamped}%` }} />
     </div>
   );
+}
+
+/** Miniatura do melhor post; some se a URL falhar (cache que deu 404). */
+function BestPostThumb({ src }: { src: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return null;
+  return <img className="rb-health-best__thumb" src={src} alt="" onError={() => setFailed(true)} />;
 }
 
 export function AccountHealthBlock({ snapshot }: BlockProps) {
@@ -225,7 +233,7 @@ export function AccountHealthBlock({ snapshot }: BlockProps) {
         )}
         {showBest && (
           <div className="rb-health-best">
-            {thumb ? <img className="rb-health-best__thumb" src={thumb} alt="" /> : null}
+            {thumb ? <BestPostThumb key={thumb} src={thumb} /> : null}
             <p>
               {`Seu melhor post do período teve ${ratioFormatter.format(best.ratio)}x o resultado normal da conta.`}
               {permalink ? (

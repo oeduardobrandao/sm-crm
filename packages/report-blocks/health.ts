@@ -177,7 +177,9 @@ export function scoreHealthMetrics(
     const value = metrics[key];
     const benchmark = benchmarks[key];
     // Benchmark malformado (diferente de 99 cortes) conta como sem referência.
-    if (value == null || !benchmark || benchmark.cuts.length !== CUT_COUNT) continue;
+    // cuts fora de array (JSON malformado no snapshot) também; nunca lança.
+    if (value == null || !Array.isArray(benchmark?.cuts) || benchmark.cuts.length !== CUT_COUNT)
+      continue;
     scored.push({ key, value, benchmark, pct: percentileFromCuts(value, benchmark.cuts) });
   }
   return scored;

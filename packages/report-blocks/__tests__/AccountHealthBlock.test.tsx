@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { BlockRenderer } from '../BlockRenderer';
 import { AccountHealthBlock } from '../blocks/AccountHealthBlock';
 import { blockHasData } from '../data-presence';
 import { FULL_WIDTH_ONLY_TYPES, WIDGET_CATALOG, isFullWidthOnly } from '../catalog';
 import { makeSnapshotFixture } from '../fixtures';
 import { safeHttpsUrl } from '../format';
-import { percentileFromCuts, readInstagramHealth, type InstagramHealthSnapshot } from '../health';
+import {
+  percentileFromCuts,
+  readInstagramHealth,
+  scoreHealthMetrics,
+  type InstagramHealthSnapshot,
+} from '../health';
 import { BLOCK_TYPES } from '../types';
 import type { ReportBlock, ReportDocSnapshot, ReportLayout } from '../types';
 
@@ -106,9 +111,35 @@ describe('AccountHealthBlock', () => {
     expect(link.getAttribute('href')).toBe(baseHealth().best_post!.permalink);
     expect(link.getAttribute('target')).toBe('_blank');
     expect(link.getAttribute('rel')).toBe('noopener noreferrer');
-    expect(container.querySelector('.rb-health-best img')?.getAttribute('src')).toBe(
-      baseHealth().best_post!.thumbnail_url,
+    // Fixture de amostra sem miniatura: só a frase.
+    expect(container.querySelector('.rb-health-best img')).toBeNull();
+  });
+
+  it('miniatura do melhor post com URL https; some se a imagem falhar', () => {
+    const h = baseHealth();
+    const thumb = 'https://cdn.example.com/thumbs/melhor-post.jpg';
+    const { container } = renderBlock(
+      withHealth({ ...h, best_post: { ...h.best_post!, thumbnail_url: thumb } }),
     );
+    const img = container.querySelector('.rb-health-best img');
+    expect(img?.getAttribute('src')).toBe(thumb);
+    fireEvent.error(img!);
+    expect(container.querySelector('.rb-health-best img')).toBeNull();
+    expect(container.querySelector('.rb-health-best')?.textContent).toContain('teve 2,2x');
+  });
+
+  it('benchmark malformado (cuts fora de array) conta como sem referência, sem lançar', () => {
+    const h = baseHealth();
+    const bad = {
+      ...h.benchmarks.posts_30d!,
+      cuts: null as unknown as number[],
+    };
+    const metrics = { ...h.metrics, engagement_rate: null, reel_views: null, reels_share: null };
+    expect(scoreHealthMetrics(metrics, { posts_30d: bad })).toEqual([]);
+    expect(scoreHealthMetrics(h.metrics, { ...h.benchmarks, posts_30d: bad })).toHaveLength(3);
+    const snap = withHealth({ ...h, metrics, benchmarks: { posts_30d: bad } });
+    expect(blockHasData(block, snap)).toBe(false);
+    expect(renderBlock(snap).container.innerHTML).toBe('');
   });
 
   it('nenhum texto com travessão', () => {

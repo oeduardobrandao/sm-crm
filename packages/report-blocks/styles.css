@@ -489,7 +489,9 @@
   --rb-health-fill-bad: #f5a342;
   --rb-health-fill-worst: #f55a42;
   --rb-health-track: rgba(0, 0, 0, 0.09);
-  --rb-health-ring: var(--rb-bg, #ffffff);
+  /* Anel do marcador = fundo do cartão. --rb-surface transparente (Editorial, Hub contorno) some
+     junto com o cartão, o que é o efeito desejado; sem tema cai no papel claro. */
+  --rb-health-ring: var(--rb-surface, var(--rb-bg, #ffffff));
   --rb-health-line: var(--rb-border, rgba(0, 0, 0, 0.08));
   --rb-health-link: var(--rb-accent-text, var(--rb-accent, inherit));
 }
