@@ -5,7 +5,12 @@ import i18n from 'i18next';
 import type { BackendModule, i18n as I18nInstance } from 'i18next';
 import { initReactI18next, useTranslation } from 'react-i18next';
 
-const STORAGE_KEY = 'mesaas-language';
+/** Written only by a deliberate choice (the pt/EN toggle). Wins over everything else. */
+const LANGUAGE_EXPLICIT_KEY = 'mesaas-language';
+/** Written by visiting the US site (`/en`): a hint for pre-auth pages, never a choice. */
+const LANGUAGE_HINT_KEY = 'mesaas-site-language';
+const LANGUAGE_MIGRATED_KEY = 'mesaas-language-migrated';
+const STORAGE_KEY = LANGUAGE_EXPLICIT_KEY;
 const SUPPORTED_LANGUAGES = ['pt', 'en'] as const;
 type Language = (typeof SUPPORTED_LANGUAGES)[number];
 
@@ -20,16 +25,73 @@ interface LazyNamespaces {
   load: NamespaceLoader;
 }
 
-/** The visitor's stored UI language; `'pt'` when there is no storage (server render) or it throws. */
-export function getSavedLanguage(): Language {
-  let saved: string | null = null;
+function isLanguage(value: unknown): value is Language {
+  return typeof value === 'string' && SUPPORTED_LANGUAGES.includes(value as Language);
+}
+
+function readLanguageKey(key: string): Language | null {
   try {
-    saved = typeof localStorage === 'undefined' ? null : localStorage.getItem(STORAGE_KEY);
+    if (typeof localStorage === 'undefined') return null;
+    const value = localStorage.getItem(key);
+    return isLanguage(value) ? value : null;
   } catch {
-    return 'pt';
+    return null;
   }
-  if (saved && SUPPORTED_LANGUAGES.includes(saved as Language)) return saved as Language;
-  return 'pt';
+}
+
+/** The language the visitor picked with the toggle, or null. */
+export function getExplicitLanguage(): Language | null {
+  return readLanguageKey(LANGUAGE_EXPLICIT_KEY);
+}
+
+/** The language hinted by visiting `/en`, or null. */
+export function getLanguageHint(): Language | null {
+  return readLanguageKey(LANGUAGE_HINT_KEY);
+}
+
+let activeWorkspaceLanguage: Language | null = null;
+
+/** The signed-in workspace's language (memory only, never stored); null clears it. */
+export function setActiveWorkspaceLanguage(lang: Language | null): void {
+  activeWorkspaceLanguage = lang;
+}
+
+/** explicit choice, then workspace language, then the `/en` hint, then pt. Never throws. */
+export function effectiveLanguage(): Language {
+  return getExplicitLanguage() ?? activeWorkspaceLanguage ?? getLanguageHint() ?? 'pt';
+}
+
+/** Pre-auth language: explicit choice, then the `/en` hint, then pt. Never throws. */
+export function getSavedLanguage(): Language {
+  return getExplicitLanguage() ?? getLanguageHint() ?? 'pt';
+}
+
+/** Records the `/en` hint and switches the UI without saving an explicit choice. */
+export function setLanguageHint(lang: Language): void {
+  try {
+    localStorage.setItem(LANGUAGE_HINT_KEY, lang);
+  } catch {
+    // Storage blocked: the language still changes for this session.
+  }
+  i18n.changeLanguage(lang);
+}
+
+/**
+ * Once per browser: before the split, visiting `/en` wrote the explicit key. Move whatever is
+ * there to the hint so an old visit is not mistaken for a choice.
+ */
+export function migrateLegacyLanguageKey(): void {
+  try {
+    if (localStorage.getItem(LANGUAGE_MIGRATED_KEY)) return;
+    const legacy = localStorage.getItem(LANGUAGE_EXPLICIT_KEY);
+    if (isLanguage(legacy)) {
+      localStorage.setItem(LANGUAGE_HINT_KEY, legacy);
+      localStorage.removeItem(LANGUAGE_EXPLICIT_KEY);
+    }
+    localStorage.setItem(LANGUAGE_MIGRATED_KEY, '1');
+  } catch {
+    // Storage unavailable: nothing to migrate.
+  }
 }
 
 /** BCP 47 tag for `<html lang>`, so assistive tech and browser translation see the UI language. */
@@ -130,7 +192,7 @@ export function loadLazyNamespaces(instance: I18nInstance = i18n): Promise<void>
 
 export function changeLanguage(lang: Language) {
   try {
-    localStorage.setItem(STORAGE_KEY, lang);
+    localStorage.setItem(LANGUAGE_EXPLICIT_KEY, lang);
   } catch {
     // Storage blocked (private mode, disabled cookies): the language still changes for this session.
   }
@@ -171,5 +233,5 @@ export function useDateFnsLocale(): DateFnsLocale {
   return useIntlLocale() === 'en-US' ? enUS : ptBR;
 }
 
-export { i18n, SUPPORTED_LANGUAGES, STORAGE_KEY };
+export { i18n, SUPPORTED_LANGUAGES, STORAGE_KEY, LANGUAGE_EXPLICIT_KEY, LANGUAGE_HINT_KEY };
 export type { Language, IntlLocale, NamespaceLoader };

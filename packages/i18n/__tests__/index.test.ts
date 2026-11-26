@@ -2,9 +2,17 @@ import i18next from 'i18next';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   changeLanguage,
+  effectiveLanguage,
+  getExplicitLanguage,
+  getLanguageHint,
   getSavedLanguage,
   initI18n,
+  LANGUAGE_EXPLICIT_KEY,
+  LANGUAGE_HINT_KEY,
   loadLazyNamespaces,
+  migrateLegacyLanguageKey,
+  setActiveWorkspaceLanguage,
+  setLanguageHint,
   STORAGE_KEY,
 } from '../index';
 
@@ -148,5 +156,51 @@ describe('changeLanguage', () => {
     expect(() => changeLanguage('en')).not.toThrow();
     // changeLanguage drives the shared singleton; verify it was asked, not the local instance.
     expect(instance).toBeDefined();
+  });
+});
+
+describe('explicit choice vs site hint', () => {
+  afterEach(() => {
+    localStorage.clear();
+    setActiveWorkspaceLanguage(null);
+    vi.restoreAllMocks();
+  });
+
+  it('effectiveLanguage prefers explicit over workspace over hint', () => {
+    expect(effectiveLanguage()).toBe('pt');
+    localStorage.setItem(LANGUAGE_HINT_KEY, 'en');
+    expect(effectiveLanguage()).toBe('en');
+    setActiveWorkspaceLanguage('pt');
+    expect(effectiveLanguage()).toBe('pt');
+    localStorage.setItem(LANGUAGE_EXPLICIT_KEY, 'en');
+    expect(effectiveLanguage()).toBe('en');
+  });
+
+  it('migrateLegacyLanguageKey moves an old value to the hint once', () => {
+    localStorage.setItem(LANGUAGE_EXPLICIT_KEY, 'en');
+    migrateLegacyLanguageKey();
+    expect(getLanguageHint()).toBe('en');
+    expect(getExplicitLanguage()).toBeNull();
+
+    changeLanguage('pt');
+    migrateLegacyLanguageKey();
+    expect(getExplicitLanguage()).toBe('pt');
+    expect(getLanguageHint()).toBe('en');
+  });
+
+  it('storage that throws returns pt and does not throw', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    expect(effectiveLanguage()).toBe('pt');
+    expect(getSavedLanguage()).toBe('pt');
+    expect(() => migrateLegacyLanguageKey()).not.toThrow();
+  });
+
+  it('setLanguageHint does not touch the explicit key', () => {
+    setLanguageHint('en');
+    expect(getLanguageHint()).toBe('en');
+    expect(getExplicitLanguage()).toBeNull();
+    expect(getSavedLanguage()).toBe('en');
   });
 });
