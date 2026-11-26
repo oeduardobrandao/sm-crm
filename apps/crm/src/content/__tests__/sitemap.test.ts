@@ -16,8 +16,34 @@ describe('buildSitemapXml', () => {
   });
   test('is well-formed enough for Google', () => {
     expect(xml.startsWith('<?xml version="1.0" encoding="UTF-8"?>')).toBe(true);
-    expect(xml).toContain('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">');
+    expect(xml).toContain('xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"');
+    expect(xml).toContain('xmlns:xhtml="http://www.w3.org/1999/xhtml"');
     expect(xml.match(/<url>/g)?.length).toBe(PUBLIC_ROUTES.length);
+  });
+
+  test('lists the /en pages and their xhtml:link alternates for both pairs', () => {
+    expect(xml).toContain('<loc>https://www.mesaas.com.br/en</loc>');
+    expect(xml).toContain('<loc>https://www.mesaas.com.br/en/pricing</loc>');
+    for (const [path, other] of [
+      ['/', '/en'],
+      ['/en', '/'],
+      ['/precos', '/en/pricing'],
+      ['/en/pricing', '/precos'],
+    ]) {
+      const loc = path === '/' ? 'https://www.mesaas.com.br/' : `https://www.mesaas.com.br${path}`;
+      const block = xml.split('<url>').find((b) => b.includes(`<loc>${loc}</loc>`))!;
+      expect(block).toContain('hreflang="en"');
+      expect(block).toContain('hreflang="pt-BR"');
+      expect(block).toContain('hreflang="x-default"');
+      const otherLoc =
+        other === '/' ? 'https://www.mesaas.com.br/' : `https://www.mesaas.com.br${other}`;
+      expect(block).toContain(`href="${otherLoc}"`);
+    }
+  });
+
+  test('routes without an alternate get no xhtml:link', () => {
+    const block = xml.split('<url>').find((b) => b.includes('/lgpd</loc>'))!;
+    expect(block).not.toContain('xhtml:link');
   });
 });
 

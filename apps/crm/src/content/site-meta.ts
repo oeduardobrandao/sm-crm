@@ -2,6 +2,8 @@
  * usePageMeta hook (client), the prerender script (build), the sitemap and
  * llms.txt builders. Update `lastmod` whenever a page's content changes. */
 
+import type { SiteLocale } from './locale';
+
 export const SITE_URL = 'https://www.mesaas.com.br';
 export const SITE_NAME = 'Mesaas';
 export const DEFAULT_OG_IMAGE = `${SITE_URL}/og-image.png`;
@@ -61,6 +63,10 @@ export interface RouteMeta {
   ogImage?: string;
   /** Open Graph object type. Defaults to 'website'; blog posts use 'article'. */
   ogType?: 'article';
+  /** Market of the page. Absent = 'pt'. */
+  locale?: SiteLocale;
+  /** Path of the same page in the other market; drives hreflang and sitemap alternates. */
+  alternate?: string;
 }
 
 export const PUBLIC_ROUTES: RouteMeta[] = [
@@ -71,6 +77,7 @@ export const PUBLIC_ROUTES: RouteMeta[] = [
     description:
       'CRM para social media: clientes, aprovação de posts por link, agendamento no Instagram e no TikTok, relatórios e financeiro em um só lugar. Comece grátis.',
     lastmod: '2026-07-24',
+    alternate: '/en',
   },
   {
     path: '/precos',
@@ -79,6 +86,7 @@ export const PUBLIC_ROUTES: RouteMeta[] = [
     description:
       'Compare os planos Free, Start, Pro e Max do Mesaas. Teste o Pro por 14 dias sem cartão e evolua conforme sua agência cresce.',
     lastmod: '2026-07-24',
+    alternate: '/en/pricing',
   },
   {
     path: '/aprovacao-de-post',
@@ -151,6 +159,26 @@ export const PUBLIC_ROUTES: RouteMeta[] = [
     description:
       'Como o Mesaas atende à Lei Geral de Proteção de Dados: bases legais, direitos dos titulares, segurança da informação e canal de contato do DPO.',
     lastmod: '2026-07-24',
+  },
+  {
+    path: '/en',
+    file: 'en.html',
+    title: 'Mesaas: Social Media CRM and Client Approvals for Agencies',
+    description:
+      'Run your social media agency in one place: client approvals by link, Instagram and TikTok scheduling, reports and finances. Start free, no card needed.',
+    lastmod: '2026-11-25',
+    locale: 'en',
+    alternate: '/',
+  },
+  {
+    path: '/en/pricing',
+    file: 'en/pricing.html',
+    title: 'Mesaas Pricing: Plans for Social Media Agencies in USD',
+    description:
+      'Compare the Free, Start, Pro and Max plans for social media agencies. Billed in US dollars, cancel anytime. Start free, no credit card required.',
+    lastmod: '2026-11-25',
+    locale: 'en',
+    alternate: '/precos',
   },
 ];
 

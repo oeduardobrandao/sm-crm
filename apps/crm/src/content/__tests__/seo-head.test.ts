@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { buildHeadTags, canonicalUrl } from '../seo-head';
-import type { RouteMeta } from '../site-meta';
+import { routeMetaFor, type RouteMeta } from '../site-meta';
 
 const META: RouteMeta = {
   path: '/precos',
@@ -63,5 +63,44 @@ describe('seo-head', () => {
     expect(head).toContain(
       'property="og:url" content="https://www.mesaas.com.br/blog/a&quot;b&lt;c&gt;"',
     );
+  });
+
+  describe('hreflang and locale (/en)', () => {
+    const alts = (head: string) => head.match(/<link rel="alternate"[^>]*>/g) ?? [];
+
+    test('/en uses en_US and declares the en, pt-BR and x-default alternates', () => {
+      const head = buildHeadTags(routeMetaFor('/en')!);
+      expect(head).toContain('property="og:locale" content="en_US"');
+      expect(head).toContain('<link rel="canonical" href="https://www.mesaas.com.br/en" />');
+      expect(alts(head)).toEqual([
+        '<link rel="alternate" hreflang="en" href="https://www.mesaas.com.br/en" />',
+        '<link rel="alternate" hreflang="pt-BR" href="https://www.mesaas.com.br/" />',
+        '<link rel="alternate" hreflang="x-default" href="https://www.mesaas.com.br/" />',
+      ]);
+    });
+
+    test('the Portuguese pair partner carries the same three alternates', () => {
+      const head = buildHeadTags(routeMetaFor('/')!);
+      expect(head).toContain('property="og:locale" content="pt_BR"');
+      expect(alts(head)).toEqual([
+        '<link rel="alternate" hreflang="en" href="https://www.mesaas.com.br/en" />',
+        '<link rel="alternate" hreflang="pt-BR" href="https://www.mesaas.com.br/" />',
+        '<link rel="alternate" hreflang="x-default" href="https://www.mesaas.com.br/" />',
+      ]);
+    });
+
+    test('/en/pricing and /precos pair up', () => {
+      expect(alts(buildHeadTags(routeMetaFor('/en/pricing')!))).toContain(
+        '<link rel="alternate" hreflang="pt-BR" href="https://www.mesaas.com.br/precos" />',
+      );
+      expect(alts(buildHeadTags(routeMetaFor('/precos')!))).toContain(
+        '<link rel="alternate" hreflang="en" href="https://www.mesaas.com.br/en/pricing" />',
+      );
+    });
+
+    test('legal pages have no alternates', () => {
+      expect(alts(buildHeadTags(routeMetaFor('/lgpd')!))).toEqual([]);
+      expect(alts(buildHeadTags(routeMetaFor('/politica-de-privacidade')!))).toEqual([]);
+    });
   });
 });

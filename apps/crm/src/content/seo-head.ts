@@ -10,6 +10,28 @@ export function canonicalUrl(path: string): string {
   return path === '/' ? `${SITE_URL}/` : `${SITE_URL}${path}`;
 }
 
+export interface AlternateLink {
+  hreflang: 'en' | 'pt-BR' | 'x-default';
+  href: string;
+}
+
+export function ogLocaleFor(meta: RouteMeta): 'en_US' | 'pt_BR' {
+  return meta.locale === 'en' ? 'en_US' : 'pt_BR';
+}
+
+/** hreflang cluster for a route paired with its other-market twin; empty when unpaired.
+ * The Portuguese page is the x-default. */
+export function alternateLinks(meta: RouteMeta): AlternateLink[] {
+  if (!meta.alternate) return [];
+  const enPath = meta.locale === 'en' ? meta.path : meta.alternate;
+  const ptPath = meta.locale === 'en' ? meta.alternate : meta.path;
+  return [
+    { hreflang: 'en', href: canonicalUrl(enPath) },
+    { hreflang: 'pt-BR', href: canonicalUrl(ptPath) },
+    { hreflang: 'x-default', href: canonicalUrl(ptPath) },
+  ];
+}
+
 /** Head block injected by scripts/seo/prerender.tsx. Indentation matches the
  * two-space style of apps/crm/index.html. */
 export function buildHeadTags(meta: RouteMeta, jsonLd: object[] = []): string {
@@ -28,12 +50,15 @@ export function buildHeadTags(meta: RouteMeta, jsonLd: object[] = []): string {
     `<meta property="og:description" content="${esc(meta.description)}" />`,
     `<meta property="og:url" content="${url}" />`,
     `<meta property="og:image" content="${image}" />`,
-    `<meta property="og:locale" content="pt_BR" />`,
+    `<meta property="og:locale" content="${ogLocaleFor(meta)}" />`,
     `<meta name="twitter:card" content="summary_large_image" />`,
     `<meta name="twitter:title" content="${esc(meta.title)}" />`,
     `<meta name="twitter:description" content="${esc(meta.description)}" />`,
     `<meta name="twitter:image" content="${image}" />`,
   ];
+  for (const alt of alternateLinks(meta)) {
+    tags.push(`<link rel="alternate" hreflang="${alt.hreflang}" href="${esc(alt.href)}" />`);
+  }
   for (const block of jsonLd) {
     tags.push(
       `<script type="application/ld+json" data-seo="jsonld">${JSON.stringify(block).replace(/</g, '\\u003c')}</script>`,
