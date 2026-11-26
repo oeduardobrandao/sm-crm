@@ -96,6 +96,11 @@ describe('routePreloadTags', () => {
     expect(routePreloadTags(manifest, '/en')).toBe(routePreloadTags(manifest, '/'));
   });
 
+  it('maps /en/privacy and /en/terms to their page chunks', () => {
+    expect(ROUTE_CHUNKS['/en/privacy']).toBe('src/pages/en/PrivacyPageEn.tsx');
+    expect(ROUTE_CHUNKS['/en/terms']).toBe('src/pages/en/TermsPageEn.tsx');
+  });
+
   it('returns an empty string for routes without a mapped chunk', () => {
     expect(routePreloadTags(manifest, '/sobre')).toBe('');
   });

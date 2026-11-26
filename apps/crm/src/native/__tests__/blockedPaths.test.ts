@@ -54,6 +54,8 @@ describe('isBlockedInNativeApp', () => {
     '/politica-de-privacidade',
     '/termos-de-uso',
     '/lgpd',
+    '/en/privacy',
+    '/en/terms',
     '/precosx',
     '/blogger',
     '/english',
@@ -113,6 +115,18 @@ describe('openSitePageInNativeApp', () => {
     });
     expect(openSitePageInNativeApp('/termos-de-uso')).toBe(true);
     expect(openUrl).toHaveBeenCalledWith({ url: 'https://www.mesaas.com.br/termos-de-uso' });
+  });
+
+  it('opens the English legal pages in Safari too', () => {
+    const openUrl = vi.fn().mockResolvedValue(undefined);
+    setCapacitor({
+      isNativePlatform: () => true,
+      isPluginAvailable: (name) => name === 'MesaasNative',
+      Plugins: { MesaasNative: { openUrl } },
+    });
+    expect(openSitePageInNativeApp('/en/privacy#cookies')).toBe(true);
+    expect(openUrl).toHaveBeenCalledWith({ url: 'https://www.mesaas.com.br/en/privacy' });
+    expect(openSitePageInNativeApp('/en/terms')).toBe(true);
   });
 
   it('leaves app routes alone', () => {

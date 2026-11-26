@@ -180,6 +180,24 @@ export const PUBLIC_ROUTES: RouteMeta[] = [
     locale: 'en',
     alternate: '/precos',
   },
+  {
+    path: '/en/privacy',
+    file: 'en/privacy.html',
+    title: 'Mesaas Privacy Policy: How We Collect and Protect Data',
+    description:
+      'Read how Mesaas collects, uses and protects personal data, including cookies, your privacy choices and how to contact us about your information.',
+    lastmod: '2026-11-25',
+    locale: 'en',
+  },
+  {
+    path: '/en/terms',
+    file: 'en/terms.html',
+    title: 'Mesaas Terms of Service: Rules for Using the Platform',
+    description:
+      'The terms that govern your use of Mesaas, the social media CRM for agencies: accounts, plans and billing, acceptable use and cancellation.',
+    lastmod: '2026-11-25',
+    locale: 'en',
+  },
 ];
 
 export function routeMetaFor(path: string): RouteMeta | undefined {

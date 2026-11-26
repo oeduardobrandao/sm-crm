@@ -36,6 +36,9 @@
     "apps/crm/src/pages/politica-privacidade/**/*.tsx",
     "apps/crm/src/pages/termos-de-uso/**/*.tsx",
     "apps/crm/src/pages/lgpd/**/*.tsx",
+    "apps/crm/src/pages/en/PrivacyPageEn.tsx",
+    "apps/crm/src/pages/en/TermsPageEn.tsx",
+    "apps/crm/src/pages/en/LegalPageShellEn.tsx",
     // tsx applies the jsx setting above only to files matched by "include", while tsc follows
     // imports regardless. Any .tsx imported by a prerendered page must therefore be listed here,
     // or it falls back to the classic JSX transform and throws "React is not defined".

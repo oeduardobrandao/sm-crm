@@ -28,7 +28,13 @@ const BLOCKED_PREFIXES = [
  * Reachable in the app (App Review wants the privacy policy one tap away), but opened
  * in Safari so the marketing chrome never renders in the web view.
  */
-const SITE_PAGES = ['/politica-de-privacidade', '/termos-de-uso', '/lgpd'];
+const SITE_PAGES = [
+  '/politica-de-privacidade',
+  '/termos-de-uso',
+  '/lgpd',
+  '/en/privacy',
+  '/en/terms',
+];
 
 /** Pathname of an in-app path or of a URL on the public site; null for anything else. */
 function sitePathname(pathOrUrl: string): string | null {
@@ -61,6 +67,8 @@ export function isBlockedInNativeApp(pathOrUrl: string): boolean {
   if (pathname === null) return false;
   const path = normalize(pathname);
   if (path === '/') return true;
+  // The English legal pages sit under /en but are site pages, reachable like the Portuguese ones.
+  if (SITE_PAGES.includes(path)) return false;
   return BLOCKED_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
 }
 

@@ -98,6 +98,14 @@ describe('seo-head', () => {
       );
     });
 
+    test('/en/privacy and /en/terms are en_US with no alternates', () => {
+      for (const path of ['/en/privacy', '/en/terms']) {
+        const head = buildHeadTags(routeMetaFor(path)!);
+        expect(head).toContain('property="og:locale" content="en_US"');
+        expect(alts(head)).toEqual([]);
+      }
+    });
+
     test('legal pages have no alternates', () => {
       expect(alts(buildHeadTags(routeMetaFor('/lgpd')!))).toEqual([]);
       expect(alts(buildHeadTags(routeMetaFor('/politica-de-privacidade')!))).toEqual([]);

@@ -103,6 +103,8 @@ describe('vercel.json: English site (/en)', () => {
   const EN_ROUTES = [
     { source: '/en', destination: '/en.html' },
     { source: '/en/pricing', destination: '/en/pricing.html' },
+    { source: '/en/privacy', destination: '/en/privacy.html' },
+    { source: '/en/terms', destination: '/en/terms.html' },
   ];
 
   test('the source matcher models the existing rules', () => {

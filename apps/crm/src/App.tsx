@@ -62,6 +62,8 @@ const ComecarPage = lazy(() => import('./pages/comecar/ComecarPage'));
 const ConsentPage = lazy(() => import('./pages/oauth/ConsentPage'));
 const PoliticaPage = lazy(() => import('./pages/politica-privacidade/PoliticaPage'));
 const TermosPage = lazy(() => import('./pages/termos-de-uso/TermosPage'));
+const PrivacyPageEn = lazy(() => import('./pages/en/PrivacyPageEn'));
+const TermsPageEn = lazy(() => import('./pages/en/TermsPageEn'));
 const LgpdPage = lazy(() => import('./pages/lgpd/LgpdPage'));
 const LandingPageLazy = lazy(() => import('./pages/landing/LandingPage'));
 // Set by preloadLanding() before the first render on `/` and `/en`, so the hero paints in the same frame
@@ -231,6 +233,22 @@ export default function App() {
                 element={
                   <EnglishPage>
                     <PrecosPage locale="en" />
+                  </EnglishPage>
+                }
+              />
+              <Route
+                path="/en/privacy"
+                element={
+                  <EnglishPage>
+                    <PrivacyPageEn />
+                  </EnglishPage>
+                }
+              />
+              <Route
+                path="/en/terms"
+                element={
+                  <EnglishPage>
+                    <TermsPageEn />
                   </EnglishPage>
                 }
               />

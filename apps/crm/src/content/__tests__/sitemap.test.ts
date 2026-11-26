@@ -41,6 +41,15 @@ describe('buildSitemapXml', () => {
     }
   });
 
+  test('lists /en/privacy and /en/terms without xhtml:link alternates', () => {
+    for (const path of ['/en/privacy', '/en/terms']) {
+      const loc = `https://www.mesaas.com.br${path}`;
+      const block = xml.split('<url>').find((b) => b.includes(`<loc>${loc}</loc>`))!;
+      expect(block).toBeDefined();
+      expect(block).not.toContain('xhtml:link');
+    }
+  });
+
   test('routes without an alternate get no xhtml:link', () => {
     const block = xml.split('<url>').find((b) => b.includes('/lgpd</loc>'))!;
     expect(block).not.toContain('xhtml:link');

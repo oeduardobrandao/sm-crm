@@ -67,6 +67,8 @@ import {
   breadcrumbJsonLd,
 } from '../../apps/crm/src/content/jsonld';
 import PoliticaPage from '../../apps/crm/src/pages/politica-privacidade/PoliticaPage';
+import PrivacyPageEn from '../../apps/crm/src/pages/en/PrivacyPageEn';
+import TermsPageEn from '../../apps/crm/src/pages/en/TermsPageEn';
 import TermosPage from '../../apps/crm/src/pages/termos-de-uso/TermosPage';
 import LgpdPage from '../../apps/crm/src/pages/lgpd/LgpdPage';
 
@@ -117,6 +119,8 @@ function bodyFor(path: string): string | undefined {
   if (path === '/blog') return renderBlogIndexHtml(posts);
   if (path === '/politica-de-privacidade') return renderToStaticMarkup(<PoliticaPage />);
   if (path === '/termos-de-uso') return renderToStaticMarkup(<TermosPage />);
+  if (path === '/en/privacy') return renderToStaticMarkup(<PrivacyPageEn />);
+  if (path === '/en/terms') return renderToStaticMarkup(<TermsPageEn />);
   if (path === '/lgpd') return renderToStaticMarkup(<LgpdPage />);
   const page = marketingPageBySlug(path.slice(1));
   return page ? renderMarketingPageHtml(page) : undefined;
