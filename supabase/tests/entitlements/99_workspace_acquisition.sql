@@ -275,6 +275,82 @@ begin
     raise exception 'a valid 200-character referrer_host must be kept';
   end if;
 
+  -- 6b. landing_path só o caminho (corta em ? ou #, exige / inicial) e at só
+  -- timestamp ISO válido.
+  for r in
+    select * from (values
+      ('/precos?gclid=abc', '/precos'),
+      ('/blog/post#secao', '/blog/post'),
+      ('/?gclid=abc&utm_source=x', '/'),
+      ('  /trim  ', '/trim'),
+      ('precos', null),
+      ('https://evil.example.com/x', null),
+      ('?gclid=abc', null),
+      ('#x', null)
+    ) as t(input, expected)
+  loop
+    v_got := public.acquisition_sanitize_touch(jsonb_build_object('landing_path', r.input)) ->> 'landing_path';
+    if v_got is distinct from r.expected then
+      raise exception 'landing_path % must sanitize to %, got %', r.input, r.expected, v_got;
+    end if;
+  end loop;
+  if length(public.acquisition_sanitize_touch(
+       jsonb_build_object('landing_path', '/' || repeat('p', 300) || '?q=1')) ->> 'landing_path') <> 200 then
+    raise exception 'a long landing_path must be cut to 200 after the query is dropped';
+  end if;
+  for r in
+    select * from (values
+      ('2026-11-26T12:00:00.123Z', '2026-11-26T12:00:00.123Z'),
+      ('2026-11-26T12:00:00Z', '2026-11-26T12:00:00Z'),
+      ('2026-11-26T09:00:00-03:00', '2026-11-26T09:00:00-03:00'),
+      ('gclid=abc', null),
+      ('2026-13-45T00:00:00Z', null),
+      ('now', null),
+      ('infinity', null),
+      ('2026-11-26T12:00:00Z?gclid=abc', null)
+    ) as t(input, expected)
+  loop
+    v_got := public.acquisition_sanitize_touch(jsonb_build_object('at', r.input)) ->> 'at';
+    if v_got is distinct from r.expected then
+      raise exception 'at % must sanitize to %, got %', r.input, r.expected, v_got;
+    end if;
+  end loop;
+
+  -- 6c. auth.identities: o GoTrue copia o metadata do cadastro em identity_data
+  -- (INSERT e depois UPDATEs); o trigger tira acq e mantém o resto.
+  select id into v_user from auth.users where email = 'acq-owner@example.com';
+  insert into auth.identities (user_id, provider_id, provider, identity_data)
+    values (v_user, v_user::text, 'email', jsonb_build_object(
+      'sub', v_user::text, 'email', 'acq-owner@example.com', 'empresa', 'Acq Co',
+      'acq', '{"first":{"utm_source":"meta","landing_path":"/?gclid=raw"}}'::jsonb));
+  if (select identity_data ? 'acq' from auth.identities where provider_id = v_user::text) then
+    raise exception 'identity insert must strip acq';
+  end if;
+  if (select identity_data ->> 'empresa' from auth.identities where provider_id = v_user::text)
+       is distinct from 'Acq Co'
+     or (select email from auth.identities where provider_id = v_user::text)
+       is distinct from 'acq-owner@example.com' then
+    raise exception 'identity strip must keep the other keys';
+  end if;
+  update auth.identities
+     set identity_data = identity_data || '{"email_verified":true,"acq":{"first":{"utm_source":"ig"}}}'
+   where provider_id = v_user::text;
+  if (select identity_data ? 'acq' from auth.identities where provider_id = v_user::text) then
+    raise exception 'identity update must strip acq';
+  end if;
+  if (select identity_data -> 'email_verified' from auth.identities where provider_id = v_user::text)
+       is distinct from 'true'::jsonb then
+    raise exception 'identity update must keep the updated keys';
+  end if;
+  -- falha forçada: identity_data escalar "acq" faz o "-" levantar erro
+  -- (cannot delete from scalar); o trigger engole e devolve a linha.
+  insert into auth.identities (user_id, provider_id, provider, identity_data)
+    values (v_user, 'acq-scalar-' || v_user::text, 'acq_test', '"acq"'::jsonb);
+  if (select identity_data from auth.identities where provider_id = 'acq-scalar-' || v_user::text)
+       is distinct from '"acq"'::jsonb then
+    raise exception 'a failing identity strip must still insert the row unchanged';
+  end if;
+
   -- 7. recadastro (UPDATE de raw_user_meta_data) remove acq sem pending.
   select id into v_user from auth.users where email = 'acq-owner@example.com';
   update auth.users set raw_user_meta_data = raw_user_meta_data || '{"acq":{"first":{}}}'

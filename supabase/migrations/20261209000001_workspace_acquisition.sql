@@ -23,6 +23,9 @@
 --     (ordem alfabética), então o workspace e a indicação já existem.
 --     O GoTrue insere como supabase_auth_admin, que não tem direito nas tabelas
 --     de public: as duas funções são SECURITY DEFINER, como a de afiliados.
+--     on_auth_identity_acquisition_strip (BEFORE INSERT OR UPDATE OF
+--     identity_data em auth.identities): o GoTrue também copia o metadata cru
+--     em identity_data; o trigger tira acq de lá.
 --     Nenhuma falha aqui derruba o cadastro.
 -- (6) ever_paid_workspace_ids: quais ids de uma lista já pagaram alguma vez
 --     (regra do classOf do metrics-logic, ever_subscribed_at ou
@@ -31,7 +34,7 @@
 -- Tabelas e RPCs só para o service_role. REVOKE nomeado de anon/authenticated:
 -- REVOKE FROM PUBLIC não os remove.
 --
--- Rollback: DROP TRIGGER dos dois triggers devolve o cadastro ao estado
+-- Rollback: DROP TRIGGER dos três triggers devolve o cadastro ao estado
 -- anterior; tabelas e funções podem ficar.
 
 -- (1) workspace_acquisition
@@ -66,7 +69,8 @@ GRANT ALL ON TABLE public.acquisition_pending TO service_role;
 
 -- (3a) Saneamento de um touch. O metadata vem do navegador (controlado pelo
 -- usuário): só as 10 chaves do Touch, texto só quando é string JSON (aparado,
--- vazio vira null, cortado em 200), utm_source/utm_medium em minúsculas, click
+-- vazio vira null, cortado em 200), utm_source/utm_medium em minúsculas,
+-- landing_path só o caminho (sem query nem hash), at só timestamp ISO, click
 -- só da lista, referrer_host só com cara de host e até 200 (acima vira null:
 -- host cortado é lixo), ref só booleano. Devolve null quando t não é objeto.
 CREATE OR REPLACE FUNCTION public.acquisition_sanitize_touch(t jsonb)
@@ -81,13 +85,15 @@ DECLARE
   v_val   text;
   v_click text;
   v_host  text;
+  v_path  text;
+  v_at    text;
 BEGIN
   IF t IS NULL OR jsonb_typeof(t) <> 'object' THEN
     RETURN NULL;
   END IF;
 
   FOREACH v_key IN ARRAY ARRAY[
-    'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'landing_path', 'at'
+    'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'
   ] LOOP
     v_val := NULL;
     IF jsonb_typeof(t -> v_key) = 'string' THEN
@@ -98,6 +104,29 @@ BEGIN
     END IF;
     v_out := v_out || jsonb_build_object(v_key, v_val);
   END LOOP;
+
+  -- landing_path: só o caminho. Corta na primeira ? ou # (query e hash podem
+  -- trazer click ids) e exige / inicial; senão null.
+  IF jsonb_typeof(t -> 'landing_path') = 'string' THEN
+    v_path := split_part(split_part(btrim(t ->> 'landing_path'), '?', 1), '#', 1);
+    IF left(v_path, 1) = '/' THEN
+      v_path := left(v_path, 200);
+    ELSE
+      v_path := NULL;
+    END IF;
+  END IF;
+
+  -- at: só data/hora ISO 8601 válida (o regex barra 'now', 'infinity' e afins,
+  -- e o cast barra datas impossíveis); guarda o texto original.
+  IF jsonb_typeof(t -> 'at') = 'string'
+     AND t ->> 'at' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}([T ][0-9]{2}:[0-9]{2}(:[0-9]{2}(\.[0-9]{1,6})?)?(Z|[+-][0-9]{2}(:?[0-9]{2})?)?)?$' THEN
+    BEGIN
+      PERFORM (t ->> 'at')::timestamptz;
+      v_at := t ->> 'at';
+    EXCEPTION WHEN OTHERS THEN
+      v_at := NULL;
+    END;
+  END IF;
 
   IF jsonb_typeof(t -> 'click') = 'string'
      AND t ->> 'click' IN ('gclid', 'gbraid', 'wbraid', 'fbclid', 'oppref', 'msclkid') THEN
@@ -111,6 +140,8 @@ BEGIN
   END IF;
 
   RETURN v_out || jsonb_build_object(
+    'landing_path', v_path,
+    'at', v_at,
     'click', v_click,
     'referrer_host', v_host,
     'ref', COALESCE(t -> 'ref' = 'true'::jsonb, false)
@@ -405,6 +436,37 @@ CREATE TRIGGER on_auth_user_created_zzz_acquisition
   AFTER INSERT ON auth.users
   FOR EACH ROW
   EXECUTE FUNCTION public.record_workspace_acquisition();
+
+-- (5c) O GoTrue copia o metadata do cadastro (com acq cru, sem saneamento) em
+-- auth.identities.identity_data no INSERT da identidade de e-mail e o regrava
+-- depois (confirmação, recadastro). BEFORE INSERT OR UPDATE OF identity_data:
+-- tira acq e nunca levanta erro nem devolve NULL (devolver NULL descartaria a
+-- identidade em silêncio).
+CREATE OR REPLACE FUNCTION public.strip_identity_acquisition()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  BEGIN
+    IF NEW.identity_data ? 'acq' THEN
+      NEW.identity_data := NEW.identity_data - 'acq';
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'identity acquisition strip failed for identity %: %', NEW.id, SQLERRM;
+  END;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.strip_identity_acquisition() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS on_auth_identity_acquisition_strip ON auth.identities;
+CREATE TRIGGER on_auth_identity_acquisition_strip
+  BEFORE INSERT OR UPDATE OF identity_data ON auth.identities
+  FOR EACH ROW
+  EXECUTE FUNCTION public.strip_identity_acquisition();
 
 -- (6) Ids da lista que já pagaram alguma vez.
 CREATE OR REPLACE FUNCTION public.ever_paid_workspace_ids(p_ids uuid[])
