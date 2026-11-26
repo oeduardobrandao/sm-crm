@@ -38,8 +38,10 @@ the agency side.
 
 ## Anti-goals
 
-- A Brazilian workspace seeing or receiving anything in English. Default is `pt`, and every path
-  that cannot resolve a language falls back to `pt`.
+- A Brazilian workspace receiving anything in English that nobody asked for. Default is `pt`, and
+  every path that cannot resolve a language falls back to `pt`. A person's own pt/EN toggle in their
+  browser is a deliberate preference and is honored over the workspace language for their screen
+  only; it never changes what the workspace sends.
 - Coupling language to billing currency. A USD workspace can be `pt` and a BRL one `en`; only the
   initial default and the backfill read the currency/market.
 - A workspace-language change silently overriding a choice a person made with the pt/EN toggle in
@@ -69,7 +71,10 @@ the agency side.
   the signup: same WARNING-and-continue behavior as the currency.
 - Backfill: `update workspaces set language = 'en' where billing_currency = 'usd'`.
 - CRM writes go through an RPC `workspace_set_language(p_language text)` (owner of the active
-  workspace only), not a column grant. The CRM reads it with the active workspace row; add the
+  workspace only). The RPC alone is not enough: the `ws_update_owner_admin` policy lets any member
+  with `configuracoes:editar` (admins too) UPDATE `workspaces` directly. Extend the existing
+  `workspaces_guard_billing_columns()` pattern (refuses changes from `anon`/`authenticated`) to
+  `language`, so only the SECURITY DEFINER RPC and the service role can change it. The CRM reads it with the active workspace row; add the
   column to whatever select or view feeds that.
 - Edge functions read it with the service role next to the data they already load (by `conta_id`).
 
@@ -108,11 +113,14 @@ the agency side.
 
 ### 3. Hub
 
-- `hub-bootstrap` returns `language` (the workspace's). The Hub applies it on boot with the
+- `hub-bootstrap` returns `language` (the workspace's) in both the success payload and the
+  `login_required` payload (`login.workspace`), so the Hub login screen is translated too. The Hub applies it on boot with the
   non-saving change unless an explicit choice exists (the Hub already has a pt/EN toggle in
   `HubSidebar` and `HubMobileNav`, which call `changeLanguage` and so write the explicit key).
 - The Hub locale files exist; fill any untranslated Hub strings found while testing.
-- The Hub login-code email (`hub-auth/email.ts`) uses the workspace language.
+- The Hub login-code email (`hub-auth/email.ts`) uses the workspace language: `hub-auth`'s
+  `resolveLink` adds `language` to its `workspaces` select and passes it to the sender, and its own
+  response messages to the login screen follow it.
 
 ### 4. Emails and push
 
@@ -130,8 +138,9 @@ the agency side.
   - Agency clients: `client-event-email-cron` / `client-event-email.ts`, `agenda-cliente-email`,
     `agenda-lembretes-email` / `agenda-email.ts` (external invitees included), `hub-auth/email.ts`.
 - The Resend `type` tag (email metrics) does not change with language.
-- Nurture: English copy variants; the `nurture-unsub` confirmation page renders in the workspace
-  language.
+- Nurture: English copy variants. The `nurture-unsub` confirmation page resolves the language the
+  same way as the nurture send (the profile's owned workspace, oldest if several), so the signed
+  token (`{u}`) does not change and already-sent links keep working.
 - Supabase Auth templates (Reset password, Invite user, Magic link) branch on `.Data.language`, the
   way "Confirm sign up" already branches on `.Data.market`; a missing value renders Portuguese
   (`printf "%v"` guard, as today). `raw_user_meta_data.language` is per user, so its source is fixed:
@@ -139,7 +148,12 @@ the agency side.
     the owner changes the workspace language);
   - otherwise the workspace that **invited** them, written by `invite-actions.ts` in the
     `inviteUserByEmail` data and on resend; a later invite from another workspace overwrites it.
-  - Removing a member does not rewrite it. Template edits are a dashboard step in the runbook,
+  - Removing a member does not rewrite it. Changing workspace A's language rewrites only A's
+    owner's metadata, never a member's.
+  - Accepted limitation: these Auth emails (password reset, magic link) run without any workspace
+    context, so for someone in workspaces of two languages they follow one rule above, not the
+    workspace they were thinking of. That is a per-person language in disguise and stays a
+    best-effort until per-person language exists (non-goal). Template edits are a dashboard step in the runbook,
     staging then prod.
 - Owner-addressed emails without an event workspace (welcome, trial reminder, nurture,
   reverse-trial) use the workspace the owner owns; one is created at signup
@@ -148,10 +162,14 @@ the agency side.
 ### 5. Client-facing documents and AI text
 
 - Block reports (`report-docs`, `_shared/report-template`, PDF via Gotenberg) render their fixed
-  labels in the workspace language at render time. A stored PDF (`pdf_storage_path`) is not
+  labels in the workspace language at render time. `report-docs` does not load `workspaces` today
+  (`generate.ts`), so the language is loaded once per request and threaded through generate,
+  refresh-data and PDF export; the print page reads it from the document's workspace. A stored PDF (`pdf_storage_path`) is not
   invalidated by a language change; the next export renders in the new language.
-- AI narratives (Gemini in analytics reports) and the comments analysis (Workers AI) receive the
-  workspace language in their prompts. Text already stored in `data_snapshot` or in saved analyses
+- AI narratives in reports (Gemini, client-facing) use the workspace language. The comments
+  analysis (Workers AI) is read only by the agency inside the CRM, so it keeps its current contract:
+  the CRM sends `?lang=` with the requester's UI language, which after section 2 already defaults to
+  the workspace language. Text already stored in `data_snapshot` or in saved analyses
   stays in the language it was generated in until the user regenerates it.
 - Out of scope: error and status strings that edge functions return to the CRM (Instagram,
   TikTok, Google, import, MCP). The CRM shows its own translated message for known error codes;
@@ -176,6 +194,10 @@ the agency side.
 - Owner lifecycle emails use the owned workspace (section 4).
 - Stored PDFs and stored AI text are not regenerated on a language change (section 5).
 - Server error strings shown in the CRM are out of scope (section 5).
+- After an external review: an admin cannot change the language by a direct UPDATE (section 1);
+  the Hub login screen and the Hub login-code flow get the language (section 3); nurture
+  unsubscribe resolves the language without a token change (section 4); the comments analysis keeps
+  the requester's `?lang=` (section 5).
 - The hard-coded-Portuguese guard ships with a shrinking baseline.
 
 ## Left to the builder
