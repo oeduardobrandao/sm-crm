@@ -66,6 +66,7 @@
   },
   "count": {
     "posts_one": "{{count}} post",
+    "posts_zero": "{{count}} posts",
     "posts_other": "{{count}} posts"
   },
   "age": {
@@ -215,6 +216,7 @@
     "hintNoTags": "Create tags and assign them to posts to find out which topics engage the most.",
     "hintAssign": "Assign tags to posts to see performance by topic.",
     "count_one": "({{count}} post)",
+    "count_zero": "({{count}} posts)",
     "count_other": "({{count}} posts)"
   },
   "demo": {
@@ -237,6 +239,7 @@
     "recommended": "Recommended times",
     "when": "{{day}} at {{hour}}",
     "meta_one": "{{pct}}% eng. · {{count}} post",
+    "meta_zero": "{{pct}}% eng. · {{count}} posts",
     "meta_other": "{{pct}}% eng. · {{count}} posts"
   },
   "drawer": {
@@ -359,6 +362,7 @@
     "tipValue": "{{value}} followers",
     "tipDelta": "{{delta}} that day",
     "tipPost_one": "{{count}} post published",
+    "tipPost_zero": "{{count}} posts published",
     "tipPost_other": "{{count}} posts published",
     "legend": "Day with a published post"
   },
@@ -449,6 +453,7 @@
     "highlight": {
       "engagement_rate": "Your engagement is {{v}} per post; for accounts your size it is {{p}}.",
       "posts_30d_one": "You published {{v}} post in 30 days; accounts your size publish {{p}}.",
+      "posts_30d_zero": "You published {{v}} posts in 30 days; accounts your size publish {{p}}.",
       "posts_30d_other": "You published {{v}} posts in 30 days; accounts your size publish {{p}}.",
       "reel_views": "Your reels have {{v}} views; for accounts your size, {{p}}.",
       "reels_share": "Reels are {{v}} of your feed; for accounts your size, {{p}}."

@@ -66,6 +66,7 @@
   },
   "count": {
     "posts_one": "{{count}} post",
+    "posts_zero": "{{count}} posts",
     "posts_other": "{{count}} posts"
   },
   "age": {
@@ -215,6 +216,7 @@
     "hintNoTags": "Crie tags e atribua aos posts para descobrir quais temas engajam mais.",
     "hintAssign": "Atribua tags aos posts para ver o desempenho por tópico.",
     "count_one": "({{count}} posts)",
+    "count_zero": "({{count}} posts)",
     "count_other": "({{count}} posts)"
   },
   "demo": {
@@ -237,6 +239,7 @@
     "recommended": "Horários recomendados",
     "when": "{{day}} às {{hour}}",
     "meta_one": "{{pct}}% eng. · {{count}} post",
+    "meta_zero": "{{pct}}% eng. · {{count}} posts",
     "meta_other": "{{pct}}% eng. · {{count}} posts"
   },
   "drawer": {
@@ -359,6 +362,7 @@
     "tipValue": "{{value}} seguidores",
     "tipDelta": "{{delta}} no dia",
     "tipPost_one": "{{count}} post publicado",
+    "tipPost_zero": "{{count}} posts publicados",
     "tipPost_other": "{{count}} posts publicados",
     "legend": "Dia com post publicado"
   },
@@ -449,6 +453,7 @@
     "highlight": {
       "engagement_rate": "Seu engajamento é {{v}} por post; em contas do seu tamanho é {{p}}.",
       "posts_30d_one": "Você publicou {{v}} post em 30 dias; contas do seu tamanho publicam {{p}}.",
+      "posts_30d_zero": "Você publicou {{v}} posts em 30 dias; contas do seu tamanho publicam {{p}}.",
       "posts_30d_other": "Você publicou {{v}} posts em 30 dias; contas do seu tamanho publicam {{p}}.",
       "reel_views": "Seus reels têm {{v}} visualizações; em contas do seu tamanho, {{p}}.",
       "reels_share": "Reels são {{v}} do seu feed; em contas do seu tamanho, {{p}}."
