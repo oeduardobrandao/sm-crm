@@ -368,3 +368,92 @@ describe('WorkspaceDetailPage billing currency', () => {
     expect(within(group).getByRole('radio', { name: 'BRL' })).toBeDisabled();
   });
 });
+
+const TOUCH_FIRST = {
+  utm_source: 'ig',
+  utm_medium: 'social',
+  utm_campaign: null,
+  referrer_host: 'l.instagram.com',
+  landing_path: '/',
+  at: '2026-11-10T15:00:00Z',
+};
+const TOUCH_LAST = {
+  utm_source: 'meta',
+  utm_medium: 'paid',
+  utm_campaign: 'lp-teste-reverso-nov',
+  referrer_host: null,
+  landing_path: '/precos',
+  at: '2026-11-20T15:00:00Z',
+};
+
+function withAcquisition(acquisition: unknown) {
+  vi.mocked(getWorkspace).mockResolvedValue({ ...WORKSPACE, acquisition } as never);
+}
+
+describe('WorkspaceDetailPage Origem panel (desktop)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    primeApi();
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('shows the channel, campaign and both touches', async () => {
+    withAcquisition({
+      channel: 'meta_ads',
+      campaign: 'lp-teste-reverso-nov',
+      captured: true,
+      first_touch: TOUCH_FIRST,
+      last_touch: TOUCH_LAST,
+    });
+    renderPage();
+    const panel = (await screen.findByRole('region', { name: 'Origem' })) as HTMLElement;
+    expect(within(panel).getByText('Meta Ads')).toBeTruthy();
+    const first = within(panel).getByRole('group', { name: 'Primeira visita' });
+    expect(within(first).getByText('10/11/2026')).toBeTruthy();
+    expect(within(first).getByText('ig / social')).toBeTruthy();
+    expect(within(first).getByText('l.instagram.com')).toBeTruthy();
+    const last = within(panel).getByRole('group', {
+      name: 'Último clique (conta para o canal)',
+    });
+    expect(within(last).getByText('20/11/2026')).toBeTruthy();
+    expect(within(last).getByText('meta / paid')).toBeTruthy();
+    expect(within(last).getAllByText('lp-teste-reverso-nov').length).toBeGreaterThan(0);
+    expect(within(last).getByText('/precos')).toBeTruthy();
+  });
+
+  it('not captured: says so with the one-line explanation', async () => {
+    withAcquisition({
+      channel: 'unknown',
+      campaign: null,
+      captured: false,
+      first_touch: null,
+      last_touch: null,
+    });
+    renderPage();
+    const panel = (await screen.findByRole('region', { name: 'Origem' })) as HTMLElement;
+    expect(within(panel).getAllByText('Não capturado').length).toBeGreaterThan(0);
+    expect(within(panel).getByText(/o navegador não guardou a visita/)).toBeTruthy();
+  });
+
+  it('acquisition null: Sem dados', async () => {
+    withAcquisition(null);
+    renderPage();
+    const panel = (await screen.findByRole('region', { name: 'Origem' })) as HTMLElement;
+    expect(within(panel).getAllByText('Sem dados').length).toBeGreaterThan(0);
+    expect(within(panel).getByText(/criado antes do rastreio/)).toBeTruthy();
+  });
+
+  it('demo channel: Demo (vendas) plus the touches when present', async () => {
+    withAcquisition({
+      channel: 'demo',
+      campaign: null,
+      captured: true,
+      first_touch: TOUCH_FIRST,
+      last_touch: null,
+    });
+    renderPage();
+    const panel = (await screen.findByRole('region', { name: 'Origem' })) as HTMLElement;
+    expect(within(panel).getByText('Demo (vendas)')).toBeTruthy();
+    expect(within(panel).getByText('ig / social')).toBeTruthy();
+  });
+});
