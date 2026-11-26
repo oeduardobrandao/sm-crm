@@ -3,10 +3,12 @@ import type { ReactElement } from 'react';
 import { Link, MemoryRouter } from 'react-router-dom';
 import i18n from 'i18next';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { setActiveWorkspaceLanguage } from '@mesaas/i18n';
 import { SavedLanguageSync } from '../boot/SavedLanguageSync';
 import { EnglishPage } from '../pages/en/EnglishPage';
 
 const KEY = 'mesaas-language';
+const HINT = 'mesaas-site-language';
 
 function visit(pathname: string) {
   window.history.replaceState(null, '', pathname);
@@ -24,6 +26,8 @@ describe('SavedLanguageSync', () => {
   afterEach(async () => {
     visit('/');
     localStorage.removeItem(KEY);
+    localStorage.removeItem(HINT);
+    setActiveWorkspaceLanguage(null);
     await i18n.changeLanguage('pt');
   });
 
@@ -55,7 +59,35 @@ describe('SavedLanguageSync', () => {
       </>,
     );
     await waitFor(() => expect(i18n.language).toBe('en'));
-    expect(localStorage.getItem(KEY)).toBe('en');
+    // A visit is a hint, never an explicit choice.
+    expect(localStorage.getItem(KEY)).toBe('pt');
+  });
+
+  it('/en visit writes only the hint', async () => {
+    renderAt(
+      '/en',
+      <EnglishPage>
+        <div>page</div>
+      </EnglishPage>,
+    );
+    await waitFor(() => expect(i18n.language).toBe('en'));
+    expect(localStorage.getItem(KEY)).toBeNull();
+    expect(localStorage.getItem(HINT)).toBe('en');
+  });
+
+  it('navigating from /dashboard to /login keeps the effective language', async () => {
+    setActiveWorkspaceLanguage('en');
+    renderAt(
+      '/dashboard',
+      <>
+        <SavedLanguageSync />
+        <Link to="/login">Entrar</Link>
+      </>,
+    );
+    await waitFor(() => expect(i18n.language).toBe('en'));
+    fireEvent.click(screen.getByRole('link', { name: 'Entrar' }));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(i18n.language).toBe('en');
   });
 
   it('on /en/pricing also leaves the language alone', async () => {

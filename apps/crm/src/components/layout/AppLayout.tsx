@@ -10,6 +10,7 @@ import { ReverseTrialBanner } from '../billing/ReverseTrialBanner';
 import { ReverseTrialEndedBanner } from '../billing/ReverseTrialEndedBanner';
 import { IncidentBanner } from './IncidentBanner';
 import { useAuth } from '../../context/AuthContext';
+import { WorkspaceLanguageSync } from '../../boot/WorkspaceLanguageSync';
 import type { FinancialAccess } from '../../lib/financialAccess';
 import type { PermissionCheck } from '../../lib/permissions';
 import FinancialRestrictionScreen from './FinancialRestrictionScreen';
@@ -256,6 +257,7 @@ export default function AppLayout() {
 
   return (
     <GuideProvider>
+      <WorkspaceLanguageSync />
       <PhoneLayoutContext.Provider value={phoneChrome.contextValue}>
         <PageToolbarProvider vidroShell={vidroShell}>
           <div

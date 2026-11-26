@@ -11,7 +11,7 @@ import { installConsentEffects } from './lib/consentEffects';
 import { applyUsConsentDefault } from './lib/usConsentDefault';
 import { captureAcquisition } from './lib/acquisition';
 import { captureReferral } from './lib/referral';
-import { initI18n } from '@mesaas/i18n';
+import { initI18n, migrateLegacyLanguageKey } from '@mesaas/i18n';
 import { I18N_LAZY, I18N_RESOURCES } from './boot/i18nResources';
 import { mountApp } from './boot/mountApp';
 import { markSsrMount } from './lib/ssrMount';
@@ -58,6 +58,9 @@ const initialLanguage =
     : isSsr || isPortugueseSitePage(pathname)
       ? ('pt' as const)
       : undefined;
+// Before init: an old `/en` visit wrote the explicit key; move it to the hint so it is not
+// mistaken for a choice. Browser only (main.tsx is the client entry).
+migrateLegacyLanguageKey();
 initI18n(I18N_RESOURCES, { lazy: I18N_LAZY, ...(initialLanguage ? { initialLanguage } : {}) });
 
 // Minimal DATA router (single splat route; App keeps its own descendant <Routes>). It was

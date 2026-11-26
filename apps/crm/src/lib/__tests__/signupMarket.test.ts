@@ -1,14 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@mesaas/i18n', () => ({
-  changeLanguage: vi.fn(),
-  i18n: { changeLanguage: vi.fn(() => Promise.resolve()) },
+  setLanguageHint: vi.fn(),
+  getExplicitLanguage: vi.fn(() => {
+    try {
+      const v = localStorage.getItem('mesaas-language');
+      return v === 'pt' || v === 'en' ? v : null;
+    } catch {
+      return null;
+    }
+  }),
 }));
 
-import { changeLanguage, i18n } from '@mesaas/i18n';
+import { setLanguageHint } from '@mesaas/i18n';
 import { applyAccountLanguageFallback, readSignupMarket } from '../signupMarket';
 
-const mockedChangeLanguage = vi.mocked(changeLanguage);
+const mockedChangeLanguage = vi.mocked(setLanguageHint);
 
 describe('readSignupMarket', () => {
   it('honors only an exact single market=us', () => {
@@ -65,11 +72,8 @@ describe('applyAccountLanguageFallback', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('blocked');
     });
-    mockedChangeLanguage.mockImplementation(() => {
-      throw new Error('blocked');
-    });
     expect(() => applyAccountLanguageFallback(usUser)).not.toThrow();
-    // Not persisted, but this page load still switches to English.
-    expect(i18n.changeLanguage).toHaveBeenCalledWith('en');
+    // setLanguageHint swallows the storage error and still switches this page load.
+    expect(mockedChangeLanguage).toHaveBeenCalledWith('en');
   });
 });

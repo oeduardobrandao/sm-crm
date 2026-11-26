@@ -10,6 +10,8 @@ vi.mock('../../../context/AuthContext', () => ({
   useAuth: vi.fn(),
 }));
 
+// The real sync reads the workspace query, which this suite has no QueryClient for.
+vi.mock('../../../boot/WorkspaceLanguageSync', () => ({ WorkspaceLanguageSync: () => null }));
 vi.mock('../Sidebar', () => ({
   default: ({
     isDrawer,
