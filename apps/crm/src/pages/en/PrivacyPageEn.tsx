@@ -42,7 +42,7 @@ const cellStyle = {
 const COOKIE_ROWS: [string, string, string][] = [
   [
     'Always on',
-    'Login session, language, theme, protection against outdated versions of the app and the record of your cookie choice. Error monitoring (Sentry, details kept up to 30 days) and aggregate visit counts (Vercel Analytics, no cookies, visit identifier discarded within 24 hours).',
+    "Login session, language, theme, protection against outdated versions of the app and the record of your cookie choice. Error monitoring (Sentry, details kept up to 30 days) and aggregate visit counts (Vercel Analytics, no cookies, visit identifier discarded within 24 hours). We also keep in your browser, for up to 90 days, which campaign or site brought you (the campaign tags and the referring site's domain, without ad identifiers), and attach it to the account when you sign up, to measure which channels bring customers.",
     'Needed for Mesaas to work, stay secure and measure failures. These cannot be turned off.',
   ],
   [
