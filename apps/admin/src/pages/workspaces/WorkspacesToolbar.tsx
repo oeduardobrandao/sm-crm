@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Columns3, Download, Search, SlidersHorizontal } from 'lucide-react';
+import { ACQUISITION_CHANNELS, channelLabel } from '../../lib/acquisition-channels';
 import type { Plan } from '../../lib/api';
 import { STATUS_GROUPS, STATUS_GROUP_LABELS } from '../../lib/subscription';
 import { cn } from '../../lib/utils';
@@ -326,6 +327,13 @@ export function WorkspacesToolbar({
           allLabel="Qualquer"
           options={ACTIVITY_BUCKETS.map((k) => ({ value: k, label: ACTIVITY_LABELS[k] }))}
           {...multi('atividade')}
+        />
+        <FilterMultiSelect
+          label="Origem"
+          value={params.origem}
+          allLabel="Todas"
+          options={ACQUISITION_CHANNELS.map((c) => ({ value: c, label: channelLabel(c) }))}
+          {...multi('origem')}
         />
         <FilterSelect
           label="Criado"

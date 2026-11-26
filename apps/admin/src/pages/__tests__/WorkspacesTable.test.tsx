@@ -205,4 +205,16 @@ describe('WorkspacesTable plan source badge', () => {
     expect(within(rows[3]).queryByText('Demo')).toBeNull();
     expect(within(rows[3]).queryByText('Comp')).toBeNull();
   });
+
+  it('shows the acquisition channel in the Origem column, or Sem dados when absent', () => {
+    renderTable({
+      workspaces: [
+        ws({ id: 'a', acquisition_channel: 'google_ads' }),
+        ws({ id: 'b', name: 'Outra' }),
+      ],
+    });
+    expect(screen.getByRole('columnheader', { name: /Origem/ })).toBeInTheDocument();
+    expect(screen.getByText('Google Ads')).toBeInTheDocument();
+    expect(screen.getByText('Sem dados')).toBeInTheDocument();
+  });
 });

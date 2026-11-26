@@ -24,6 +24,11 @@ import { Badge } from '../../components/ui/badge';
 import { Skeleton } from '../../components/ui/skeleton';
 import { PageHeader } from '../../components/PageHeader';
 import type { WorkspaceActivityBucket, WorkspaceSummary } from '../../lib/api';
+import {
+  ACQUISITION_CHANNELS,
+  channelLabel,
+  type AcquisitionChannel,
+} from '../../lib/acquisition-channels';
 import { avatarColor, avatarLetter } from '../../lib/avatar-color';
 import { workspaceDetailPath } from '../../lib/routes';
 import {
@@ -142,6 +147,8 @@ function WorkspaceCell({ ws, now }: { ws: WorkspaceSummary; now: Date }) {
               {' · '}
               {plural(ws.client_count, 'cliente', 'clientes')}
               {' · '}
+              {channelLabel(ws.acquisition_channel)}
+              {' · '}
               <span className={ACTIVITY_TONE_CLASS[activity.tone]}>{activity.label}</span>
             </span>
           </span>
@@ -242,6 +249,24 @@ export function WorkspacesPhone({
           onChange={(next) =>
             setInSheet((latest) => ({
               atividade: rebaseListChange(latest.atividade, params.atividade, next),
+            }))
+          }
+        />
+      ),
+    },
+    {
+      type: 'custom',
+      key: 'origem',
+      content: (
+        <CheckList<AcquisitionChannel>
+          multiple
+          header="Origem"
+          emptyOption={{ label: 'Todas' }}
+          options={ACQUISITION_CHANNELS.map((c) => ({ value: c, label: channelLabel(c) }))}
+          value={params.origem}
+          onChange={(next) =>
+            setInSheet((latest) => ({
+              origem: rebaseListChange(latest.origem, params.origem, next),
             }))
           }
         />

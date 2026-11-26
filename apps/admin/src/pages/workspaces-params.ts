@@ -9,6 +9,7 @@
  * within a filter, AND across filters). Lists are deduped and kept in a canonical order, so
  * the URL and the query key never depend on the order the boxes were ticked.
  */
+import { ACQUISITION_CHANNELS, type AcquisitionChannel } from '../lib/acquisition-channels';
 import type {
   ListWorkspacesParams,
   SortDir,
@@ -31,6 +32,8 @@ export interface WorkspacesListParams {
   overrides: OverridesFilter;
   /** Empty = any activity. */
   atividade: WorkspaceActivityBucket[];
+  /** Acquisition channels; empty = any origin. */
+  origem: AcquisitionChannel[];
   criado: CreatedPreset;
   ord: WorkspaceSortKey;
   dir: SortDir;
@@ -45,6 +48,7 @@ export const DEFAULT_PARAMS: WorkspacesListParams = {
   status: [],
   overrides: '',
   atividade: [],
+  origem: [],
   criado: '',
   ord: 'created_at',
   dir: 'desc',
@@ -52,10 +56,18 @@ export const DEFAULT_PARAMS: WorkspacesListParams = {
   por: 20,
 };
 
-export const FILTER_KEYS = ['q', 'plano', 'status', 'overrides', 'atividade', 'criado'] as const;
+export const FILTER_KEYS = [
+  'q',
+  'plano',
+  'status',
+  'overrides',
+  'atividade',
+  'origem',
+  'criado',
+] as const;
 
 /** The multi-select filters (arrays in the params object, comma lists in the URL). */
-export type MultiFilterKey = 'plano' | 'status' | 'atividade';
+export type MultiFilterKey = 'plano' | 'status' | 'atividade' | 'origem';
 
 export const ACTIVITY_BUCKETS: readonly WorkspaceActivityBucket[] = [
   '7d',
@@ -179,6 +191,7 @@ export function parseWorkspacesParams(sp: URLSearchParams): WorkspacesListParams
     status: parseList(sp.get('status'), STATUS_GROUPS),
     overrides: oneOf(sp.get('overrides'), ['sim', 'nao'] as const) ?? '',
     atividade: parseList(sp.get('atividade'), ACTIVITY_BUCKETS),
+    origem: parseList(sp.get('origem'), ACQUISITION_CHANNELS),
     criado: oneOf(sp.get('criado'), CREATED_PRESETS) ?? '',
     ord: oneOf(sp.get('ord'), SORT_KEYS) ?? DEFAULT_PARAMS.ord,
     dir: oneOf(sp.get('dir'), ['asc', 'desc'] as const) ?? DEFAULT_PARAMS.dir,
@@ -194,6 +207,7 @@ export function serializeWorkspacesParams(p: WorkspacesListParams): URLSearchPar
     plano: canonicalPlano(p.plano),
     status: canonicalList(p.status, STATUS_GROUPS),
     atividade: canonicalList(p.atividade, ACTIVITY_BUCKETS),
+    origem: canonicalList(p.origem, ACQUISITION_CHANNELS),
   };
   (Object.keys(DEFAULT_PARAMS) as (keyof WorkspacesListParams)[]).forEach((key) => {
     const value = canonical[key];
@@ -215,6 +229,7 @@ export function toListWorkspacesRequest(p: WorkspacesListParams, now: Date): Lis
   if (p.status.length) req.status = canonicalList(p.status, STATUS_GROUPS).join(',');
   if (p.overrides) req.has_overrides = p.overrides === 'sim';
   if (p.atividade.length) req.activity = canonicalList(p.atividade, ACTIVITY_BUCKETS).join(',');
+  if (p.origem.length) req.channels = canonicalList(p.origem, ACQUISITION_CHANNELS).join(',');
   if (p.criado) {
     const since = new Date(now.getTime() - CREATED_PRESET_DAYS[p.criado] * 86_400_000);
     req.created_since = since.toISOString();
@@ -227,7 +242,14 @@ export function hasActiveFilters(p: WorkspacesListParams): boolean {
 }
 
 /** The filters the phone sheet owns: everything but the search text, which has its own field. */
-export const SHEET_FILTER_KEYS = ['plano', 'status', 'overrides', 'atividade', 'criado'] as const;
+export const SHEET_FILTER_KEYS = [
+  'plano',
+  'status',
+  'overrides',
+  'atividade',
+  'origem',
+  'criado',
+] as const;
 
 /**
  * How many of the sheet's filters are active (the badge on the Filtros button). Counts
@@ -244,6 +266,7 @@ export function clearSheetFiltersPatch(): Partial<WorkspacesListParams> {
     status: DEFAULT_PARAMS.status,
     overrides: DEFAULT_PARAMS.overrides,
     atividade: DEFAULT_PARAMS.atividade,
+    origem: DEFAULT_PARAMS.origem,
     criado: DEFAULT_PARAMS.criado,
   };
 }

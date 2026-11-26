@@ -1,5 +1,6 @@
 import { ArrowDown, ArrowRight, ArrowUp, ArrowUpDown } from 'lucide-react';
 import type { SortDir, WorkspaceSortKey, WorkspaceSummary } from '../../lib/api';
+import { channelLabel, channelTone } from '../../lib/acquisition-channels';
 import { PLAN_TEXT_CLASS, getPlanColor } from '../../lib/plan-colors';
 import {
   formatMoney,
@@ -95,6 +96,12 @@ export function PlanCell({ ws }: { ws: WorkspaceSummary }) {
   );
 }
 
+/** The workspace's acquisition channel; a missing key (older payload, no capture) is "Sem dados". */
+export function OriginBadge({ channel }: { channel: WorkspaceSummary['acquisition_channel'] }) {
+  const c = channel ?? 'no_data';
+  return <Badge variant={channelTone(c)}>{channelLabel(c)}</Badge>;
+}
+
 function SubscriptionCell({ ws }: { ws: WorkspaceSummary }) {
   if (!hasSubscription(ws.subscription)) return <span className="text-dim-foreground">—</span>;
   const meta = statusMeta(ws.subscription.status);
@@ -165,6 +172,8 @@ function cellFor(key: WorkspaceColumnKey, ws: WorkspaceSummary, now: Date, showO
       return null;
     case 'plan':
       return <PlanCell ws={ws} />;
+    case 'origem':
+      return <OriginBadge channel={ws.acquisition_channel} />;
     case 'subscription':
       return <SubscriptionCell ws={ws} />;
     case 'client_count':

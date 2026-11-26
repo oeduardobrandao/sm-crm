@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -13,6 +14,7 @@ vi.mock('../../lib/api', () => ({
 import { listPlans, listWorkspaces } from '../../lib/api';
 import WorkspacesPage from '../WorkspacesPage';
 import { COLUMNS_STORAGE_KEY } from '../workspaces-columns';
+import { ACQUISITION_CHANNELS, channelLabel } from '../../lib/acquisition-channels';
 
 const mockedList = vi.mocked(listWorkspaces);
 const mockedPlans = vi.mocked(listPlans);
@@ -156,5 +158,22 @@ describe('WorkspacesPage', () => {
     await screen.findAllByText('Alpha');
     expect(screen.queryByRole('columnheader', { name: /Dono/ })).toBeNull();
     expect(screen.getByRole('columnheader', { name: /Plano/ })).toBeInTheDocument();
+  });
+
+  it('filters by origem: ticking two channels sends them as one comma list', async () => {
+    renderPage();
+    await screen.findAllByText('Alpha');
+    fireEvent.click(screen.getByRole('button', { name: /^Filtros/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Origem' }));
+    for (const label of ACQUISITION_CHANNELS.map(channelLabel)) {
+      expect(await screen.findByRole('menuitemcheckbox', { name: label })).toBeInTheDocument();
+    }
+    await userEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Meta Ads' }));
+    await userEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Google Ads' }));
+    await waitFor(() =>
+      expect(mockedList).toHaveBeenLastCalledWith(
+        expect.objectContaining({ channels: 'meta_ads,google_ads' }),
+      ),
+    );
   });
 });

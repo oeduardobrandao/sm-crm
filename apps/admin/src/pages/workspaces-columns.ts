@@ -4,6 +4,7 @@ export type WorkspaceColumnKey =
   | 'name'
   | 'owner'
   | 'plan'
+  | 'origem'
   | 'subscription'
   | 'client_count'
   | 'member_count'
@@ -23,6 +24,7 @@ export const WORKSPACE_COLUMNS: readonly WorkspaceColumn[] = [
   { key: 'name', label: 'Workspace', sortKey: 'name', hideable: false },
   { key: 'owner', label: 'Dono', hideable: true },
   { key: 'plan', label: 'Plano', sortKey: 'plan', hideable: true },
+  { key: 'origem', label: 'Origem', hideable: true },
   { key: 'subscription', label: 'Assinatura', hideable: true },
   {
     key: 'client_count',

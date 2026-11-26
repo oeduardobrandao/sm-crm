@@ -64,6 +64,7 @@ describe('useWorkspacesParams', () => {
       status: [],
       overrides: '',
       atividade: [],
+      origem: [],
       criado: '',
       ord: 'name',
       dir: 'asc',

@@ -1,4 +1,5 @@
 import { X } from 'lucide-react';
+import { channelLabel } from '../../lib/acquisition-channels';
 import type { Plan } from '../../lib/api';
 import { STATUS_GROUP_LABELS } from '../../lib/subscription';
 import { Button } from '../../components/ui/button';
@@ -65,6 +66,14 @@ export function filterChipsFor(params: WorkspacesListParams, plans: Plan[]): Fil
       label: 'Atividade',
       value: ACTIVITY_LABELS[a],
       remove: (latest) => ({ atividade: latest.atividade.filter((v) => v !== a) }),
+    });
+  }
+  for (const o of params.origem) {
+    chips.push({
+      id: `origem:${o}`,
+      label: 'Origem',
+      value: channelLabel(o),
+      remove: (latest) => ({ origem: latest.origem.filter((v) => v !== o) }),
     });
   }
   if (params.criado) {

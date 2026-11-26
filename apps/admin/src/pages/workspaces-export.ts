@@ -1,3 +1,4 @@
+import { channelLabel } from '../lib/acquisition-channels';
 import type { WorkspaceSummary } from '../lib/api';
 import { centsToReais, isoDate, toMonthlyCents, type CsvColumn } from '../lib/csv-export';
 import { statusMeta, hasSubscription, providerLabel } from '../lib/subscription';
@@ -9,6 +10,7 @@ export const WORKSPACE_EXPORT_COLUMNS: CsvColumn[] = [
   { key: 'owner_telefone', label: 'Telefone do dono' },
   { key: 'owner_marketing_opt_in', label: 'Aceita marketing' },
   { key: 'plan_name', label: 'Plano' },
+  { key: 'origem', label: 'Origem' },
   { key: 'subscription_status', label: 'Status da assinatura' },
   { key: 'provider', label: 'Provedor' },
   { key: 'billing_interval', label: 'Intervalo' },
@@ -36,6 +38,7 @@ export function buildWorkspaceExportRows(
       owner_telefone: ws.owner?.telefone ?? '',
       owner_marketing_opt_in: ws.owner?.marketing_opt_in ? 'sim' : 'não',
       plan_name: ws.plan_name ?? '',
+      origem: channelLabel(ws.acquisition_channel),
       subscription_status: hasSub ? statusMeta(sub.status).label : '',
       provider: hasSub && sub.provider ? providerLabel(sub.provider) : '',
       billing_interval: hasSub ? (sub.interval ?? '') : '',
