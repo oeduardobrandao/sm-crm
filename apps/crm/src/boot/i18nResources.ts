@@ -62,6 +62,7 @@ const LAZY_LOCALES: Record<string, Record<string, () => LocaleModule>> = {
     guide: () => import('../../../../packages/i18n/locales/pt/guide.json'),
     help: () => import('../../../../packages/i18n/locales/pt/help.json'),
     shell: () => import('../../../../packages/i18n/locales/pt/shell.json'),
+    notifications: () => import('../../../../packages/i18n/locales/pt/notifications.json'),
   },
   en: {
     dashboard: () => import('../../../../packages/i18n/locales/en/dashboard.json'),
@@ -114,6 +115,7 @@ const LAZY_LOCALES: Record<string, Record<string, () => LocaleModule>> = {
     guide: () => import('../../../../packages/i18n/locales/en/guide.json'),
     help: () => import('../../../../packages/i18n/locales/en/help.json'),
     shell: () => import('../../../../packages/i18n/locales/en/shell.json'),
+    notifications: () => import('../../../../packages/i18n/locales/en/notifications.json'),
   },
 };
 

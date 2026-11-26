@@ -124,6 +124,8 @@ import ptHelp from '../packages/i18n/locales/pt/help.json';
 import enHelp from '../packages/i18n/locales/en/help.json';
 import ptShell from '../packages/i18n/locales/pt/shell.json';
 import enShell from '../packages/i18n/locales/en/shell.json';
+import ptNotifications from '../packages/i18n/locales/pt/notifications.json';
+import enNotifications from '../packages/i18n/locales/en/notifications.json';
 
 initI18n({
   pt: {
@@ -183,6 +185,7 @@ initI18n({
     guide: ptGuide,
     help: ptHelp,
     shell: ptShell,
+    notifications: ptNotifications,
   },
   en: {
     common: enCommon,
@@ -241,6 +244,7 @@ initI18n({
     guide: enGuide,
     help: enHelp,
     shell: enShell,
+    notifications: enNotifications,
   },
 });
 

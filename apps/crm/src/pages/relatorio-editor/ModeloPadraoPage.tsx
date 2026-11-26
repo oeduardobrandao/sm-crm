@@ -11,11 +11,7 @@ import { Button } from '@/components/ui/button';
 import { BlockRenderer } from '@mesaas/report-blocks/BlockRenderer';
 import { sectionizeLayout } from '@mesaas/report-blocks/types';
 import '@mesaas/report-blocks/styles.css';
-import {
-  buildSystemDefaultLayout,
-  createReportTemplate,
-  SYSTEM_TEMPLATE_NAME,
-} from '../../services/reportTemplates';
+import { buildSystemDefaultLayout, createReportTemplate } from '../../services/reportTemplates';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { useIsTabletShell } from '@/lib/phoneShell';
 import { useSampleSnapshot } from './useSampleSnapshot';
@@ -39,7 +35,12 @@ export default function ModeloPadraoPage() {
   const previewLayout = useMemo(() => withAiSampleText(layout), [layout]);
 
   const duplicate = useMutation({
-    mutationFn: () => createReportTemplate(`${SYSTEM_TEMPLATE_NAME} (cópia)`, layout),
+    mutationFn: () =>
+      createReportTemplate(
+        // Same key as ReportTemplatesCard, so both entry points save the same copy name.
+        t('settingsHub:templates.systemCopyName', { name: systemName }),
+        layout,
+      ),
     onSuccess: async (row) => {
       await qc.invalidateQueries({ queryKey: ['report-templates'] });
       navigate(`/relatorios/modelos/${row.id}`);
