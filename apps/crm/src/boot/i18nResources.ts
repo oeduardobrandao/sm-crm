@@ -57,6 +57,8 @@ const LAZY_LOCALES: Record<string, Record<string, () => LocaleModule>> = {
     analyticsFlows: () => import('../../../../packages/i18n/locales/pt/analyticsFlows.json'),
     analyticsPhone: () => import('../../../../packages/i18n/locales/pt/analyticsPhone.json'),
     reportEditor: () => import('../../../../packages/i18n/locales/pt/reportEditor.json'),
+    importWizard: () => import('../../../../packages/i18n/locales/pt/importWizard.json'),
+    contracts: () => import('../../../../packages/i18n/locales/pt/contracts.json'),
   },
   en: {
     dashboard: () => import('../../../../packages/i18n/locales/en/dashboard.json'),
@@ -104,6 +106,8 @@ const LAZY_LOCALES: Record<string, Record<string, () => LocaleModule>> = {
     analyticsFlows: () => import('../../../../packages/i18n/locales/en/analyticsFlows.json'),
     analyticsPhone: () => import('../../../../packages/i18n/locales/en/analyticsPhone.json'),
     reportEditor: () => import('../../../../packages/i18n/locales/en/reportEditor.json'),
+    importWizard: () => import('../../../../packages/i18n/locales/en/importWizard.json'),
+    contracts: () => import('../../../../packages/i18n/locales/en/contracts.json'),
   },
 };
 

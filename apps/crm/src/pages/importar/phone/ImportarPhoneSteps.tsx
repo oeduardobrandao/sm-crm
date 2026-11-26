@@ -1,5 +1,7 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { useIntlLocale } from '@mesaas/i18n';
 import {
   AlertTriangle,
   Bot,
@@ -37,7 +39,7 @@ import {
   statusKeys,
   type ClientesStatus,
 } from '../components/StepMapeamento';
-import { downloadFailures, plural, reasonLabel } from '../components/StepCommit';
+import { downloadFailures, reasonLabel } from '../components/StepCommit';
 import './importarPhone.css';
 
 /*
@@ -66,11 +68,12 @@ function Notice({
 }
 
 function GuideCard({ guide, collapsible = false }: { guide: SourceGuide; collapsible?: boolean }) {
+  const { t } = useTranslation('importWizard');
   const Icon = guide.icon;
   const heading = (
     <>
       <Icon aria-hidden="true" />
-      Como exportar do {guide.label}
+      {t('guide.heading', { label: guide.label })}
     </>
   );
   const body = (
@@ -91,7 +94,7 @@ function GuideCard({ guide, collapsible = false }: { guide: SourceGuide; collaps
         </ul>
       )}
       <Link to={`/ajuda/${KB_SLUG}`} className="phone-imp-link">
-        Ver o guia completo na Central de Ajuda
+        {t('guide.fullGuide')}
       </Link>
     </>
   );
@@ -120,32 +123,24 @@ export function PhoneStepOrigem({
   source: SourceKind | null;
   onSelect: (source: SourceKind) => void;
 }) {
+  const { t } = useTranslation('importWizard');
   const guide = source ? SOURCE_GUIDES.find((s) => s.id === source) : undefined;
   return (
     <>
       <section className="phone-imp-card phone-imp-mcp">
         <h2 className="phone-imp-mcp__title">
-          <Bot aria-hidden="true" />O jeito mais completo de migrar: peça para um agente de IA
+          <Bot aria-hidden="true" />
+          {t('origem.mcpTitle')}
         </h2>
-        <p>
-          Conecte o Claude ou o ChatGPT ao seu Mesaas via MCP e peça algo como "migre meus clientes
-          e o calendário do Notion para o Mesaas". O agente lê os dados direto na outra ferramenta e
-          cria clientes, posts e tarefas por aqui, sem você precisar exportar arquivos.
-        </p>
+        <p>{t('origem.mcpBody')}</p>
       </section>
-      <GroupedList aria-label="Agente de IA">
-        <Cell label="Conectar um agente" to="/configuracao/mcp" />
-        <Cell label="Como funciona" to="/ajuda/como-conectar-o-claude-mcp" />
+      <GroupedList aria-label={t('origem.agentGroup')}>
+        <Cell label={t('origem.connectAgent')} to="/configuracao/mcp" />
+        <Cell label={t('origem.howItWorks')} to="/ajuda/como-conectar-o-claude-mcp" />
       </GroupedList>
 
       <div role="radiogroup" aria-labelledby="phone-imp-origem-title">
-        <GroupedList
-          header={
-            <span id="phone-imp-origem-title">
-              Prefere fazer você mesmo? Escolha de onde vêm os dados
-            </span>
-          }
-        >
+        <GroupedList header={<span id="phone-imp-origem-title">{t('origem.chooseNoColon')}</span>}>
           {SOURCE_GUIDES.map((s) => {
             const Icon = s.icon;
             const selected = source === s.id;
@@ -187,6 +182,8 @@ export function PhoneStepUpload({
   busy: boolean;
   onFiles: (files: File[]) => void;
 }) {
+  const { t } = useTranslation('importWizard');
+  const intlLocale = useIntlLocale();
   const inputRef = useRef<HTMLInputElement>(null);
   const rows = bundle ? totalRows(bundle) : 0;
   const collections = bundle?.collections.length ?? 0;
@@ -195,11 +192,14 @@ export function PhoneStepUpload({
       <GuideCard guide={guide} collapsible />
 
       <GroupedList
-        header="Arquivos de exportação"
-        footer={`Até ${MAX_FILES} arquivos, 20 MB cada e ${MAX_ROWS.toLocaleString('pt-BR')} linhas por importação. Os arquivos são lidos no seu navegador: nenhum arquivo é enviado para nossos servidores.`}
+        header={t('upload.filesLabel')}
+        footer={t('upload.limitsPhone', {
+          files: MAX_FILES,
+          rows: MAX_ROWS.toLocaleString(intlLocale),
+        })}
       >
         <Cell
-          label={bundle ? 'Escolher outros arquivos' : 'Escolher arquivos'}
+          label={bundle ? t('upload.pickOtherFiles') : t('upload.pickFiles')}
           icon={<FileUp />}
           disabled={busy}
           // The picker must open inside the tap (iOS).
@@ -211,7 +211,7 @@ export function PhoneStepUpload({
         type="file"
         multiple
         accept={guide.accept}
-        aria-label="Arquivos de exportação"
+        aria-label={t('upload.filesLabel')}
         className="phone-imp-file-input"
         onChange={(e) => {
           const files = Array.from(e.target.files ?? []);
@@ -223,7 +223,7 @@ export function PhoneStepUpload({
 
       {busy && (
         <p className="phone-imp-status" role="status">
-          <Spinner size="sm" /> Lendo os arquivos…
+          <Spinner size="sm" /> {t('upload.reading')}
         </p>
       )}
 
@@ -243,16 +243,10 @@ export function PhoneStepUpload({
       {bundle && !error && (
         <>
           <GroupedList
-            header={`${collections} ${collections === 1 ? 'coleção' : 'coleções'} · ${rows} ${
-              rows === 1 ? 'linha' : 'linhas'
-            }`}
+            header={`${t('count.collection', { count: collections })} · ${t('count.row', { count: rows })}`}
           >
             {bundle.collections.map((c) => (
-              <Cell
-                key={c.id}
-                label={c.name}
-                value={`${c.rows.length} ${c.rows.length === 1 ? 'linha' : 'linhas'}`}
-              />
+              <Cell key={c.id} label={c.name} value={t('count.row', { count: c.rows.length })} />
             ))}
           </GroupedList>
           {bundle.warnings.length > 0 && (
@@ -273,10 +267,12 @@ export function PhoneStepUpload({
 // ---- Passo 3: Mapeamento ----------------------------------------------------------------
 
 const FIXED = '__fixo__';
-const DESTINATION_OPTIONS = (Object.keys(DESTINATION_LABELS) as Destination[]).map((d) => ({
-  value: d,
-  label: DESTINATION_LABELS[d],
-}));
+// Built per render: DESTINATION_LABELS resolves in the current UI language on each read.
+const destinationOptions = () =>
+  (Object.keys(DESTINATION_LABELS) as Destination[]).map((d) => ({
+    value: d,
+    label: DESTINATION_LABELS[d],
+  }));
 // Built per render: STATUS_LABELS resolves in the current UI language on each read.
 const statusOptions = () => POST_STATUS_TARGETS.map((s) => ({ value: s, label: STATUS_LABELS[s] }));
 
@@ -297,6 +293,7 @@ export function PhoneStepMapeamento({
   error: string | null;
   onChange: (proposal: MappingProposal) => void;
 }) {
+  const { t } = useTranslation('importWizard');
   const update = (collectionId: string, patch: Partial<CollectionMapping>) => {
     onChange({
       collections: proposal.collections.map((m) =>
@@ -307,28 +304,21 @@ export function PhoneStepMapeamento({
 
   return (
     <>
-      <p className="phone-imp-lead">
-        Confira o que encontramos em cada parte do arquivo. Tudo é editável: nada é importado antes
-        da sua confirmação.
-      </p>
+      <p className="phone-imp-lead">{t('mapping.leadPhone')}</p>
 
       {clientesStatus === 'pending' && (
         <p className="phone-imp-status" role="status">
-          <Spinner size="sm" /> Carregando a lista de clientes existentes. Precisamos dela para
-          saber quem já é seu cliente antes de continuar.
+          <Spinner size="sm" /> {t('mapping.loadingClientsPhone')}
         </p>
       )}
 
       {clientesStatus === 'error' && (
         <>
           <Notice tone="danger" role="alert">
-            <p>
-              Não foi possível carregar a lista de clientes existentes. Continuar sem ela pode
-              duplicar um cliente que já existe.
-            </p>
+            <p>{t('mapping.clientsError')}</p>
           </Notice>
-          <GroupedList aria-label="Lista de clientes">
-            <Cell label="Tentar novamente" icon={<RefreshCw />} onClick={onRetryClientes} />
+          <GroupedList aria-label={t('mapping.clientsList')}>
+            <Cell label={t('mapping.retry')} icon={<RefreshCw />} onClick={onRetryClientes} />
           </GroupedList>
         </>
       )}
@@ -350,15 +340,15 @@ export function PhoneStepMapeamento({
             <div className="phone-imp-collection__head">
               <h2 id={headingId}>{collection.name}</h2>
               <span>
-                {collection.rows.length} {collection.rows.length === 1 ? 'linha' : 'linhas'} ·{' '}
-                {collection.columns.length} {collection.columns.length === 1 ? 'coluna' : 'colunas'}
+                {t('count.row', { count: collection.rows.length })} ·{' '}
+                {t('count.column', { count: collection.columns.length })}
               </span>
             </div>
-            <GroupedList aria-label={`Mapeamento de ${collection.name}`}>
+            <GroupedList aria-label={t('mapping.mappingOf', { name: collection.name })}>
               <PickerCell<Destination>
-                label="Importar como"
-                sheetTitle={`Importar ${collection.name} como`}
-                options={DESTINATION_OPTIONS}
+                label={t('mapping.importAs')}
+                sheetTitle={t('mapping.importAsTitle', { name: collection.name })}
+                options={destinationOptions()}
                 value={mapping.destination}
                 onChange={(v) => {
                   if (v) update(collection.id, { destination: v });
@@ -366,11 +356,14 @@ export function PhoneStepMapeamento({
               />
               {needsClient && (
                 <PickerCell<string>
-                  label="Cliente"
-                  sheetTitle={`Cliente de ${collection.name}`}
+                  label={t('mapping.client')}
+                  sheetTitle={t('mapping.clientOf', { name: collection.name })}
                   options={[
-                    { value: FIXED, label: 'Um cliente para todas as linhas' },
-                    ...collection.columns.map((c) => ({ value: c, label: `Coluna “${c}”` })),
+                    { value: FIXED, label: t('mapping.oneClientForAll') },
+                    ...collection.columns.map((c) => ({
+                      value: c,
+                      label: t('mapping.column', { name: c }),
+                    })),
                   ]}
                   value={assignment.mode === 'column' ? assignment.column : FIXED}
                   onChange={(v) => {
@@ -386,16 +379,12 @@ export function PhoneStepMapeamento({
               )}
               {needsClient && assignment.mode === 'fixed' && (
                 <FormRow
-                  label="Nome"
-                  helper={
-                    fixedMatch
-                      ? 'Usaremos o cliente que já existe com esse nome.'
-                      : 'Se não existir um cliente com esse nome, ele será criado.'
-                  }
+                  label={t('mapping.nameShort')}
+                  helper={fixedMatch ? t('mapping.willUseExisting') : t('mapping.willCreate')}
                   input={{
-                    'aria-label': `Nome do cliente de ${collection.name}`,
+                    'aria-label': t('mapping.clientNameOf', { name: collection.name }),
                     value: assignment.clienteNome,
-                    placeholder: 'Nome do cliente',
+                    placeholder: t('mapping.clientName'),
                     autoComplete: 'off',
                     onChange: (e) =>
                       update(collection.id, {
@@ -407,12 +396,12 @@ export function PhoneStepMapeamento({
             </GroupedList>
 
             {keys.length > 0 && (
-              <GroupedList header="Equivalência de status" headerAs="h3">
+              <GroupedList header={t('mapping.statusMap')} headerAs="h3">
                 {keys.map((key) => (
                   <PickerCell<PostStatusTarget>
                     key={key}
                     label={key}
-                    sheetTitle={`Status "${key}"`}
+                    sheetTitle={t('mapping.statusSheet', { key })}
                     options={statusOptions()}
                     value={mapping.statusMap[key] ?? 'rascunho'}
                     onChange={(v) => {
@@ -438,12 +427,7 @@ export function PhoneStepMapeamento({
 
 // ---- Passo 4: Prévia --------------------------------------------------------------------
 
-const COUNT_LABELS: [string, string][] = [
-  ['clientes', 'Clientes'],
-  ['posts', 'Posts'],
-  ['entregas', 'Entregas'],
-  ['ideias', 'Ideias'],
-];
+const COUNT_KEYS = ['clientes', 'posts', 'entregas', 'ideias'] as const;
 
 export function PhoneStepPrevia({
   preview,
@@ -456,11 +440,12 @@ export function PhoneStepPrevia({
   busy: boolean;
   error: string | null;
 }) {
+  const { t } = useTranslation('importWizard');
   return (
     <>
       {busy && (
         <p className="phone-imp-status" role="status">
-          <Spinner size="sm" /> Conferindo os dados…
+          <Spinner size="sm" /> {t('preview.checking')}
         </p>
       )}
 
@@ -472,9 +457,13 @@ export function PhoneStepPrevia({
 
       {preview && (
         <>
-          <GroupedList header="Prévia da importação">
-            {COUNT_LABELS.map(([key, label]) => (
-              <Cell key={key} label={label} value={String(preview.counts[key] ?? 0)} />
+          <GroupedList header={t('preview.title')}>
+            {COUNT_KEYS.map((key) => (
+              <Cell
+                key={key}
+                label={t(`destination.${key}`)}
+                value={String(preview.counts[key] ?? 0)}
+              />
             ))}
           </GroupedList>
 
@@ -487,17 +476,14 @@ export function PhoneStepPrevia({
           {ignoredRows > 0 && (
             <Notice tone="muted">
               <p>
-                {ignoredRows} {ignoredRows === 1 ? 'linha será ignorada' : 'linhas serão ignoradas'}{' '}
-                por não ter cliente ou título. Volte e ajuste o mapeamento se não for o esperado.
+                {t('preview.ignoredRowsPhone', {
+                  counted: t('count.rowIgnored', { count: ignoredRows }),
+                })}
               </p>
             </Notice>
           )}
 
-          <p className="phone-imp-foot">
-            Clientes com o mesmo nome de um cliente que já existe são mesclados: só preenchemos
-            campos vazios, nunca sobrescrevemos. Por isso, a mesclagem não é desfeita pelo “Desfazer
-            importação”.
-          </p>
+          <p className="phone-imp-foot">{t('preview.mergeNote')}</p>
         </>
       )}
     </>
@@ -523,6 +509,7 @@ export function PhoneStepCommit({
   onRetry: () => void;
   onUndo: () => void;
 }) {
+  const { t } = useTranslation('importWizard');
   const [confirming, setConfirming] = useState(false);
 
   const summary = useMemo(() => {
@@ -547,11 +534,8 @@ export function PhoneStepCommit({
         <Notice tone="danger" role="alert">
           <p>{error}</p>
         </Notice>
-        <GroupedList
-          aria-label="Importação"
-          footer="As linhas que já entraram não serão duplicadas: ao tentar novamente, continuamos de onde paramos."
-        >
-          <Cell label="Tentar novamente" icon={<RefreshCw />} onClick={onRetry} />
+        <GroupedList aria-label={t('commit.importGroup')} footer={t('commit.resumeNote')}>
+          <Cell label={t('commit.retryAgain')} icon={<RefreshCw />} onClick={onRetry} />
         </GroupedList>
       </>
     );
@@ -562,19 +546,20 @@ export function PhoneStepCommit({
     return (
       <section className="phone-imp-card phone-imp-progress">
         <p className="phone-imp-status">
-          <Spinner size="sm" /> Importando… {progress.done} de {progress.total}
+          <Spinner size="sm" />{' '}
+          {t('commit.importing', { done: progress.done, total: progress.total })}
         </p>
         <div
           className="phone-imp-progress__track"
           role="progressbar"
-          aria-label="Progresso da importação"
+          aria-label={t('commit.progressAria')}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={pct}
         >
           <div className="phone-imp-progress__fill" style={{ width: `${pct}%` }} />
         </div>
-        <p className="phone-imp-foot">Não feche esta aba até terminar.</p>
+        <p className="phone-imp-foot">{t('commit.dontClose')}</p>
       </section>
     );
   }
@@ -583,39 +568,32 @@ export function PhoneStepCommit({
     <>
       <h2 className="phone-imp-done">
         <CheckCircle2 aria-hidden="true" />
-        Importação concluída
+        {t('commit.done')}
       </h2>
 
-      <GroupedList aria-label="Resultado da importação">
-        <Cell label="Importados" value={String(summary.created)} />
-        <Cell label="Já existiam" value={String(summary.skipped)} />
-        <Cell label="Falharam" value={String(summary.failed.length)} />
+      <GroupedList aria-label={t('commit.resultAria')}>
+        <Cell label={t('commit.created')} value={String(summary.created)} />
+        <Cell label={t('commit.skipped')} value={String(summary.skipped)} />
+        <Cell label={t('commit.failed')} value={String(summary.failed.length)} />
       </GroupedList>
 
       {summary.failed.length > 0 && (
         <>
-          <GroupedList header="Linhas que falharam">
+          <GroupedList header={t('commit.failedHeader')}>
             {summary.byReason.map(([label, count]) => (
               <Cell
                 key={label}
                 label={label}
-                subtitle={`${plural(count, 'linha não importada', 'linhas não importadas')}.`}
+                subtitle={`${t('count.rowNotImported', { count })}.`}
               />
             ))}
           </GroupedList>
           {/* Retrying reuses the current job (idempotent per source row); restarting the
               wizard would open a new job and insert every row that already landed again. */}
-          <GroupedList
-            aria-label="Falhas"
-            footer="Se a causa já foi resolvida (por exemplo, o limite do plano), você pode tentar de novo sem risco: continuamos a mesma importação, então nada do que já entrou é duplicado. Só as linhas que falharam são gravadas."
-          >
+          <GroupedList aria-label={t('commit.failuresAria')} footer={t('commit.retryNotePhone')}>
+            <Cell label={t('commit.retryFailed')} icon={<RefreshCw />} onClick={onRetry} />
             <Cell
-              label="Tentar novamente as linhas que falharam"
-              icon={<RefreshCw />}
-              onClick={onRetry}
-            />
-            <Cell
-              label="Baixar relatório de falhas (CSV)"
+              label={t('commit.downloadFailures')}
               icon={<Download />}
               onClick={() => downloadFailures(summary.failed)}
             />
@@ -626,51 +604,42 @@ export function PhoneStepCommit({
       {undoResult ? (
         <section className="phone-imp-card phone-imp-undo" aria-live="polite">
           <p className="phone-imp-undo__title">
-            {plural(undoResult.deleted, 'registro removido', 'registros removidos')}.
+            {t('count.recordRemoved', { count: undoResult.deleted })}.
           </p>
           {undoResult.skippedPublished.length > 0 && (
             <p>
-              {plural(undoResult.skippedPublished.length, 'post mantido', 'posts mantidos')}: já
-              foram publicados no Instagram ou no TikTok.
+              {t('commit.publishedKept', {
+                counted: t('count.postKept', { count: undoResult.skippedPublished.length }),
+              })}
             </p>
           )}
           {undoResult.skippedWorkflows.length > 0 && (
             <p>
-              {plural(
-                undoResult.skippedWorkflows.length,
-                'calendário mantido',
-                'calendários mantidos',
-              )}
-              : ainda têm posts ou links criados depois da importação.
+              {t('commit.workflowsKept', {
+                counted: t('count.calendarKept', { count: undoResult.skippedWorkflows.length }),
+              })}
             </p>
           )}
           {undoResult.skippedTemplates.length > 0 && (
             <p>
-              {plural(
-                undoResult.skippedTemplates.length,
-                'modelo de fluxo mantido',
-                'modelos de fluxo mantidos',
-              )}
-              : ainda estão em uso por entregas ou campos personalizados.
+              {t('commit.templatesKept', {
+                counted: t('count.templateKept', { count: undoResult.skippedTemplates.length }),
+              })}
             </p>
           )}
           {undoResult.skippedClientes.length > 0 && (
             <p>
-              {plural(undoResult.skippedClientes.length, 'cliente mantido', 'clientes mantidos')}:
-              já têm dados criados fora desta importação (fluxos, ideias, contas conectadas).
+              {t('commit.clientsKept', {
+                counted: t('count.clientKept', { count: undoResult.skippedClientes.length }),
+              })}
             </p>
           )}
-          <p className="phone-imp-foot">
-            Clientes mesclados com registros que já existiam nunca são apagados.
-          </p>
+          <p className="phone-imp-foot">{t('commit.mergedNeverDeleted')}</p>
         </section>
       ) : (
-        <GroupedList
-          aria-label="Desfazer"
-          footer="Você tem 7 dias para desfazer esta importação. Nós mantemos o que passou a depender de outras coisas (posts já publicados, calendários com conteúdo novo e clientes com dados criados depois) e listamos tudo o que ficou."
-        >
+        <GroupedList aria-label={t('commit.undoGroup')} footer={t('commit.undoNotePhone')}>
           <Cell
-            label={undoing ? 'Desfazendo…' : 'Desfazer importação'}
+            label={undoing ? t('commit.undoing') : t('commit.undo')}
             icon={undoing ? <Spinner size="sm" /> : <Undo2 />}
             destructive
             disabled={undoing}
@@ -681,10 +650,10 @@ export function PhoneStepCommit({
 
       <PhoneConfirmSheet
         open={confirming && !undoResult}
-        title="Desfazer importação?"
+        title={t('commit.undoTitle')}
         actions={[
           {
-            label: 'Confirmar e desfazer',
+            label: t('commit.confirmUndo'),
             destructive: true,
             onSelect: () => {
               setConfirming(false);

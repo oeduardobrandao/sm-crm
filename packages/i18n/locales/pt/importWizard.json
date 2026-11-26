@@ -1,0 +1,247 @@
+{
+  "title": "Importar dados",
+  "featureLabel": "A importação de dados",
+  "steps": {
+    "origem": "Origem",
+    "upload": "Arquivos",
+    "mapeamento": "Mapeamento",
+    "previa": "Prévia",
+    "commit": "Importar"
+  },
+  "nav": {
+    "group": "Navegação do assistente",
+    "back": "Voltar",
+    "next": "Continuar",
+    "steps": "Passos",
+    "stepOf": "Passo {{current}} de {{total}} · {{title}}",
+    "importCount_one": "Importar {{count}} registro",
+    "importCount_other": "Importar {{count}} registros",
+    "importCount_zero": "Importar {{count}} registros"
+  },
+  "count": {
+    "row_one": "{{count}} linha",
+    "row_other": "{{count}} linhas",
+    "row_zero": "{{count}} linhas",
+    "column_one": "{{count}} coluna",
+    "column_other": "{{count}} colunas",
+    "column_zero": "{{count}} colunas",
+    "collection_one": "{{count}} coleção",
+    "collection_other": "{{count}} coleções",
+    "collection_zero": "{{count}} coleções",
+    "rowNotImported_one": "{{count}} linha não importada",
+    "rowNotImported_other": "{{count}} linhas não importadas",
+    "rowNotImported_zero": "{{count}} linhas não importadas",
+    "recordRemoved_one": "{{count}} registro removido",
+    "recordRemoved_other": "{{count}} registros removidos",
+    "recordRemoved_zero": "{{count}} registros removidos",
+    "postKept_one": "{{count}} post mantido",
+    "postKept_other": "{{count}} posts mantidos",
+    "postKept_zero": "{{count}} posts mantidos",
+    "calendarKept_one": "{{count}} calendário mantido",
+    "calendarKept_other": "{{count}} calendários mantidos",
+    "calendarKept_zero": "{{count}} calendários mantidos",
+    "templateKept_one": "{{count}} modelo de fluxo mantido",
+    "templateKept_other": "{{count}} modelos de fluxo mantidos",
+    "templateKept_zero": "{{count}} modelos de fluxo mantidos",
+    "clientKept_one": "{{count}} cliente mantido",
+    "clientKept_other": "{{count}} clientes mantidos",
+    "clientKept_zero": "{{count}} clientes mantidos",
+    "rowIgnored_one": "{{count}} linha será ignorada",
+    "rowIgnored_other": "{{count}} linhas serão ignoradas",
+    "rowIgnored_zero": "{{count}} linhas serão ignoradas"
+  },
+  "origem": {
+    "mcpTitle": "O jeito mais completo de migrar: peça para um agente de IA",
+    "mcpBody": "Conecte o Claude ou o ChatGPT ao seu Mesaas via MCP e peça algo como \"migre meus clientes e o calendário do Notion para o Mesaas\". O agente lê os dados direto na outra ferramenta e cria clientes, posts e tarefas por aqui, sem você precisar exportar arquivos.",
+    "connectAgent": "Conectar um agente",
+    "howItWorks": "Como funciona",
+    "agentGroup": "Agente de IA",
+    "choose": "Prefere fazer você mesmo? Escolha de onde vêm os dados:",
+    "chooseNoColon": "Prefere fazer você mesmo? Escolha de onde vêm os dados"
+  },
+  "guide": {
+    "heading": "Como exportar do {{label}}",
+    "fullGuide": "Ver o guia completo na Central de Ajuda"
+  },
+  "guides": {
+    "notion": {
+      "label": "Notion",
+      "hint": "Um único export \"Markdown & CSV\" (.zip) da página que lista seus clientes",
+      "steps": [
+        "No Notion, abra a página mais de cima que contém a lista de clientes (a que mostra todos eles, não a página de um cliente só).",
+        "Clique em ••• no canto superior direito e escolha \"Exportar\".",
+        "Em \"Formato de exportação\", escolha \"Markdown & CSV\".",
+        "Marque \"Incluir subpáginas\": é isso que traz as bases de dados que estão dentro da página.",
+        "Se aparecer a opção de incluir arquivos e imagens, escolha não incluir. O zip fica menor e o limite aqui é de 20 MB por arquivo.",
+        "Envie aqui o .zip gerado (ou o .csv, se exportou uma base só)."
+      ],
+      "notes": [
+        "Exporte uma vez só, a partir da página de cima. Não é preciso exportar cliente por cliente.",
+        "Só tabelas e bases de dados (arquivos CSV) são importadas. Textos de páginas e briefings não entram nesta importação."
+      ]
+    },
+    "trello": {
+      "label": "Trello",
+      "hint": "Um arquivo .json por quadro",
+      "steps": [
+        "A exportação do Trello é feita quadro a quadro. Abra o quadro que quer trazer.",
+        "Vá em Menu → Mais → Imprimir e exportar → \"Exportar como JSON\".",
+        "Salve o arquivo .json. Repita para cada quadro (até 5 por importação).",
+        "Envie aqui os arquivos .json."
+      ],
+      "notes": [
+        "Tem mais de 5 quadros? Importe os 5 primeiros e repita o assistente para os demais.",
+        "Se você tem o export em CSV do Trello Premium, use a origem \"Planilha (CSV)\"."
+      ]
+    },
+    "clickup": {
+      "label": "ClickUp",
+      "hint": "Exportação da Lista em CSV, um arquivo por lista",
+      "steps": [
+        "No ClickUp, abra a Lista (ou o Espaço) que quer trazer.",
+        "Clique em ••• → \"Baixar\" (ou \"Exportar\") e escolha CSV, não XLSX.",
+        "Repita para cada lista (até 5 por importação).",
+        "Envie aqui os arquivos .csv."
+      ],
+      "notes": ["O formato Excel (.xlsx) não é aceito. Na hora de exportar, escolha CSV."]
+    },
+    "csv": {
+      "label": "Planilha (CSV)",
+      "hint": "Qualquer planilha salva em CSV",
+      "steps": [
+        "No Google Sheets: Arquivo → Fazer download → Valores separados por vírgula (.csv).",
+        "No Excel: Arquivo → Salvar como → CSV.",
+        "A primeira linha do arquivo precisa conter os títulos das colunas.",
+        "Envie aqui o arquivo .csv."
+      ]
+    }
+  },
+  "upload": {
+    "filesLabel": "Arquivos de exportação",
+    "limits": "Até {{files}} arquivos, 20 MB cada e {{rows}} linhas por importação. Os arquivos são lidos no seu navegador — nenhum arquivo é enviado para nossos servidores.",
+    "limitsPhone": "Até {{files}} arquivos, 20 MB cada e {{rows}} linhas por importação. Os arquivos são lidos no seu navegador: nenhum arquivo é enviado para nossos servidores.",
+    "reading": "Lendo os arquivos…",
+    "pickFiles": "Escolher arquivos",
+    "pickOtherFiles": "Escolher outros arquivos",
+    "collectionLine": "{{name}} — {{rows}}"
+  },
+  "parse": {
+    "unreadable": "Não conseguimos ler este arquivo. Confira o passo a passo de exportação acima.",
+    "unreadableFile": "Não conseguimos ler o arquivo \"{{name}}\". Confira o passo a passo de exportação acima.",
+    "zipNotTrello": "O arquivo \"{{name}}\" é um .zip, não um JSON do Trello. Se ele é um export do Notion, volte e escolha a origem \"Notion\".",
+    "csvNotTrello": "O arquivo \"{{name}}\" parece uma planilha (CSV), não um JSON do Trello. Se você exportou o Trello em CSV (plano Premium), volte e escolha a origem \"Planilha (CSV)\".",
+    "xlsx": "O arquivo \"{{name}}\" está no formato Excel (.xlsx), que não é aceito. Exporte de novo escolhendo o formato CSV.",
+    "zipNotCsv": "O arquivo \"{{name}}\" é um .zip, não uma planilha CSV. Se ele é um export do Notion, volte e escolha a origem \"Notion\".",
+    "jsonNotCsv": "O arquivo \"{{name}}\" é um JSON, não uma planilha CSV. Se ele é a exportação de um quadro do Trello, volte e escolha a origem \"Trello\".",
+    "notABoard": "O arquivo \"{{name}}\" é um JSON, mas não é a exportação de um quadro do Trello. No Trello, a exportação é feita quadro a quadro: abra o quadro, depois Menu → Imprimir e exportar → \"Exportar como JSON\".",
+    "selectOne": "Selecione pelo menos um arquivo.",
+    "tooMany": "Envie no máximo {{max}} arquivos por importação.",
+    "tooBig": "Cada arquivo pode ter no máximo 20 MB.",
+    "noTables": "Nenhuma tabela foi encontrada nos arquivos enviados.",
+    "tooManyRows": "Este envio tem {{rows}} linhas e o limite por importação é {{max}}. Divida o arquivo e importe em partes."
+  },
+  "mapping": {
+    "lead": "Confira o que encontramos em cada parte do arquivo. Tudo é editável — nada é importado antes da sua confirmação.",
+    "leadPhone": "Confira o que encontramos em cada parte do arquivo. Tudo é editável: nada é importado antes da sua confirmação.",
+    "loadingClients": "Carregando a lista de clientes existentes — precisamos dela para saber quem já é seu cliente antes de continuar.",
+    "loadingClientsPhone": "Carregando a lista de clientes existentes. Precisamos dela para saber quem já é seu cliente antes de continuar.",
+    "clientsError": "Não foi possível carregar a lista de clientes existentes. Continuar sem ela pode duplicar um cliente que já existe.",
+    "clientsList": "Lista de clientes",
+    "retry": "Tentar novamente",
+    "importAs": "Importar como",
+    "importAsTitle": "Importar {{name}} como",
+    "destinationOf": "Destino de {{name}}",
+    "mappingOf": "Mapeamento de {{name}}",
+    "client": "Cliente",
+    "clientOf": "Cliente de {{name}}",
+    "oneClientForAll": "Um cliente para todas as linhas",
+    "column": "Coluna “{{name}}”",
+    "clientName": "Nome do cliente",
+    "clientNameOf": "Nome do cliente de {{name}}",
+    "nameShort": "Nome",
+    "willUseExisting": "Usaremos o cliente que já existe com esse nome.",
+    "willCreate": "Se não existir um cliente com esse nome, ele será criado.",
+    "statusMap": "Equivalência de status",
+    "statusAria": "Status \"{{key}}\" de {{name}}",
+    "statusSheet": "Status \"{{key}}\"",
+    "pickClientError": "Escolha o cliente de: {{names}}."
+  },
+  "destination": {
+    "clientes": "Clientes",
+    "posts": "Posts",
+    "entregas": "Entregas",
+    "ideias": "Ideias",
+    "ignorar": "Ignorar"
+  },
+  "status": {
+    "rascunho": "Rascunho",
+    "revisao_interna": "Revisão interna",
+    "aprovado_interno": "Aprovado internamente",
+    "enviado_cliente": "Enviado ao cliente",
+    "aprovado_cliente": "Aprovado pelo cliente",
+    "correcao_cliente": "Em correção",
+    "postado": "Postado (só para datas passadas)"
+  },
+  "preview": {
+    "title": "Prévia da importação",
+    "checking": "Conferindo os dados…",
+    "ignoredRows": "{{counted}} por não ter cliente ou título — volte e ajuste o mapeamento se não for o esperado.",
+    "ignoredRowsPhone": "{{counted}} por não ter cliente ou título. Volte e ajuste o mapeamento se não for o esperado.",
+    "mergeNote": "Clientes com o mesmo nome de um cliente que já existe são mesclados: só preenchemos campos vazios, nunca sobrescrevemos. Por isso, a mesclagem não é desfeita pelo “Desfazer importação”."
+  },
+  "commit": {
+    "retryAgain": "Tentar novamente",
+    "resumeNote": "As linhas que já entraram não serão duplicadas: ao tentar novamente, continuamos de onde paramos.",
+    "importing": "Importando… {{done}} de {{total}}",
+    "dontClose": "Não feche esta aba até terminar.",
+    "progressAria": "Progresso da importação",
+    "importGroup": "Importação",
+    "done": "Importação concluída",
+    "resultAria": "Resultado da importação",
+    "created": "Importados",
+    "skipped": "Já existiam",
+    "failed": "Falharam",
+    "failedHeader": "Linhas que falharam",
+    "failuresAria": "Falhas",
+    "reasonLine": "{{label}} — {{counted}}.",
+    "retryNote": "Se a causa já foi resolvida (por exemplo, o limite do plano), você pode tentar de novo sem risco: continuamos a mesma importação, então nada do que já entrou é duplicado — só as linhas que falharam são gravadas.",
+    "retryNotePhone": "Se a causa já foi resolvida (por exemplo, o limite do plano), você pode tentar de novo sem risco: continuamos a mesma importação, então nada do que já entrou é duplicado. Só as linhas que falharam são gravadas.",
+    "retryFailed": "Tentar novamente as linhas que falharam",
+    "downloadFailures": "Baixar relatório de falhas (CSV)",
+    "publishedKept": "{{counted}}: já foram publicados no Instagram ou no TikTok.",
+    "workflowsKept": "{{counted}}: ainda têm posts ou links criados depois da importação.",
+    "templatesKept": "{{counted}}: ainda estão em uso por entregas ou campos personalizados.",
+    "clientsKept": "{{counted}}: já têm dados criados fora desta importação (fluxos, ideias, contas conectadas).",
+    "mergedNeverDeleted": "Clientes mesclados com registros que já existiam nunca são apagados.",
+    "undoNote": "Você tem 7 dias para desfazer esta importação. Nós mantemos o que passou a depender de outras coisas — posts já publicados, calendários com conteúdo novo e clientes com dados criados depois — e listamos tudo o que ficou.",
+    "undoNotePhone": "Você tem 7 dias para desfazer esta importação. Nós mantemos o que passou a depender de outras coisas (posts já publicados, calendários com conteúdo novo e clientes com dados criados depois) e listamos tudo o que ficou.",
+    "confirmUndo": "Confirmar e desfazer",
+    "cancel": "Cancelar",
+    "undo": "Desfazer importação",
+    "undoing": "Desfazendo…",
+    "undoGroup": "Desfazer",
+    "undoTitle": "Desfazer importação?",
+    "success": "Importação concluída.",
+    "nothingToImport": "Nenhum registro para importar — volte e ajuste o mapeamento antes de tentar de novo.",
+    "reasonPlanLimit": "Limite do plano atingido: {{limit}}",
+    "reasonRowError": "Erro ao gravar a linha",
+    "csvHeader": "linha_origem;motivo",
+    "csvFile": "importacao-falhas.csv"
+  },
+  "limits": {
+    "max_clients": "clientes",
+    "max_team_members": "usuários",
+    "max_leads": "leads",
+    "max_instagram_accounts": "contas do Instagram",
+    "max_hub_tokens": "portais do Hub",
+    "max_workflow_templates": "modelos de fluxo",
+    "max_active_workflows_per_client": "fluxos ativos por cliente",
+    "max_custom_properties_per_template": "propriedades personalizadas",
+    "max_posts_per_workflow": "posts por fluxo"
+  },
+  "banner": {
+    "title": "Migrando do Notion, Trello ou ClickUp?",
+    "body": "Importe seus clientes, calendário e entregas em minutos.",
+    "cta": "Importar dados"
+  }
+}

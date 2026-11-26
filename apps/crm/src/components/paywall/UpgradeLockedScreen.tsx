@@ -28,6 +28,7 @@ export function UpgradeLockedScreen({
   children?: ReactNode;
 }) {
   const { t } = useTranslation();
+  const { t: tb } = useTranslation('billing');
   const navigate = useNavigate();
   // workspaceRole (workspace_members do workspace ATIVO), não `role`:
   // profiles.role fica obsoleto após trocar de workspace (contrato documentado
@@ -57,11 +58,13 @@ export function UpgradeLockedScreen({
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] text-center gap-3 p-8">
-      <h1 className="text-xl font-bold">{featureLabel} não está no seu plano</h1>
+      <h1 className="text-xl font-bold">
+        {tb('lockedScreen.lockedTitle', { label: featureLabel })}
+      </h1>
       {children}
       {isOwner ? (
         <>
-          <p className="text-muted-foreground">Faça upgrade para desbloquear este recurso.</p>
+          <p className="text-muted-foreground">{tb('lockedScreen.unlockHint')}</p>
           <Button
             onClick={() => {
               // An upgrade CLICK is strictly higher intent than a render and is
@@ -72,13 +75,11 @@ export function UpgradeLockedScreen({
               navigate('/configuracao/cobranca');
             }}
           >
-            Fazer upgrade
+            {tb('lockedScreen.upgrade')}
           </Button>
         </>
       ) : (
-        <p className="text-muted-foreground">
-          Fale com o dono do workspace para liberar este recurso.
-        </p>
+        <p className="text-muted-foreground">{tb('lockedScreen.askOwner')}</p>
       )}
     </div>
   );

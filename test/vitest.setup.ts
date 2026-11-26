@@ -114,6 +114,10 @@ import ptAnalyticsPhone from '../packages/i18n/locales/pt/analyticsPhone.json';
 import enAnalyticsPhone from '../packages/i18n/locales/en/analyticsPhone.json';
 import ptReportEditor from '../packages/i18n/locales/pt/reportEditor.json';
 import enReportEditor from '../packages/i18n/locales/en/reportEditor.json';
+import ptImportWizard from '../packages/i18n/locales/pt/importWizard.json';
+import enImportWizard from '../packages/i18n/locales/en/importWizard.json';
+import ptContracts from '../packages/i18n/locales/pt/contracts.json';
+import enContracts from '../packages/i18n/locales/en/contracts.json';
 
 initI18n({
   pt: {
@@ -168,6 +172,8 @@ initI18n({
     analyticsFlows: ptAnalyticsFlows,
     analyticsPhone: ptAnalyticsPhone,
     reportEditor: ptReportEditor,
+    importWizard: ptImportWizard,
+    contracts: ptContracts,
   },
   en: {
     common: enCommon,
@@ -221,6 +227,8 @@ initI18n({
     analyticsFlows: enAnalyticsFlows,
     analyticsPhone: enAnalyticsPhone,
     reportEditor: enReportEditor,
+    importWizard: enImportWizard,
+    contracts: enContracts,
   },
 });
 

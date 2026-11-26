@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { holdUnsavedWork, useUnsavedWork } from '@mesaas/app-lifecycle';
 import { Plus, Edit2, Trash2, Upload, Info, HelpCircle, Search, UserRound } from 'lucide-react';
 import { openCSVSelector } from '../../lib/csv';
@@ -84,19 +86,22 @@ import { PickerCell } from '@/components/mobile/PickerSheet';
 import { ContratosPhone } from './phone/ContratosPhone';
 import { useReadOnlyGrandfather } from '@/components/paywall/useReadOnlyGrandfather';
 import { ReadOnlyNotice } from '@/components/paywall/ReadOnlyNotice';
+import { lazyLabels } from '@/pages/entregas/postLabels';
 
-const contratoSchema = z.object({
-  titulo: z.string().min(1, 'Título obrigatório'),
-  clienteId: z.string(),
-  dataInicio: z.string().min(1, 'Data início obrigatória'),
-  dataFim: z.string().min(1, 'Data fim obrigatória'),
-  valor: z
-    .string()
-    .min(1, 'Valor obrigatório')
-    .refine((v) => Number(v) > 0, 'Valor deve ser positivo'),
-  status: z.enum(['a_assinar', 'vigente', 'encerrado']),
-});
-type ContratoFormValues = z.infer<typeof contratoSchema>;
+// Built per render so the messages follow the UI language.
+const makeContratoSchema = (t: TFunction<'contracts'>) =>
+  z.object({
+    titulo: z.string().min(1, t('validation.titleRequired')),
+    clienteId: z.string(),
+    dataInicio: z.string().min(1, t('validation.startRequired')),
+    dataFim: z.string().min(1, t('validation.endRequired')),
+    valor: z
+      .string()
+      .min(1, t('validation.valueRequired'))
+      .refine((v) => Number(v) > 0, t('validation.valuePositive')),
+    status: z.enum(['a_assinar', 'vigente', 'encerrado']),
+  });
+type ContratoFormValues = z.infer<ReturnType<typeof makeContratoSchema>>;
 
 function isoToDate(iso: string): Date | undefined {
   if (!iso) return undefined;
@@ -109,11 +114,10 @@ function dateToIso(d: Date): string {
 
 type FilterStatus = 'todos' | 'vigente' | 'a_assinar' | 'encerrado';
 
-const STATUS_LABEL: Record<string, string> = {
-  vigente: 'Vigente',
-  a_assinar: 'A Assinar',
-  encerrado: 'Encerrado',
-};
+const STATUS_LABEL: Record<string, string> = lazyLabels(
+  ['vigente', 'a_assinar', 'encerrado'] as const,
+  (k) => `contracts:status.${k}`,
+);
 
 export default function ContratosPage() {
   // Keyed on CONTRATOS, not FINANCEIRO: this page's RLS policies and its nav
@@ -122,6 +126,7 @@ export default function ContratosPage() {
   // of {contratos: editar, financeiro: none} see masked values on a page it
   // is fully authorized for. Legacy roles are unaffected -- derivePermission
   // couples the two capabilities for every one of them.
+  const { t } = useTranslation('contracts');
   const { can, profile } = useAuth();
   const canSeeContracts = can('contratos', 'ver');
   // Ex-reverse-trial workspace on Free: consultation only, every mutating control hidden.
@@ -140,6 +145,7 @@ export default function ContratosPage() {
   const [saving, setSaving] = useState(false);
   useUnsavedWork(saving);
 
+  const contratoSchema = useMemo(() => makeContratoSchema(t), [t]);
   const form = useForm<ContratoFormValues>({
     resolver: zodResolver(contratoSchema),
     defaultValues: {
@@ -213,11 +219,11 @@ export default function ContratosPage() {
       };
       if (editing?.id) {
         await updateContrato(editing.id, payload);
-        toast.success('Contrato atualizado');
+        toast.success(t('toast.updated'));
       } else {
         await addContrato(payload);
         captureEvent('contract_created', { status: values.status });
-        toast.success('Contrato criado');
+        toast.success(t('toast.created'));
       }
       qc.invalidateQueries({ queryKey: ['contratos'] });
       setModalOpen(false);
@@ -227,7 +233,7 @@ export default function ContratosPage() {
       // TanStack mutation, so App.tsx's MutationCache.onError never sees it.
       // This catch is the only observation point for feature_contracts.
       if (!handleEntitlementMutationError(e, profile?.conta_id ?? null))
-        toast.error('Erro ao salvar');
+        toast.error(t('toast.saveError'));
     } finally {
       setSaving(false);
     }
@@ -237,10 +243,10 @@ export default function ContratosPage() {
     if (deleteId == null) return;
     try {
       await removeContrato(deleteId);
-      toast.success('Contrato removido');
+      toast.success(t('toast.removed'));
       qc.invalidateQueries({ queryKey: ['contratos'] });
     } catch {
-      toast.error('Erro ao remover');
+      toast.error(t('toast.removeError'));
     }
     setDeleteId(null);
   };
@@ -279,9 +285,7 @@ export default function ContratosPage() {
         } finally {
           release();
         }
-        toast.success(
-          `${count} contrato${count !== 1 ? 's' : ''} importado${count !== 1 ? 's' : ''} com sucesso!`,
-        );
+        toast.success(t('toast.csvImported', { count }));
         qc.invalidateQueries({ queryKey: ['contratos'] });
       },
       (err) => toast.error(err.message),
@@ -300,13 +304,13 @@ export default function ContratosPage() {
   // lists, and the linked client one tap away while editing.
   const phoneFields = (
     <>
-      <GroupedList aria-label="Contrato">
+      <GroupedList aria-label={t('form.group')}>
         <FormRow
-          label="Título"
+          label={t('form.titleField')}
           error={errors.titulo?.message}
           input={{ ...form.register('titulo'), autoComplete: 'off' }}
         />
-        <FormRow label="Data início" error={errors.dataInicio?.message}>
+        <FormRow label={t('form.startPhone')} error={errors.dataInicio?.message}>
           {(field) => (
             <input
               {...field}
@@ -316,7 +320,7 @@ export default function ContratosPage() {
             />
           )}
         </FormRow>
-        <FormRow label="Data fim" error={errors.dataFim?.message}>
+        <FormRow label={t('form.endPhone')} error={errors.dataFim?.message}>
           {(field) => (
             <input
               {...field}
@@ -327,7 +331,7 @@ export default function ContratosPage() {
           )}
         </FormRow>
         <FormRow
-          label="Valor Total (R$)"
+          label={t('form.totalValue')}
           error={errors.valor?.message}
           input={{
             ...form.register('valor'),
@@ -335,16 +339,16 @@ export default function ContratosPage() {
             inputMode: 'decimal',
             min: 0,
             step: 0.01,
-            placeholder: '0,00',
+            placeholder: t('form.valuePlaceholder'),
           }}
         />
       </GroupedList>
       <GroupedList>
         <PickerCell
-          label="Cliente (opcional)"
-          sheetTitle="Cliente"
+          label={t('form.clientOptional')}
+          sheetTitle={t('form.clientSheet')}
           searchable
-          emptyOption={{ label: 'Nenhum' }}
+          emptyOption={{ label: t('form.none') }}
           options={sortClientesByNome(clientes).map((c) => ({
             value: String(c.id),
             label: c.nome,
@@ -353,11 +357,11 @@ export default function ContratosPage() {
           onChange={(v) => setField('clienteId', v ?? '')}
         />
         <PickerCell
-          label="Status"
+          label={t('form.status')}
           options={[
-            { value: 'a_assinar', label: 'A Assinar' },
-            { value: 'vigente', label: 'Vigente' },
-            { value: 'encerrado', label: 'Encerrado' },
+            { value: 'a_assinar', label: t('status.a_assinar') },
+            { value: 'vigente', label: t('status.vigente') },
+            { value: 'encerrado', label: t('status.encerrado') },
           ]}
           value={statusValue}
           onChange={(v) => v && setField('status', v)}
@@ -367,7 +371,7 @@ export default function ContratosPage() {
         <GroupedList>
           <Cell
             icon={<UserRound aria-hidden="true" />}
-            label="Abrir cliente"
+            label={t('form.openClient')}
             value={editing.cliente_nome}
             chevron
             onClick={() => {
@@ -385,7 +389,7 @@ export default function ContratosPage() {
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent onConfirmClose={() => setModalOpen(false)}>
           <DialogHeader>
-            <DialogTitle>{editing ? 'Editar Contrato' : 'Novo Contrato'}</DialogTitle>
+            <DialogTitle>{editing ? t('form.dialogEdit') : t('form.dialogNew')}</DialogTitle>
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -398,7 +402,7 @@ export default function ContratosPage() {
                     name="titulo"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Título</FormLabel>
+                        <FormLabel>{t('form.titleField')}</FormLabel>
                         <FormControl>
                           <Input {...field} />
                         </FormControl>
@@ -411,18 +415,18 @@ export default function ContratosPage() {
                     name="clienteId"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Cliente (opcional)</FormLabel>
+                        <FormLabel>{t('form.clientOptional')}</FormLabel>
                         <Select
                           value={field.value || '__none__'}
                           onValueChange={(v) => field.onChange(v === '__none__' ? '' : v)}
                         >
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder="Selecione..." />
+                              <SelectValue placeholder={t('form.select')} />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="__none__">Nenhum</SelectItem>
+                            <SelectItem value="__none__">{t('form.none')}</SelectItem>
                             {sortClientesByNome(clientes).map((c) => (
                               <SelectItem key={c.id} value={String(c.id)}>
                                 {c.nome}
@@ -440,7 +444,7 @@ export default function ContratosPage() {
                       name="dataInicio"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Data Início</FormLabel>
+                          <FormLabel>{t('form.startDesktop')}</FormLabel>
                           <FormControl>
                             <DatePicker
                               value={isoToDate(field.value)}
@@ -457,7 +461,7 @@ export default function ContratosPage() {
                       name="dataFim"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Data Fim</FormLabel>
+                          <FormLabel>{t('form.endDesktop')}</FormLabel>
                           <FormControl>
                             <DatePicker
                               value={isoToDate(field.value)}
@@ -475,7 +479,7 @@ export default function ContratosPage() {
                     name="valor"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Valor Total (R$)</FormLabel>
+                        <FormLabel>{t('form.totalValue')}</FormLabel>
                         <FormControl>
                           <Input type="number" min={0} step={0.01} {...field} />
                         </FormControl>
@@ -488,7 +492,7 @@ export default function ContratosPage() {
                     name="status"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Status</FormLabel>
+                        <FormLabel>{t('form.status')}</FormLabel>
                         <Select value={field.value} onValueChange={field.onChange}>
                           <FormControl>
                             <SelectTrigger>
@@ -496,9 +500,9 @@ export default function ContratosPage() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="a_assinar">A Assinar</SelectItem>
-                            <SelectItem value="vigente">Vigente</SelectItem>
-                            <SelectItem value="encerrado">Encerrado</SelectItem>
+                            <SelectItem value="a_assinar">{t('status.a_assinar')}</SelectItem>
+                            <SelectItem value="vigente">{t('status.vigente')}</SelectItem>
+                            <SelectItem value="encerrado">{t('status.encerrado')}</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />
@@ -509,10 +513,10 @@ export default function ContratosPage() {
               )}
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>
-                  Cancelar
+                  {t('form.cancel')}
                 </Button>
                 <Button type="submit" disabled={saving}>
-                  {saving && <Spinner size="sm" />} Salvar
+                  {saving && <Spinner size="sm" />} {t('form.save')}
                 </Button>
               </DialogFooter>
             </form>
@@ -528,11 +532,11 @@ export default function ContratosPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remover este contrato?</AlertDialogTitle>
+            <AlertDialogTitle>{t('form.deleteTitle')}</AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Não</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>Sim</AlertDialogAction>
+            <AlertDialogCancel>{t('form.no')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete}>{t('form.yes')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -540,38 +544,30 @@ export default function ContratosPage() {
   );
 
   const infoTooltip = (
-    <span
-      data-tooltip="Gerencie os contratos dos seus clientes."
-      data-tooltip-dir="right"
-      style={{ display: 'flex' }}
-    >
+    <span data-tooltip={t('info')} data-tooltip-dir="right" style={{ display: 'flex' }}>
       <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
     </span>
   );
   const headerActions = (
     <>
-      <span
-        data-tooltip="Colunas: titulo*, cliente_nome, data_inicio* (AAAA-MM-DD), data_fim*, valor_total*, status"
-        data-tooltip-dir="bottom"
-        style={{ display: 'flex' }}
-      >
+      <span data-tooltip={t('csvHelp')} data-tooltip-dir="bottom" style={{ display: 'flex' }}>
         <HelpCircle className="h-4 w-4" style={{ color: 'var(--text-muted)', cursor: 'pointer' }} />
       </span>
       {!readOnly && (
         <Button variant="outline" onClick={handleCSVImport}>
-          <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Importar CSV
+          <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('actions.importCsv')}
         </Button>
       )}
     </>
   );
   const primaryAction = readOnly ? null : (
     <Button onClick={openAdd}>
-      <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Novo Contrato
+      <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('actions.newContract')}
     </Button>
   );
 
   const inToolbar = usePageToolbar({
-    title: 'Contratos',
+    title: t('title'),
     titleAccessory: infoTooltip,
     actions: headerActions,
     primary: primaryAction,
@@ -609,7 +605,7 @@ export default function ContratosPage() {
             className="header-title"
             style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
           >
-            <h1>Contratos</h1>
+            <h1>{t('title')}</h1>
             {infoTooltip}
           </div>
           <div className="header-actions">
@@ -635,7 +631,7 @@ export default function ContratosPage() {
             }}
           />
           <Input
-            placeholder="Buscar por título ou cliente..."
+            placeholder={t('actions.search')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ paddingLeft: '2rem' }}
@@ -647,7 +643,7 @@ export default function ContratosPage() {
               variant="outline"
               className="h-9 rounded-full px-4 text-xs gap-1.5 font-normal shadow-sm mb-0"
             >
-              {filter === 'todos' ? 'Status' : STATUS_LABEL[filter]}
+              {filter === 'todos' ? t('filter.status') : STATUS_LABEL[filter]}
               <ChevronDown className="h-3.5 w-3.5 opacity-60" />
             </Button>
           </DropdownMenuTrigger>
@@ -658,7 +654,7 @@ export default function ContratosPage() {
             >
               {(['todos', 'vigente', 'a_assinar', 'encerrado'] as FilterStatus[]).map((f) => (
                 <DropdownMenuRadioItem key={f} value={f}>
-                  {f === 'todos' ? 'Todos' : STATUS_LABEL[f]}
+                  {f === 'todos' ? t('filter.all') : STATUS_LABEL[f]}
                 </DropdownMenuRadioItem>
               ))}
             </DropdownMenuRadioGroup>
@@ -673,19 +669,19 @@ export default function ContratosPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Contrato</TableHead>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Período</TableHead>
-                <TableHead>Valor</TableHead>
-                <TableHead>Status</TableHead>
-                {!readOnly && <TableHead>Ações</TableHead>}
+                <TableHead>{t('table.contract')}</TableHead>
+                <TableHead>{t('table.client')}</TableHead>
+                <TableHead>{t('table.period')}</TableHead>
+                <TableHead>{t('table.value')}</TableHead>
+                <TableHead>{t('table.status')}</TableHead>
+                {!readOnly && <TableHead>{t('table.actions')}</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.map((c) => (
                 <TableRow key={c.id ?? c.titulo}>
-                  <TableCell data-label="Contrato">{c.titulo}</TableCell>
-                  <TableCell data-label="Cliente">
+                  <TableCell data-label={t('table.contract')}>{c.titulo}</TableCell>
+                  <TableCell data-label={t('table.client')}>
                     {c.cliente_id ? (
                       <button
                         className="client-link"
@@ -697,13 +693,13 @@ export default function ContratosPage() {
                       <span>{c.cliente_nome}</span>
                     )}
                   </TableCell>
-                  <TableCell data-label="Período">
+                  <TableCell data-label={t('table.period')}>
                     {formatDate(c.data_inicio)} → {formatDate(c.data_fim)}
                   </TableCell>
-                  <TableCell data-label="Valor">
+                  <TableCell data-label={t('table.value')}>
                     {formatFinancialBRL(c.valor_total, canSeeContracts)}
                   </TableCell>
-                  <TableCell data-label="Status">
+                  <TableCell data-label={t('table.status')}>
                     <Badge
                       variant={
                         c.status === 'vigente'

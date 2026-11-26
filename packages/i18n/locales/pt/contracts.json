@@ -1,0 +1,75 @@
+{
+  "title": "Contratos",
+  "info": "Gerencie os contratos dos seus clientes.",
+  "status": {
+    "vigente": "Vigente",
+    "a_assinar": "A Assinar",
+    "encerrado": "Encerrado"
+  },
+  "filter": {
+    "all": "Todos",
+    "status": "Status"
+  },
+  "csvHelp": "Colunas: titulo*, cliente_nome, data_inicio* (AAAA-MM-DD), data_fim*, valor_total*, status",
+  "validation": {
+    "titleRequired": "Título obrigatório",
+    "startRequired": "Data início obrigatória",
+    "endRequired": "Data fim obrigatória",
+    "valueRequired": "Valor obrigatório",
+    "valuePositive": "Valor deve ser positivo"
+  },
+  "toast": {
+    "updated": "Contrato atualizado",
+    "created": "Contrato criado",
+    "saveError": "Erro ao salvar",
+    "removed": "Contrato removido",
+    "removeError": "Erro ao remover",
+    "csvImported_one": "{{count}} contrato importado com sucesso!",
+    "csvImported_other": "{{count}} contratos importados com sucesso!",
+    "csvImported_zero": "{{count}} contratos importados com sucesso!"
+  },
+  "form": {
+    "group": "Contrato",
+    "titleField": "Título",
+    "startPhone": "Data início",
+    "endPhone": "Data fim",
+    "startDesktop": "Data Início",
+    "endDesktop": "Data Fim",
+    "totalValue": "Valor Total (R$)",
+    "valuePlaceholder": "0,00",
+    "clientOptional": "Cliente (opcional)",
+    "clientSheet": "Cliente",
+    "none": "Nenhum",
+    "select": "Selecione...",
+    "status": "Status",
+    "openClient": "Abrir cliente",
+    "dialogEdit": "Editar Contrato",
+    "dialogNew": "Novo Contrato",
+    "cancel": "Cancelar",
+    "save": "Salvar",
+    "deleteTitle": "Remover este contrato?",
+    "no": "Não",
+    "yes": "Sim"
+  },
+  "actions": {
+    "importCsv": "Importar CSV",
+    "newContract": "Novo Contrato",
+    "search": "Buscar por título ou cliente..."
+  },
+  "table": {
+    "contract": "Contrato",
+    "client": "Cliente",
+    "period": "Período",
+    "value": "Valor",
+    "status": "Status",
+    "actions": "Ações"
+  },
+  "phone": {
+    "moreActionsImport": "Mais ações: Importar CSV",
+    "moreActions": "Mais ações",
+    "edit": "Editar",
+    "remove": "Remover",
+    "empty": "Nenhum contrato encontrado.",
+    "actionsOf": "Ações de {{title}}"
+  }
+}

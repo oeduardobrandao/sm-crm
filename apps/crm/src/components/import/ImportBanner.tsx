@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { ArrowRight, Import } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 /** Onboarding nudge shown on the dashboard while the workspace has no clientes yet. */
 export function ImportBanner({
@@ -14,6 +15,7 @@ export function ImportBanner({
    */
   clientScoped?: boolean;
 }) {
+  const { t } = useTranslation('importWizard');
   if (clienteCount > 0 || clientScoped) return null;
   return (
     <div
@@ -28,17 +30,15 @@ export function ImportBanner({
     >
       <Import className="h-5 w-5" style={{ color: 'var(--primary-color)' }} />
       <div style={{ flex: 1 }}>
-        <strong>Migrando do Notion, Trello ou ClickUp?</strong>
-        <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-          Importe seus clientes, calendário e entregas em minutos.
-        </div>
+        <strong>{t('banner.title')}</strong>
+        <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{t('banner.body')}</div>
       </div>
       <Link
         to="/importar"
         className="btn-primary"
         style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
       >
-        Importar dados <ArrowRight className="h-4 w-4" />
+        {t('banner.cta')} <ArrowRight className="h-4 w-4" />
       </Link>
     </div>
   );

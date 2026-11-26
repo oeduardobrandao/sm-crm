@@ -293,5 +293,11 @@
       "nativeNotice": "Read-only on Free.",
       "cta": "Get Pro back"
     }
+  },
+  "lockedScreen": {
+    "lockedTitle": "{{label}} is not included in your plan",
+    "unlockHint": "Upgrade to unlock this feature.",
+    "upgrade": "Upgrade",
+    "askOwner": "Ask the workspace owner to unlock this feature."
   }
 }
