@@ -5,6 +5,8 @@
  * imports this and scripts/seo/prerender.tsx renders it in Node, so everything touches the
  * browser only inside functions. React consumers use `useConsent()` (lib/useConsent.ts).
  */
+import { siteLocaleForPath } from '../content/siteLocale';
+
 export const CONSENT_STORAGE_KEY = 'consent_v1';
 export const OPEN_PREFERENCES_EVENT = 'mesaas:open-cookie-preferences';
 
@@ -39,6 +41,7 @@ let memoryOnly = false;
 let memoryRaw: string | null = null;
 let cachedRaw: string | null | undefined;
 let cachedGpc: boolean | undefined;
+let cachedOnUsPage: boolean | undefined;
 let cachedValue: Consent | null = null;
 
 /**
@@ -88,21 +91,44 @@ function parse(raw: string | null): Consent | null {
   }
 }
 
+/** Whether the current page is on the English US site (`/en`). False outside a browser. */
+function onUsPage(): boolean {
+  return typeof window !== 'undefined' && siteLocaleForPath(window.location.pathname) === 'en';
+}
+
 /**
- * Stable reference while the stored value and the GPC signal are unchanged (useSyncExternalStore
+ * Stable reference while the stored value, the GPC signal and the site (US or Brazil) are
+ * unchanged (useSyncExternalStore
  * requires it). With GPC on, `marketing` is always false: every ad loader reads consent through
  * here, so no ad tag can load under GPC. The stored record itself is left as it was.
+ *
+ * LGPD: a `us_default` record is the US opt-out default, valid only on `/en` pages. Anywhere
+ * else (Brazilian pages, the app) it reads as undecided, so the opt-in banner shows and nothing
+ * non-essential loads until the visitor chooses. A `choice` record applies on every page.
  */
 export function getConsent(): Consent | null {
   const raw = readRaw();
   const gpc = gpcEnabled();
-  if (raw !== cachedRaw || gpc !== cachedGpc) {
+  const usPage = onUsPage();
+  if (raw !== cachedRaw || gpc !== cachedGpc || usPage !== cachedOnUsPage) {
     cachedRaw = raw;
     cachedGpc = gpc;
-    const parsed = parse(raw);
+    cachedOnUsPage = usPage;
+    let parsed = parse(raw);
+    if (parsed && parsed.basis === 'us_default' && !usPage) parsed = null;
     cachedValue = parsed && gpc && parsed.marketing ? { ...parsed, marketing: false } : parsed;
   }
   return cachedValue;
+}
+
+/**
+ * Call after a client-side navigation: moving between `/en` and a Brazilian page can change what
+ * a `us_default` record means, and subscribers (installConsentEffects, useConsent) only hear about
+ * it through here. Notifies only when the value actually changed.
+ */
+export function consentPathChanged(): void {
+  const before = cachedValue;
+  if (getConsent() !== before) notify();
 }
 
 function notify(): void {

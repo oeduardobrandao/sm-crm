@@ -49,6 +49,7 @@ describe('isBlockedInNativeApp', () => {
 
   it.each([
     '/dashboard',
+    '/entregas',
     '/configuracao/notificacoes',
     '/politica-de-privacidade',
     '/termos-de-uso',

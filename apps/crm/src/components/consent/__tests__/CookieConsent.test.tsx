@@ -237,6 +237,21 @@ describe('CookieConsent', () => {
       expect(screen.queryByRole('region', { name: t('cookies.banner.title') })).toBeNull();
     });
 
+    it('shows the Brazilian banner on / to a visitor who only has the US default', () => {
+      localStorage.setItem(
+        'consent_v1',
+        JSON.stringify({
+          analytics: true,
+          support: true,
+          marketing: true,
+          decidedAt: '2026-11-25T00:00:00.000Z',
+          basis: 'us_default',
+        }),
+      );
+      renderBanner('/');
+      expect(screen.getByRole('region', { name: t('cookies.banner.title') })).toBeInTheDocument();
+    });
+
     it('keeps the banner on Brazilian paths that merely start with "en"', () => {
       renderBanner('/english');
       expect(screen.getByRole('region', { name: t('cookies.banner.title') })).toBeInTheDocument();

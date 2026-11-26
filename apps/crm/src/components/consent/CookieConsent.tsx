@@ -4,7 +4,12 @@ import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { siteLocaleForPath } from '@/content/siteLocale';
 import { isNativeApp } from '@/native/platform';
-import { OPEN_PREFERENCES_EVENT, setConsent, type ConsentCategory } from '@/lib/consent';
+import {
+  consentPathChanged,
+  OPEN_PREFERENCES_EVENT,
+  setConsent,
+  type ConsentCategory,
+} from '@/lib/consent';
 import { clearPendingSupportChat } from '@/lib/supportChat';
 import { useConsent } from '@/lib/useConsent';
 import { CookiePreferencesDialog } from './CookiePreferencesDialog';
@@ -21,7 +26,13 @@ export default function CookieConsent() {
   // <UsCookieNotice /> takes the banner's place. Checked synchronously from the router (the server
   // renders the same pathname), so `/en` never flashes the Brazilian banner, even before the
   // default exists.
-  const usPage = siteLocaleForPath(useLocation().pathname) === 'en';
+  const { pathname } = useLocation();
+  const usPage = siteLocaleForPath(pathname) === 'en';
+  // A `us_default` record only counts on `/en`: after a client-side move to or from `/en`, re-read
+  // consent so the effects stop (or start) tags and the banner appears where it should.
+  useEffect(() => {
+    consentPathChanged();
+  }, [pathname]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [focus, setFocus] = useState<ConsentCategory | undefined>();
   // The dialog has no Radix <Trigger> (any link on any page opens it by event), so Radix has nothing

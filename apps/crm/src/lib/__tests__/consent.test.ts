@@ -160,6 +160,7 @@ describe('consent store', () => {
   });
 
   it('round-trips the US default basis', async () => {
+    window.history.replaceState(null, '', '/en');
     const { getConsent, setConsent, CONSENT_STORAGE_KEY } = await import('../consent');
     setConsent({ analytics: true, support: true, marketing: true }, 'us_default');
     expect(getConsent()?.basis).toBe('us_default');
@@ -168,5 +169,65 @@ describe('consent store', () => {
     );
     setConsent({ analytics: true, support: true, marketing: false });
     expect(getConsent()?.basis).toBe('choice');
+  });
+
+  // LGPD: the US opt-out default is an /en-only basis. Anywhere else it is no decision at all.
+  describe('US default outside /en', () => {
+    const usDefault = JSON.stringify({
+      analytics: true,
+      support: true,
+      marketing: true,
+      decidedAt: '2026-11-25T00:00:00.000Z',
+      basis: 'us_default',
+    });
+    afterEach(() => window.history.replaceState(null, '', '/'));
+
+    it('reads a us_default record as undecided on a Brazilian page', async () => {
+      window.history.replaceState(null, '', '/');
+      const { getConsent, CONSENT_STORAGE_KEY } = await import('../consent');
+      localStorage.setItem(CONSENT_STORAGE_KEY, usDefault);
+      expect(getConsent()).toBeNull();
+      window.history.replaceState(null, '', '/dashboard');
+      expect(getConsent()).toBeNull();
+    });
+
+    it('honours a us_default record on /en pages', async () => {
+      window.history.replaceState(null, '', '/en/pricing');
+      const { getConsent, CONSENT_STORAGE_KEY } = await import('../consent');
+      localStorage.setItem(CONSENT_STORAGE_KEY, usDefault);
+      expect(getConsent()).toMatchObject({ analytics: true, marketing: true, basis: 'us_default' });
+    });
+
+    it('honours a choice record on every page', async () => {
+      window.history.replaceState(null, '', '/');
+      const { getConsent, setConsent } = await import('../consent');
+      setConsent({ analytics: true, support: false, marketing: true });
+      expect(getConsent()).toMatchObject({ analytics: true, marketing: true, basis: 'choice' });
+    });
+
+    it('still masks advertising under GPC on /en', async () => {
+      window.history.replaceState(null, '', '/en');
+      setGpc(true);
+      const { getConsent, CONSENT_STORAGE_KEY } = await import('../consent');
+      localStorage.setItem(CONSENT_STORAGE_KEY, usDefault);
+      expect(getConsent()).toMatchObject({ analytics: true, marketing: false });
+    });
+
+    it('recomputes on navigation and notifies subscribers only when the value changes', async () => {
+      window.history.replaceState(null, '', '/en');
+      const { getConsent, subscribe, consentPathChanged, CONSENT_STORAGE_KEY } =
+        await import('../consent');
+      localStorage.setItem(CONSENT_STORAGE_KEY, usDefault);
+      expect(getConsent()).not.toBeNull();
+      const listener = vi.fn();
+      subscribe(listener);
+      window.history.replaceState(null, '', '/en/pricing');
+      consentPathChanged();
+      expect(listener).not.toHaveBeenCalled();
+      window.history.replaceState(null, '', '/');
+      consentPathChanged();
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(getConsent()).toBeNull();
+    });
   });
 });

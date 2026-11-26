@@ -19,8 +19,11 @@ describe('applyUsConsentDefault', () => {
   beforeEach(() => {
     vi.resetModules();
     localStorage.clear();
+    // main.tsx passes window.location.pathname; reads follow the same path.
+    window.history.replaceState(null, '', '/en');
   });
   afterEach(() => {
+    window.history.replaceState(null, '', '/');
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     setGpc(undefined);
@@ -61,6 +64,7 @@ describe('applyUsConsentDefault', () => {
   });
 
   it('saves nothing on a Brazilian page', async () => {
+    window.history.replaceState(null, '', '/');
     const { applyUsConsentDefault, getConsent, CONSENT_STORAGE_KEY } = await load();
     applyUsConsentDefault('/');
     applyUsConsentDefault('/english');
@@ -107,9 +111,11 @@ describe('doNotSellOrShare', () => {
     vi.resetModules();
     localStorage.clear();
     vi.mocked(toast.success).mockClear();
+    window.history.replaceState(null, '', '/en');
     await i18n.changeLanguage('en');
   });
   afterEach(async () => {
+    window.history.replaceState(null, '', '/');
     localStorage.clear();
     await i18n.changeLanguage('pt');
   });

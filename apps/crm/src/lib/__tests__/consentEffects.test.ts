@@ -220,4 +220,28 @@ describe('installConsentEffects', () => {
       expect(m.loadOpenAiAds).not.toHaveBeenCalled();
     });
   });
+
+  it('stops analytics and ad tags when the visitor navigates from /en to a Brazilian page', async () => {
+    window.history.replaceState(null, '', '/en');
+    localStorage.setItem(
+      'consent_v1',
+      JSON.stringify({
+        analytics: true,
+        support: true,
+        marketing: true,
+        decidedAt: '2026-11-25T00:00:00.000Z',
+        basis: 'us_default',
+      }),
+    );
+    const { consentPathChanged } = await boot();
+    vi.advanceTimersByTime(5000);
+    expect(m.initAnalytics).toHaveBeenCalledTimes(1);
+    window.history.replaceState(null, '', '/');
+    consentPathChanged();
+    expect(m.disableAnalytics).toHaveBeenCalledTimes(1);
+    expect(m.disableGoogleAds).toHaveBeenCalledTimes(1);
+    expect(m.disableMetaPixel).toHaveBeenCalledTimes(1);
+    expect(m.disableOpenAiAds).toHaveBeenCalledTimes(1);
+    window.history.replaceState(null, '', '/');
+  });
 });

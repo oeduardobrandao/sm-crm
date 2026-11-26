@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getConsent, OPEN_PREFERENCES_EVENT, setConsent } from '@/lib/consent';
 
 vi.mock('@/context/AuthContext', () => ({
@@ -9,6 +9,11 @@ vi.mock('@/context/AuthContext', () => ({
 import { LandingFooter, LandingHeader } from '../LandingChrome';
 
 describe('landing chrome links', () => {
+  afterEach(() => {
+    localStorage.clear();
+    window.history.replaceState(null, '', '/');
+  });
+
   it('footer links to the blog', () => {
     render(<LandingFooter />);
     expect(screen.getByRole('link', { name: 'Blog' })).toHaveAttribute('href', '/blog');
@@ -24,18 +29,18 @@ describe('landing chrome links', () => {
   });
 
   it('en footer "Do Not Sell or Share" turns advertising off as an explicit choice', () => {
-    setConsent({ analytics: true, support: true, marketing: true }, 'us_default');
+    window.history.replaceState(null, '', '/en');
+    setConsent({ analytics: false, support: true, marketing: true }, 'us_default');
     render(<LandingFooter locale="en" />);
     fireEvent.click(
       screen.getByRole('button', { name: 'Do Not Sell or Share My Personal Information' }),
     );
     expect(getConsent()).toMatchObject({
-      analytics: true,
+      analytics: false,
       support: true,
       marketing: false,
       basis: 'choice',
     });
-    localStorage.clear();
   });
 
   it('footer section links work from a subpage (absolute hashes)', () => {
