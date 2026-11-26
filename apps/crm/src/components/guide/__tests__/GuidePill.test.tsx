@@ -18,6 +18,7 @@ function api(overrides: Partial<GuideApi>): GuideApi {
     conclude: vi.fn(),
     recordAutoOpen: vi.fn(),
     recordTrailCompleted: vi.fn(),
+    recordWhatsAppOpened: vi.fn(),
     isOpen: false,
     autoOpen: 'no',
     currentPageId: null,

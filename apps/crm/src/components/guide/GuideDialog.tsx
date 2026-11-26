@@ -17,6 +17,7 @@ import {
   type GuideTrail,
 } from './guideContent';
 import { GuideMoreVideos, GuideVideoSlot } from './GuideVideoSlot';
+import { GuideWhatsAppRow } from './GuideWhatsAppRow';
 
 const seg = (on: boolean): React.CSSProperties => ({
   flex: 1,
@@ -110,6 +111,8 @@ export default function GuideDialog() {
         doneIds={g.doneIds}
         totals={g.totals}
         phone={isPhone}
+        whatsappOpenedAt={g.progress.whatsappOpenedAt}
+        onWhatsAppOpen={() => g.recordWhatsAppOpened()}
         onStart={(t) => {
           const next = t.pages.find((p) => !g.doneIds.has(p.id)) ?? t.pages[0];
           g.goTo(next.id);
@@ -169,6 +172,8 @@ function HomeView({
   doneIds,
   totals,
   phone,
+  whatsappOpenedAt,
+  onWhatsAppOpen,
   onStart,
   onClose,
 }: {
@@ -177,6 +182,8 @@ function HomeView({
   totals: { done: number; total: number };
   /** In the phone sheet the sheet owns the dialog title, so this one is a plain heading. */
   phone?: boolean;
+  whatsappOpenedAt?: string;
+  onWhatsAppOpen(): void;
   onStart(t: GuideTrail): void;
   onClose(): void;
 }) {
@@ -211,6 +218,7 @@ function HomeView({
         </span>
       </div>
       <div style={{ display: 'grid', gap: 10, marginTop: 12 }}>
+        <GuideWhatsAppRow openedAt={whatsappOpenedAt} onOpen={onWhatsAppOpen} compact={phone} />
         {trails.map((t, i) => {
           const done = t.pages.filter((p) => doneIds.has(p.id)).length;
           const started = done > 0 && done < t.pages.length;

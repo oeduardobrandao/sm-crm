@@ -12,6 +12,14 @@ import { recordKbViewSafely } from '../../../pages/ajuda/useRecordKbView';
 
 vi.mock('../../../lib/analytics', () => ({ captureEvent: vi.fn() }));
 vi.mock('../../../pages/ajuda/useRecordKbView', () => ({ recordKbViewSafely: vi.fn() }));
+// A linha tem teste próprio (GuideWhatsAppRow.test.tsx); aqui só a fiação.
+vi.mock('../GuideWhatsAppRow', () => ({
+  GuideWhatsAppRow: ({ openedAt, onOpen }: { openedAt?: string; onOpen(): void }) => (
+    <button type="button" data-testid="wa-row" data-opened={openedAt ?? ''} onClick={onOpen}>
+      WhatsApp
+    </button>
+  ),
+}));
 
 const videos = vi.hoisted(() => ({
   series: { data: undefined as unknown } as Record<string, unknown>,
@@ -84,6 +92,7 @@ function makeApi(overrides: Partial<GuideApi> = {}): GuideApi {
     conclude: vi.fn(),
     recordAutoOpen: vi.fn(),
     recordTrailCompleted: vi.fn(),
+    recordWhatsAppOpened: vi.fn(),
     isOpen: true,
     autoOpen: 'no',
     currentPageId: null,
@@ -140,6 +149,29 @@ describe('GuideDialog', () => {
     expect(screen.getByText('Montar sua equipe')).toBeInTheDocument();
     expect(screen.getByText('Criar suas entregas')).toBeInTheDocument();
     expect(screen.getByText('0 de 15 páginas')).toBeInTheDocument();
+  });
+
+  it('home mostra o convite do WhatsApp antes das trilhas e grava o clique', () => {
+    const api = makeApi({
+      progress: {
+        pagesSeen: [],
+        pagesDone: [],
+        trailsCompleted: [],
+        whatsappOpenedAt: '2026-11-26T12:00:00.000Z',
+      },
+    });
+    renderDialog(api);
+    const row = screen.getByTestId('wa-row');
+    expect(row).toHaveAttribute('data-opened', '2026-11-26T12:00:00.000Z');
+    const first = screen.getByText('Adicionar seu primeiro cliente');
+    expect(row.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(row);
+    expect(api.recordWhatsAppOpened).toHaveBeenCalled();
+  });
+
+  it('página de trilha não mostra o convite do WhatsApp', () => {
+    renderDialog(makeApi({ currentPageId: 't1p1' }));
+    expect(screen.queryByTestId('wa-row')).not.toBeInTheDocument();
   });
 
   it('começar uma trilha navega para a primeira página dela', () => {

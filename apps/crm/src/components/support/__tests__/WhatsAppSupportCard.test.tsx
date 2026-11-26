@@ -1,8 +1,12 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { useAuthMock } = vi.hoisted(() => ({ useAuthMock: vi.fn() }));
+const { useAuthMock, useGuideMock } = vi.hoisted(() => ({
+  useAuthMock: vi.fn(),
+  useGuideMock: vi.fn(),
+}));
 vi.mock('@/context/AuthContext', () => ({ useAuth: useAuthMock }));
+vi.mock('@/components/guide/GuideContext', () => ({ useGuide: useGuideMock }));
 vi.mock('@/lib/analytics', () => ({ captureEvent: vi.fn() }));
 
 const KEY = 'whatsapp_support_dismissed_conta-1';
@@ -29,6 +33,19 @@ describe('WhatsAppSupportCard', () => {
     vi.unstubAllEnvs();
     localStorage.clear();
     authAs('owner');
+    useGuideMock.mockReturnValue(null);
+  });
+
+  it('hides while the first-steps guide is open, which carries the same invite', async () => {
+    useGuideMock.mockReturnValue({ isOpen: true });
+    await renderCard();
+    expect(screen.queryByText('Fale com a gente no WhatsApp')).not.toBeInTheDocument();
+  });
+
+  it('shows again once the guide is closed', async () => {
+    useGuideMock.mockReturnValue({ isOpen: false });
+    await renderCard();
+    expect(screen.getByText('Fale com a gente no WhatsApp')).toBeInTheDocument();
   });
 
   it('renders for an owner when configured', async () => {

@@ -1,11 +1,15 @@
+import type { CSSProperties, ReactNode } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { captureEvent } from '@/lib/analytics';
 import { buildWhatsAppSupportUrl, type WhatsAppContext } from '@/lib/whatsapp';
 
 interface Props {
   context: WhatsAppContext;
-  label: string;
+  label: ReactNode;
   className?: string;
+  style?: CSSProperties;
+  /** Runs after the click is captured, e.g. to remember that the chat was opened. */
+  onOpen?: () => void;
 }
 
 /**
@@ -15,7 +19,18 @@ interface Props {
  *
  * Renders nothing when the support number is unset or malformed.
  */
-export function WhatsAppSupportButton({ context, label, className }: Props) {
+/**
+ * Extra attributes (e.g. `data-slot="button"`, `data-variant`) land on the anchor, so a
+ * link styled with `buttonVariants` also picks up the Vidro skin, which keys on them.
+ */
+export function WhatsAppSupportButton({
+  context,
+  label,
+  className,
+  style,
+  onOpen,
+  ...rest
+}: Props & Record<`data-${string}`, string>) {
   const { profile } = useAuth();
   // getCurrentProfile() does select('*') into an `any` cache, so the row is
   // untyped at every call site in this repo. Read through a narrow cast.
@@ -33,15 +48,18 @@ export function WhatsAppSupportButton({ context, label, className }: Props) {
 
   return (
     <a
+      {...rest}
       href={href}
       target="_blank"
       rel="noopener noreferrer"
       className={className}
-      onClick={() =>
+      style={style}
+      onClick={() => {
         // sendInstantly: on mobile the switch to the WhatsApp app can suspend
         // the page before posthog-js flushes its queue.
-        captureEvent('whatsapp_support_clicked', { context }, { sendInstantly: true })
-      }
+        captureEvent('whatsapp_support_clicked', { context }, { sendInstantly: true });
+        onOpen?.();
+      }}
     >
       {label}
     </a>

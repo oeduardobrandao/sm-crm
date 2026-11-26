@@ -27,6 +27,7 @@ export interface GuideView {
   conclude(): void;
   recordAutoOpen(): void;
   recordTrailCompleted(trailId: string): void;
+  recordWhatsAppOpened(): void;
 }
 
 export function useGuideProgress(
@@ -130,6 +131,14 @@ export function useGuideProgress(
     [patch],
   );
 
+  const recordWhatsAppOpened = useCallback(
+    () =>
+      patch((prev) =>
+        prev.whatsappOpenedAt ? prev : { ...prev, whatsappOpenedAt: new Date().toISOString() },
+      ),
+    [patch],
+  );
+
   return {
     trails,
     doneIds,
@@ -143,5 +152,6 @@ export function useGuideProgress(
     conclude,
     recordAutoOpen,
     recordTrailCompleted,
+    recordWhatsAppOpened,
   };
 }

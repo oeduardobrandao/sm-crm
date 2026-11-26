@@ -7,7 +7,7 @@
  * message, which is also why no opt-in is collected anywhere for this.
  */
 
-export type WhatsAppContext = 'onboarding' | 'dashboard';
+export type WhatsAppContext = 'onboarding' | 'guide' | 'dashboard';
 
 /** wa.me rejects anything but digits: no `+`, no spaces, no punctuation. */
 const DIGITS_ONLY = /^\d+$/;
@@ -36,6 +36,7 @@ function firstName(nome: string | null | undefined): string | null {
 
 const TAIL: Record<WhatsAppContext, string> = {
   onboarding: 'Acabei de criar minha conta no Mesaas e queria ajuda pra configurar.',
+  guide: 'Acabei de criar minha conta no Mesaas e queria ajuda pra configurar.',
   dashboard: 'Queria falar com vocês sobre o Mesaas.',
 };
 
