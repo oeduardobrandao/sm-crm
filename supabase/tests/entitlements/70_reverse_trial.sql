@@ -972,7 +972,7 @@ begin;
       'get_nurture_candidates(timestamptz)', 'get_welcome_email_candidates()',
       'get_trial_reminder_candidates()', 'get_loops_trait_candidates()',
       'get_crisp_sync_candidates()', 'get_reverse_trial_email_candidates(timestamptz)',
-      'admin_list_workspaces(text,text,int,int,timestamptz,text,boolean,text,timestamptz,text,text)'
+      'admin_list_workspaces(text,text,int,int,timestamptz,text,boolean,text,timestamptz,text,text,text)'
     ] loop
       if has_function_privilege('authenticated', 'public.' || fn, 'EXECUTE')
          or has_function_privilege('anon', 'public.' || fn, 'EXECUTE')
