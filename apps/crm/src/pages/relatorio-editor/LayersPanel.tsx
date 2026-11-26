@@ -25,7 +25,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { WIDGET_CATALOG } from '@mesaas/report-blocks/catalog';
+import { WIDGET_CATALOG, isFullWidthOnly } from '@mesaas/report-blocks/catalog';
 import { PlatformIcon } from '@mesaas/report-blocks/PlatformIcon';
 import type { ReportPlatform } from '@mesaas/report-blocks/platform';
 import type {
@@ -96,7 +96,9 @@ function LayerRow({ block, active, droppable, onLocate }: LayerRowProps) {
         <TypeIcon className="rb-layers-icon h-3.5 w-3.5" aria-hidden />
         <span className="rb-layers-label-text">{layerLabel(block)}</span>
       </button>
-      <span className="rb-layers-size">{SIZE_LABEL[block.size] ?? block.size}</span>
+      <span className="rb-layers-size">
+        {isFullWidthOnly(block.type) ? SIZE_LABEL.full : (SIZE_LABEL[block.size] ?? block.size)}
+      </span>
     </div>
   );
 }

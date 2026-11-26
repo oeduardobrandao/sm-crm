@@ -20,8 +20,11 @@ import { Cell, GroupedList } from '@/components/mobile/GroupedList';
 import { ActionSheet } from '@/components/mobile/ActionSheet';
 import { BottomSheet } from '@/components/mobile/BottomSheet';
 import { PhoneConfirmSheet } from '@/components/mobile/PhoneConfirmSheet';
+import { toast } from 'sonner';
 import {
   getAccountAIAnalysis,
+  getPostAnalyticsById,
+  type AccountHealth,
   type AudienceDemographics,
   type BestPostingTimes,
   type PostAnalytics,
@@ -43,6 +46,7 @@ import { AccountCommentsCard } from '../comments/AccountCommentsCard';
 import { AIAnalysisPhone, useAIAnalysis } from '../../analytics/phone/AIAnalysisPhone';
 import { PeriodSegmented } from '../../analytics/phone/PeriodControl';
 import { NewTagSheet, PostDetailSheet } from './PostDetailSheet';
+import { AccountHealthCard } from '../health/AccountHealthCard';
 import {
   BaselineSection,
   BestTimesSection,
@@ -195,6 +199,9 @@ export interface ContaPhoneProps {
   baseline: Baseline | null;
   /** Rate distributions for the post sheet's Engajamento tab. */
   dists?: RateDistributions;
+  /** The page's account-health read (one query, shared with desktop); null hides the card. */
+  health: AccountHealth | null | undefined;
+  healthLoading: boolean;
   /** The client analytics shell's tab control, rendered under the identity. */
   tabs?: ReactNode;
 }
@@ -241,12 +248,16 @@ export function ContaPhone(props: ContaPhoneProps) {
     stories,
     baseline,
     dists,
+    health,
+    healthLoading,
     tabs,
   } = props;
 
   const [sortOpen, setSortOpen] = useState(false);
   const sortButtonRef = useRef<HTMLButtonElement>(null);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+  // The health card's best post when it is outside the loaded list (fetched by id).
+  const [fetchedPost, setFetchedPost] = useState<PostAnalytics | null>(null);
   const [newTagOpen, setNewTagOpen] = useState(false);
   const [tagToRemove, setTagToRemove] = useState<PostTag | null>(null);
   const [section, setSection] = useState<SectionKey | null>(null);
@@ -257,10 +268,58 @@ export function ContaPhone(props: ContaPhoneProps) {
   }, [section]);
 
   // Derived from the live list so tag toggles (which refetch the posts) show at once.
-  const selectedPost = useMemo(
-    () => (selectedPostId === null ? null : (posts.find((p) => p.id === selectedPostId) ?? null)),
-    [posts, selectedPostId],
-  );
+  const selectedPost = useMemo(() => {
+    if (selectedPostId === null) return null;
+    const listed = posts.find((p) => p.id === selectedPostId);
+    if (listed) return listed;
+    return fetchedPost?.id === selectedPostId ? fetchedPost : null;
+  }, [posts, selectedPostId, fetchedPost]);
+
+  // Bumped on every open and close: a by-id fetch that resolves after another open or a close
+  // is stale and must not take over the sheet (nor toast its error).
+  const openRequestRef = useRef(0);
+  const selectPost = (postId: string | null) => {
+    openRequestRef.current += 1;
+    setSelectedPostId(postId);
+  };
+
+  const openHealthPost = async (postId: string) => {
+    if (posts.some((p) => p.id === postId)) {
+      selectPost(postId);
+      return;
+    }
+    const request = ++openRequestRef.current;
+    try {
+      const fetched = await getPostAnalyticsById(clientId, postId, dists);
+      if (request !== openRequestRef.current) return;
+      if (!fetched) {
+        toast.error('Não foi possível abrir o post.');
+        return;
+      }
+      setFetchedPost(fetched);
+      setSelectedPostId(fetched.id);
+    } catch {
+      if (request === openRequestRef.current) toast.error('Não foi possível abrir o post.');
+    }
+  };
+
+  // A post fetched by id is not in the list, so the list refetch after a tag toggle does not
+  // reach it: fetch it again, unless the user has moved on meanwhile.
+  const toggleTag = async (post: PostAnalytics, tag: PostTag, assigned: boolean) => {
+    // Captured before the toggle's await: an open or close during the toggle also invalidates it.
+    const request = openRequestRef.current;
+    await onToggleTag(post, tag, assigned);
+    if (fetchedPost === null || post.id !== fetchedPost.id || selectedPostId !== post.id) return;
+    if (posts.some((p) => p.id === post.id)) return;
+    try {
+      const refreshed = await getPostAnalyticsById(clientId, post.id, dists);
+      if (request !== openRequestRef.current || !refreshed) return;
+      // Never replace a different post that was fetched meanwhile.
+      setFetchedPost((prev) => (prev?.id === refreshed.id ? refreshed : prev));
+    } catch {
+      // The toggle itself succeeded; the sheet keeps the previous copy.
+    }
+  };
 
   const ai = useAIAnalysis(
     useCallback(async () => {
@@ -289,7 +348,7 @@ export function ContaPhone(props: ContaPhoneProps) {
     mediaType: post.media_type,
     title: post.caption || 'Sem legenda',
     meta: `${format(new Date(post.posted_at), "d 'de' MMM", { locale: ptBR })} · ${mediaTypeLabel(post.media_type)}`,
-    onSelect: () => setSelectedPostId(post.id),
+    onSelect: () => selectPost(post.id),
     metrics: (
       <>
         <span>
@@ -421,6 +480,13 @@ export function ContaPhone(props: ContaPhoneProps) {
       />
       {periodStart && <p className="phone-an-period__custom">Último mês: {periodTag}</p>}
 
+      <AccountHealthCard
+        health={health}
+        isLoading={healthLoading}
+        onOpenPost={(postId) => void openHealthPost(postId)}
+        layout="phone"
+      />
+
       {/* Wide touch screens: two columns (analyticsPhone.css). */}
       <div className="phone-an-pair phone-an-stack">
         <div className="phone-an-half phone-an-stack">{kpis}</div>
@@ -435,7 +501,7 @@ export function ContaPhone(props: ContaPhoneProps) {
         posts={rankedPosts.slice(0, 5)}
         tone="best"
         titleOf={(p) => p.caption || 'Sem legenda'}
-        onSelect={(p) => setSelectedPostId(p.id)}
+        onSelect={(p) => selectPost(p.id)}
         onSeeMore={rankedPosts.length > 5 ? () => drawer.open('best') : undefined}
       />
       <RankedPostStrip
@@ -444,7 +510,7 @@ export function ContaPhone(props: ContaPhoneProps) {
         posts={matureRankedPosts.slice(0, 5)}
         tone="worst"
         titleOf={(p) => p.caption || 'Sem legenda'}
-        onSelect={(p) => setSelectedPostId(p.id)}
+        onSelect={(p) => selectPost(p.id)}
         onSeeMore={matureRankedPosts.length > 5 ? () => drawer.open('worst') : undefined}
       />
 
@@ -483,7 +549,7 @@ export function ContaPhone(props: ContaPhoneProps) {
                   value={<span className="phone-an-row-value">{postSortValue(p, sort.col)}</span>}
                   chevron
                   aria-haspopup="dialog"
-                  onClick={() => setSelectedPostId(p.id)}
+                  onClick={() => selectPost(p.id)}
                 />
               ))}
               {posts.length > 5 && (
@@ -622,10 +688,10 @@ export function ContaPhone(props: ContaPhoneProps) {
         clientId={clientId}
         post={selectedPost}
         onOpenChange={(open) => {
-          if (!open) setSelectedPostId(null);
+          if (!open) selectPost(null);
         }}
         tags={tags}
-        onToggleTag={onToggleTag}
+        onToggleTag={toggleTag}
         onNewTag={() => setNewTagOpen(true)}
         dists={dists}
       />

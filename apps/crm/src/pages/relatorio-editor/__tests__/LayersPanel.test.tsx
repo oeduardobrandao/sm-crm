@@ -180,3 +180,19 @@ describe('widgetIcons', () => {
     expect(widgetIcon('tipo_futuro')).toBe(Shapes);
   });
 });
+
+describe('LayersPanel: largura', () => {
+  it('tipo só largura cheia mostra 1/1 mesmo com size persistido menor', () => {
+    renderPanel({
+      layout: {
+        version: 1,
+        blocks: [
+          { id: 'h', type: 'account_health', size: 'third' },
+          { id: 'k', type: 'kpi_reach', size: 'third' },
+        ],
+      },
+    });
+    const sizes = document.querySelectorAll('.rb-layers-size');
+    expect([...sizes].map((s) => s.textContent)).toEqual(['1/1', '1/3']);
+  });
+});

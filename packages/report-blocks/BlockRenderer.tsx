@@ -30,6 +30,8 @@ import { GbpActionsChartBlock } from './blocks/gbp/GbpActionsChartBlock';
 import { GbpKeywordsBlock } from './blocks/gbp/GbpKeywordsBlock';
 import { GbpReviewHighlightBlock } from './blocks/gbp/GbpReviewHighlightBlock';
 import { GbpUnitsBlock } from './blocks/gbp/GbpUnitsBlock';
+import { AccountHealthBlock } from './blocks/AccountHealthBlock';
+import { isFullWidthOnly } from './catalog';
 import { instagramAbsent, layoutPlatforms, tiktokBlockView, type ReportPlatform } from './platform';
 import { sectionVisibleInView } from './data-presence';
 
@@ -85,6 +87,7 @@ export const BLOCK_COMPONENTS: Partial<Record<BlockType, FC<BlockProps>>> = {
   top_posts: TopPostsBlock,
   post_list: PostListBlock,
   tags_table: TagsTableBlock,
+  account_health: AccountHealthBlock,
   image: ImageBlock,
   tiktok_kpi_followers_total: TikTokKpiCard,
   tiktok_kpi_followers_gained: TikTokKpiCard,
@@ -150,7 +153,7 @@ export function BlockRenderer({ layout, snapshot, mode }: BlockRendererProps) {
       <div
         key={block.id}
         data-block-id={block.id}
-        className={block.type === 'cover' ? 'rb-full' : (SIZE_CLASS[block.size] ?? 'rb-full')}
+        className={isFullWidthOnly(block.type) ? 'rb-full' : (SIZE_CLASS[block.size] ?? 'rb-full')}
       >
         {instagramAbsent(block.type, snapshot) ? null : (
           <Component block={block} snapshot={snapshot} layoutPlatforms={platforms} />

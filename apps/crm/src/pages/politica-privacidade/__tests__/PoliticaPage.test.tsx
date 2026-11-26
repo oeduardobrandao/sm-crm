@@ -79,6 +79,20 @@ describe('PoliticaPage, Google text live', () => {
   });
 });
 
+describe('PoliticaPage, Instagram benchmark paragraph', () => {
+  it('describes the aggregated, anonymous peer benchmark use of Instagram metrics', () => {
+    const { container } = renderPage();
+    const expected =
+      'Usamos esses dados para mostrar o desempenho da conta ao seu workspace e para publicar na conta conectada o conteúdo que você ou o seu cliente aprovou e agendou no Mesaas. As métricas de contas do Instagram conectadas também entram, de forma agregada e anônima, no cálculo de referências de comparação por tamanho de conta (por exemplo, a taxa de engajamento típica de contas de 5 mil a 20 mil seguidores). Uma referência só aparece quando reúne pelo menos 30 contas e nunca identifica uma conta, um cliente ou uma agência. Não vendemos esses dados nem os usamos para publicidade.';
+    const paragraphs = Array.from(container.querySelectorAll('p')).map((p) =>
+      (p.textContent ?? '').replace(/\s+/g, ' ').trim(),
+    );
+    expect(paragraphs).toContain(expected);
+    const oldSentence = ['somente', 'para mostrar o desempenho da conta'].join(' ');
+    expect(container.textContent).not.toContain(oldSentence);
+  });
+});
+
 describe('PoliticaPage, Google text not launched', () => {
   beforeEach(() => {
     launch.live = false;

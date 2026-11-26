@@ -11,6 +11,7 @@ import type { TikTokKpiId } from "../tiktok-analytics/kpis.ts";
 import type { GbpKpiId, GbpRatingDistribution, GbpSurface } from "../gbp-analytics/kpis.ts";
 import { computeKpis, type KpiEntry, type KpiSources, type ReportKpiId } from "./kpis.ts";
 import { monthWindow } from "./month-window.ts";
+import type { InstagramHealthSnapshot } from "./health-types.ts";
 
 export interface SnapshotHubTheme {
   surface: "neutral" | "warm" | "cool";
@@ -176,6 +177,8 @@ export interface ReportDocSnapshot {
   tiktok?: TikTokReportSnapshot | null;
   /** Ausente/null = relatório sem Google Meu Negócio (sem unidades, ou sem a flag). */
   google?: GoogleReportSnapshot | null;
+  /** Saúde da conta no corte do relatório, congelada na geração. Ausente/null = sem dado. */
+  instagram_health?: InstagramHealthSnapshot | null;
 }
 
 export interface SnapshotPostRow {
@@ -373,7 +376,7 @@ export function assembleSnapshot(input: SnapshotInput): ReportDocSnapshot {
  * snapshot congelado quando o Instagram saiu (o @ de `account` vai junto, à parte). */
 export const INSTAGRAM_SECTION_KEYS = [
   "comparison", "kpis", "follower_trend", "content_breakdown", "top_posts", "audience",
-  "best_times", "tags_performance", "instagram_connected",
+  "best_times", "tags_performance", "instagram_connected", "instagram_health",
 ] as const;
 export type InstagramSnapshotSection = Pick<ReportDocSnapshot, (typeof INSTAGRAM_SECTION_KEYS)[number]>;
 
@@ -401,5 +404,6 @@ export function emptyInstagramSection(): InstagramSnapshotSection {
     best_times: [],
     tags_performance: [],
     instagram_connected: false,
+    instagram_health: null,
   };
 }

@@ -74,6 +74,18 @@ describe('resizeBlock', () => {
   it('third -1 satura em third', () => {
     expect(resizeBlock(layout(), 'b', -1).blocks[1].size).toBe('third');
   });
+  it('saúde do Instagram é sempre full: resize e setBlockSize devolvem a MESMA referência', () => {
+    const l: ReportLayout = {
+      version: 1,
+      blocks: [{ id: 'h', type: 'account_health', size: 'full' }],
+    };
+    expect(resizeBlock(l, 'h', -1)).toBe(l);
+    expect(setBlockSize(l, 'h', 'half')).toBe(l);
+  });
+  it('saúde do Instagram entra com largura cheia', () => {
+    const { layout: next, newId } = insertBlock(layout(), 'account_health', () => 'n');
+    expect(next.blocks.find((b) => b.id === newId)?.size).toBe('full');
+  });
 });
 
 describe('removeBlock', () => {

@@ -8,7 +8,7 @@ import { GripVertical, Minus, Plus, SlidersHorizontal, Trash2 } from 'lucide-rea
 import { SortableContext, rectSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { BLOCK_COMPONENTS, SIZE_CLASS } from '@mesaas/report-blocks/BlockRenderer';
-import { WIDGET_CATALOG } from '@mesaas/report-blocks/catalog';
+import { WIDGET_CATALOG, isFullWidthOnly } from '@mesaas/report-blocks/catalog';
 import { blockHasData } from '@mesaas/report-blocks/data-presence';
 import type { ReportPlatform } from '@mesaas/report-blocks/platform';
 import type {
@@ -129,7 +129,7 @@ function SortableCell({
       ref={setNodeRef}
       style={style}
       data-block-id={block.id}
-      className={`${block.type === 'cover' ? 'rb-full' : (SIZE_CLASS[block.size] ?? 'rb-full')} rb-edit-cell${block.id === editing.highlightId ? ' rb-edit-highlight' : ''}`}
+      className={`${isFullWidthOnly(block.type) ? 'rb-full' : (SIZE_CLASS[block.size] ?? 'rb-full')} rb-edit-cell${block.id === editing.highlightId ? ' rb-edit-highlight' : ''}`}
     >
       <div className="rb-edit-toolbar">
         <button
@@ -141,7 +141,7 @@ function SortableCell({
         >
           <GripVertical className="h-3.5 w-3.5" />
         </button>
-        {block.type !== 'cover' && (
+        {!isFullWidthOnly(block.type) && (
           <>
             <button
               type="button"
