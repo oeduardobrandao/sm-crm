@@ -172,8 +172,8 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
     <ReverseTrialHoldContext.Provider
       value={reverseTrial.pending || reverseTrial.welcomeEndsAt !== null}
     >
-      {/* Only here: an authenticated user past setup. It also covers the protected pages outside
-          AppLayout (/comecar, /oauth/consent). */}
+      {/* Only here: an authenticated user. It mounts on /workspace-setup too (which is a protected
+          page), and covers the protected pages outside AppLayout (/comecar, /oauth/consent). */}
       <WorkspaceLanguageSync />
       {children}
       <ReverseTrialWelcomeDialog

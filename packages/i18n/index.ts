@@ -76,6 +76,16 @@ export function setLanguageHint(lang: Language): void {
   i18n.changeLanguage(lang);
 }
 
+/** Records the hint without switching the UI. For the signed-in app, which already renders the
+ * right language and only wants the pre-auth pages to agree with the workspace next time. */
+export function rememberWorkspaceLanguageAsHint(lang: Language): void {
+  try {
+    localStorage.setItem(LANGUAGE_HINT_KEY, lang);
+  } catch {
+    // Storage blocked: the hint is only a convenience.
+  }
+}
+
 /**
  * Once per browser: before the split, visiting `/en` wrote the explicit key. Move whatever is
  * there to the hint so an old visit is not mistaken for a choice.

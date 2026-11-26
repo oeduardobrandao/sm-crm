@@ -14,6 +14,10 @@ import { isPortugueseSitePage, siteLocaleForPath } from '@/content/siteLocale';
  *   signed-in workspace's language, then the `/en` hint), including after a client-side
  *   navigation away from a Portuguese site page.
  *
+ * The workspace language is memory-only and cleared when WorkspaceLanguageSync unmounts, so when
+ * the user crosses between ProtectedRoute instances this briefly resolves via the hint (which
+ * WorkspaceLanguageSync keeps equal to the workspace language) until the sync re-applies it.
+ *
  * The path is read inside the effect, never during render (the landing is server-rendered). */
 export function SavedLanguageSync() {
   const { pathname } = useLocation();

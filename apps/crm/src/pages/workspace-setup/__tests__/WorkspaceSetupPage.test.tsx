@@ -336,6 +336,39 @@ describe('WorkspaceSetupPage', () => {
       ).toBe('usd');
     });
 
+    it('flips the cached workspace language to en so the pt row does not beat the hint', async () => {
+      mockedRpc.mockImplementation((async () => {
+        mockedPlan.mockResolvedValue(planWith('usd'));
+        return { data: 'usd', error: null };
+      }) as never);
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      client.setQueryData(['currentWorkspace'], { id: 'ws-1', name: 'W', language: 'pt' });
+      const invalidate = vi.spyOn(client, 'invalidateQueries');
+      render(
+        <QueryClientProvider client={client}>
+          <MemoryRouter initialEntries={['/workspace-setup']}>
+            <Routes>
+              <Route path="/workspace-setup" element={<WorkspaceSetupPage />} />
+            </Routes>
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+      await screen.findByRole('button', { name: /Continuar|Continue/ });
+      expect((client.getQueryData(['currentWorkspace']) as { language: string }).language).toBe(
+        'en',
+      );
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['currentWorkspace'] });
+    });
+
+    it('does not invent a workspace row when none is cached', async () => {
+      mockedRpc.mockImplementation((async () => {
+        mockedPlan.mockResolvedValue(planWith('usd'));
+        return { data: 'usd', error: null };
+      }) as never);
+      await renderReady();
+      expect(queryClient.getQueryData(['currentWorkspace'])).toBeUndefined();
+    });
+
     it.each([
       ['still BRL', () => mockedRpc.mockResolvedValue({ data: 'brl', error: null } as never)],
       [

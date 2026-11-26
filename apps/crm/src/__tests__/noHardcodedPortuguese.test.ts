@@ -7,7 +7,8 @@ import { describe, expect, it } from 'vitest';
  * Guards the signed-in CRM against new hard-coded Portuguese.
  *
  * Scans every .tsx under pages/ and components/ (not __tests__) and flags JSX text and string
- * literals with an accented Portuguese letter. Comments never count (the AST skips them), and so
+ * literals (including template literals) with an accented Portuguese letter. Known limit: it only
+ * catches accented strings, so unaccented Portuguese such as "Salvar" passes. Comments never count (the AST skips them), and so
  * do `t(...)` / `i18n.t(...)` arguments (keys and defaultValue), import/export specifiers and
  * console.* arguments.
  *
