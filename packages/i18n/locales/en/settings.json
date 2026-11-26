@@ -241,7 +241,11 @@
       "noLogo": "No logo",
       "autoSync": "Automatic sync",
       "logoMenuTitle": "Workspace logo"
-    }
+    },
+    "language": "Workspace language",
+    "languageHint": "Sets the language of emails and the client portal for your team and clients.",
+    "languageUpdated": "Workspace language updated.",
+    "languageError": "Couldn't save the language. Try again."
   },
   "membros": {
     "roleUpdated": "Role updated!",
