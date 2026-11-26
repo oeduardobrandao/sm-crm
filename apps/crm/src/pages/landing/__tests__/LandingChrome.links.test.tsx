@@ -28,7 +28,7 @@ describe('landing chrome links', () => {
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
-  it('en footer "Do Not Sell or Share" turns advertising off as an explicit choice', () => {
+  it('en footer "Do Not Sell or Share" turns advertising off and keeps the US default /en-only', () => {
     window.history.replaceState(null, '', '/en');
     setConsent({ analytics: false, support: true, marketing: true }, 'us_default');
     render(<LandingFooter locale="en" />);
@@ -39,7 +39,7 @@ describe('landing chrome links', () => {
       analytics: false,
       support: true,
       marketing: false,
-      basis: 'choice',
+      basis: 'us_default',
     });
   });
 
