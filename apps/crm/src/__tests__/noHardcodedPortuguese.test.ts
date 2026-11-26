@@ -20,6 +20,9 @@ const ROOT = path.resolve(SRC, '../../..');
 const BASELINE_FILE = path.join(__dirname, 'noHardcodedPortuguese.baseline.json');
 const ACCENT = /[ãâáàçéêíóôõú]/i;
 
+// Language endonyms are shown in their own language on purpose, so they are never translated.
+const ALLOWED_STRINGS = new Set(['Português (Brasil)']);
+
 // Portuguese-only public pages (see PUBLIC_ROUTES in content/site-meta.ts, locale absent = 'pt'),
 // plus the Brazil-only affiliate program. Marketing pages live under pages/marketing. pages/en is
 // English-only. Hard-coded here because route paths do not map 1:1 to page directories.
@@ -77,10 +80,13 @@ function firstHit(file: string): string | null {
     if (
       ts.isJsxText(node) ||
       ts.isStringLiteral(node) ||
-      ts.isNoSubstitutionTemplateLiteral(node)
+      ts.isNoSubstitutionTemplateLiteral(node) ||
+      ts.isTemplateHead(node) ||
+      ts.isTemplateMiddle(node) ||
+      ts.isTemplateTail(node)
     ) {
       const value = node.text.trim();
-      if (ACCENT.test(value)) {
+      if (ACCENT.test(value) && !ALLOWED_STRINGS.has(value)) {
         hit = value.replace(/\s+/g, ' ').slice(0, 80);
         return;
       }
