@@ -1553,13 +1553,14 @@
     cursor: not-allowed;
   }
 
-  /* Client detail nav follows the sidebar's rows and sentence-case group labels, with a
-     quieter selected state than the sidebar's dark pill: a soft amber tint and an amber icon. */
+  /* Client detail nav uses the sidebar's exact spacing (vidro.css .sidebar-group-label and
+     .sidebar-sub-link, app.css .sidebar-sub-nav gap, style.css icon size), with a quieter
+     selected state than the sidebar's dark pill: a soft amber tint and an amber icon. */
   html[data-look='vidro'] body:has(.app-container) .vidro-panel .cliente-tabs-nav {
-    gap: 0;
+    gap: 0.05rem;
   }
   html[data-look='vidro'] body:has(.app-container) .vidro-panel .cliente-tabs-nav__label {
-    padding: 10px 12px 2px;
+    padding: 10px 12px 4px;
     line-height: 14px;
     text-transform: none;
     letter-spacing: 0;
@@ -1576,10 +1577,16 @@
   }
   html[data-look='vidro'] body:has(.app-container) .vidro-panel .cliente-tabs-nav__item {
     height: 28px;
+    gap: 0.75rem;
     border-radius: 6px;
     padding: 0 12px 0 10px;
     font-weight: 500;
     color: var(--text-main);
+  }
+  html[data-look='vidro'] body:has(.app-container) .vidro-panel .cliente-tabs-nav__icon {
+    width: 18px;
+    height: 18px;
+    color: var(--text-muted);
   }
   html[data-look='vidro'] body:has(.app-container) .vidro-panel .cliente-tabs-nav__item.active,
   html[data-look='vidro']

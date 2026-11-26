@@ -888,6 +888,54 @@ html[data-standalone] .app-container {
   font-weight: 600;
 }
 
+.analytics-tabs--icons {
+  gap: 1.75rem;
+}
+
+.analytics-tabs--icons .analytics-tab {
+  gap: 8px;
+  padding: 0.7rem 0.1rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+.analytics-tabs--icons .analytics-tab i {
+  font-size: 18px;
+}
+
+/* Underline in ink, so the platform colour on the active icon is the only accent. */
+.analytics-tabs--icons .analytics-tab.active {
+  border-bottom-color: var(--text-main);
+}
+
+.analytics-tabs--icons .analytics-tab.active i {
+  color: var(--analytics-tab-accent, currentColor);
+}
+
+.analytics-tab--instagram {
+  --analytics-tab-accent: #d6246e;
+}
+.analytics-tab--youtube {
+  --analytics-tab-accent: #e00000;
+}
+.analytics-tab--google {
+  --analytics-tab-accent: #1a73e8;
+}
+.analytics-tab--relatorios {
+  --analytics-tab-accent: #a16207;
+}
+[data-theme='dark'] .analytics-tab--instagram {
+  --analytics-tab-accent: #ff5c97;
+}
+[data-theme='dark'] .analytics-tab--youtube {
+  --analytics-tab-accent: #ff4d4d;
+}
+[data-theme='dark'] .analytics-tab--google {
+  --analytics-tab-accent: #8ab4f8;
+}
+[data-theme='dark'] .analytics-tab--relatorios {
+  --analytics-tab-accent: #ffbf30;
+}
+
 .analytics-phone-tabs {
   margin: 0.25rem 0 0.75rem;
 }
