@@ -1,4 +1,4 @@
-import type { VerdictTone } from '@/lib/ig-account-health';
+import type { VerdictTone } from '@mesaas/report-blocks/health';
 
 interface HealthBarProps {
   pct: number;

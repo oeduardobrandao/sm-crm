@@ -20943,6 +20943,10 @@ button.phone-stat-tile:active {
   align-items: center;
   gap: 12px;
 }
+/* Phone analytics sections space themselves with margin-bottom (no flex gap in .phone-an). */
+.ig-health--phone {
+  margin-bottom: 20px;
+}
 .ig-health--phone .ig-health-grid {
   grid-template-columns: 1fr;
 }

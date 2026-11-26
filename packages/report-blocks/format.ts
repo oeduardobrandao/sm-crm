@@ -54,3 +54,17 @@ export function fmtPeriodStamp(period: {
   const range = `${startDay}–${endDay} de ${monthName}`;
   return effectiveEnd.getTime() >= lastDayOfMonthMs ? range : `${range} · parcial`;
 }
+
+/** Link externo seguro para href: só https, sem credenciais; qualquer outra coisa vira null
+ * (o chamador não renderiza o link). O pacote não depende do sanitizeUrl do CRM. */
+export function safeHttpsUrl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password) return null;
+    return parsed.href;
+  } catch {
+    return null;
+  }
+}

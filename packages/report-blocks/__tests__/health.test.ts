@@ -6,7 +6,7 @@ import {
   bandLabel,
   roundedSampleLabel,
   formatMetric,
-} from '../ig-account-health';
+} from '../health';
 
 // cuts[i] = i + 1  (p1..p99 valores 1..99)
 const SEQ_CUTS = Array.from({ length: 99 }, (_, i) => i + 1);

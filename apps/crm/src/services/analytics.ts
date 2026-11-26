@@ -22,7 +22,7 @@ import {
   toNullableCount,
   type ActionSortKey,
 } from '../lib/post-action-metrics';
-import type { FollowerBand, HealthMetricKey, PeerBenchmark } from '../lib/ig-account-health';
+import type { FollowerBand, HealthMetricKey, PeerBenchmark } from '@mesaas/report-blocks/health';
 
 export const EDGE_URL = import.meta.env.VITE_SUPABASE_URL + '/functions/v1/instagram-analytics';
 
