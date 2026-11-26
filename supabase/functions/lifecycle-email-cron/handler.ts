@@ -535,6 +535,8 @@ export async function runLifecycleEmailCron(
             );
           }
         }
+        // Deliberate deviation: the reminder candidate carries no user_id, so it
+        // follows the workspace language instead of ownerLang.
         const lang = await langOf.workspace(c.workspace_id);
         const firstCharge = formatFirstCharge({ ...c, currency: c.currency ?? "brl" }, lang);
         if (firstCharge === null) {
@@ -616,7 +618,7 @@ export async function runLifecycleEmailCron(
           endedAt: c.ended_at,
           hubPauseAt: c.hub_pause_at,
           appBaseUrl: deps.appBaseUrl,
-          lang: await langOf.workspace(c.workspace_id),
+          lang: await langOf.owner(c.user_id),
         });
         await claim(
           deps,
@@ -689,7 +691,8 @@ export async function runLifecycleEmailCron(
           // spent): not an error, just not ours to send.
           if (claimed.data == null) continue;
 
-          const lang = await langOf.workspace(c.workspace_id);
+          // Owner language, the same source as the nurture-unsub page.
+          const lang = await langOf.owner(c.user_id);
           const { subject, html } = buildNurtureEmail({
             step,
             firstName: firstNameFrom(c.nome),

@@ -184,6 +184,7 @@ function cronDeps(over: Partial<LifecycleCronDeps>, sent: any[]): LifecycleCronD
     get_welcome_email_candidates: [
       { user_id: "u1", email: "a@x.com", nome: "Ana", attempts: 0 },
       { user_id: "u2", email: "b@x.com", nome: "Bia", attempts: 0 },
+      { user_id: "u2", email: "b@x.com", nome: "Bia", attempts: 0 },
     ],
     get_thankyou_email_candidates: [],
     get_trial_reminder_candidates: [],
@@ -231,19 +232,64 @@ Deno.test("cron passes the owner language to the welcome sender, caching per own
     },
   }, sent);
   await runLifecycleEmailCron(deps);
-  assertEquals(sent.map((s) => s.lang), ["pt", "en"]);
+  assertEquals(sent.map((s) => s.lang), ["pt", "en", "en"]);
   assertEquals(calls, ["u1", "u2"]);
 });
 
 Deno.test("cron without a lang dep, or with a throwing one, sends pt", async () => {
   const sent: any[] = [];
   await runLifecycleEmailCron(cronDeps({}, sent));
-  assertEquals(sent.map((s) => s.lang), ["pt", "pt"]);
+  assertEquals(sent.map((s) => s.lang), ["pt", "pt", "pt"]);
   const sent2: any[] = [];
   await runLifecycleEmailCron(cronDeps({
     lang: { owner: () => Promise.reject(new Error("db")), workspace: () => Promise.reject(new Error("db")) },
   }, sent2));
-  assertEquals(sent2.map((s) => s.lang), ["pt", "pt"]);
+  assertEquals(sent2.map((s) => s.lang), ["pt", "pt", "pt"]);
+});
+
+Deno.test("nurture and reverse trial use the owner language, not the candidate workspace", async () => {
+  const nurture: any[] = [];
+  const reverse: any[] = [];
+  const deps = cronDeps({
+    nurtureEnabled: true,
+    lang: { owner: () => Promise.resolve("en"), workspace: () => Promise.resolve("pt") },
+    sendNurture: (p) => (nurture.push(p), Promise.resolve()),
+    sendReverseTrial: (p) => (reverse.push(p), Promise.resolve()),
+  }, []);
+  const rpc = deps.db.rpc.bind(deps.db);
+  deps.db = {
+    ...deps.db,
+    rpc: (name: string, args?: Record<string, unknown>) => {
+      if (name === "get_nurture_candidates") {
+        return Promise.resolve({
+          data: [{
+            user_id: "u1", workspace_id: "w1", email: "a@x.com", nome: "Ana", workspace_name: "Aurora",
+            workspace_created_at: "2026-11-01", email_type: "nurture_a1", step: "a1", attempts: 0,
+            client_count: 0, first_client_name: null, has_instagram: false,
+          }],
+          error: null,
+        });
+      }
+      if (name === "claim_nurture_email") return Promise.resolve({ data: { ok: true }, error: null });
+      if (name === "get_reverse_trial_email_candidates") {
+        return Promise.resolve({
+          data: [{
+            workspace_id: "w1", user_id: "u1", email: "a@x.com", nome: "Ana", workspace_name: "Aurora",
+            email_type: "reverse_trial_hub_pausing", ref_at: "2026-12-10T15:00:00Z", ends_at: null,
+            ended_at: null, hub_pause_at: "2026-12-10T15:00:00Z", plan_name: "Pro", price_cents: null, attempts: 0,
+          }],
+          error: null,
+        });
+      }
+      return rpc(name, args);
+    },
+  } as LifecycleCronDeps["db"];
+  await runLifecycleEmailCron(deps);
+  assertEquals(nurture.length, 1);
+  assertStringIncludes(nurture[0].html, '<html lang="en"');
+  assertEquals(reverse.length, 1);
+  assertStringIncludes(reverse[0].html, '<html lang="en"');
+  assertEquals(reverse[0].subject, "Your clients' portal links pause tomorrow");
 });
 
 Deno.test("nurture preview defaults to pt and can preview en", async () => {
