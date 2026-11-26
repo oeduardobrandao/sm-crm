@@ -9,7 +9,7 @@ Depende da cobrança em USD (`docs/usd-billing-runbook.md`). Este runbook é int
 - Só frontend, uma migration e uma mudança no painel do Supabase. Nenhuma edge function.
 - O cadastro em `/en` manda `market: 'us'` no metadata do usuário. O trigger
   `on_auth_user_created_zz_billing_market` põe o workspace em USD. Se ele falhar (vira só
-  WARNING), `billing_market_apply()` (migration `20261206000001`) repara no `/workspace-setup`.
+  WARNING), `billing_market_apply()` (migration `20261207000001`) repara no `/workspace-setup`.
 - O app abre em inglês depois de uma visita a `/en` (spec §5). As lacunas de inglês dentro do
   app e dos e-mails de ciclo de vida são a Parte 3.
 - Telas em inglês: `EN_LANDING_IMAGES` está vazio de propósito e `/en` usa os screenshots em
@@ -33,7 +33,7 @@ Na URL de preview do deploy do PR, confira:
 
 ## Ordem de deploy
 
-1. **Migration `20261206000001_billing_market_apply.sql` em staging e depois em prod.**
+1. **Migration `20261207000001_billing_market_apply.sql` em staging e depois em prod.**
    Aditiva; nada a chama até o frontend subir. O `npx supabase` local está quebrado em
    darwin-arm64, então rode de um **checkout descartável** de `main` mais esta migration
    (veja `reference_db_push_remote_ahead_disposable_checkout` na memória: `db push --linked`

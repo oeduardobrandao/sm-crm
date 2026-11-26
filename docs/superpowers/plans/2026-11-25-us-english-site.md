@@ -28,7 +28,7 @@
   - GPC line in the dialog: `Your browser sent Global Privacy Control, so advertising stays off.`
   - Footer language links: `Versão em português` (on `/en` pages, to `/`), `English` (on `/` pages, to `/en`)
 - Stored phone for USD workspaces: digits only, country code first, no `+` (`14155550132`).
-- Migration version prefix must be unique and above main's tail (`20261205000002` today); use `20261206000001` and recheck before the PR.
+- Migration version prefix must be unique and above main's tail (`20261205000002` today); use `20261207000001` and recheck before the PR.
 - Before pushing: `npm run lint`, `npm run format:check`, the five `tsc` commands, `npm run test`, `npm run check:functions`, `npm run test:functions` (CLAUDE.md, "What CI actually runs").
 
 ## Review Focus
@@ -44,7 +44,7 @@
 ### Task 1: `billing_market_apply()` RPC
 
 **Files:**
-- Create: `supabase/migrations/20261206000001_billing_market_apply.sql`
+- Create: `supabase/migrations/20261207000001_billing_market_apply.sql`
 - Create: `supabase/tests/entitlements/99_billing_market_apply.sql`
 
 **Interfaces:**

@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 \i supabase/tests/entitlements/_helpers.sql
 
--- Reparo da moeda do cadastro dos EUA (migration 20261206000001).
+-- Reparo da moeda do cadastro dos EUA (migration 20261207000001).
 --
 -- billing_market_apply() lê o market do próprio auth.users do chamador e, só para
 -- market = 'us', dono do workspace ativo, sem trava e sem linha de provedor em
