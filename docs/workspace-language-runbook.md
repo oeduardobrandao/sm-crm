@@ -28,6 +28,8 @@ Quatro PRs, em sequência. Qualquer falha de leitura do idioma cai em `pt` (nunc
 
 ## PR 1: armazenamento, resolução no navegador, Configurações, Hub (Fase A)
 
+Detalhes do que a Fase A entrega: bullet "Idioma por workspace" do `CLAUDE.md`.
+
 1. Migration `20261210000001` em staging e depois em prod. Rode de um **checkout descartável**
    (o `npx supabase` local está quebrado em darwin-arm64; `db push --linked` aplica tudo o que
    estiver pendente). Reconfira a ponta de `main` e renumere se ela andou.
@@ -60,10 +62,25 @@ Só frontend, sem deploy além do PR 1. Merge direto.
 
 ## PR 4: relatórios e texto de IA (Fase D)
 
-1. `report-docs` (confere o JWT do usuário sozinho e não tem entrada no `config.toml`: deploy
-   normal, sem a flag) e `instagram-report-generator-v2` (`--no-verify-jwt`, `verify_jwt = false`
-   no `config.toml`).
-2. Merge (o frontend não muda além da Fase C).
+Edge apenas (rótulos do relatório HTML, título e rótulos dos relatórios em bloco, prompt da IA e
+payload de impressão).
+
+1. Edge functions, depois da migration do PR 1:
+   - `report-docs`: confere o JWT do usuário sozinho e não tem entrada no `config.toml`
+     (deploy normal, sem a flag, como hoje).
+   - `hub-report-docs` com `--no-verify-jwt` (`verify_jwt = false` no `config.toml`): a rota
+     `print-doc` passa a devolver `language` (campo aditivo, o Hub antigo o ignora).
+   - `instagram-report-generator-v2` com `--no-verify-jwt` (`verify_jwt = false` no `config.toml`).
+2. Merge.
+
+Notas:
+
+- A página de impressão que renderiza os blocos (KPIs, títulos de gráfico, "sem dados") vive no
+  Hub e precisa aplicar `doc.language`; isso entra no PR que é dono do Hub. Até lá, o PDF dos
+  relatórios em bloco continua em português, mesmo com o edge já devolvendo `language`.
+- Nada que já foi gravado é regenerado: PDFs armazenados (`pdf_storage_path`), títulos e
+  `period.label` dos documentos existentes e o texto de IA já salvo ficam no idioma em que foram
+  criados. Só documentos novos e o rótulo do período no `refresh-data` seguem o idioma atual.
 
 ## Templates do Supabase Auth (Reset password, Invite user, Magic link)
 
@@ -184,3 +201,14 @@ gravado nos usuários pode ficar.
 
 Nenhuma do lado do Auth: os templates foram aplicados em staging e prod em 2026-11-26 (seção
 "Assunto" acima).
+
+## Follow-ups conhecidos
+
+- `claim_notification_emails` não devolve `workspace_id`: o idioma sai de uma leitura extra.
+- `/cancelar-avisos` no CRM usa o idioma do visitante, não o do workspace.
+- E-mails em inglês apontam para `/ajuda` e `/novidades` em português.
+- O fuso padrão dos e-mails em inglês é America/New_York.
+- `add-direct` não sincroniza o `language` do Auth do usuário criado.
+- As análises de IA dentro do app (`instagram-analytics`) seguem em português.
+- `refresh-data` grava o rótulo no idioma atual, enquanto o título armazenado mantém o idioma
+  de quando o documento foi gerado (mistura possível).
