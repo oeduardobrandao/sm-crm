@@ -74,12 +74,12 @@ function urlSegura(u?: string | null): string | null {
 }
 
 export function gerarCalendario(
-  { nome, eventos, agora }: { nome: string; eventos: IcsEvento[]; agora: Date },
+  { nome, eventos, agora, lang = "pt" }: { nome: string; eventos: IcsEvento[]; agora: Date; lang?: "pt" | "en" },
 ): string {
   const l: string[] = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//Mesaas//Agenda//PT-BR",
+    lang === "en" ? "PRODID:-//Mesaas//Agenda//EN" : "PRODID:-//Mesaas//Agenda//PT-BR",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     `X-WR-CALNAME:${escaparTexto(nome)}`,
@@ -88,7 +88,7 @@ export function gerarCalendario(
   ];
   for (const e of eventos) {
     const url = urlSegura(e.url);
-    const desc = [e.descricao?.trim() || null, url ? `Link da reunião: ${url}` : null]
+    const desc = [e.descricao?.trim() || null, url ? `${lang === "en" ? "Meeting link" : "Link da reunião"}: ${url}` : null]
       .filter(Boolean)
       .join("\n\n");
     l.push("BEGIN:VEVENT", `UID:${e.uid}`, `DTSTAMP:${utc(agora)}`);

@@ -2,6 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
 import { verifyUnsubTokenKind } from "../_shared/client-event-email.ts";
+import { workspaceLang } from "../_shared/i18n/workspace-lang.ts";
 import {
   type ClientEmailUnsubDb,
   createClientEmailUnsubHandler,
@@ -36,6 +37,13 @@ Deno.serve(createClientEmailUnsubHandler({
   db: svc as unknown as ClientEmailUnsubDb,
   verifyToken: verifyUnsubTokenKind,
   descadastrarConvidado: createDescadastrarConvidado(svc as unknown as DescadastrarConvidadoDb),
+  // Cliente or guest id -> its workspace -> language. Any failure is pt (workspaceLang never throws).
+  targetLang: async (alvo) => {
+    const table = alvo.tipo === "cliente" ? "clientes" : "agenda_convidados";
+    const { data } = await svc.from(table).select("conta_id").eq("id", alvo.id).maybeSingle();
+    const contaId = (data as { conta_id?: string } | null)?.conta_id;
+    return contaId ? await workspaceLang(svc, contaId) : "pt";
+  },
   tokenSecret: TOKEN_ENCRYPTION_KEY,
   now: () => new Date(),
   auditLog: (entry) => insertAuditLog(svc, entry),

@@ -66,7 +66,7 @@ type SendInput = {
   workspaceName: string;
   brandColor: string | null;
   logoUrl: string | null;
-  language?: "pt" | "en";
+  lang?: string;
 };
 
 function setup(
@@ -167,6 +167,7 @@ Deno.test("buildLoginCodeEmail: subject, copy and code", () => {
     workspaceName: "Agência <Sol>",
     brandColor: "#ff6600",
     logoUrl: null,
+    lang: "pt",
   });
   assertEquals(subject, "Seu código de acesso");
   assert(!subject.includes("123456"), "o código não vai no assunto");
@@ -197,17 +198,8 @@ Deno.test("request_code, listed email: { ok: true }, normalized email + code, em
     workspaceName: "Agência Sol",
     brandColor: "#ff6600",
     logoUrl: "https://cdn.example.com/logo.png",
-    language: "pt",
+    lang: "pt",
   }]);
-});
-
-Deno.test("request_code, en workspace: the code email is sent with language en", async () => {
-  const t = setup({ workspace: { ...WORKSPACE_ROW, language: "en" } });
-  const res = await t.handler(reqCode("marina@clinica.com"));
-  assertEquals(res.status, 200);
-  await t.flush();
-  assertEquals(t.sent.length, 1);
-  assertEquals(t.sent[0].language, "en");
 });
 
 Deno.test("request_code, unlisted email: same status and same body bytes, no email", async () => {
@@ -533,4 +525,44 @@ Deno.test("request_code / verify_code without workspace or token -> 400", async 
   const res2 = await t.handler(post({ action: "verify_code", workspace: "x", code: CODE }));
   assertEquals(res2.status, 400);
   await res2.body?.cancel();
+});
+
+
+// ---------------------------------------------------------------- language
+
+Deno.test("language: an en workspace gets English messages and the code e-mail lang; codes and statuses stay", async () => {
+  const t = setup({ workspace: { ...WORKSPACE_ROW, language: "en" } });
+  await t.handler(reqCode("marina@clinica.com"));
+  await t.flush();
+  assertEquals(t.sent.length, 1);
+  assertEquals((t.sent[0] as { lang?: string }).lang, "en");
+
+  const bad = await t.handler(verify("12"));
+  assertEquals(bad.status, 400);
+  assertEquals(await bad.json(), { error: "Invalid or expired code.", code: "invalid_code" });
+
+  const limited = setup({ workspace: { ...WORKSPACE_ROW, language: "en" }, rateLimit: () => false });
+  const res = await limited.handler(reqCode("marina@clinica.com"));
+  assertEquals(res.status, 429);
+  assertEquals(await res.json(), { error: "Too many attempts. Please wait a few minutes." });
+
+  const off = setup({ workspace: { ...WORKSPACE_ROW, language: "en", hub_enabled: false } });
+  const r2 = await off.handler(reqCode("a@b.co"));
+  assertEquals(r2.status, 403);
+  assertEquals(await r2.json(), { error: "Hub disabled." });
+});
+
+Deno.test("language: missing or unknown workspace language, and an unknown workspace, stay pt", async () => {
+  const t = setup({ workspace: { ...WORKSPACE_ROW, language: "fr" } });
+  await t.handler(reqCode("marina@clinica.com"));
+  await t.flush();
+  assertEquals((t.sent[0] as { lang?: string }).lang, "pt");
+  const bad = await t.handler(verify("12"));
+  assertEquals(await bad.json(), { error: "Código inválido ou expirado.", code: "invalid_code" });
+  const none = setup({ workspace: null });
+  const r = await none.handler(reqCode("a@b.co"));
+  assertEquals(r.status, 404);
+  assertEquals(await r.json(), { error: "Workspace não encontrado." });
+  const malformed = await t.handler(post("not json"));
+  assertEquals(await malformed.json(), { error: "Requisição inválida." });
 });

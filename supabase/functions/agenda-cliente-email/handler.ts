@@ -38,6 +38,7 @@ import {
 import { clientUnsubFooterUrl, clientUnsubFunctionUrl, signUnsubTokenFor } from "../_shared/client-event-email.ts";
 import { sanitizeFromName } from "../_shared/email-headers.ts";
 import type { sendViaResend } from "../_shared/lifecycle-emails.ts";
+import type { Lang } from "../_shared/i18n/lang.ts";
 
 interface DbError {
   message: string;
@@ -67,6 +68,11 @@ export interface AgendaClienteEmailDeps {
    * null/absent: the footer falls back to the function URL.
    */
   unsubPageBaseUrl?: string | null;
+  /**
+   * Language of a workspace (`workspaceLang(svc, contaId)` in index.ts; it never throws and
+   * answers pt on any failure). Absent: every e-mail goes out in pt.
+   */
+  workspaceLang?: (contaId: string) => Promise<Lang>;
   now: () => number;
   deadlineMs?: number;
 }
@@ -129,6 +135,21 @@ export async function runAgendaClienteEmail(
   let enviados = 0;
   let falhas = 0;
 
+  // One lookup per workspace per run.
+  const langs = new Map<string, Lang>();
+  const langOf = async (contaId: string): Promise<Lang> => {
+    const hit = langs.get(contaId);
+    if (hit) return hit;
+    let lang: Lang = "pt";
+    try {
+      lang = (await deps.workspaceLang?.(contaId)) ?? "pt";
+    } catch {
+      console.error("[agenda-cliente-email] workspace language lookup failed");
+    }
+    langs.set(contaId, lang);
+    return lang;
+  };
+
   const marcar = async (item: AgendaClienteEmailItem, ok: boolean, erro: string | null) => {
     const { error: markErr } = await deps.db.rpc("agenda_cliente_marcar_email", {
       p_id: item.id,
@@ -180,6 +201,7 @@ export async function runAgendaClienteEmail(
         ...ctxBotao,
         unsubUrl: clientUnsubFooterUrl(deps.unsubPageBaseUrl, deps.unsubBaseUrl, unsubToken),
         agora: new Date(deps.now()),
+        lang: await langOf(item.conta_id),
       });
       const workspaceName = item.workspace_nome?.trim() || "Mesaas";
 

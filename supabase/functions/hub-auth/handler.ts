@@ -2,6 +2,8 @@ import { createJsonResponder, type JsonResponder } from "../_shared/http.ts";
 import { HUB_SESSION_HEADER, hubAccessDenied, resolveHubToken, sha256Hex } from "../_shared/hub-token.ts";
 import { getClientIP } from "../_shared/rate-limit.ts";
 import { CODE_RE, normalizeEmail } from "./logic.ts";
+import { type Lang, resolveLang } from "../_shared/i18n/lang.ts";
+import { hubLoginText } from "../_shared/i18n/catalogs/hub-login.ts";
 
 type DbClient = {
   // deno-lint-ignore no-explicit-any
@@ -24,18 +26,19 @@ export interface HubAuthDeps {
     workspaceName: string;
     brandColor: string | null;
     logoUrl: string | null;
-    /** Workspace language; the sender may ignore it until the email copy is translated. */
-    language?: "pt" | "en";
+    lang: Lang;
   }) => Promise<void>;
   /** EdgeRuntime.waitUntil in index.ts; awaits nothing. */
   defer: (work: Promise<unknown>) => void;
 }
 
 const MAX_SESSION_LENGTH = 200;
-const TOO_MANY = { error: "Muitas tentativas. Aguarde alguns minutos." };
-const INVALID_CODE = { error: "Código inválido ou expirado.", code: "invalid_code" };
-const BAD_REQUEST = { error: "Requisição inválida." };
-const INTERNAL = { error: "Erro interno." };
+// Human text follows the workspace language once the link is resolved; before that (and on
+// any failure) it is pt. Error codes and statuses never change with language.
+const tooMany = (lang: Lang) => ({ error: hubLoginText(lang).tooMany });
+const invalidCode = (lang: Lang) => ({ error: hubLoginText(lang).invalidCode, code: "invalid_code" });
+const badRequest = (lang: Lang) => ({ error: hubLoginText(lang).badRequest });
+const internal = (lang: Lang) => ({ error: hubLoginText(lang).internal });
 
 // Logs carry only a fixed message and the PostgREST/Postgres error code: an
 // error message or detail can echo parameters (the code, the session hash).
@@ -45,12 +48,15 @@ function errorCode(error: unknown): string {
 }
 
 type Workspace = {
-  id: string; name: string; logo_url: string | null; brand_color: string | null;
-  language?: string | null;
+  id: string;
+  name: string;
+  logo_url: string | null;
+  brand_color: string | null;
+  language?: unknown;
 };
 
 type LinkResult =
-  | { ok: true; workspace: Workspace; clienteId: number }
+  | { ok: true; workspace: Workspace; clienteId: number; lang: Lang }
   | { ok: false; response: Response };
 
 /** Same link resolution as hub-bootstrap: slug, hub_enabled, then the token bound to the workspace. */
@@ -63,8 +69,9 @@ async function resolveLink(
     .select("id, name, logo_url, brand_color, hub_enabled, language")
     .eq("slug", workspaceSlug)
     .maybeSingle();
-  if (!conta) return { ok: false, response: json({ error: "Workspace não encontrado." }, 404) };
-  if (!conta.hub_enabled) return { ok: false, response: json({ error: "Hub desativado." }, 403) };
+  if (!conta) return { ok: false, response: json({ error: hubLoginText("pt").workspaceNotFound }, 404) };
+  const lang = resolveLang(conta.language);
+  if (!conta.hub_enabled) return { ok: false, response: json({ error: hubLoginText(lang).hubDisabled }, 403) };
 
   let resolved;
   try {
@@ -72,7 +79,7 @@ async function resolveLink(
     resolved = await resolveHubToken(db as any, token, deps.now(), conta.id, conta.name ?? null);
   } catch (err) {
     console.error("[hub-auth] token resolution failed", errorCode(err));
-    return { ok: false, response: json(INTERNAL, 500) };
+    return { ok: false, response: json(internal(lang), 500) };
   }
   if (!resolved.ok) {
     // Paused (reverse trial ended): same 403 hub_paused body as every hub-*
@@ -83,7 +90,7 @@ async function resolveLink(
       response: await hubAccessDenied(resolved.reason, { db, req, json, rateLimit: deps.rateLimit }, agencyName),
     };
   }
-  return { ok: true, workspace: conta as Workspace, clienteId: resolved.token.cliente_id };
+  return { ok: true, workspace: conta as Workspace, clienteId: resolved.token.cliente_id, lang };
 }
 
 export function createHubAuthHandler(deps: HubAuthDeps) {
@@ -97,15 +104,15 @@ export function createHubAuthHandler(deps: HubAuthDeps) {
     let body: Record<string, unknown>;
     try {
       const parsed = await req.json();
-      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return json(BAD_REQUEST, 400);
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return json(badRequest("pt"), 400);
       body = parsed as Record<string, unknown>;
     } catch {
-      return json(BAD_REQUEST, 400);
+      return json(badRequest("pt"), 400);
     }
 
     const action = body.action;
     if (action !== "request_code" && action !== "verify_code" && action !== "logout") {
-      return json(BAD_REQUEST, 400);
+      return json(badRequest("pt"), 400);
     }
 
     const db = deps.createDb();
@@ -125,23 +132,23 @@ export function createHubAuthHandler(deps: HubAuthDeps) {
 
     const { workspace: workspaceSlug, token } = body;
     if (typeof workspaceSlug !== "string" || !workspaceSlug || typeof token !== "string" || !token) {
-      return json(BAD_REQUEST, 400);
+      return json(badRequest("pt"), 400);
     }
 
     const link = await resolveLink(deps, db, req, json, workspaceSlug, token);
     if (!link.ok) return link.response;
-    const { workspace, clienteId } = link;
+    const { workspace, clienteId, lang } = link;
     const ip = getClientIP(req);
 
     if (action === "request_code") {
       // Enumeration safety: every outcome past the limits (listed, unlisted,
       // malformed, RPC failure, send failure) answers these same bytes, and
       // both limits are debited before anything that depends on the list.
-      if (!(await deps.rateLimit(db, `hub-auth-req:ip:${ip}`, 20, 3600))) return json(TOO_MANY, 429);
+      if (!(await deps.rateLimit(db, `hub-auth-req:ip:${ip}`, 20, 3600))) return json(tooMany(lang), 429);
       const email = normalizeEmail(body.email);
       if (!email) return json({ ok: true });
       if (!(await deps.rateLimit(db, `hub-auth-req:email:${clienteId}:${email}`, 5, 3600))) {
-        return json(TOO_MANY, 429);
+        return json(tooMany(lang), 429);
       }
 
       // Issue and send both run off the response path: hub_login_issue writes
@@ -167,7 +174,7 @@ export function createHubAuthHandler(deps: HubAuthDeps) {
               workspaceName: workspace.name,
               brandColor: workspace.brand_color ?? null,
               logoUrl: workspace.logo_url ?? null,
-              language: workspace.language === "en" ? "en" : "pt",
+              lang,
             });
           } catch {
             console.error("[hub-auth] login code email failed");
@@ -180,10 +187,10 @@ export function createHubAuthHandler(deps: HubAuthDeps) {
     }
 
     // verify_code
-    if (!(await deps.rateLimit(db, `hub-auth-verify:ip:${ip}`, 10, 600))) return json(TOO_MANY, 429);
+    if (!(await deps.rateLimit(db, `hub-auth-verify:ip:${ip}`, 10, 600))) return json(tooMany(lang), 429);
     const email = normalizeEmail(body.email);
     const code = body.code;
-    if (!email || typeof code !== "string" || !CODE_RE.test(code)) return json(INVALID_CODE, 400);
+    if (!email || typeof code !== "string" || !CODE_RE.test(code)) return json(invalidCode(lang), 400);
 
     const sessionToken = deps.generateSessionToken();
     try {
@@ -195,14 +202,14 @@ export function createHubAuthHandler(deps: HubAuthDeps) {
       });
       if (error) {
         console.error("[hub-auth] hub_login_verify failed", errorCode(error));
-        return json(INTERNAL, 500);
+        return json(internal(lang), 500);
       }
       const ok = typeof data === "object" && data !== null && (data as { ok?: unknown }).ok === true;
-      if (!ok) return json(INVALID_CODE, 400);
+      if (!ok) return json(invalidCode(lang), 400);
       return json({ session_token: sessionToken });
     } catch (err) {
       console.error("[hub-auth] hub_login_verify threw", errorCode(err));
-      return json(INTERNAL, 500);
+      return json(internal(lang), 500);
     }
   };
 }

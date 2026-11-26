@@ -40,6 +40,8 @@
  */
 
 import type { UnsubAlvo } from "../_shared/client-event-email.ts";
+import type { Lang } from "../_shared/i18n/lang.ts";
+import { clientUnsubText } from "../_shared/i18n/catalogs/client-unsub.ts";
 
 export interface ClientEmailUnsubDb {
   from(table: "clientes"): {
@@ -65,6 +67,11 @@ export interface ClientEmailUnsubDeps {
    * database error.
    */
   descadastrarConvidado: (convidadoId: number) => Promise<{ conta_id: string } | null>;
+  /**
+   * Language of the workspace a valid token belongs to (cliente or guest, then its
+   * workspace). Absent, throwing or unresolvable: pt. An invalid token is always pt.
+   */
+  targetLang?: (alvo: UnsubAlvo) => Promise<Lang>;
   /** TOKEN_ENCRYPTION_KEY, read via a throwing IIFE in index.ts. */
   tokenSecret: string;
   now: () => Date;
@@ -77,13 +84,13 @@ export interface ClientEmailUnsubDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
 }
 
-// ─── pages: inline HTML, no external assets, PT-BR copy, no em-dash ───────
+// ─── pages: inline HTML, no external assets, no em-dash ──────────────────
 // Text is deliberately generic ("desta agência") -- the token only carries
-// the cliente id, never the workspace name.
+// the cliente id, never the workspace name. The language is the workspace's.
 
-function page(title: string, heading: string, body: string): string {
+function page(lang: Lang, title: string, heading: string, body: string): string {
   return `<!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="${clientUnsubText(lang).htmlLang}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -105,38 +112,41 @@ ${body}
 </html>`;
 }
 
-function confirmPage(): string {
+function confirmPage(lang: Lang): string {
+  const t = clientUnsubText(lang);
   return page(
-    "Cancelar avisos",
-    "Deixar de receber estes avisos?",
-    `<p>Você vai parar de receber e-mails de pendências desta agência.</p>
-<form method="post"><button type="submit">Cancelar avisos</button></form>`,
+    lang,
+    t.title,
+    t.confirmHeading,
+    `<p>${t.confirmClient}</p>
+<form method="post"><button type="submit">${t.button}</button></form>`,
   );
 }
 
-function confirmPageConvidado(): string {
+function confirmPageConvidado(lang: Lang): string {
+  const t = clientUnsubText(lang);
   return page(
-    "Cancelar avisos",
-    "Deixar de receber estes avisos?",
-    `<p>Você vai parar de receber convites e avisos de eventos desta agência neste endereço.</p>
-<form method="post"><button type="submit">Cancelar avisos</button></form>`,
+    lang,
+    t.title,
+    t.confirmHeading,
+    `<p>${t.confirmGuest}</p>
+<form method="post"><button type="submit">${t.button}</button></form>`,
   );
 }
 
-function donePage(): string {
-  return page("Pronto", "Pronto.", `<p>Você não vai mais receber estes avisos.</p>`);
+function donePage(lang: Lang): string {
+  const t = clientUnsubText(lang);
+  return page(lang, t.doneTitle, t.doneHeading, `<p>${t.doneBody}</p>`);
 }
 
 function invalidPage(): string {
-  return page("Link inválido", "Link inválido", `<p>Este link não é válido.</p>`);
+  const t = clientUnsubText("pt");
+  return page("pt", t.invalidTitle, t.invalidTitle, `<p>${t.invalidBody}</p>`);
 }
 
-function errorPage(): string {
-  return page(
-    "Algo deu errado",
-    "Algo deu errado",
-    `<p>Não foi possível processar seu pedido agora. Tente novamente mais tarde.</p>`,
-  );
+function errorPage(lang: Lang): string {
+  const t = clientUnsubText(lang);
+  return page(lang, t.errorTitle, t.errorTitle, `<p>${t.errorBody}</p>`);
 }
 
 function html(body: string, status: number, cors: Record<string, string>): Response {
@@ -168,9 +178,17 @@ export function createClientEmailUnsubHandler(deps: ClientEmailUnsubDeps) {
       return html(invalidPage(), 404, cors);
     }
 
+    // Language of the token's workspace; any failure is pt, never an error page.
+    let lang: Lang = "pt";
+    try {
+      lang = (await deps.targetLang?.(alvo)) ?? "pt";
+    } catch {
+      console.error("[client-email-unsub] language lookup failed");
+    }
+
     if (req.method === "GET") {
       // NEVER mutates -- see file header.
-      return html(alvo.tipo === "convidado" ? confirmPageConvidado() : confirmPage(), 200, cors);
+      return html(alvo.tipo === "convidado" ? confirmPageConvidado(lang) : confirmPage(lang), 200, cors);
     }
 
     if (alvo.tipo === "convidado") {
@@ -181,7 +199,7 @@ export function createClientEmailUnsubHandler(deps: ClientEmailUnsubDeps) {
         row = await deps.descadastrarConvidado(alvo.id);
       } catch (e) {
         console.error("[client-email-unsub] guest block failed:", e instanceof Error ? e.message : String(e));
-        return html(errorPage(), 500, cors);
+        return html(errorPage(lang), 500, cors);
       }
       // An id no table knows blocks nothing and audits nothing; the page never
       // reveals whether the id exists.
@@ -197,7 +215,7 @@ export function createClientEmailUnsubHandler(deps: ClientEmailUnsubDeps) {
           console.error("[client-email-unsub] audit log failed:", e instanceof Error ? e.message : String(e));
         }
       }
-      return html(donePage(), 200, cors);
+      return html(donePage(lang), 200, cors);
     }
 
     const clienteId = alvo.id;
@@ -218,12 +236,12 @@ export function createClientEmailUnsubHandler(deps: ClientEmailUnsubDeps) {
         .select("conta_id");
       if (error) {
         console.error("[client-email-unsub] update failed:", error.message);
-        return html(errorPage(), 500, cors);
+        return html(errorPage(lang), 500, cors);
       }
       updatedRow = data?.[0];
     } catch (e) {
       console.error("[client-email-unsub] update threw:", e instanceof Error ? e.message : String(e));
-      return html(errorPage(), 500, cors);
+      return html(errorPage(lang), 500, cors);
     }
 
     // No row matched (client already deleted) -- nothing was updated, so
@@ -247,7 +265,7 @@ export function createClientEmailUnsubHandler(deps: ClientEmailUnsubDeps) {
       }
     }
 
-    return html(donePage(), 200, cors);
+    return html(donePage(lang), 200, cors);
   };
 }
 

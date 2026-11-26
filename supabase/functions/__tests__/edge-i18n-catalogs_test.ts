@@ -13,6 +13,10 @@ import { inviteText } from "../_shared/i18n/catalogs/invite.ts";
 import { dunningText } from "../_shared/i18n/catalogs/dunning.ts";
 import { instagramConnectText } from "../_shared/i18n/catalogs/instagram-connect.ts";
 import { reportEmailText } from "../_shared/i18n/catalogs/report-email.ts";
+import { clientEventText } from "../_shared/i18n/catalogs/client-event.ts";
+import { agendaText } from "../_shared/i18n/catalogs/agenda.ts";
+import { hubLoginText } from "../_shared/i18n/catalogs/hub-login.ts";
+import { clientUnsubText } from "../_shared/i18n/catalogs/client-unsub.ts";
 
 type Entry = { name: string; get: (lang: "pt" | "en") => Record<string, unknown> };
 
@@ -26,6 +30,10 @@ const CATALOGS: Entry[] = [
   { name: "dunning", get: dunningText },
   { name: "instagram-connect", get: instagramConnectText },
   { name: "report-email", get: reportEmailText },
+  { name: "client-event", get: clientEventText },
+  { name: "agenda", get: agendaText },
+  { name: "hub-login", get: hubLoginText },
+  { name: "client-unsub", get: clientUnsubText },
   // Append: { name: "<family>", get: <catalogAccessor> },
 ];
 

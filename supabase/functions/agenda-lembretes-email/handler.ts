@@ -13,6 +13,7 @@
  */
 import { buildLembreteEmail } from "../_shared/agenda-email.ts";
 import type { sendViaResend } from "../_shared/lifecycle-emails.ts";
+import type { Lang } from "../_shared/i18n/lang.ts";
 
 interface DbError { message: string }
 
@@ -51,6 +52,11 @@ export interface AgendaLembretesEmailDeps {
   db: AgendaLembreteDb;
   sendEmail: typeof sendViaResend;
   appBaseUrl: string;
+  /**
+   * Language of the workspace the occurrence belongs to (index.ts resolves the occurrence's
+   * `conta_id` and then `workspaceLang`; never throws, pt on any failure). Absent: pt.
+   */
+  occurrenceLang?: (ocorrenciaId: number) => Promise<Lang>;
   now: () => number;
   deadlineMs?: number;
 }
@@ -71,6 +77,21 @@ export async function runAgendaLembretesEmail(
 
   let enviados = 0;
   let falhas = 0;
+
+  // One lookup per occurrence per run (a series of reminders shares it).
+  const langs = new Map<number, Lang>();
+  const langOf = async (ocorrenciaId: number): Promise<Lang> => {
+    const hit = langs.get(ocorrenciaId);
+    if (hit) return hit;
+    let lang: Lang = "pt";
+    try {
+      lang = (await deps.occurrenceLang?.(ocorrenciaId)) ?? "pt";
+    } catch {
+      console.error("[agenda-lembretes-email] workspace language lookup failed");
+    }
+    langs.set(ocorrenciaId, lang);
+    return lang;
+  };
 
   const mark = async (r: AgendaLembreteRow, ok: boolean) => {
     const { error: markErr } = await deps.db.rpc("agenda_marcar_email_lembrete", {
@@ -104,6 +125,7 @@ export async function runAgendaLembretesEmail(
         minutos: r.minutos,
         abrirUrl: `${deps.appBaseUrl}/calendario?evento=${r.ocorrencia_id}`,
         appBaseUrl: deps.appBaseUrl,
+        lang: await langOf(r.ocorrencia_id),
       });
       const key = `agenda-lembrete:${r.ocorrencia_id}:${r.user_id}:${r.minutos}:${Math.floor(Date.parse(r.inicio_alvo) / 1000)}`;
       await deps.sendEmail(email, subject, html, key, FROM, undefined, undefined, undefined, {

@@ -4,33 +4,39 @@ import { callout, heading, paragraph } from "../_shared/email/blocks.ts";
 import { EMAIL } from "../_shared/email/tokens.ts";
 import { sanitizeFromName } from "../_shared/email-headers.ts";
 import { sendViaResend } from "../_shared/lifecycle-emails.ts";
+import type { Lang } from "../_shared/i18n/lang.ts";
+import { hubLoginText } from "../_shared/i18n/catalogs/hub-login.ts";
 
 export interface LoginCodeEmailInput {
   code: string;
   workspaceName: string;
   brandColor: string | null;
   logoUrl: string | null;
+  /** Language of the client's workspace. */
+  lang: Lang;
 }
 
 /** Client-facing login code, laid out like the other agency-branded client e-mails. */
 export function buildLoginCodeEmail(input: LoginCodeEmailInput): { subject: string; html: string } {
+  const t = hubLoginText(input.lang);
   const codeHtml = `<p style="margin: 0; text-align: center; font-size: 32px; line-height: 40px; ` +
     `font-weight: 700; letter-spacing: 0.3em; color: ${EMAIL.ink};">${escapeHtml(input.code)}</p>`;
   const html = brandedEmail({
-    preheader: "O código vale por 10 minutos.",
+    preheader: t.preheader,
     workspaceName: input.workspaceName,
     brandColor: input.brandColor,
     logoUrl: input.logoUrl,
     sections: [
-      heading("Seu código de acesso") +
-      paragraph(`Use este código para entrar no portal da ${input.workspaceName}.`, "body", "0"),
+      heading(t.heading) +
+      paragraph(t.intro(input.workspaceName), "body", "0"),
       callout(codeHtml),
-      paragraph("O código vale por 10 minutos.", "body", "0") +
-      paragraph("Se você não pediu este código, ignore este e-mail.", "small", "8px 0 0"),
+      paragraph(t.validity, "body", "0") +
+      paragraph(t.ignore, "small", "8px 0 0"),
     ],
-    footerHtml: [`Enviado por ${escapeHtml(input.workspaceName)} via Mesaas`],
+    footerHtml: [t.sentBy(escapeHtml(input.workspaceName))],
+    lang: input.lang,
   });
-  return { subject: "Seu código de acesso", html };
+  return { subject: t.subject, html };
 }
 
 /**
