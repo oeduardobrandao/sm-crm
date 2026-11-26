@@ -2,6 +2,8 @@ import { LIFECYCLE_FROM, sanitizeSubjectValue, sendViaResend } from "./lifecycle
 import { mesaasEmail } from "./email/shell.ts";
 import { button, fallbackLink, heading, paragraph, paragraphHtml, steps, strong } from "./email/blocks.ts";
 import { escapeHtml } from "./report-template/escape.ts";
+import type { Lang } from "./i18n/lang.ts";
+import { instagramConnectText } from "./i18n/catalogs/instagram-connect.ts";
 
 /**
  * O cliente final recebe este e-mail de um domínio com o qual não tem relação.
@@ -14,32 +16,43 @@ import { escapeHtml } from "./report-template/escape.ts";
  * o envio. sanitizeSubjectValue é o mesmo tratamento que
  * buildFounderSubscriptionNotice já aplica a este mesmo campo.
  */
-export const CONNECT_LINK_SUBJECT = (agencyName: string): string =>
-  `${sanitizeSubjectValue(agencyName)} precisa conectar seu Instagram`;
+/** Portuguese subject; `connectLinkSubject` is the language-aware form the senders use. */
+export const CONNECT_LINK_SUBJECT = (agencyName: string): string => connectLinkSubject(agencyName, "pt");
 
 export const CONNECTED_NOTICE_SUBJECT = "Instagram conectado pelo cliente";
+
+export function connectLinkSubject(agencyName: string, lang: Lang): string {
+  return instagramConnectText(lang).linkSubject(sanitizeSubjectValue(agencyName));
+}
+
+export function connectedNoticeSubject(lang: Lang): string {
+  return instagramConnectText(lang).connectedSubject;
+}
 
 export function buildConnectLinkEmail(p: {
   agencyName: string;
   clienteName: string;
   connectUrl: string;
   appBaseUrl: string;
+  lang: Lang;
 }): string {
+  const t = instagramConnectText(p.lang);
   return mesaasEmail({
-    preheader: `${p.agencyName} pediu para conectar o Instagram de ${p.clienteName}.`,
-    eyebrow: `A pedido de ${p.agencyName}`,
+    lang: p.lang,
+    preheader: t.linkPreheader(p.agencyName, p.clienteName),
+    eyebrow: t.linkEyebrow(p.agencyName),
     sections: [
-      heading(`Conecte o Instagram de ${p.clienteName}`) +
-        paragraphHtml(`${strong(p.agencyName)} pediu para conectar o Instagram de ${strong(p.clienteName)} ao Mesaas, a ferramenta que a agência usa para agendar publicações e acompanhar resultados.`, "body", "0"),
+      heading(t.linkHeading(p.clienteName)) +
+        paragraphHtml(t.linkIntro(strong(p.agencyName), strong(p.clienteName)), "body", "0"),
       steps([
-        "Abra o link abaixo.",
-        `Entre com a conta do Instagram de ${escapeHtml(p.clienteName)}.`,
-        "Pronto. A agência não vê sua senha em momento algum.",
+        t.step1,
+        t.step2(escapeHtml(p.clienteName)),
+        t.step3,
       ]),
-      button(p.connectUrl, "Conectar Instagram") + fallbackLink(p.connectUrl) +
-        paragraph(`Não esperava este pedido? Responda este e-mail e fale direto com ${p.agencyName}.`, "small", "16px 0 0"),
+      button(p.connectUrl, t.linkCta) + fallbackLink(p.connectUrl, p.lang) +
+        paragraph(t.linkNotExpected(p.agencyName), "small", "16px 0 0"),
     ],
-    footerLines: [`Enviado a pedido de ${p.agencyName}`],
+    footerLines: [t.linkFooter(p.agencyName)],
   });
 }
 
@@ -48,17 +61,20 @@ export function buildConnectedNoticeEmail(p: {
   igUsername: string;
   clienteUrl: string;
   appBaseUrl: string;
+  lang: Lang;
 }): string {
+  const t = instagramConnectText(p.lang);
   return mesaasEmail({
-    preheader: `@${p.igUsername} foi conectado a ${p.clienteName}.`,
-    eyebrow: "Instagram",
+    lang: p.lang,
+    preheader: t.connectedPreheader(p.igUsername, p.clienteName),
+    eyebrow: t.connectedEyebrow,
     sections: [
-      heading("Instagram conectado") +
-        paragraphHtml(`O cliente ${strong(p.clienteName)} concluiu a conexão do Instagram.`) +
-        paragraphHtml(`Conta conectada: ${strong(`@${p.igUsername}`)}`, "body", "0"),
-      button(p.clienteUrl, "Ver o cliente"),
+      heading(t.connectedHeading) +
+        paragraphHtml(t.connectedIntro(strong(p.clienteName))) +
+        paragraphHtml(t.connectedAccount(strong(`@${p.igUsername}`)), "body", "0"),
+      button(p.clienteUrl, t.connectedCta),
     ],
-    footerLines: ["Notificação automática do Mesaas"],
+    footerLines: [t.connectedFooter],
   });
 }
 
@@ -70,10 +86,11 @@ export async function sendConnectLinkEmail(p: {
   connectUrl: string;
   appBaseUrl: string;
   idempotencyKey: string;
+  lang: Lang;
 }): Promise<void> {
   await sendViaResend(
     p.to,
-    CONNECT_LINK_SUBJECT(p.agencyName),
+    connectLinkSubject(p.agencyName, p.lang),
     buildConnectLinkEmail(p),
     p.idempotencyKey,
     LIFECYCLE_FROM,
@@ -91,10 +108,11 @@ export async function sendConnectedNoticeEmail(p: {
   clienteUrl: string;
   appBaseUrl: string;
   idempotencyKey: string;
+  lang: Lang;
 }): Promise<void> {
   await sendViaResend(
     p.to,
-    CONNECTED_NOTICE_SUBJECT,
+    connectedNoticeSubject(p.lang),
     buildConnectedNoticeEmail(p),
     p.idempotencyKey,
     LIFECYCLE_FROM,

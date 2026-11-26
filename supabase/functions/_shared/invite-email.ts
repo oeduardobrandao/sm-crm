@@ -1,23 +1,32 @@
 import { mesaasEmail } from "./email/shell.ts";
 import { button, fallbackLink, heading, paragraph, paragraphHtml, strong } from "./email/blocks.ts";
+import type { Lang } from "./i18n/lang.ts";
+import { inviteText } from "./i18n/catalogs/invite.ts";
 
 /**
  * Build the HTML body for a "set your password" invite e-mail. Text blocks escape their own
  * values (workspace name included), and the button and fallback link escape the action link
  * (it carries `&`-joined query params that must be entity-encoded in attribute context).
  */
-export function buildInviteEmail(params: { actionLink: string; workspaceName: string }): string {
+export function buildInviteEmail(params: { actionLink: string; workspaceName: string; lang: Lang }): string {
+  const t = inviteText(params.lang);
   return mesaasEmail({
-    preheader: `Defina sua senha para entrar no ${params.workspaceName}.`,
-    eyebrow: "Convite",
+    lang: params.lang,
+    preheader: t.preheader(params.workspaceName),
+    eyebrow: t.eyebrow,
     sections: [
-      heading(`Você foi convidado para o ${params.workspaceName}`) +
-        paragraphHtml(`Para acessar o workspace ${strong(params.workspaceName)} no Mesaas, defina sua senha:`, "body", "0"),
-      button(params.actionLink, "Definir minha senha") + fallbackLink(params.actionLink) +
-        paragraph("Se você não esperava este convite, ignore este e-mail.", "small", "16px 0 0"),
+      heading(t.heading(params.workspaceName)) +
+        paragraphHtml(t.intro(strong(params.workspaceName)), "body", "0"),
+      button(params.actionLink, t.cta) + fallbackLink(params.actionLink, params.lang) +
+        paragraph(t.ignore, "small", "16px 0 0"),
     ],
     footerLines: [],
   });
+}
+
+/** Subject of the invite e-mail. */
+export function inviteSubject(workspaceName: string, lang: Lang): string {
+  return inviteText(lang).subject(workspaceName);
 }
 
 /**
@@ -26,7 +35,7 @@ export function buildInviteEmail(params: { actionLink: string; workspaceName: st
  * cron alerts), so the caller can report that the resend did not go out.
  */
 export async function sendInviteEmail(
-  params: { to: string; actionLink: string; workspaceName: string },
+  params: { to: string; actionLink: string; workspaceName: string; lang: Lang },
 ): Promise<void> {
   const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
   if (!RESEND_API_KEY) throw new Error("RESEND_API_KEY not configured");
@@ -40,8 +49,12 @@ export async function sendInviteEmail(
     body: JSON.stringify({
       from: "Mesaas <convites@mesaas.com.br>",
       to: [params.to],
-      subject: `Seu acesso ao ${params.workspaceName} no Mesaas`,
-      html: buildInviteEmail({ actionLink: params.actionLink, workspaceName: params.workspaceName }),
+      subject: inviteSubject(params.workspaceName, params.lang),
+      html: buildInviteEmail({
+        actionLink: params.actionLink,
+        workspaceName: params.workspaceName,
+        lang: params.lang,
+      }),
     }),
   });
   if (!res.ok) throw new Error(`Resend send failed: ${res.status}`);

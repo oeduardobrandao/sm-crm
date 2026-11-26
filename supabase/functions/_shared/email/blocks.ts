@@ -75,10 +75,13 @@ export function link(href: string | null | undefined, text: string, color: strin
     : t;
 }
 
-export function fallbackLink(href: string | null | undefined): string {
+export function fallbackLink(href: string | null | undefined, lang: Lang = "pt"): string {
   const url = linkSeguro(href);
   if (!url) return "";
-  return paragraph("Se o botão não funcionar, copie e cole este endereço no navegador:", "small", "16px 0 4px") +
+  const text = lang === "en"
+    ? "If the button does not work, copy and paste this address into your browser:"
+    : "Se o botão não funcionar, copie e cole este endereço no navegador:";
+  return paragraph(text, "small", "16px 0 4px") +
     `<p style="margin: 0; font-size: 13px; line-height: 20px; color: ${EMAIL.ink}; word-break: break-all;">${escapeHtml(url)}</p>`;
 }
 

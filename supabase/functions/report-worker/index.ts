@@ -213,7 +213,9 @@ Deno.serve(async (req) => {
           .single();
 
         if (wsFlags?.send_report_email && clientFlags?.send_report_email && clientFlags?.email) {
-          const { buildReportEmail, buildReportFrom } = await import("../_shared/report-template/email.ts");
+          const { buildReportEmail, buildReportFrom, buildReportSubject } = await import("../_shared/report-template/email.ts");
+          const { workspaceLang } = await import("../_shared/i18n/workspace-lang.ts");
+          const lang = await workspaceLang(supabase, reportRow.conta_id);
 
           let pdfUrl = '';
           if (reportRow.storage_path) {
@@ -233,11 +235,8 @@ Deno.serve(async (req) => {
             pdfUrl,
             hubUrl: await resolveHubUrl(supabase, reportRow.client_id, reportRow.conta_id),
             emailKpis: reportRow.email_kpis ?? null,
+            lang,
           });
-
-          const [year, mm] = reportRow.report_month.split('-');
-          const monthLabel = new Date(parseInt(year), parseInt(mm) - 1, 1)
-            .toLocaleDateString('pt-BR', { month: 'long' });
 
           const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
           if (RESEND_API_KEY) {
@@ -250,7 +249,7 @@ Deno.serve(async (req) => {
               body: JSON.stringify({
                 from: buildReportFrom(wsFlags.name),
                 to: [clientFlags.email],
-                subject: `Seu relatório de ${monthLabel} está pronto!`,
+                subject: buildReportSubject(reportRow.report_month, lang),
                 html: emailHtml,
                 tags: [{ name: 'type', value: 'report' }],
               }),

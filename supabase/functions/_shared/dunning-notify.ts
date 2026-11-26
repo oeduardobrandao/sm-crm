@@ -2,6 +2,9 @@ import { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import type { DunningStage } from "./dunning-logic.ts";
 import { sendDunningEmail } from "./dunning-email.ts";
 import { appBaseUrl } from "./app-url.ts";
+import { formatDate, type Lang } from "./i18n/lang.ts";
+import { workspaceLang } from "./i18n/workspace-lang.ts";
+import { dunningText } from "./i18n/catalogs/dunning.ts";
 
 /**
  * Tell the owner their payment failed. Swallows everything: a throw here would 500 the handler,
@@ -46,11 +49,14 @@ export async function notifyOwnerOfFailure(
     const to = ownerUser?.user?.email;
     if (!to) return;
 
+    // Language of the billed workspace; a failed lookup logs and falls back to pt.
+    const lang = await workspaceLang(svc, workspaceId);
     await sendDunningEmail({
       to,
       stage: notice.stage,
-      workspaceName: (ws?.name as string | undefined) ?? "seu workspace",
-      nextAttemptLabel: formatAttemptLabel(notice.nextPaymentAttemptIso),
+      workspaceName: (ws?.name as string | undefined) ?? dunningText(lang).workspaceFallback,
+      nextAttemptLabel: formatAttemptLabel(notice.nextPaymentAttemptIso, lang),
+      lang,
       billingUrl: `${appBaseUrl()}/configuracao/cobranca`,
     });
   } catch (e) {
@@ -64,9 +70,14 @@ export async function notifyOwnerOfFailure(
   }
 }
 
-/** "2026-07-24T10:00:00.000Z" -> "24 de julho". Null when the gateway will not retry again. */
-function formatAttemptLabel(iso: string | null): string | null {
+/**
+ * "2026-07-24T10:00:00.000Z" -> "24 de julho" (pt) or "July 24" (en). Null when the gateway will
+ * not retry again. The pt branch keeps the original runtime-timezone formatting so Brazilian
+ * output stays byte-identical.
+ */
+export function formatAttemptLabel(iso: string | null, lang: Lang): string | null {
   if (!iso) return null;
+  if (lang === "en") return formatDate(iso, "en", { month: "long", day: "numeric" });
   return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "long" });
 }
 

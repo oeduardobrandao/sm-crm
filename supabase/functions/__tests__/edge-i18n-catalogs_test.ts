@@ -9,6 +9,10 @@ import { lifecycleText } from "../_shared/i18n/catalogs/lifecycle.ts";
 import { nurtureText } from "../_shared/i18n/catalogs/nurture.ts";
 import { nurtureUnsubText } from "../_shared/i18n/catalogs/nurture-unsub.ts";
 import { notificationsText } from "../_shared/i18n/catalogs/notifications.ts";
+import { inviteText } from "../_shared/i18n/catalogs/invite.ts";
+import { dunningText } from "../_shared/i18n/catalogs/dunning.ts";
+import { instagramConnectText } from "../_shared/i18n/catalogs/instagram-connect.ts";
+import { reportEmailText } from "../_shared/i18n/catalogs/report-email.ts";
 
 type Entry = { name: string; get: (lang: "pt" | "en") => Record<string, unknown> };
 
@@ -18,6 +22,10 @@ const CATALOGS: Entry[] = [
   { name: "nurture", get: nurtureText },
   { name: "nurture-unsub", get: nurtureUnsubText },
   { name: "notifications", get: notificationsText },
+  { name: "invite", get: inviteText },
+  { name: "dunning", get: dunningText },
+  { name: "instagram-connect", get: instagramConnectText },
+  { name: "report-email", get: reportEmailText },
   // Append: { name: "<family>", get: <catalogAccessor> },
 ];
 

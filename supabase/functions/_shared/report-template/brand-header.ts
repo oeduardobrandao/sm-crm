@@ -54,3 +54,12 @@ export function formatCompactPtBr(n: number): string {
   if (Math.abs(n) >= 10_000) return `${fmt(n / 1_000)} mil`;
   return n.toLocaleString("pt-BR");
 }
+
+/** 48200 -> "48.2K" (en); pt is `formatCompactPtBr`. */
+export function formatCompact(n: number, lang: "pt" | "en"): string {
+  if (lang !== "en") return formatCompactPtBr(n);
+  const fmt = (v: number) => v.toLocaleString("en-US", { maximumFractionDigits: 1, minimumFractionDigits: 0 });
+  if (Math.abs(n) >= 1_000_000) return `${fmt(n / 1_000_000)}M`;
+  if (Math.abs(n) >= 10_000) return `${fmt(n / 1_000)}K`;
+  return n.toLocaleString("en-US");
+}

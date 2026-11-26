@@ -10,6 +10,7 @@ import { sendCronFailureEmail } from "../_shared/notify.ts";
 import { classifyOAuthError, isAppConfigError } from "./oauth-error.ts";
 import { gateConnectLinkOrigin } from "../instagram-connect-link/gate.ts";
 import { sendConnectedNoticeEmail } from "../_shared/instagram-connect-email.ts";
+import { workspaceLang } from "../_shared/i18n/workspace-lang.ts";
 import { appBaseUrl } from "../_shared/app-url.ts";
 import { buildScopeParam, IG_BASE_SCOPES } from "../_shared/instagram-scopes.ts";
 import { resolveGrantedPermissions } from "../_shared/instagram-permissions.ts";
@@ -611,6 +612,8 @@ Deno.serve(async (req) => {
                     const memberEmail = userData?.user?.email;
                     if (memberEmail) {
                         const base = appBaseUrl();
+                        // Language of the client's workspace; a failed lookup falls back to pt.
+                        const lang = await workspaceLang(serviceClient, contaId);
                         await sendConnectedNoticeEmail({
                             to: memberEmail,
                             clienteName: clienteNome,
@@ -618,6 +621,7 @@ Deno.serve(async (req) => {
                             clienteUrl: `${base.replace(/\/+$/, '')}/clientes/${clientId}`,
                             appBaseUrl: base,
                             idempotencyKey: `ig-connected-notice:${linkToken}:${igBusinessId}`,
+                            lang,
                         });
                     }
                 } catch (e) {

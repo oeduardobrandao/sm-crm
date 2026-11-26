@@ -4,7 +4,7 @@ import { buildReportEmail, buildReportFrom, REPORT_FROM_ADDRESS } from "../_shar
 const base = {
   clientName: "Marina Arrais", month: "2026-08", workspaceName: "DK",
   brandColor: "#e11d48", logoUrl: null, aiSummary: "Resumo do mês com tamanho suficiente.",
-  pdfUrl: "https://x/r.pdf", hubUrl: "https://x/hub",
+  pdfUrl: "https://x/r.pdf", hubUrl: "https://x/hub", lang: "pt" as const,
 };
 
 Deno.test("shell: faixa com brandColor, radius 12, sem rodapé creme nem tagline antiga", () => {

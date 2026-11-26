@@ -2,6 +2,8 @@
 import { classifyExistingUser, coerceHasPassword } from "./invite-classify.ts";
 import { sendPendingWorkspaceInvite } from "./invite-pending.ts";
 import { sendInviteEmail } from "./invite-email.ts";
+import { workspaceLang } from "./i18n/workspace-lang.ts";
+import { inviteText } from "./i18n/catalogs/invite.ts";
 import { effectivePlanLimit } from "./entitlements-rpc.ts";
 import { seatsAvailable } from "./invite-seats.ts";
 
@@ -472,7 +474,15 @@ export async function inviteOrResend(
       }
       const { data: conta } = await adminClient
         .from("contas").select("nome").eq("id", input.contaId).maybeSingle();
-      await sendInviteEmail({ to: email, actionLink: link.properties.action_link, workspaceName: conta?.nome || "seu workspace" });
+      // Language of the inviting workspace, resolved once for this action (a failed lookup
+      // logs and falls back to pt, never blocks the invite).
+      const lang = await workspaceLang(adminClient, input.contaId);
+      await sendInviteEmail({
+        to: email,
+        actionLink: link.properties.action_link,
+        workspaceName: conta?.nome || inviteText(lang).workspaceFallback,
+        lang,
+      });
       const ins = await adminClient.from("invites").insert({
         conta_id: input.contaId, email, role: effectiveRole, invited_by: input.invitedBy,
         status: "pending", membro_id: membroId, role_id: roleId,

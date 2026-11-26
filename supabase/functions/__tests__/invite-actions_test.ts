@@ -291,6 +291,8 @@ import { inviteOrResend } from "../_shared/invite-actions.ts";
 // `failTable` injects a Supabase { error } on the first insert/delete to that
 // table (finding 2). `memberships` is the user's workspace set (finding 4/5).
 function makeInviteAdmin(opts: {
+  /** `workspaces.language` returned for the inviting workspace. */
+  workspaceLanguage?: unknown;
   limit: number | null;
   members: number;
   pendingOtherEmails?: number;
@@ -372,6 +374,7 @@ function makeInviteAdmin(opts: {
           if (table === "workspace_members") return Promise.resolve({ data: opts.isMember ? { id: "m1" } : null, error: null });
           if (table === "membros") return Promise.resolve({ data: opts.membroConflict ? { id: "other-membro" } : null, error: null });
           if (table === "contas") return Promise.resolve({ data: { nome: "WS" }, error: null });
+          if (table === "workspaces") return Promise.resolve({ data: { language: opts.workspaceLanguage }, error: null });
           if (table === "invites") {
             // One canned "prior pending row" response shared by BOTH the
             // membroId and role_id inheritance lookups (inviteOrResend runs
@@ -1119,5 +1122,47 @@ Deno.test("inviteOrResend: resend-link route with NO roleId inherits the replace
   } finally {
     globalThis.fetch = realFetch;
     if (prevKey === undefined) Deno.env.delete("RESEND_API_KEY"); else Deno.env.set("RESEND_API_KEY", prevKey);
+  }
+});
+
+// --- workspace language (invite e-mail of the resend-link route) -----------------------------
+
+async function resendLinkMail(workspaceLanguage: unknown): Promise<{ subject: string; html: string }> {
+  const prevKey = Deno.env.get("RESEND_API_KEY");
+  Deno.env.set("RESEND_API_KEY", "test-key");
+  const realFetch = globalThis.fetch;
+  let sent: { subject: string; html: string } | null = null;
+  globalThis.fetch = ((_u: unknown, init?: RequestInit) => {
+    sent = JSON.parse(String(init?.body));
+    return Promise.resolve(new Response("{}", { status: 200 }));
+  }) as typeof fetch;
+  try {
+    const admin = makeInviteAdmin({
+      workspaceLanguage, limit: null, members: 0,
+      authUser: { id: "u1", email_confirmed_at: "2026-01-01T00:00:00Z" },
+      onboarding: false, hasProfile: true, hasPassword: false,
+    });
+    // deno-lint-ignore no-explicit-any
+    const out = await inviteOrResend(admin as any, baseInput, ADMIN);
+    assertEquals(out.route, "resent-link");
+    return sent!;
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prevKey === undefined) Deno.env.delete("RESEND_API_KEY"); else Deno.env.set("RESEND_API_KEY", prevKey);
+  }
+}
+
+Deno.test("inviteOrResend resend-link: en workspace gets the English invite", async () => {
+  const m = await resendLinkMail("en");
+  assertEquals(m.subject, "Your access to WS on Mesaas");
+  assert(m.html.includes('<html lang="en"'));
+  assert(m.html.includes("set your password"));
+});
+
+Deno.test("inviteOrResend resend-link: pt, null or unknown language stays Portuguese", async () => {
+  for (const lang of ["pt", null, undefined, "fr"]) {
+    const m = await resendLinkMail(lang);
+    assertEquals(m.subject, "Seu acesso ao WS no Mesaas");
+    assert(m.html.includes('<html lang="pt-BR"'));
   }
 });

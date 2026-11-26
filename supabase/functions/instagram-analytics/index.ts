@@ -1397,7 +1397,9 @@ O campo priorityActions deve ter entre 3 e 5 ações distribuídas entre as cont
       }
 
       // 7. Build and send email
-      const { buildReportEmail, buildReportFrom } = await import("../_shared/report-template/email.ts");
+      const { buildReportEmail, buildReportFrom, buildReportSubject } = await import("../_shared/report-template/email.ts");
+      const { workspaceLang } = await import("../_shared/i18n/workspace-lang.ts");
+      const lang = await workspaceLang(serviceClient, contaId);
 
       const hubUrl = await resolveHubUrl(serviceClient, report.client_id, contaId);
       const emailHtml = buildReportEmail({
@@ -1410,12 +1412,8 @@ O campo priorityActions deve ter entre 3 e 5 ações distribuídas entre as cont
         pdfUrl,
         hubUrl,
         emailKpis: report.email_kpis ?? null,
+        lang,
       });
-
-      // Format month for subject
-      const [year, mm] = report.report_month.split('-');
-      const monthLabel = new Date(parseInt(year), parseInt(mm) - 1, 1)
-        .toLocaleDateString('pt-BR', { month: 'long' });
 
       const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
       if (!RESEND_API_KEY) return json({ error: 'Email service not configured' }, 500);
@@ -1429,7 +1427,7 @@ O campo priorityActions deve ter entre 3 e 5 ações distribuídas entre as cont
         body: JSON.stringify({
           from: buildReportFrom(workspace?.name),
           to: [cliente.email],
-          subject: `Seu relatório de ${monthLabel} está pronto!`,
+          subject: buildReportSubject(report.report_month, lang),
           html: emailHtml,
           tags: [{ name: 'type', value: 'report' }],
         }),
