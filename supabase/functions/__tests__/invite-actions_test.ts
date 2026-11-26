@@ -67,7 +67,9 @@ Deno.test("getAuthStatesByEmails resolves everything in a single listUsers scan"
 // (not just final values) and prove no side effects occurred before an early throw.
 function makeCancelAdmin(opts: {
   invite: { id: string; conta_id: string; email: string; status: string } | null;
-  authUser?: { id: string; email_confirmed_at: string | null } | null;
+  authUser?: { id: string; email_confirmed_at: string | null; user_metadata?: Record<string, unknown> } | null;
+  ownsWorkspace?: boolean;          // the user has an owner membership somewhere
+  failUpdateUserById?: boolean;     // auth.admin.updateUserById returns { error }
   onboarding?: boolean;
   hasPassword?: boolean | null;
   memberships?: string[]; // workspace_ids the user belongs to
@@ -319,7 +321,9 @@ function makeInviteAdmin(opts: {
   const inserts: Array<{ table: string; row: any }> = [];
   const updates: Array<{ table: string; row: any }> = [];
   const authInviteCalls: Array<{ email: string; opts: any }> = [];
+  const metadataUpdates: Array<{ id: string; attrs: any }> = [];
   return {
+    _metadataUpdates: () => metadataUpdates,
     _events: () => events,
     _inserts: () => inserts,
     _updates: () => updates,
@@ -329,6 +333,7 @@ function makeInviteAdmin(opts: {
         // deno-lint-ignore no-explicit-any
         listUsers: (_a: any) => Promise.resolve({ data: { users: opts.authUser ? [{ ...opts.authUser, email: "a@x.com" }] : [] }, error: null }),
         deleteUser: (id: string) => { events.push("delUser:" + id); return Promise.resolve({ error: opts.failTable === "auth" ? failErr : null }); },
+        updateUserById: (id: string, attrs: any) => { metadataUpdates.push({ id, attrs }); return Promise.resolve({ error: opts.failUpdateUserById ? failErr : null }); },
         generateLink: (_a: any) => { events.push("genLink"); return Promise.resolve({ data: { properties: { action_link: "https://link" } }, error: null }); },
         inviteUserByEmail: (e: string, o: any) => { events.push("authInvite"); authInviteCalls.push({ email: e, opts: o }); return Promise.resolve({ error: opts.failAuthInvite ? failErr : null }); },
       },
@@ -344,11 +349,13 @@ function makeInviteAdmin(opts: {
       // never leak into another.
       const neqFilters: Array<{ col: string; val: unknown }> = [];
       const eqCols: string[] = [];
+      const eqVals: unknown[] = [];
       let isDelete = false;
       const api: any = {
         // select("*", {head:true}) is the seat count path; .neq(...) marks the exclusion.
         select: (_c?: string, o?: any) => { if (o?.head) api._head = true; return api; },
-        eq: (col?: string) => { if (col) eqCols.push(col); return api; },
+        eq: (col?: string, val?: unknown) => { if (col) eqCols.push(col); eqVals.push(val); return api; },
+        limit: () => api,
         neq: (col: string, val: unknown) => { neqFilters.push({ col, val }); return api; },
         in: () => api,
         not: () => api,
@@ -371,6 +378,7 @@ function makeInviteAdmin(opts: {
             },
             error: null,
           });
+          if (table === "workspace_members" && eqVals.includes("owner")) return Promise.resolve({ data: opts.ownsWorkspace ? { id: "own1" } : null, error: null });
           if (table === "workspace_members") return Promise.resolve({ data: opts.isMember ? { id: "m1" } : null, error: null });
           if (table === "membros") return Promise.resolve({ data: opts.membroConflict ? { id: "other-membro" } : null, error: null });
           if (table === "contas") return Promise.resolve({ data: { nome: "WS" }, error: null });
@@ -460,6 +468,64 @@ Deno.test("inviteOrResend: brand-new email sends an auth invite", async () => {
   const out = await inviteOrResend(admin as any, baseInput, CRM);
   assertEquals(out.route, "invited");
   assert(admin._events().includes("authInvite"));
+});
+
+Deno.test("invite passes the inviting workspace language in data", async () => {
+  const admin = makeInviteAdmin({ limit: null, members: 1, authUser: null, workspaceLanguage: "en" });
+  // deno-lint-ignore no-explicit-any
+  await inviteOrResend(admin as any, baseInput, CRM);
+  assertEquals(admin._authInviteCalls()[0].opts.data.language, "en");
+});
+
+Deno.test("invite data language falls back to pt on an unknown value", async () => {
+  const admin = makeInviteAdmin({ limit: null, members: 1, authUser: null, workspaceLanguage: "xx" });
+  // deno-lint-ignore no-explicit-any
+  await inviteOrResend(admin as any, baseInput, CRM);
+  assertEquals(admin._authInviteCalls()[0].opts.data.language, "pt");
+});
+
+async function resendWith(opts: Parameters<typeof makeInviteAdmin>[0]) {
+  const prevKey = Deno.env.get("RESEND_API_KEY");
+  Deno.env.set("RESEND_API_KEY", "test-key");
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (() => Promise.resolve(new Response("{}", { status: 200 }))) as typeof fetch;
+  try {
+    const admin = makeInviteAdmin(opts);
+    // deno-lint-ignore no-explicit-any
+    const out = await inviteOrResend(admin as any, baseInput, ADMIN);
+    return { admin, out };
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prevKey === undefined) Deno.env.delete("RESEND_API_KEY"); else Deno.env.set("RESEND_API_KEY", prevKey);
+  }
+}
+const RESEND_USER = { id: "u1", email_confirmed_at: "2026-01-01T00:00:00Z", user_metadata: { market: "us", nome: "a" } };
+const RESEND_BASE = { limit: null, members: 1, hasProfile: true, onboarding: false, hasPassword: false, workspaceLanguage: "en" };
+
+Deno.test("resend updates the invitee language, merged with existing metadata", async () => {
+  const { admin, out } = await resendWith({ ...RESEND_BASE, authUser: RESEND_USER });
+  assertEquals(out.route, "resent-link");
+  assertEquals(admin._metadataUpdates(), [{ id: "u1", attrs: { user_metadata: { market: "us", nome: "a", language: "en" } } }]);
+});
+
+Deno.test("resend does not touch the language of a user who owns a workspace", async () => {
+  const { admin, out } = await resendWith({ ...RESEND_BASE, authUser: RESEND_USER, ownsWorkspace: true });
+  assertEquals(out.route, "resent-link");
+  assertEquals(admin._metadataUpdates().length, 0);
+});
+
+Deno.test("resend still succeeds when updateUserById fails", async () => {
+  const { admin, out } = await resendWith({ ...RESEND_BASE, authUser: RESEND_USER, failUpdateUserById: true });
+  assertEquals(out.route, "resent-link");
+  assertEquals(admin._metadataUpdates().length, 1);
+});
+
+Deno.test("reinvite of a never-confirmed user passes the language in the new invite data", async () => {
+  const admin = makeInviteAdmin({ limit: null, members: 1, authUser: { id: "u1", email_confirmed_at: null }, hasProfile: true, onboarding: false, workspaceLanguage: "en" });
+  // deno-lint-ignore no-explicit-any
+  const out = await inviteOrResend(admin as any, baseInput, ADMIN);
+  assertEquals(out.route, "reinvited");
+  assertEquals(admin._authInviteCalls()[0].opts.data.language, "en");
 });
 
 Deno.test("inviteOrResend: confirmed-but-passwordless gets a fresh recovery link", async () => {
