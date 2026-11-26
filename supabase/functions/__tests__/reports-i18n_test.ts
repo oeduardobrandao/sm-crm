@@ -99,10 +99,17 @@ Deno.test("en: labels, compact numbers, month names and priorities", () => {
   assertStringIncludes(html, "Monthly report<br>Instagram");
   assertStringIncludes(html, "Key metrics");
   assertStringIncludes(html, "June 2026");
-  assertStringIncludes(html, "may: 35.1K");
+  assertStringIncludes(html, "May: 35.1K");
   assertStringIncludes(html, "1.2<small>M</small>");
   assertStringIncludes(html, "High priority");
-  assertStringIncludes(html, "Recommendations for july");
+  assertStringIncludes(html, "Plan for July");
+  assertStringIncludes(html, "Goals for July");
+  const july = render({ name: "july", data: () => C.richData("2026-07", "July 2026"), ai: C.AI_RICH }, "en");
+  assertStringIncludes(july, "June: 35.1K");
+  assertStringIncludes(july, "Plan for August");
+  assertStringIncludes(html, "Your audience");
+  assertStringIncludes(html, "cmts".replace("cmts", "comments"));
+  assertStringIncludes(html, "Recommendations for July");
   assertStringIncludes(html, "Wednesday · 7 PM");
   assertStringIncludes(html, "Shall we talk about this plan?");
   assertStringIncludes(html, "Biggest jump");
@@ -111,13 +118,21 @@ Deno.test("en: labels, compact numbers, month names and priorities", () => {
   assertStringIncludes(html, "aged 25 to 34");
   assertStringIncludes(html, "Top 12 posts of the month");
   const jan = render(C.RENDER_CASES[1], "en");
-  assertStringIncludes(jan, "vs. december");
+  assertStringIncludes(jan, "vs. December");
   assertStringIncludes(jan, "45,200 (+28.9%)"); // no-AI fallback summary
   assertStringIncludes(jan, "January 2026");
   const sparse = render(C.RENDER_CASES[2], "en");
   assertStringIncludes(sparse, "A drop of");
   assertStringIncludes(sparse, "Follower growth data is not available");
   assertStringIncludes(render(C.RENDER_CASES[3], "en"), "1 recommendation to turn");
+});
+
+Deno.test("en: no lowercase month name in any rendered report", () => {
+  const months = /\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/;
+  for (const c of C.RENDER_CASES) {
+    const text = textOf(render(c, "en"));
+    assert(!months.test(text), `${c.name}: lowercase month "${text.match(months)?.[0]}"`);
+  }
 });
 
 Deno.test("en: fallback summary and chart ticks", () => {
