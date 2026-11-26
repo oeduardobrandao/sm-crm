@@ -205,6 +205,23 @@ describe('consent store', () => {
       expect(getConsent()).toMatchObject({ analytics: true, marketing: true, basis: 'choice' });
     });
 
+    it('notifies on navigation even when a render already re-read consent', async () => {
+      window.history.replaceState(null, '', '/en');
+      const { getConsent, subscribe, consentPathChanged, CONSENT_STORAGE_KEY } =
+        await import('../consent');
+      localStorage.setItem(CONSENT_STORAGE_KEY, usDefault);
+      const listener = vi.fn();
+      subscribe(listener);
+      expect(getConsent()).not.toBeNull();
+      window.history.replaceState(null, '', '/');
+      expect(getConsent()).toBeNull();
+      consentPathChanged();
+      expect(listener).toHaveBeenCalledTimes(1);
+      // Already notified for this value: a second effect run stays quiet.
+      consentPathChanged();
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
     it('still masks advertising under GPC on /en', async () => {
       window.history.replaceState(null, '', '/en');
       setGpc(true);

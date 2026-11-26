@@ -244,4 +244,30 @@ describe('installConsentEffects', () => {
     expect(m.disableOpenAiAds).toHaveBeenCalledTimes(1);
     window.history.replaceState(null, '', '/');
   });
+
+  it('still stops tags when a render re-read consent before the route effect (real app order)', async () => {
+    window.history.replaceState(null, '', '/en');
+    localStorage.setItem(
+      'consent_v1',
+      JSON.stringify({
+        analytics: true,
+        support: true,
+        marketing: true,
+        decidedAt: '2026-11-25T00:00:00.000Z',
+        basis: 'us_default',
+      }),
+    );
+    const { consentPathChanged, getConsent } = await boot();
+    vi.advanceTimersByTime(5000);
+    window.history.replaceState(null, '', '/');
+    // useConsent() -> useSyncExternalStore(getConsent) runs during the re-render that the route
+    // change causes, before CookieConsent's effect calls consentPathChanged().
+    expect(getConsent()).toBeNull();
+    consentPathChanged();
+    expect(m.disableAnalytics).toHaveBeenCalledTimes(1);
+    expect(m.disableGoogleAds).toHaveBeenCalledTimes(1);
+    expect(m.disableMetaPixel).toHaveBeenCalledTimes(1);
+    expect(m.disableOpenAiAds).toHaveBeenCalledTimes(1);
+    window.history.replaceState(null, '', '/');
+  });
 });

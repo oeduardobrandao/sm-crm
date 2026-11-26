@@ -42,6 +42,10 @@ let memoryRaw: string | null = null;
 let cachedRaw: string | null | undefined;
 let cachedGpc: boolean | undefined;
 let cachedOnUsPage: boolean | undefined;
+// The value subscribers last heard about (set on subscribe and on every notify). Kept apart from
+// the read cache on purpose: a render (useConsent -> getConsent) refreshes the cache for a new path
+// before any effect runs, so comparing against the cache would never see the change.
+let lastNotified: Consent | null | undefined;
 let cachedValue: Consent | null = null;
 
 /**
@@ -124,14 +128,15 @@ export function getConsent(): Consent | null {
 /**
  * Call after a client-side navigation: moving between `/en` and a Brazilian page can change what
  * a `us_default` record means, and subscribers (installConsentEffects, useConsent) only hear about
- * it through here. Notifies only when the value actually changed.
+ * it through here. Notifies when the value differs from the one subscribers last heard about,
+ * however many times getConsent() ran in between.
  */
 export function consentPathChanged(): void {
-  const before = cachedValue;
-  if (getConsent() !== before) notify();
+  if (getConsent() !== lastNotified) notify();
 }
 
 function notify(): void {
+  lastNotified = getConsent();
   for (const listener of [...listeners]) listener();
 }
 
@@ -154,6 +159,7 @@ export function setConsent(choice: ConsentChoice, basis: ConsentBasis = 'choice'
 
 export function subscribe(listener: Listener): () => void {
   listeners.add(listener);
+  if (lastNotified === undefined) lastNotified = getConsent();
   if (!storageListenerInstalled && typeof window !== 'undefined') {
     storageListenerInstalled = true;
     // Another tab decided or revoked: reach this tab's subscribers too.
