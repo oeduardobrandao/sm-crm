@@ -30,8 +30,8 @@ vi.mock('../../../lib/supabase', () => ({
 }));
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 // Radix Select needs pointer APIs jsdom lacks; a native select keeps the test on behavior.
-vi.mock('@/components/ui/select', () => {
-  const React = require('react');
+vi.mock('@/components/ui/select', async () => {
+  const React = await import('react');
   return {
     Select: ({ value, onValueChange, disabled, children }: any) =>
       React.createElement(
