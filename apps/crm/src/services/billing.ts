@@ -4,7 +4,9 @@ import { toBillingCurrency, type BillingCurrency } from '../lib/planPrice';
 
 export type { ReverseTrialState } from '../lib/reverseTrial';
 
-export type BillingInterval = 'month' | 'year';
+import type { BillingInterval } from '../lib/billingInterval';
+
+export type { BillingInterval };
 
 export interface BillingPlan {
   id: string;

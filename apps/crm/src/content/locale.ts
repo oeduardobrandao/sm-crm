@@ -1,5 +1,5 @@
 import { buildPlanIntentQuery } from '@/pages/comecar/plan-intent';
-import type { BillingInterval } from '@/services/billing';
+import type { BillingInterval } from '@/lib/billingInterval';
 import { LANDING, type LandingContent } from './landing.content';
 import { LANDING_EN } from './landing.content.en';
 import { PRECOS, type PrecosContent } from './precos.content';
