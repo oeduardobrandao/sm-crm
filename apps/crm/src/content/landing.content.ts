@@ -30,22 +30,163 @@ export interface LandingHowStep {
   description: string;
 }
 
-export const LANDING: {
-  hero: { titleBefore: string; titleEm: string; titleAfter: string; sub: string; note: string };
+export interface LandingMetricTile {
+  label: string;
+  value: string;
+  delta: string;
+}
+
+export interface LandingPlanMarketing {
+  description: string;
+  cta: string;
+  highlight?: boolean;
+}
+
+export interface LandingContent {
+  hero: {
+    titleBefore: string;
+    titleEm: string;
+    titleAfter: string;
+    sub: string;
+    note: string;
+    /** The part of `note` the hero pill emphasises. Must be a prefix of `note`. */
+    noteStrong: string;
+    ctaStart: string;
+    ctaSignedIn: string;
+    ctaSecondary: string;
+  };
   ticker: string[];
   featuresTitle: string;
   featuresSub: string;
   features: LandingFeature[];
-  agente: { title: string; paragraphs: string[]; bullets: string[] };
-  how: { title: string; steps: LandingHowStep[] };
+  /** Eyebrow label per feature, positional against `features`. */
+  featureEyebrows: string[];
+  featuresMore: { button: string; note: string; ctaTitle: string };
+  /** Mock dashboard tiles of the metrics card (illustrative numbers). */
+  metricTiles: LandingMetricTile[];
+  /** Mock DM exchange of the automations card. */
+  dmVisual: { comment: string; commentTag: string; reply: string; button: string };
+  shotAlts: { entregas: string; analytics: string; hub: string; calendario: string };
+  /** Alt text of the hero device mockups. */
+  heroAlts: { macbook: string; iphone: string };
+  faqTitle: string;
+  agente: { eyebrow: string; title: string; paragraphs: string[]; bullets: string[]; cta: string };
+  how: { title: string; sub: string; steps: LandingHowStep[] };
   faq: LandingFaqItem[];
-} = {
+  finalCta: {
+    signedInTitle: string;
+    signedInBody: string;
+    titleBefore: string;
+    titleEm: string;
+    body: string;
+    signIn: string;
+  };
+  nav: { id: string; label: string }[];
+  chrome: {
+    skipLink: string;
+    signIn: string;
+    createAccount: string;
+    createAccountShort: string;
+    createAccountAria: string;
+    openDashboard: string;
+    toggleTheme: string;
+    logoLabel: string;
+  };
+  footer: {
+    tagline: string;
+    productLabel: string;
+    legalLabel: string;
+    product: string[];
+    legal: string[];
+    /** Bottom line; `{year}` is replaced by the build year. */
+    copyright: string;
+    cookieSettings: string;
+    /** CCPA opt-out entry; only markets that need it (en) carry it. */
+    doNotSell?: string;
+    /** Label of the link to the other language version. */
+    otherLanguage: string;
+    instagramLabel: string;
+    linkedinLabel: string;
+    youtubeLabel: string;
+  };
+  pricing: {
+    title: string;
+    /** Pinned promo sentence; the section paragraph is `${promo} ${body}`. */
+    promo: string;
+    body: string;
+    promoNote: string;
+    periodLabel: string;
+    monthly: string;
+    yearly: string;
+    loading: string;
+    loadError: string;
+    retry: string;
+    unavailable: string;
+    popular: string;
+    onRequest: string;
+    perMonth: string;
+    trialNote: string;
+    unlimited: string;
+    unlimitedSuffix: string;
+    client: [string, string];
+    user: [string, string];
+    openDashboard: string;
+    subscribeTemplate: string;
+    discoverTemplate: string;
+    billedAnnuallyTemplate: string;
+    /** Brazil-only 12x installment copy; absent for markets without Pagar.me. */
+    installments?: { noInterestTemplate: string; offTemplate: string };
+    /** Shown when no paid plan has a price in the market's currency (en: USD not set yet). */
+    comingSoon?: string;
+  };
+  planComparison: {
+    title: string;
+    sub: string;
+    swipeHint: string;
+    regionLabel: string;
+    caption: string;
+    featureColumn: string;
+    capacityGroup: string;
+    featuresGroup: string;
+    included: string;
+    notIncluded: string;
+    choosePlan: string;
+    capacityRows: Record<
+      | 'max_instagram_accounts'
+      | 'storage_quota_bytes'
+      | 'max_workflow_templates'
+      | 'max_hub_tokens'
+      | 'rate_report_generations_per_month',
+      string
+    >;
+    featureRows: Record<
+      | 'feature_post_scheduling'
+      | 'feature_tiktok'
+      | 'feature_leads'
+      | 'feature_financial'
+      | 'feature_contracts'
+      | 'feature_brand_customization'
+      | 'feature_mcp'
+      | 'feature_instagram_automation'
+      | 'feature_briefing_audio',
+      string
+    >;
+  };
+  /** Marketing copy per plan id (free, start, pro, max). */
+  planMarketing: Record<string, LandingPlanMarketing>;
+}
+
+export const LANDING: LandingContent = {
   hero: {
     titleBefore: 'Chega de gerenciar clientes de social media ',
     titleEm: 'em planilha e grupo de WhatsApp',
     titleAfter: '.',
     sub: 'O Mesaas reúne clientes, entregas, aprovações, agendamento no Instagram e no TikTok e métricas em um único lugar. Feito para quem gerencia social media, sozinho ou com equipe.',
     note: '14 dias de Pro grátis, sem cartão. No fim, você escolhe se continua.',
+    noteStrong: '14 dias de Pro grátis, sem cartão.',
+    ctaStart: 'Começar teste grátis',
+    ctaSignedIn: 'Acessar painel',
+    ctaSecondary: 'Ver como funciona',
   },
   ticker: [
     'Clientes + contratos',
@@ -66,6 +207,43 @@ export const LANDING: {
   featuresTitle: 'Tudo que você já faz hoje. Só que organizado.',
   featuresSub:
     'Cada módulo foi criado com quem vive de social media. Menos abas abertas, mais tempo para produzir.',
+  featureEyebrows: [
+    'Entregas',
+    'Agendamento',
+    'Métricas',
+    'Portal do cliente',
+    'Calendário',
+    'Automações',
+  ],
+  featuresMore: {
+    button: 'Ver todas as funcionalidades',
+    note: 'Calendário editorial e resposta automática a comentários',
+    ctaTitle: 'Teste tudo isso na sua agência.',
+  },
+  metricTiles: [
+    { label: 'Seguidores', value: '45.798', delta: '+12%' },
+    { label: 'Alcance (28d)', value: '96.826', delta: '+8%' },
+    { label: 'Engajamento', value: '4,6%', delta: '+0,4 pp' },
+    { label: 'Visualizações', value: '242.080', delta: '+19%' },
+  ],
+  dmVisual: {
+    comment: 'quero',
+    commentTag: '(comentário)',
+    reply: 'Oi! Tá aqui o guia do cardápio de inverno. Baixe grátis e escolha o seu favorito.',
+    button: 'Abrir link',
+  },
+  shotAlts: {
+    entregas: 'Kanban de entregas do Mesaas com fluxos por etapa',
+    analytics: 'Métricas do Instagram no Mesaas: seguidores, alcance e engajamento',
+    hub: 'Portal do cliente do Mesaas com aprovações por link',
+    calendario: 'Calendário editorial mensal do Mesaas',
+  },
+  heroAlts: {
+    macbook:
+      'MacBook com o quadro de entregas do Mesaas: fluxos por etapa, do briefing à aprovação do cliente',
+    iphone: 'iPhone com o Hub do cliente: aprovações pendentes e próximo post',
+  },
+  faqTitle: 'Perguntas frequentes',
   features: [
     {
       title: 'Kanban de entregas que sua equipe entende no primeiro dia',
@@ -138,6 +316,7 @@ export const LANDING: {
     },
   ],
   agente: {
+    eyebrow: 'Agente de conteúdo',
     title: 'Um agente de conteúdo que escreve com a voz de cada cliente.',
     paragraphs: [
       'Conecte o Mesaas ao Claude ou ao ChatGPT e gere carrosséis, roteiros de Reels e legendas a partir do briefing, da identidade e dos posts que mais performaram de cada cliente. Sem sair do seu fluxo de trabalho.',
@@ -147,9 +326,11 @@ export const LANDING: {
       'Usa os posts que mais performaram como referência',
       'Funciona com Claude, ChatGPT ou via API',
     ],
+    cta: 'Começar teste grátis',
   },
   how: {
     title: 'Três passos para organizar sua operação.',
+    sub: 'Do zero ao primeiro post agendado em 5 minutos.',
     steps: [
       {
         n: '01',
@@ -209,4 +390,124 @@ export const LANDING: {
       a: 'Sim, a qualquer momento, sem multa. Seus dados ficam disponíveis para exportar por 30 dias após o cancelamento.',
     },
   ],
+  finalCta: {
+    signedInTitle: 'Bem-vindo de volta!',
+    signedInBody: 'Sua conta está ativa. Acesse o painel e continue de onde parou.',
+    titleBefore: 'Pronto para sair ',
+    titleEm: 'das planilhas?',
+    body: 'Use o Pro por 14 dias, sem cartão, e organize seus clientes ainda hoje. No fim, você escolhe se continua.',
+    signIn: 'Entrar',
+  },
+  nav: [
+    { id: 'features', label: 'Funcionalidades' },
+    { id: 'agente', label: 'Agente IA' },
+    { id: 'how', label: 'Como funciona' },
+    { id: 'pricing', label: 'Preços' },
+    { id: 'faq', label: 'FAQ' },
+  ],
+  chrome: {
+    skipLink: 'Pular para o conteúdo',
+    signIn: 'Entrar',
+    createAccount: 'Criar conta grátis',
+    createAccountShort: 'Criar conta',
+    createAccountAria: 'Criar conta grátis',
+    openDashboard: 'Acessar painel',
+    toggleTheme: 'Alternar tema',
+    logoLabel: 'Mesaas',
+  },
+  footer: {
+    tagline: 'Gestão para quem vive de social media. Feito no Brasil.',
+    productLabel: 'Produto',
+    legalLabel: 'Legal',
+    product: [
+      'Funcionalidades',
+      'Como funciona',
+      'Preços',
+      'FAQ',
+      'Aprovação de posts',
+      'Portal do cliente',
+      'Agente de conteúdo IA',
+      'Sobre',
+      'Novidades',
+      'Blog',
+    ],
+    legal: ['Privacidade', 'Termos de uso', 'LGPD'],
+    copyright:
+      '© {year} Mesaas. Todos os direitos reservados. · CNPJ 63.758.902/0001-01 — EBS IT SOLUTIONS',
+    cookieSettings: 'Preferências de cookies',
+    otherLanguage: 'English',
+    instagramLabel: 'Instagram do Mesaas',
+    linkedinLabel: 'LinkedIn do Mesaas',
+    youtubeLabel: 'YouTube do Mesaas',
+  },
+  pricing: {
+    title: 'Comece pequeno e cresça sem trocar de ferramenta.',
+    promo: 'Crie sua conta e use o Pro por 14 dias, sem cartão.',
+    body: 'Se preferir escolher o plano agora, os planos pagos têm 30 dias grátis com cartão. Sem fidelidade, cancele quando quiser.',
+    promoNote: '14 dias de Pro grátis, sem cartão. Sem cupom.',
+    periodLabel: 'Período de cobrança',
+    monthly: 'Mensal',
+    yearly: 'Anual',
+    loading: 'Carregando planos',
+    loadError: 'Não foi possível carregar os planos agora.',
+    retry: 'Tentar novamente',
+    unavailable: 'Os planos estão temporariamente indisponíveis.',
+    popular: 'Mais popular',
+    onRequest: 'Sob consulta',
+    perMonth: '/mês',
+    trialNote: '30 dias grátis com cartão',
+    unlimited: 'Ilimitado',
+    unlimitedSuffix: 'ilimitados',
+    client: ['cliente', 'clientes'],
+    user: ['usuário', 'usuários'],
+    openDashboard: 'Acessar painel',
+    subscribeTemplate: 'Assinar {plan}',
+    discoverTemplate: 'Conheça o plano {plan}.',
+    billedAnnuallyTemplate: 'cobrado anualmente ({total}/ano)',
+    installments: {
+      noInterestTemplate: '12x no cartão, sem juros · ou {total} à vista',
+      offTemplate: ' ({pct}% off)',
+    },
+  },
+  planComparison: {
+    title: 'Compare os planos',
+    sub: 'Veja o que cada plano inclui.',
+    swipeHint: 'Deslize para comparar →',
+    regionLabel: 'Tabela comparativa de planos',
+    caption: 'Comparação detalhada dos planos',
+    featureColumn: 'Recurso',
+    capacityGroup: 'Capacidade',
+    featuresGroup: 'Recursos',
+    included: 'Incluído',
+    notIncluded: 'Não incluído',
+    choosePlan: 'Escolha seu plano',
+    capacityRows: {
+      max_instagram_accounts: 'Contas do Instagram',
+      storage_quota_bytes: 'Armazenamento',
+      max_workflow_templates: 'Templates de fluxo',
+      max_hub_tokens: 'Portais do cliente',
+      rate_report_generations_per_month: 'Relatórios por mês',
+    },
+    featureRows: {
+      feature_post_scheduling: 'Agendamento de posts',
+      feature_tiktok: 'TikTok',
+      feature_leads: 'Leads',
+      feature_financial: 'Financeiro',
+      feature_contracts: 'Contratos',
+      feature_brand_customization: 'Personalização de marca',
+      feature_mcp: 'Integração com agentes (MCP)',
+      feature_instagram_automation: 'Automações',
+      feature_briefing_audio: 'Briefing por áudio',
+    },
+  },
+  planMarketing: {
+    free: { description: 'Para conhecer a plataforma.', cta: 'Usar o Free' },
+    start: { description: 'Para freelancers montando a carteira.', cta: 'Começar teste grátis' },
+    pro: {
+      description: 'Para freelancers com a carteira cheia.',
+      cta: 'Começar teste grátis',
+      highlight: true,
+    },
+    max: { description: 'Para agências com equipe.', cta: 'Começar teste grátis' },
+  },
 };

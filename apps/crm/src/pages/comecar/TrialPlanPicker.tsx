@@ -1,14 +1,15 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { enUS, ptBR } from 'date-fns/locale';
 import { Check } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import type { BillingPlan } from '@/services/billing';
-import { formatTrialDate } from '@/lib/reverseTrial';
 import { formatPlanPrice, planMonthlyCents, type BillingCurrency } from '@/lib/planPrice';
 import {
   CLIENT_BUCKETS,
   TEAM_BUCKETS,
+  bucketLabel,
   estimateFirstCharge,
   findFreePlan,
   freePlanNote,
@@ -21,6 +22,7 @@ import {
   type ClientBucket,
   type TeamBucket,
 } from './recommend';
+import { formatComecarTrialDate, useComecarLang } from './comecarLocale';
 
 /** Shown before both questions are answered, when it is a candidate. */
 const MOST_CHOSEN_ID = 'pro';
@@ -67,6 +69,8 @@ export function TrialPlanPicker({
   onShowAllPlans,
   onRecommended,
 }: TrialPlanPickerProps) {
+  const { t } = useTranslation('setup');
+  const lang = useComecarLang();
   const [clients, setClients] = useState<ClientBucket | null>(null);
   const [team, setTeam] = useState<TeamBucket | null>(null);
 
@@ -93,8 +97,10 @@ export function TrialPlanPicker({
 
   const firstCharge =
     mode === 'reverse_running' && trialEndsAt
-      ? formatTrialDate(trialEndsAt)
-      : format(estimateFirstCharge(now), "d 'de' MMMM", { locale: ptBR });
+      ? formatComecarTrialDate(trialEndsAt, lang)
+      : lang === 'en'
+        ? format(estimateFirstCharge(now), 'MMMM d', { locale: enUS })
+        : format(estimateFirstCharge(now), "d 'de' MMMM", { locale: ptBR });
   const price = plan ? formatPlanPrice(planMonthlyCents(plan, currency) ?? 0, currency) : '';
   // BRL keeps the literal copy; USD formats its zero ("$0").
   const zeroToday = currency === 'brl' ? 'R$ 0' : formatPlanPrice(0, currency);
@@ -104,30 +110,30 @@ export function TrialPlanPicker({
       <section className="comecar-picker__intro">
         {mode === 'reverse_running' ? (
           <Badge variant="warning" size="sm">
-            Teste do Pro até {firstCharge}
+            {t('comecar.picker.badgeReverseRunning', { date: firstCharge })}
           </Badge>
         ) : mode === 'card_trial' ? (
           <Badge variant="success" size="sm">
-            Conta criada
+            {t('comecar.picker.badgeCardTrial')}
           </Badge>
         ) : null}
         <h1>
           {mode === 'reverse_running'
-            ? 'Continue depois do teste'
+            ? t('comecar.picker.titleReverseRunning')
             : mode === 'reverse_ended'
-              ? 'Volte para um plano pago'
-              : 'Vamos montar sua conta'}
+              ? t('comecar.picker.titleReverseEnded')
+              : t('comecar.picker.titleCardTrial')}
         </h1>
         <p className="comecar-picker__lead">
           {mode === 'reverse_running'
-            ? 'Duas perguntas e mostramos o plano certo para continuar depois do teste.'
+            ? t('comecar.picker.leadReverseRunning')
             : mode === 'reverse_ended'
-              ? 'Duas perguntas e mostramos o plano certo para você. A cobrança é imediata: o teste grátis já foi usado.'
-              : 'Duas perguntas e mostramos o plano certo para você testar de graça por 30 dias.'}
+              ? t('comecar.picker.leadReverseEnded')
+              : t('comecar.picker.leadCardTrial')}
         </p>
 
         <fieldset className="comecar-question">
-          <legend>Quantos clientes você atende hoje?</legend>
+          <legend>{t('comecar.picker.clientsQuestion')}</legend>
           <div className="comecar-chips">
             {CLIENT_BUCKETS.map((b) => (
               <button
@@ -137,14 +143,14 @@ export function TrialPlanPicker({
                 aria-pressed={clients === b.id}
                 onClick={() => answer(b.id, team)}
               >
-                {b.label}
+                {bucketLabel(b, lang)}
               </button>
             ))}
           </div>
         </fieldset>
 
         <fieldset className="comecar-question">
-          <legend>Quantas pessoas trabalham com você, contando você?</legend>
+          <legend>{t('comecar.picker.teamQuestion')}</legend>
           <div className="comecar-chips">
             {TEAM_BUCKETS.map((b) => (
               <button
@@ -154,7 +160,7 @@ export function TrialPlanPicker({
                 aria-pressed={team === b.id}
                 onClick={() => answer(clients, b.id)}
               >
-                {b.label}
+                {bucketLabel(b, lang)}
               </button>
             ))}
           </div>
@@ -165,26 +171,26 @@ export function TrialPlanPicker({
         {plan && (
           <>
             <span className="comecar-reco__label">
-              {answered ? 'Recomendado para você' : 'O mais escolhido'}
+              {answered ? t('comecar.picker.recommendedForYou') : t('comecar.picker.mostChosen')}
             </span>
             <h2 className="comecar-reco__name">{plan.name}</h2>
             {answered && (
-              <p className="comecar-reco__reason">{recommendationReason(clients, team)}</p>
+              <p className="comecar-reco__reason">{recommendationReason(clients, team, lang)}</p>
             )}
             <div className="comecar-reco__limits">
               <Badge variant="neutral">
                 {plan.max_clients == null
-                  ? 'Clientes ilimitados'
-                  : `Até ${plan.max_clients} clientes`}
+                  ? t('comecar.unlimitedClients')
+                  : t('comecar.upToClients', { count: plan.max_clients })}
               </Badge>
               <Badge variant="neutral">
                 {plan.max_team_members == null
-                  ? 'Usuários ilimitados'
-                  : `Até ${plan.max_team_members} usuários`}
+                  ? t('comecar.unlimitedUsers')
+                  : t('comecar.upToUsers', { count: plan.max_team_members })}
               </Badge>
             </div>
             <ul className="comecar-card__features">
-              {planUnlocks(plan).map((f) => (
+              {planUnlocks(plan, lang).map((f) => (
                 <li key={f}>
                   <Check size={14} aria-hidden="true" />
                   {f}
@@ -192,7 +198,7 @@ export function TrialPlanPicker({
               ))}
             </ul>
             {answered && showFreeNote(clients, team) && (
-              <p className="comecar-reco__note">{freePlanNote(freePlan, plan.name)}</p>
+              <p className="comecar-reco__note">{freePlanNote(freePlan, plan.name, lang)}</p>
             )}
             <button
               type="button"
@@ -201,30 +207,30 @@ export function TrialPlanPicker({
               disabled={busyPlanId !== null}
             >
               {busyPlanId === plan.id
-                ? 'Aguarde…'
+                ? t('comecar.wait')
                 : mode === 'reverse_running'
-                  ? `Continuar no ${plan.name} depois do teste`
+                  ? t('comecar.picker.ctaReverseRunning', { plan: plan.name })
                   : mode === 'reverse_ended'
-                    ? `Assinar o ${plan.name}`
-                    : `Começar 30 dias grátis do ${plan.name}`}
+                    ? t('comecar.picker.ctaReverseEnded', { plan: plan.name })
+                    : t('comecar.picker.ctaCardTrial', { plan: plan.name })}
             </button>
-            {mode === 'reverse_running' ? (
-              <p className="comecar-reco__fine">
-                {zeroToday} hoje. Primeira cobrança de {price}/mês em {firstCharge}, no fim do
-                teste. Cancele quando quiser.
-              </p>
-            ) : mode === 'reverse_ended' ? (
-              <p className="comecar-reco__fine">
-                Cobrança de {price}/mês a partir de hoje. Cancele quando quiser.
-              </p>
-            ) : (
-              <p className="comecar-reco__fine">
-                {zeroToday} hoje. Primeira cobrança de {price}/mês por volta de {firstCharge}, só se
-                você continuar. Avisamos por e-mail 7 dias antes, com o valor e a data exatos.
-              </p>
-            )}
+            <p className="comecar-reco__fine">
+              {mode === 'reverse_running'
+                ? t('comecar.picker.fineReverseRunning', {
+                    zero: zeroToday,
+                    price,
+                    date: firstCharge,
+                  })
+                : mode === 'reverse_ended'
+                  ? t('comecar.picker.fineReverseEnded', { price })
+                  : t('comecar.picker.fineCardTrial', {
+                      zero: zeroToday,
+                      price,
+                      date: firstCharge,
+                    })}
+            </p>
             <button type="button" className="comecar-link" onClick={onShowAllPlans}>
-              Ver todos os planos
+              {t('comecar.picker.seeAllPlans')}
             </button>
           </>
         )}
@@ -234,9 +240,9 @@ export function TrialPlanPicker({
           the grid places it under the questions on wider screens. */}
       <div className="comecar-picker__free">
         <button type="button" className="comecar-link" onClick={onSkip}>
-          {mode === 'reverse_running' ? 'Decidir depois' : 'Continuar no Free'}
+          {mode === 'reverse_running' ? t('comecar.decideLater') : t('comecar.picker.continueFree')}
         </button>
-        {mode !== 'reverse_running' && <p>{freePlanSummary(freePlan)}</p>}
+        {mode !== 'reverse_running' && <p>{freePlanSummary(freePlan, lang)}</p>}
       </div>
     </div>
   );

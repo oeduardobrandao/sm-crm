@@ -181,4 +181,93 @@ describe('installConsentEffects', () => {
     expect(m.disableGoogleAds).not.toHaveBeenCalled();
     expect(m.purgeMarketingStorage).not.toHaveBeenCalled();
   });
+
+  describe('with Global Privacy Control', () => {
+    beforeEach(() =>
+      Object.defineProperty(navigator, 'globalPrivacyControl', { value: true, configurable: true }),
+    );
+    afterEach(() =>
+      Object.defineProperty(navigator, 'globalPrivacyControl', {
+        value: undefined,
+        configurable: true,
+      }),
+    );
+
+    it('never loads an ad tag at boot even with advertising stored as granted', async () => {
+      seedConsent({ analytics: true, support: true, marketing: true });
+      await boot();
+      vi.advanceTimersByTime(5000);
+      for (const loader of [
+        m.loadGoogleAds,
+        m.loadGoogleAdsWhenIdle,
+        m.loadMetaPixel,
+        m.loadMetaPixelWhenIdle,
+        m.loadOpenAiAds,
+        m.loadOpenAiAdsWhenIdle,
+      ]) {
+        expect(loader).not.toHaveBeenCalled();
+      }
+      expect(m.purgeMarketingStorage).toHaveBeenCalledTimes(1);
+      // Only advertising is affected: analytics still boots.
+      expect(m.initAnalytics).toHaveBeenCalledTimes(1);
+    });
+
+    it('never loads an ad tag on a later advertising grant', async () => {
+      const { setConsent } = await boot();
+      setConsent({ analytics: false, support: false, marketing: true });
+      expect(m.loadGoogleAds).not.toHaveBeenCalled();
+      expect(m.loadMetaPixel).not.toHaveBeenCalled();
+      expect(m.loadOpenAiAds).not.toHaveBeenCalled();
+    });
+  });
+
+  it('stops analytics and ad tags when the visitor navigates from /en to a Brazilian page', async () => {
+    window.history.replaceState(null, '', '/en');
+    localStorage.setItem(
+      'consent_v1',
+      JSON.stringify({
+        analytics: true,
+        support: true,
+        marketing: true,
+        decidedAt: '2026-11-25T00:00:00.000Z',
+        basis: 'us_default',
+      }),
+    );
+    const { consentPathChanged } = await boot();
+    vi.advanceTimersByTime(5000);
+    expect(m.initAnalytics).toHaveBeenCalledTimes(1);
+    window.history.replaceState(null, '', '/');
+    consentPathChanged();
+    expect(m.disableAnalytics).toHaveBeenCalledTimes(1);
+    expect(m.disableGoogleAds).toHaveBeenCalledTimes(1);
+    expect(m.disableMetaPixel).toHaveBeenCalledTimes(1);
+    expect(m.disableOpenAiAds).toHaveBeenCalledTimes(1);
+    window.history.replaceState(null, '', '/');
+  });
+
+  it('still stops tags when a render re-read consent before the route effect (real app order)', async () => {
+    window.history.replaceState(null, '', '/en');
+    localStorage.setItem(
+      'consent_v1',
+      JSON.stringify({
+        analytics: true,
+        support: true,
+        marketing: true,
+        decidedAt: '2026-11-25T00:00:00.000Z',
+        basis: 'us_default',
+      }),
+    );
+    const { consentPathChanged, getConsent } = await boot();
+    vi.advanceTimersByTime(5000);
+    window.history.replaceState(null, '', '/');
+    // useConsent() -> useSyncExternalStore(getConsent) runs during the re-render that the route
+    // change causes, before CookieConsent's effect calls consentPathChanged().
+    expect(getConsent()).toBeNull();
+    consentPathChanged();
+    expect(m.disableAnalytics).toHaveBeenCalledTimes(1);
+    expect(m.disableGoogleAds).toHaveBeenCalledTimes(1);
+    expect(m.disableMetaPixel).toHaveBeenCalledTimes(1);
+    expect(m.disableOpenAiAds).toHaveBeenCalledTimes(1);
+    window.history.replaceState(null, '', '/');
+  });
 });

@@ -18,10 +18,11 @@ import {
   Heart,
   Users,
 } from 'lucide-react';
-import { LANDING } from '@/content/landing.content';
+import { landingContent, localizedPath, signupHref, type SiteLocale } from '@/content/locale';
 import { usePageMeta } from '@/lib/usePageMeta';
 
 import { HeroDevicesDark } from './landing-visuals';
+import { landingAsset } from './landing-images';
 import {
   LandingHeader,
   LandingFooter,
@@ -62,8 +63,9 @@ function twoTone(title: string): ReactNode {
   );
 }
 
-export default function LandingPage() {
-  usePageMeta('/');
+export default function LandingPage({ locale = 'pt' }: { locale?: SiteLocale }) {
+  usePageMeta(localizedPath(locale, 'home'));
+  const content = landingContent(locale);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useLandingChrome();
@@ -105,77 +107,76 @@ export default function LandingPage() {
 
   return (
     <div ref={rootRef} className="lp-root lp-v2">
-      <SkipLink />
-      <LandingHeader variant="landing" skipLink={false} />
+      <SkipLink locale={locale} />
+      <LandingHeader variant="landing" skipLink={false} locale={locale} />
       <main id="main-content" tabIndex={-1}>
-        <Hero />
-        <Ticker />
-        <Features />
-        <AgentSection />
-        <HowItWorks />
-        <Testimonials />
-        <PricingSection />
-        <FaqSection items={[...LANDING.faq]} />
-        <CtaFinal />
+        <Hero locale={locale} />
+        <Ticker locale={locale} />
+        <Features locale={locale} />
+        <AgentSection locale={locale} />
+        <HowItWorks locale={locale} />
+        {/* Testimonials are Portuguese-speaking customers: no English counterpart yet. */}
+        {locale === 'pt' && <Testimonials />}
+        <PricingSection locale={locale} />
+        <FaqSection items={[...content.faq]} locale={locale} />
+        <CtaFinal locale={locale} />
       </main>
-      <LandingFooter />
+      <LandingFooter locale={locale} />
     </div>
   );
 }
 
-/** The part of `LANDING.hero.note` the hero pill emphasises (first line on desktop). */
-const OFFER_STRONG = '14 dias de Pro grátis, sem cartão.';
-
-/** `LANDING.hero.note` with its first sentence ("14 dias de Pro grátis, sem cartão.") in
- * `<strong>`. The note itself stays plain text (landing.content.ts is the single source of the
- * copy); the remainder keeps its leading space so the text reads on. */
-function OfferNote({ note }: { note: string }) {
-  const at = note.indexOf(OFFER_STRONG);
+/** `hero.note` with its first sentence (`hero.noteStrong`, e.g. "14 dias de Pro grátis, sem
+ * cartão.") in `<strong>`. The note itself stays plain text (the content modules are the single
+ * source of the copy); the remainder keeps its leading space so the text reads on. */
+function OfferNote({ note, strong }: { note: string; strong: string }) {
+  const at = note.indexOf(strong);
   if (at < 0) return <>{note}</>;
   const before = note.slice(0, at);
   return (
     <>
       {before || null}
-      <strong>{OFFER_STRONG}</strong>
-      <span>{note.slice(at + OFFER_STRONG.length)}</span>
+      <strong>{strong}</strong>
+      <span>{note.slice(at + strong.length)}</span>
     </>
   );
 }
 
-function Hero() {
+function Hero({ locale }: { locale: SiteLocale }) {
   const { user, ready } = useLandingAuth();
+  const { hero } = landingContent(locale);
 
   return (
     <section className="hero-wrap" id="top">
       <div className="lp-container">
         <div className="lp2-hero">
           <h1 className="hero-title">
-            {LANDING.hero.titleBefore}
-            <em>{LANDING.hero.titleEm}</em>
-            {LANDING.hero.titleAfter}
+            {hero.titleBefore}
+            <em>{hero.titleEm}</em>
+            {hero.titleAfter}
           </h1>
-          <p className="hero-sub">{LANDING.hero.sub}</p>
+          <p className="hero-sub">{hero.sub}</p>
           <div className="lp2-offer">
             <span className="lp2-offer-text">
-              <OfferNote note={LANDING.hero.note} />
+              <OfferNote note={hero.note} strong={hero.noteStrong} />
             </span>
             <div className="hero-ctas">
               {!ready ? null : user ? (
                 <a href="/dashboard" className="lp-btn lp-btn-cta lg">
-                  Acessar painel <ArrowRight size={16} />
+                  {hero.ctaSignedIn} <ArrowRight size={16} />
                 </a>
               ) : (
-                <a href="/login?tab=register" className="lp-btn lp-btn-cta lg">
-                  Começar teste grátis <ArrowRight size={16} />
+                <a href={signupHref(locale)} className="lp-btn lp-btn-cta lg">
+                  {hero.ctaStart} <ArrowRight size={16} />
                 </a>
               )}
               <button onClick={() => scrollTo('features')} className="lp-btn lp-btn-outline lg">
-                Ver como funciona
+                {hero.ctaSecondary}
               </button>
             </div>
           </div>
           <div className="hero-stage">
-            <HeroDevicesDark />
+            <HeroDevicesDark locale={locale} />
           </div>
         </div>
       </div>
@@ -183,8 +184,9 @@ function Hero() {
   );
 }
 
-function Ticker() {
-  const doubled = [...LANDING.ticker, ...LANDING.ticker];
+function Ticker({ locale }: { locale: SiteLocale }) {
+  const { ticker } = landingContent(locale);
+  const doubled = [...ticker, ...ticker];
   return (
     <div className="ticker" aria-hidden="true">
       <div className="ticker-track">
@@ -199,10 +201,10 @@ function Ticker() {
 }
 
 /** Bento screenshots (1400px sources) with 480/760/1100w downscales. */
-function featSrcSet(name: string) {
+function featSrcSet(locale: SiteLocale, name: string) {
   return [480, 760, 1100]
-    .map((w) => `/landing/${name}-${w}w.webp ${w}w`)
-    .concat(`/landing/${name}.webp 1400w`)
+    .map((w) => `${landingAsset(locale, `/landing/${name}-${w}w.webp`)} ${w}w`)
+    .concat(`${landingAsset(locale, `/landing/${name}.webp`)} 1400w`)
     .join(', ');
 }
 /* Rendered widths from landing-v2.css. <=900px the bento is one column with
@@ -220,21 +222,23 @@ const SHOT_SIZES_BLEED = `${SHOT_SIZES_MOBILE}, (max-width: 1200px) calc(33.33vw
  * grid column beside the 360px copy column (+40px gap). */
 const SHOT_SIZES_RIGHT = `${SHOT_SIZES_MOBILE}, (max-width: 1100px) calc(66.67vw - 132px), (max-width: 1200px) calc(66.67vw - 532px), 268px`;
 
-const METRIC_TILES = [
-  { icon: <Users size={16} />, label: 'Seguidores', value: '45.798', delta: '+12%' },
-  { icon: <Eye size={16} />, label: 'Alcance (28d)', value: '96.826', delta: '+8%' },
-  { icon: <Heart size={16} />, label: 'Engajamento', value: '4,6%', delta: '+0,4 pp' },
-  { icon: <TrendingUp size={16} />, label: 'Visualizações', value: '242.080', delta: '+19%' },
+/** Icons are positional against `metricTiles`. */
+const METRIC_ICONS = [
+  <Users size={16} key="followers" />,
+  <Eye size={16} key="reach" />,
+  <Heart size={16} key="engagement" />,
+  <TrendingUp size={16} key="views" />,
 ];
 
-function MetricsVisual() {
+function MetricsVisual({ locale }: { locale: SiteLocale }) {
+  const { metricTiles, shotAlts } = landingContent(locale);
   return (
     <div className="lp2-metrics">
       <ul className="lp2-kpis" aria-hidden>
-        {METRIC_TILES.map((tile) => (
+        {metricTiles.map((tile, i) => (
           <li key={tile.label} className="lp2-kpi">
             <span className="lp2-kpi-head">
-              {tile.icon}
+              {METRIC_ICONS[i]}
               {tile.label}
             </span>
             <span className="lp2-kpi-value">{tile.value}</span>
@@ -244,12 +248,12 @@ function MetricsVisual() {
       </ul>
       <img
         className="lp2-shot lp2-shot--right"
-        src="/landing/feat-analytics-dark.webp"
-        srcSet={featSrcSet('feat-analytics-dark')}
+        src={landingAsset(locale, '/landing/feat-analytics-dark.webp')}
+        srcSet={featSrcSet(locale, 'feat-analytics-dark')}
         sizes={SHOT_SIZES_RIGHT}
         width={1400}
         height={1095}
-        alt="Métricas do Instagram no Mesaas: seguidores, alcance e engajamento"
+        alt={shotAlts.analytics}
         loading="lazy"
         decoding="async"
       />
@@ -257,110 +261,94 @@ function MetricsVisual() {
   );
 }
 
-function DmVisual() {
+function DmVisual({ locale }: { locale: SiteLocale }) {
+  const { dmVisual } = landingContent(locale);
   return (
     <div className="lp2-dm" aria-hidden="true">
       <div className="lp2-dm-comment">
-        quero <span>(comentário)</span>
+        {dmVisual.comment} <span>{dmVisual.commentTag}</span>
       </div>
-      <div className="lp2-dm-reply">
-        Oi! Tá aqui o guia do cardápio de inverno. Baixe grátis e escolha o seu favorito.
-      </div>
+      <div className="lp2-dm-reply">{dmVisual.reply}</div>
       <div className="lp2-dm-btn">
-        Abrir link <ArrowRight size={14} />
+        {dmVisual.button} <ArrowRight size={14} />
       </div>
     </div>
   );
 }
 
-/** Per-feature presentation for the bento grid: the eyebrow label + icon,
- * the grid cell span and the visual. Copy comes from landing.content.ts. */
-const FEATURE_VISUALS: {
-  eyebrow: string;
-  icon: ReactNode;
-  span: 1 | 2;
-  visual?: ReactNode;
-}[] = [
-  {
-    eyebrow: 'Entregas',
-    icon: <Kanban size={20} />,
-    span: 2,
-    visual: (
-      <img
-        className="lp2-shot lp2-shot--bottom"
-        src="/landing/feat-entregas-dark.webp"
-        srcSet={featSrcSet('feat-entregas-dark')}
-        sizes={SHOT_SIZES_BOTTOM}
-        width={1400}
-        height={1095}
-        alt="Kanban de entregas do Mesaas com fluxos por etapa"
-        loading="lazy"
-        decoding="async"
-      />
-    ),
-  },
-  {
-    eyebrow: 'Agendamento',
-    icon: <CalendarCheck size={20} />,
-    span: 1,
-  },
-  {
-    eyebrow: 'Métricas',
-    icon: <BarChart3 size={20} />,
-    span: 2,
-    visual: <MetricsVisual />,
-  },
-  {
-    eyebrow: 'Portal do cliente',
-    icon: <Link2 size={20} />,
-    span: 1,
-    visual: (
-      <img
-        className="lp2-shot lp2-shot--bleed"
-        src="/landing/feat-hub-dark.webp"
-        srcSet={featSrcSet('feat-hub-dark')}
-        sizes={SHOT_SIZES_BLEED}
-        width={1400}
-        height={1050}
-        alt="Portal do cliente do Mesaas com aprovações por link"
-        loading="lazy"
-        decoding="async"
-      />
-    ),
-  },
-  {
-    eyebrow: 'Calendário',
-    icon: <Calendar size={20} />,
-    span: 1,
-    visual: (
-      <img
-        className="lp2-shot lp2-shot--bleed"
-        src="/landing/feat-calendario-dark.webp"
-        srcSet={featSrcSet('feat-calendario-dark')}
-        sizes={SHOT_SIZES_BLEED}
-        width={1400}
-        height={1095}
-        alt="Calendário editorial mensal do Mesaas"
-        loading="lazy"
-        decoding="async"
-      />
-    ),
-  },
-  {
-    eyebrow: 'Automações',
-    icon: <MessageCircle size={20} />,
-    span: 2,
-    visual: <DmVisual />,
-  },
-];
+/** Per-feature presentation for the bento grid: the icon, the grid cell span and the visual
+ * (positional against `features` / `featureEyebrows`). Copy comes from the content modules. */
+function featureVisuals(
+  locale: SiteLocale,
+): { icon: ReactNode; span: 1 | 2; visual?: ReactNode }[] {
+  const { shotAlts } = landingContent(locale);
+  return [
+    {
+      icon: <Kanban size={20} />,
+      span: 2,
+      visual: (
+        <img
+          className="lp2-shot lp2-shot--bottom"
+          src={landingAsset(locale, '/landing/feat-entregas-dark.webp')}
+          srcSet={featSrcSet(locale, 'feat-entregas-dark')}
+          sizes={SHOT_SIZES_BOTTOM}
+          width={1400}
+          height={1095}
+          alt={shotAlts.entregas}
+          loading="lazy"
+          decoding="async"
+        />
+      ),
+    },
+    { icon: <CalendarCheck size={20} />, span: 1 },
+    { icon: <BarChart3 size={20} />, span: 2, visual: <MetricsVisual locale={locale} /> },
+    {
+      icon: <Link2 size={20} />,
+      span: 1,
+      visual: (
+        <img
+          className="lp2-shot lp2-shot--bleed"
+          src={landingAsset(locale, '/landing/feat-hub-dark.webp')}
+          srcSet={featSrcSet(locale, 'feat-hub-dark')}
+          sizes={SHOT_SIZES_BLEED}
+          width={1400}
+          height={1050}
+          alt={shotAlts.hub}
+          loading="lazy"
+          decoding="async"
+        />
+      ),
+    },
+    {
+      icon: <Calendar size={20} />,
+      span: 1,
+      visual: (
+        <img
+          className="lp2-shot lp2-shot--bleed"
+          src={landingAsset(locale, '/landing/feat-calendario-dark.webp')}
+          srcSet={featSrcSet(locale, 'feat-calendario-dark')}
+          sizes={SHOT_SIZES_BLEED}
+          width={1400}
+          height={1095}
+          alt={shotAlts.calendario}
+          loading="lazy"
+          decoding="async"
+        />
+      ),
+    },
+    { icon: <MessageCircle size={20} />, span: 2, visual: <DmVisual locale={locale} /> },
+  ];
+}
 
 /** Cards from this index on (Calendário, Automações) collapse behind "Ver todas as
  * funcionalidades" where the bento is one column (<=900px). */
 const FIRST_EXTRA_FEATURE = 4;
 const BENTO_ID = 'lp2-bento';
 
-function Features() {
+function Features({ locale }: { locale: SiteLocale }) {
   const { user, ready } = useLandingAuth();
+  const content = landingContent(locale);
+  const visuals = featureVisuals(locale);
   // Collapsed on the server and on the first client render. The collapse is CSS only: every card
   // stays in the DOM, so the `.reveal` observer attached at mount sees all six.
   const [expanded, setExpanded] = useState(false);
@@ -369,13 +357,14 @@ function Features() {
     <section className="lp-pad" id="features">
       <div className="lp-container">
         <div className="lp2-section-head reveal">
-          <h2>{twoTone(LANDING.featuresTitle)}</h2>
-          <p>{LANDING.featuresSub}</p>
+          <h2>{twoTone(content.featuresTitle)}</h2>
+          <p>{content.featuresSub}</p>
         </div>
 
         <div className="lp2-bento" id={BENTO_ID} data-expanded={expanded ? '' : undefined}>
-          {LANDING.features.map((feature, i) => {
-            const { eyebrow, icon, span, visual } = FEATURE_VISUALS[i];
+          {content.features.map((feature, i) => {
+            const { icon, span, visual } = visuals[i];
+            const eyebrow = content.featureEyebrows[i];
             const classes = [
               'lp2-card',
               span === 2 ? 'lp2-card--wide' : '',
@@ -416,22 +405,22 @@ function Features() {
           aria-controls={BENTO_ID}
           onClick={() => setExpanded(true)}
         >
-          Ver todas as funcionalidades <ChevronDown size={18} />
+          {content.featuresMore.button} <ChevronDown size={18} />
         </button>
-        <p className="lp2-more-note">Calendário editorial e resposta automática a comentários</p>
+        <p className="lp2-more-note">{content.featuresMore.note}</p>
 
         <div className="lp2-features-cta">
-          <p className="lp2-features-cta-title">Teste tudo isso na sua agência.</p>
+          <p className="lp2-features-cta-title">{content.featuresMore.ctaTitle}</p>
           <p className="lp2-features-cta-note">
-            <OfferNote note={LANDING.hero.note} />
+            <OfferNote note={content.hero.note} strong={content.hero.noteStrong} />
           </p>
           {!ready ? null : user ? (
             <a href="/dashboard" className="lp-btn lp-btn-cta lg">
-              Acessar painel <ArrowRight size={16} />
+              {content.hero.ctaSignedIn} <ArrowRight size={16} />
             </a>
           ) : (
-            <a href="/login?tab=register" className="lp-btn lp-btn-cta lg">
-              Começar teste grátis <ArrowRight size={16} />
+            <a href={signupHref(locale)} className="lp-btn lp-btn-cta lg">
+              {content.hero.ctaStart} <ArrowRight size={16} />
             </a>
           )}
         </div>
@@ -450,19 +439,20 @@ const AGENT_CHIP_ICONS = [
 ];
 const AGENT_CHIP_FALLBACK_ICON = <Sparkles size={40} strokeWidth={1.6} />;
 
-function AgentSection() {
+function AgentSection({ locale }: { locale: SiteLocale }) {
+  const { agente } = landingContent(locale);
   return (
     <section className="agent-wrap" id="agente">
       <div className="lp-container">
         <div className="lp2-section-head lp2-section-head--center reveal">
-          <span className="lp2-eyebrow">Agente de conteúdo</span>
-          <h2>{LANDING.agente.title}</h2>
-          {LANDING.agente.paragraphs.map((paragraph, i) => (
+          <span className="lp2-eyebrow">{agente.eyebrow}</span>
+          <h2>{agente.title}</h2>
+          {agente.paragraphs.map((paragraph, i) => (
             <p key={i}>{withEmphasis(paragraph)}</p>
           ))}
         </div>
         <ul className="lp2-chips reveal">
-          {LANDING.agente.bullets.map((bullet, i) => (
+          {agente.bullets.map((bullet, i) => (
             <li key={i} className="lp2-chip">
               {AGENT_CHIP_ICONS[i] ?? AGENT_CHIP_FALLBACK_ICON}
               <span>{withEmphasis(bullet)}</span>
@@ -470,8 +460,8 @@ function AgentSection() {
           ))}
         </ul>
         <div className="lp2-center reveal">
-          <a href="/login?tab=register" className="lp-btn lp-btn-primary lg">
-            Começar teste grátis <ArrowRight size={16} />
+          <a href={signupHref(locale)} className="lp-btn lp-btn-primary lg">
+            {agente.cta} <ArrowRight size={16} />
           </a>
         </div>
       </div>
@@ -479,16 +469,17 @@ function AgentSection() {
   );
 }
 
-function HowItWorks() {
+function HowItWorks({ locale }: { locale: SiteLocale }) {
+  const { how } = landingContent(locale);
   return (
     <section className="lp-pad lp-pad-alt" id="how">
       <div className="lp-container">
         <div className="lp2-section-head reveal">
-          <h2>{twoTone(LANDING.how.title)}</h2>
-          <p>Do zero ao primeiro post agendado em 5 minutos.</p>
+          <h2>{twoTone(how.title)}</h2>
+          <p>{how.sub}</p>
         </div>
         <div className="how-grid">
-          {LANDING.how.steps.map((s, i) => (
+          {how.steps.map((s, i) => (
             <div key={i} className="how-step reveal">
               <span className="how-num">{s.n}</span>
               <h3>{s.title}</h3>
@@ -501,8 +492,9 @@ function HowItWorks() {
   );
 }
 
-function CtaFinal() {
+function CtaFinal({ locale }: { locale: SiteLocale }) {
   const { user, ready } = useLandingAuth();
+  const { finalCta, hero } = landingContent(locale);
 
   return (
     <section className="cta-final-wrap">
@@ -510,32 +502,30 @@ function CtaFinal() {
         <div className="cta-final-card reveal">
           {user ? (
             <>
-              <h2>Bem-vindo de volta!</h2>
-              <p>Sua conta está ativa. Acesse o painel e continue de onde parou.</p>
+              <h2>{finalCta.signedInTitle}</h2>
+              <p>{finalCta.signedInBody}</p>
             </>
           ) : (
             <>
               <h2>
-                Pronto para sair <em>das planilhas?</em>
+                {finalCta.titleBefore}
+                <em>{finalCta.titleEm}</em>
               </h2>
-              <p>
-                Use o Pro por 14 dias, sem cartão, e organize seus clientes ainda hoje. No fim, você
-                escolhe se continua.
-              </p>
+              <p>{finalCta.body}</p>
             </>
           )}
           <div className="lp2-cta-row">
             {!ready ? null : user ? (
               <a href="/dashboard" className="lp-btn lp-btn-cta lg">
-                Acessar painel <ArrowRight size={16} />
+                {hero.ctaSignedIn} <ArrowRight size={16} />
               </a>
             ) : (
               <>
-                <a href="/login?tab=register" className="lp-btn lp-btn-cta lg">
-                  Começar teste grátis <ArrowRight size={16} />
+                <a href={signupHref(locale)} className="lp-btn lp-btn-cta lg">
+                  {hero.ctaStart} <ArrowRight size={16} />
                 </a>
                 <a href="/login" className="lp-btn lp-btn-outline lg">
-                  Entrar <ChevronRight size={16} />
+                  {finalCta.signIn} <ChevronRight size={16} />
                 </a>
               </>
             )}

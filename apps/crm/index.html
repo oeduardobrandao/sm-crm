@@ -81,7 +81,9 @@
         var root = document.documentElement;
         root.setAttribute('data-js', '');
         try {
-          if (localStorage.getItem('consent_v1') !== null) root.setAttribute('data-consent-stored', '');
+          // A US opt-out default (basis us_default) is no decision outside /en (lib/consent.ts).
+          var stored = localStorage.getItem('consent_v1');
+          if (stored !== null && stored.indexOf('"basis":"us_default"') === -1) root.setAttribute('data-consent-stored', '');
         } catch (e) {}
       })();
     </script>

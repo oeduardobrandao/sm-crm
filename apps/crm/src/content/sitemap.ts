@@ -1,13 +1,18 @@
 import type { RouteMeta } from './site-meta';
-import { canonicalUrl } from './seo-head';
+import { alternateLinks, canonicalUrl } from './seo-head';
 import type { BlogPost } from './blog.schema';
 import { blogPostRouteMeta } from './blog';
 
 export function buildSitemapXml(routes: RouteMeta[]): string {
   const urls = routes
-    .map((r) => `  <url><loc>${canonicalUrl(r.path)}</loc><lastmod>${r.lastmod}</lastmod></url>`)
+    .map((r) => {
+      const alts = alternateLinks(r)
+        .map((a) => `<xhtml:link rel="alternate" hreflang="${a.hreflang}" href="${a.href}"/>`)
+        .join('');
+      return `  <url><loc>${canonicalUrl(r.path)}</loc><lastmod>${r.lastmod}</lastmod>${alts}</url>`;
+    })
     .join('\n');
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n${urls}\n</urlset>\n`;
 }
 
 /** Applies the two derived lastmod dates that change without anyone editing

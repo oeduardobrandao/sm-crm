@@ -2,8 +2,10 @@ import { useEffect, useSyncExternalStore } from 'react';
 import { ArrowRight, Instagram, Linkedin, LogIn, Moon, Sun, Youtube } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { CookiePreferencesLink } from '@/components/consent/CookiePreferencesLink';
+import { doNotSellOrShare } from '@/lib/usConsentDefault';
 import { useIsHydrated } from '@/lib/useIsHydrated';
 import { isSsrMount } from '@/lib/ssrMount';
+import { landingContent, localizedPath, signupHref, type SiteLocale } from '@/content/locale';
 
 export function scrollTo(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
@@ -60,18 +62,10 @@ function subscribeTheme(listener: () => void): () => void {
   return () => observer.disconnect();
 }
 
-const NAV_ITEMS = [
-  { id: 'features', label: 'Funcionalidades' },
-  { id: 'agente', label: 'Agente IA' },
-  { id: 'how', label: 'Como funciona' },
-  { id: 'pricing', label: 'Preços' },
-  { id: 'faq', label: 'FAQ' },
-];
-
-export function SkipLink() {
+export function SkipLink({ locale = 'pt' }: { locale?: SiteLocale }) {
   return (
     <a className="skip-link" href="#main-content">
-      Pular para o conteúdo
+      {landingContent(locale).chrome.skipLink}
     </a>
   );
 }
@@ -81,11 +75,15 @@ export function SkipLink() {
 export function LandingHeader({
   variant,
   skipLink = true,
+  locale = 'pt',
 }: {
   variant: 'landing' | 'subpage';
   skipLink?: boolean;
+  locale?: SiteLocale;
 }) {
   const { user, ready } = useLandingAuth();
+  const { chrome, nav } = landingContent(locale);
+  const home = localizedPath(locale, 'home');
   const isDark = useSyncExternalStore(subscribeTheme, readIsDark, () => false);
 
   const toggleTheme = () => {
@@ -95,12 +93,12 @@ export function LandingHeader({
 
   return (
     <>
-      {skipLink && <SkipLink />}
+      {skipLink && <SkipLink locale={locale} />}
       <header className="site-hdr">
         <div className="hdr-inner">
           <a
-            href={variant === 'landing' ? '#top' : '/'}
-            aria-label="Mesaas"
+            href={variant === 'landing' ? '#top' : home}
+            aria-label={chrome.logoLabel}
             style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}
           >
             <img
@@ -120,7 +118,7 @@ export function LandingHeader({
           </a>
           <nav className="hdr-nav">
             {variant === 'landing'
-              ? NAV_ITEMS.map((item) => (
+              ? nav.map((item) => (
                   // Real anchors so the server HTML still navigates without JS (or before hydration);
                   // with JS the click scrolls smoothly instead of jumping.
                   <a
@@ -135,8 +133,8 @@ export function LandingHeader({
                     {item.label}
                   </a>
                 ))
-              : NAV_ITEMS.map((item) => (
-                  <a key={item.id} href={`/#${item.id}`}>
+              : nav.map((item) => (
+                  <a key={item.id} href={`${home}#${item.id}`}>
                     {item.label}
                   </a>
                 ))}
@@ -144,30 +142,34 @@ export function LandingHeader({
           <div className="hdr-actions">
             {/* The redesigned landing is always dark; the toggle only applies to subpages. */}
             {variant === 'subpage' && (
-              <button onClick={toggleTheme} className="theme-toggle" aria-label="Alternar tema">
+              <button
+                onClick={toggleTheme}
+                className="theme-toggle"
+                aria-label={chrome.toggleTheme}
+              >
                 {isDark ? <Sun size={18} /> : <Moon size={18} />}
               </button>
             )}
             {!ready ? null : user ? (
               <a href="/dashboard" className="lp-btn lp-btn-primary">
-                Acessar painel <ArrowRight size={14} />
+                {chrome.openDashboard} <ArrowRight size={14} />
               </a>
             ) : (
               <>
                 <a href="/login" className="link">
                   <LogIn size={15} />
-                  Entrar
+                  {chrome.signIn}
                 </a>
                 {/* Both labels ship in the markup (SSR-stable); CSS shows the short one <=400px.
                     The aria-label keeps one accessible name. */}
                 <a
-                  href="/login?tab=register"
+                  href={signupHref(locale)}
                   className="lp-btn lp-btn-primary"
-                  aria-label="Criar conta grátis"
+                  aria-label={chrome.createAccountAria}
                 >
-                  <span className="hdr-cta-long">Criar conta grátis</span>
+                  <span className="hdr-cta-long">{chrome.createAccount}</span>
                   <span className="hdr-cta-short" aria-hidden="true">
-                    Criar conta
+                    {chrome.createAccountShort}
                   </span>
                 </a>
               </>
@@ -179,7 +181,49 @@ export function LandingHeader({
   );
 }
 
-export function LandingFooter() {
+/** Footer hrefs, positional against `footer.product`. A `null` entry has no page in that market
+ * and is not rendered. */
+function productHrefs(locale: SiteLocale): (string | null)[] {
+  if (locale === 'en') {
+    const home = localizedPath('en', 'home');
+    return [
+      `${home}#features`,
+      `${home}#how`,
+      localizedPath('en', 'pricing'),
+      `${home}#faq`,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+    ];
+  }
+  return [
+    '/#features',
+    '/#how',
+    '/#pricing',
+    '/#faq',
+    '/aprovacao-de-post',
+    '/portal-do-cliente',
+    '/agente-de-conteudo-ia',
+    '/sobre',
+    '/novidades',
+    '/blog',
+  ];
+}
+
+/** Footer hrefs, positional against `footer.legal` (pt also has the LGPD page). */
+function legalHrefs(locale: SiteLocale): string[] {
+  return locale === 'en'
+    ? [localizedPath('en', 'privacy'), localizedPath('en', 'terms')]
+    : [localizedPath('pt', 'privacy'), localizedPath('pt', 'terms'), '/lgpd'];
+}
+
+export function LandingFooter({ locale = 'pt' }: { locale?: SiteLocale }) {
+  const { footer } = landingContent(locale);
+  const products = productHrefs(locale);
+  const legal = legalHrefs(locale);
   return (
     <footer className="lp-footer">
       <div className="lp-container">
@@ -201,74 +245,63 @@ export function LandingFooter() {
               className="logo-dark"
               alt="Mesaas"
             />
-            <p className="footer-tag">Gestão para quem vive de social media. Feito no Brasil.</p>
+            <p className="footer-tag">{footer.tagline}</p>
           </div>
           <div className="footer-col">
-            <p className="ft-label">Produto</p>
+            <p className="ft-label">{footer.productLabel}</p>
             <ul>
-              <li>
-                <a href="/#features">Funcionalidades</a>
-              </li>
-              <li>
-                <a href="/#how">Como funciona</a>
-              </li>
-              <li>
-                <a href="/#pricing">Preços</a>
-              </li>
-              <li>
-                <a href="/#faq">FAQ</a>
-              </li>
-              <li>
-                <a href="/aprovacao-de-post">Aprovação de posts</a>
-              </li>
-              <li>
-                <a href="/portal-do-cliente">Portal do cliente</a>
-              </li>
-              <li>
-                <a href="/agente-de-conteudo-ia">Agente de conteúdo IA</a>
-              </li>
-              <li>
-                <a href="/sobre">Sobre</a>
-              </li>
-              <li>
-                <a href="/novidades">Novidades</a>
-              </li>
-              <li>
-                <a href="/blog">Blog</a>
-              </li>
+              {footer.product.map((label, i) =>
+                products[i] ? (
+                  <li key={label}>
+                    <a href={products[i]}>{label}</a>
+                  </li>
+                ) : null,
+              )}
             </ul>
           </div>
           <div className="footer-col">
-            <p className="ft-label">Legal</p>
+            <p className="ft-label">{footer.legalLabel}</p>
             <ul>
+              {footer.legal.map((label, i) => (
+                <li key={label}>
+                  <a href={legal[i]}>{label}</a>
+                </li>
+              ))}
               <li>
-                <a href="/politica-de-privacidade">Privacidade</a>
+                <CookiePreferencesLink className="cookie-prefs-link">
+                  {footer.cookieSettings}
+                </CookiePreferencesLink>
               </li>
+              {footer.doNotSell && (
+                <li>
+                  <button
+                    type="button"
+                    className="cookie-prefs-link"
+                    onClick={() => doNotSellOrShare()}
+                  >
+                    {footer.doNotSell}
+                  </button>
+                </li>
+              )}
               <li>
-                <a href="/termos-de-uso">Termos de uso</a>
-              </li>
-              <li>
-                <a href="/lgpd">LGPD</a>
-              </li>
-              <li>
-                <CookiePreferencesLink className="cookie-prefs-link" />
+                <a href={localizedPath(locale === 'en' ? 'pt' : 'en', 'home')}>
+                  {footer.otherLanguage}
+                </a>
               </li>
             </ul>
           </div>
         </div>
       </div>
       <div className="footer-bottom">
-        <span>
-          {`© ${__BUILD_YEAR__} Mesaas. Todos os direitos reservados. · CNPJ 63.758.902/0001-01 — EBS IT SOLUTIONS`}
-        </span>
+        <span>{footer.copyright.replace('{year}', __BUILD_YEAR__)}</span>
         <div className="footer-socials">
-          <a href="https://www.instagram.com/mesaas.com.br/" aria-label="Instagram do Mesaas">
+          <a href="https://www.instagram.com/mesaas.com.br/" aria-label={footer.instagramLabel}>
             <Instagram size={18} />
           </a>
-          <a href="#" aria-label="LinkedIn do Mesaas">
+          <a href="#" aria-label={footer.linkedinLabel}>
             <Linkedin size={18} />
           </a>
-          <a href="#" aria-label="YouTube do Mesaas">
+          <a href="#" aria-label={footer.youtubeLabel}>
             <Youtube size={18} />
           </a>
         </div>

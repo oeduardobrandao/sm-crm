@@ -86,6 +86,7 @@
       ]
     }
   ],
+  "redirects": [{ "source": "/en/", "destination": "/en", "permanent": true }],
   "rewrites": [
     {
       "source": "/oauth/google/callback",
@@ -97,6 +98,10 @@
     { "source": "/convite/:token", "destination": "/hub/index.html" },
     { "source": "/admin/(.*)", "destination": "/admin/index.html" },
     { "source": "/precos", "destination": "/precos.html" },
+    { "source": "/en", "destination": "/en.html" },
+    { "source": "/en/pricing", "destination": "/en/pricing.html" },
+    { "source": "/en/privacy", "destination": "/en/privacy.html" },
+    { "source": "/en/terms", "destination": "/en/terms.html" },
     { "source": "/sobre", "destination": "/sobre.html" },
     { "source": "/aprovacao-de-post", "destination": "/aprovacao-de-post.html" },
     { "source": "/portal-do-cliente", "destination": "/portal-do-cliente.html" },

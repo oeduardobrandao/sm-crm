@@ -1,3 +1,5 @@
+import { Minus } from 'lucide-react';
+import { landingContent, type SiteLocale } from '@/content/locale';
 import type { PublicPricingPlan } from '@/services/billing';
 
 type CapacityKey =
@@ -27,14 +29,15 @@ export interface PlanComparisonAction {
 interface PlanComparisonProps {
   plans: PublicPricingPlan[];
   actionFor: (plan: PublicPricingPlan) => PlanComparisonAction;
+  locale?: SiteLocale;
 }
 
-const CAPACITY_ROWS: ReadonlyArray<{ key: CapacityKey; label: string }> = [
-  { key: 'max_instagram_accounts', label: 'Contas do Instagram' },
-  { key: 'storage_quota_bytes', label: 'Armazenamento' },
-  { key: 'max_workflow_templates', label: 'Templates de fluxo' },
-  { key: 'max_hub_tokens', label: 'Portais do cliente' },
-  { key: 'rate_report_generations_per_month', label: 'Relatórios por mês' },
+const CAPACITY_KEYS: ReadonlyArray<CapacityKey> = [
+  'max_instagram_accounts',
+  'storage_quota_bytes',
+  'max_workflow_templates',
+  'max_hub_tokens',
+  'rate_report_generations_per_month',
 ];
 
 /** Limits where 0 means "not part of the plan" (rendered as a dash, not a literal 0). */
@@ -43,75 +46,95 @@ const ZERO_IS_NOT_INCLUDED: ReadonlySet<CapacityKey> = new Set([
   'rate_report_generations_per_month',
 ]);
 
-const FEATURE_ROWS: ReadonlyArray<{ key: FeatureKey; label: string }> = [
-  { key: 'feature_post_scheduling', label: 'Agendamento de posts' },
-  { key: 'feature_tiktok', label: 'TikTok' },
-  { key: 'feature_leads', label: 'Leads' },
-  { key: 'feature_financial', label: 'Financeiro' },
-  { key: 'feature_contracts', label: 'Contratos' },
-  { key: 'feature_brand_customization', label: 'Personalização de marca' },
-  { key: 'feature_mcp', label: 'Integração com agentes (MCP)' },
-  { key: 'feature_instagram_automation', label: 'Automações' },
-  { key: 'feature_briefing_audio', label: 'Briefing por áudio' },
+const FEATURE_KEYS: ReadonlyArray<FeatureKey> = [
+  'feature_post_scheduling',
+  'feature_tiktok',
+  'feature_leads',
+  'feature_financial',
+  'feature_contracts',
+  'feature_brand_customization',
+  'feature_mcp',
+  'feature_instagram_automation',
+  'feature_briefing_audio',
 ];
 
 function cellClass(plan: PublicPricingPlan): string {
   return `plan-comparison-cell${plan.id === 'pro' ? ' plan-comparison-cell--highlight' : ''}`;
 }
 
-function formatStorage(bytes: number | null): string {
-  if (bytes == null) return 'Ilimitado';
+/** Empty marker: an em-dash in pt; English copy never uses a dash, so it draws a minus icon. */
+function EmptyMark({ locale, label }: { locale: SiteLocale; label: string }) {
+  return locale === 'en' ? <Minus size={14} role="img" aria-label={label} /> : <>—</>;
+}
+
+function formatStorage(bytes: number | null, locale: SiteLocale, unlimited: string): string {
+  if (bytes == null) return unlimited;
+  const tag = locale === 'en' ? 'en-US' : 'pt-BR';
   const gigabytes = bytes / 1024 ** 3;
   if (gigabytes >= 1) {
-    return `${gigabytes.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} GB`;
+    return `${gigabytes.toLocaleString(tag, { maximumFractionDigits: 1 })} GB`;
   }
-  return `${Math.round(bytes / 1024 ** 2).toLocaleString('pt-BR')} MB`;
+  return `${Math.round(bytes / 1024 ** 2).toLocaleString(tag)} MB`;
 }
 
-function formatCapacity(plan: PublicPricingPlan, key: CapacityKey): string {
-  if (key === 'storage_quota_bytes') return formatStorage(plan[key]);
-  if (plan[key] === 0 && ZERO_IS_NOT_INCLUDED.has(key)) return '—';
-  return plan[key] == null ? 'Ilimitado' : String(plan[key]);
+function CapacityValue({
+  plan,
+  rowKey,
+  locale,
+}: {
+  plan: PublicPricingPlan;
+  rowKey: CapacityKey;
+  locale: SiteLocale;
+}) {
+  const { planComparison, pricing } = landingContent(locale);
+  if (rowKey === 'storage_quota_bytes') {
+    return <>{formatStorage(plan[rowKey], locale, pricing.unlimited)}</>;
+  }
+  if (plan[rowKey] === 0 && ZERO_IS_NOT_INCLUDED.has(rowKey)) {
+    return <EmptyMark locale={locale} label={planComparison.notIncluded} />;
+  }
+  return <>{plan[rowKey] == null ? pricing.unlimited : String(plan[rowKey])}</>;
 }
 
-function FeatureValue({ included }: { included: boolean }) {
+function FeatureValue({ included, locale }: { included: boolean; locale: SiteLocale }) {
+  const { planComparison } = landingContent(locale);
   return (
     <>
       <span className={included ? 'plan-comparison-check' : 'plan-comparison-empty'} aria-hidden>
-        {included ? '✓' : '—'}
+        {included ? '✓' : <EmptyMark locale={locale} label={planComparison.notIncluded} />}
       </span>
-      <span className="plan-comparison-sr-only">{included ? 'Incluído' : 'Não incluído'}</span>
+      <span className="plan-comparison-sr-only">
+        {included ? planComparison.included : planComparison.notIncluded}
+      </span>
     </>
   );
 }
 
-export default function PlanComparison({ plans, actionFor }: PlanComparisonProps) {
+export default function PlanComparison({ plans, actionFor, locale = 'pt' }: PlanComparisonProps) {
+  const content = landingContent(locale);
+  const t = content.planComparison;
+  const popular = content.pricing.popular;
   return (
     <section className="plan-comparison" aria-labelledby="plan-comparison-title">
       <div className="plan-comparison-heading">
-        <h3 id="plan-comparison-title">Compare os planos</h3>
-        <p>Veja o que cada plano inclui.</p>
+        <h3 id="plan-comparison-title">{t.title}</h3>
+        <p>{t.sub}</p>
       </div>
       <p className="plan-comparison-swipe-hint" aria-hidden>
-        Deslize para comparar →
+        {t.swipeHint}
       </p>
-      <div
-        className="plan-comparison-scroll"
-        role="region"
-        aria-label="Tabela comparativa de planos"
-        tabIndex={0}
-      >
+      <div className="plan-comparison-scroll" role="region" aria-label={t.regionLabel} tabIndex={0}>
         <table className="plan-comparison-table">
-          <caption className="plan-comparison-sr-only">Comparação detalhada dos planos</caption>
+          <caption className="plan-comparison-sr-only">{t.caption}</caption>
           <thead>
             <tr>
-              <th scope="col">Recurso</th>
+              <th scope="col">{t.featureColumn}</th>
               {plans.map((plan) => (
                 <th key={plan.id} scope="col" className={cellClass(plan)}>
                   <span className="plan-comparison-plan-heading">
                     <span>{plan.name}</span>
                     {plan.id === 'pro' && (
-                      <span className="plan-comparison-popular">Mais popular</span>
+                      <span className="plan-comparison-popular">{popular}</span>
                     )}
                   </span>
                 </th>
@@ -121,15 +144,15 @@ export default function PlanComparison({ plans, actionFor }: PlanComparisonProps
           <tbody>
             <tr className="plan-comparison-group">
               <th scope="rowgroup" colSpan={plans.length + 1}>
-                Capacidade
+                {t.capacityGroup}
               </th>
             </tr>
-            {CAPACITY_ROWS.map((row) => (
-              <tr key={row.key}>
-                <th scope="row">{row.label}</th>
+            {CAPACITY_KEYS.map((key) => (
+              <tr key={key}>
+                <th scope="row">{t.capacityRows[key]}</th>
                 {plans.map((plan) => (
                   <td key={plan.id} className={cellClass(plan)}>
-                    {formatCapacity(plan, row.key)}
+                    <CapacityValue plan={plan} rowKey={key} locale={locale} />
                   </td>
                 ))}
               </tr>
@@ -138,15 +161,15 @@ export default function PlanComparison({ plans, actionFor }: PlanComparisonProps
           <tbody>
             <tr className="plan-comparison-group">
               <th scope="rowgroup" colSpan={plans.length + 1}>
-                Recursos
+                {t.featuresGroup}
               </th>
             </tr>
-            {FEATURE_ROWS.map((row) => (
-              <tr key={row.key}>
-                <th scope="row">{row.label}</th>
+            {FEATURE_KEYS.map((key) => (
+              <tr key={key}>
+                <th scope="row">{t.featureRows[key]}</th>
                 {plans.map((plan) => (
                   <td key={plan.id} className={cellClass(plan)}>
-                    <FeatureValue included={plan[row.key]} />
+                    <FeatureValue included={plan[key]} locale={locale} />
                   </td>
                 ))}
               </tr>
@@ -154,7 +177,7 @@ export default function PlanComparison({ plans, actionFor }: PlanComparisonProps
           </tbody>
           <tfoot>
             <tr>
-              <th scope="row">Escolha seu plano</th>
+              <th scope="row">{t.choosePlan}</th>
               {plans.map((plan) => {
                 const action = actionFor(plan);
                 return (

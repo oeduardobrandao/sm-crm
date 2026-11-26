@@ -2,7 +2,8 @@ import { isNativeApp } from './platform';
 import { getMesaasNative } from './mesaasNative';
 
 // Which CRM paths the iOS app never shows (apps/mobile/DECISIONS.md D5, D33): sign-up,
-// pricing, billing and the marketing site. Nothing here reads `window` at module scope;
+// pricing, billing and the marketing site (the English US site under `/en` included, except
+// `/en/privacy` and `/en/terms`, which are in SITE_PAGES below). Nothing here reads `window` at module scope;
 // the entry imports this through useNativePathGuard and the SSR prerender runs it in Node.
 
 /** The public site. Legal pages open here, outside the web view, inside the app. */
@@ -21,13 +22,20 @@ const BLOCKED_PREFIXES = [
   '/afiliados',
   '/blog',
   '/novidades',
+  '/en',
 ];
 
 /**
  * Reachable in the app (App Review wants the privacy policy one tap away), but opened
  * in Safari so the marketing chrome never renders in the web view.
  */
-const SITE_PAGES = ['/politica-de-privacidade', '/termos-de-uso', '/lgpd'];
+const SITE_PAGES = [
+  '/politica-de-privacidade',
+  '/termos-de-uso',
+  '/lgpd',
+  '/en/privacy',
+  '/en/terms',
+];
 
 /** Pathname of an in-app path or of a URL on the public site; null for anything else. */
 function sitePathname(pathOrUrl: string): string | null {
@@ -60,6 +68,8 @@ export function isBlockedInNativeApp(pathOrUrl: string): boolean {
   if (pathname === null) return false;
   const path = normalize(pathname);
   if (path === '/') return true;
+  // The English legal pages sit under /en but are site pages, reachable like the Portuguese ones.
+  if (SITE_PAGES.includes(path)) return false;
   return BLOCKED_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
 }
 

@@ -92,6 +92,55 @@ describe('vercel.json routing contract', () => {
   });
 });
 
+// Rough model of Vercel's source matching, enough for the sources this file uses: `:name` is one
+// path segment, the rest is already a regex (`(a|b)(/.*)?`, `(.*)`), anchored on both ends.
+function sourceMatches(source: string, path: string): boolean {
+  return new RegExp(`^${source.replace(/:\w+/g, '[^/]+')}$`).test(path);
+}
+
+describe('vercel.json: English site (/en)', () => {
+  const redirects = (vercelConfig as { redirects?: Array<Record<string, unknown>> }).redirects;
+  const EN_ROUTES = [
+    { source: '/en', destination: '/en.html' },
+    { source: '/en/pricing', destination: '/en/pricing.html' },
+    { source: '/en/privacy', destination: '/en/privacy.html' },
+    { source: '/en/terms', destination: '/en/terms.html' },
+  ];
+
+  test('the source matcher models the existing rules', () => {
+    const appShell = rewrites.find((r) => r.destination === '/app.html')!;
+    expect(sourceMatches(appShell.source, '/clientes/12')).toBe(true);
+    expect(sourceMatches(appShell.source, '/clientesx')).toBe(false);
+    expect(sourceMatches('/blog/:slug', '/blog/a-b')).toBe(true);
+    expect(sourceMatches('/blog/:slug', '/blog/a/b')).toBe(false);
+  });
+
+  test('each /en page rewrites to its prerendered file, before the app shell', () => {
+    const appShellIdx = rewrites.findIndex((r) => r.destination === '/app.html');
+    for (const route of EN_ROUTES) {
+      const idx = rewrites.findIndex(
+        (r) => r.source === route.source && r.destination === route.destination,
+      );
+      expect(idx, `missing rewrite ${route.source}`).toBeGreaterThanOrEqual(0);
+      expect(idx).toBeLessThan(appShellIdx);
+    }
+    for (const [idx, r] of rewrites.entries()) {
+      if (r.source === '/en' || r.source.startsWith('/en/')) expect(idx).toBeLessThan(appShellIdx);
+    }
+  });
+
+  test('/en/ redirects permanently to /en', () => {
+    expect(redirects).toContainEqual({ source: '/en/', destination: '/en', permanent: true });
+  });
+
+  test('an unknown /en path matches no rewrite, so Vercel answers 404.html', () => {
+    for (const path of ['/en/whatever', '/en/precos', '/en/pricing/x']) {
+      const hit = rewrites.find((r) => sourceMatches(r.source, path));
+      expect(hit, `${path} is rewritten by ${hit?.source}`).toBeUndefined();
+    }
+  });
+});
+
 describe('vercel.json Permissions-Policy', () => {
   // O briefing por áudio do Hub usa getUserMedia. Com `microphone=()` o
   // navegador rejeita com NotAllowedError SEM abrir o prompt de permissão

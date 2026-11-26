@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 // Relative imports on purpose: this hook is in the prerender script's import
 // graph (legal pages), which cannot resolve the @/ alias.
 import { DEFAULT_OG_IMAGE, routeMetaFor, type RouteMeta } from '../content/site-meta';
-import { canonicalUrl } from '../content/seo-head';
+import { alternateLinks, canonicalUrl, ogLocaleFor } from '../content/seo-head';
 import { jsonLdForPath } from '../content/route-jsonld';
 
 function upsertMeta(attr: 'name' | 'property', key: string, content: string): void {
@@ -28,6 +28,7 @@ function applyHead(meta: RouteMeta, jsonLd: object[]): void {
   // the next route, so an article's "article" would stick to whatever page the
   // reader went to next.
   upsertMeta('property', 'og:type', meta.ogType ?? 'website');
+  upsertMeta('property', 'og:locale', ogLocaleFor(meta));
   upsertMeta('name', 'twitter:title', meta.title);
   upsertMeta('name', 'twitter:description', meta.description);
   upsertMeta('name', 'twitter:image', image);
@@ -38,6 +39,15 @@ function applyHead(meta: RouteMeta, jsonLd: object[]): void {
     document.head.appendChild(link);
   }
   link.href = url;
+  // Replace the whole hreflang cluster (prerendered or from the previous route).
+  document.head.querySelectorAll('link[rel="alternate"][hreflang]').forEach((el) => el.remove());
+  for (const alt of alternateLinks(meta)) {
+    const a = document.createElement('link');
+    a.rel = 'alternate';
+    a.hreflang = alt.hreflang;
+    a.href = alt.href;
+    document.head.appendChild(a);
+  }
   document.head.querySelectorAll('script[data-seo="jsonld"]').forEach((el) => el.remove());
   for (const block of jsonLd) {
     const s = document.createElement('script');

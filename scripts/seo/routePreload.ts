@@ -25,6 +25,11 @@ export type BuildManifest = Record<string, ManifestChunk>;
 export const ROUTE_CHUNKS: Readonly<Record<string, string>> = {
   '/': 'src/pages/landing/LandingPage.tsx',
   '/precos': 'src/pages/precos/PrecosPage.tsx',
+  // The English pages are the same components with `locale="en"`.
+  '/en': 'src/pages/landing/LandingPage.tsx',
+  '/en/pricing': 'src/pages/precos/PrecosPage.tsx',
+  '/en/privacy': 'src/pages/en/PrivacyPageEn.tsx',
+  '/en/terms': 'src/pages/en/TermsPageEn.tsx',
 };
 
 function chunkOrThrow(manifest: BuildManifest, key: string): ManifestChunk {

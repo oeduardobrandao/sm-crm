@@ -1,14 +1,21 @@
 import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
+import { landingContent, type SiteLocale } from '@/content/locale';
 
-export function FaqSection({ items }: { items: Array<{ q: string; a: string }> }) {
+export function FaqSection({
+  items,
+  locale = 'pt',
+}: {
+  items: Array<{ q: string; a: string }>;
+  locale?: SiteLocale;
+}) {
   const [open, setOpen] = useState<number | null>(null);
 
   return (
     <section className="lp-pad lp-pad-alt" id="faq">
       <div className="lp-container">
         <div className="section-head reveal">
-          <h2>Perguntas frequentes</h2>
+          <h2>{landingContent(locale).faqTitle}</h2>
         </div>
         <div className="faqs">
           {items.map((item, i) => (

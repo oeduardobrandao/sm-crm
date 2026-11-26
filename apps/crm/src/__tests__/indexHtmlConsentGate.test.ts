@@ -16,4 +16,8 @@ describe('apps/crm/index.html consent gate', () => {
   it('does not load the Crisp widget script directly', () => {
     expect(html).not.toContain('client.crisp.chat');
   });
+
+  it('does not hide the prerendered banner for a US-only default (no LGPD decision on /)', () => {
+    expect(html).toContain('"basis":"us_default"');
+  });
 });

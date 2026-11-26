@@ -10,3 +10,18 @@ describe('renderPrecosHtml', () => {
     for (const i of PRECOS.faq) expect(html).toContain(i.q.replace(/&/g, '&amp;'));
   });
 });
+
+describe('renderPrecosHtml(en)', () => {
+  const html = renderPrecosHtml('en');
+  test('English, one h1, no BRL', () => {
+    expect(html.match(/<h1/g)).toHaveLength(1);
+    expect(html).toContain('Mesaas plans and pricing');
+    expect(html).not.toContain('R$');
+    expect(html).not.toContain('Compare os planos');
+    expect(html).toContain('href="/en"');
+  });
+  test('default stays Portuguese', () => {
+    expect(renderPrecosHtml()).toBe(renderPrecosHtml('pt'));
+    expect(renderPrecosHtml()).toContain('Compare os planos');
+  });
+});

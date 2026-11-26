@@ -1,4 +1,11 @@
-export const PRECOS = {
+export interface PrecosContent {
+  h1: string;
+  sub: string;
+  plans: readonly { name: string; description: string }[];
+  faq: readonly { q: string; a: string }[];
+}
+
+export const PRECOS: PrecosContent = {
   h1: 'Planos e preços do Mesaas',
   sub: '14 dias de Pro grátis, sem cartão. Prefere escolher o plano agora? Os planos pagos têm 30 dias grátis com cartão. Mude de plano quando quiser, sem fidelidade e sem multa de cancelamento.',
   plans: [
@@ -25,4 +32,4 @@ export const PRECOS = {
       a: 'Cartão de crédito, pela Stripe. O plano anual também pode ser pago em 12x no cartão, pela Pagar.me.',
     },
   ],
-} as const;
+};

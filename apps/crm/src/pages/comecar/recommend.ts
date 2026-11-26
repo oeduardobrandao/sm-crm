@@ -12,22 +12,36 @@ import {
   planHasReports,
 } from '@/pages/configuracao/cobranca/plan-display';
 
+/** Copy language for the sentence builders below. Portuguese is the default and unchanged. */
+export type ComecarLang = 'pt' | 'en';
+
 export type ClientBucket = '1-2' | '3-5' | '6-15' | '16+';
 export type TeamBucket = '1' | '2' | '3-5' | '6+';
 
-export const CLIENT_BUCKETS: { id: ClientBucket; label: string; upper: number }[] = [
-  { id: '1-2', label: '1 a 2', upper: 2 },
-  { id: '3-5', label: '3 a 5', upper: 5 },
-  { id: '6-15', label: '6 a 15', upper: 15 },
-  { id: '16+', label: 'Mais de 15', upper: Infinity },
+interface Bucket<T> {
+  id: T;
+  label: string;
+  labelEn: string;
+  upper: number;
+}
+
+export const CLIENT_BUCKETS: Bucket<ClientBucket>[] = [
+  { id: '1-2', label: '1 a 2', labelEn: '1 to 2', upper: 2 },
+  { id: '3-5', label: '3 a 5', labelEn: '3 to 5', upper: 5 },
+  { id: '6-15', label: '6 a 15', labelEn: '6 to 15', upper: 15 },
+  { id: '16+', label: 'Mais de 15', labelEn: 'More than 15', upper: Infinity },
 ];
 
-export const TEAM_BUCKETS: { id: TeamBucket; label: string; upper: number }[] = [
-  { id: '1', label: 'Só eu', upper: 1 },
-  { id: '2', label: '2 pessoas', upper: 2 },
-  { id: '3-5', label: '3 a 5', upper: 5 },
-  { id: '6+', label: '6 ou mais', upper: Infinity },
+export const TEAM_BUCKETS: Bucket<TeamBucket>[] = [
+  { id: '1', label: 'Só eu', labelEn: 'Just me', upper: 1 },
+  { id: '2', label: '2 pessoas', labelEn: '2 people', upper: 2 },
+  { id: '3-5', label: '3 a 5', labelEn: '3 to 5', upper: 5 },
+  { id: '6+', label: '6 ou mais', labelEn: '6 or more', upper: Infinity },
 ];
+
+export function bucketLabel(bucket: { label: string; labelEn: string }, lang: ComecarLang): string {
+  return lang === 'en' ? bucket.labelEn : bucket.label;
+}
 
 /** Paid, self-serve plans the trial can start on, cheapest first, priced in `currency`. */
 export function trialCandidates(
@@ -67,69 +81,128 @@ export function recommendPlan(
   );
 }
 
-/** "A", "A e B", "A, B e C"; the first label is capitalised, the rest lower-cased. */
-function joinPtBr(labels: string[]): string {
+/** "A", "A e B", "A, B e C" ("A, B and C"); the first label is capitalised, the rest lower-cased. */
+function joinLabels(labels: string[], lang: ComecarLang): string {
   const [first, ...rest] = labels;
   const parts = [first, ...rest.map((l) => l.toLowerCase())];
   if (parts.length === 1) return parts[0];
-  return `${parts.slice(0, -1).join(', ')} e ${parts[parts.length - 1]}`;
+  const and = lang === 'en' ? 'and' : 'e';
+  return `${parts.slice(0, -1).join(', ')} ${and} ${parts[parts.length - 1]}`;
 }
 
-function groupLabel(items: [boolean, string][], whenAll: string): string | null {
+function groupLabel(items: [boolean, string][], whenAll: string, lang: ComecarLang): string | null {
   const present = items.filter(([on]) => on).map(([, label]) => label);
   if (present.length === 0) return null;
-  return present.length === items.length ? whenAll : joinPtBr(present);
+  return present.length === items.length ? whenAll : joinLabels(present, lang);
 }
 
+const UNLOCK_COPY = {
+  pt: {
+    portal: 'Portal para o cliente aprovar os posts',
+    reportsAi: 'Relatórios do Instagram com IA',
+    reports: 'Relatórios do Instagram',
+    autoSync: 'Métricas atualizadas sozinhas',
+    financial: 'Financeiro',
+    contracts: 'Contratos',
+    leads: 'Leads',
+    moneyAll: 'Financeiro, contratos e leads',
+    agenda: 'Agenda',
+    messages: 'Mensagens',
+    teamChat: 'Chat da equipe',
+    teamAll: 'Agenda, mensagens e chat da equipe',
+    automation: 'Respostas automáticas no Instagram',
+    briefingAudio: 'Briefing em áudio',
+  },
+  en: {
+    portal: 'Client portal to approve posts',
+    reportsAi: 'Instagram reports with AI',
+    reports: 'Instagram reports',
+    autoSync: 'Metrics that update on their own',
+    financial: 'Finance',
+    contracts: 'Contracts',
+    leads: 'Leads',
+    moneyAll: 'Finance, contracts and leads',
+    agenda: 'Calendar',
+    messages: 'Messages',
+    teamChat: 'Team chat',
+    teamAll: 'Calendar, messages and team chat',
+    automation: 'Instagram auto-replies',
+    briefingAudio: 'Audio briefs',
+  },
+} as const;
+
 /** What the plan unlocks, in display order, read from the plan row's flags. */
-export function planUnlocks(plan: BillingPlan): string[] {
+export function planUnlocks(plan: BillingPlan, lang: ComecarLang = 'pt'): string[] {
+  const c = UNLOCK_COPY[lang];
   const out: string[] = [];
-  if (planHasPortal(plan)) out.push('Portal para o cliente aprovar os posts');
-  if (planHasReports(plan)) {
-    out.push(
-      plan.feature_instagram_ai ? 'Relatórios do Instagram com IA' : 'Relatórios do Instagram',
-    );
-  }
-  if (plan.feature_auto_sync_cron) out.push('Métricas atualizadas sozinhas');
+  if (planHasPortal(plan)) out.push(c.portal);
+  if (planHasReports(plan)) out.push(plan.feature_instagram_ai ? c.reportsAi : c.reports);
+  if (plan.feature_auto_sync_cron) out.push(c.autoSync);
   const money = groupLabel(
     [
-      [plan.feature_financial, 'Financeiro'],
-      [plan.feature_contracts, 'Contratos'],
-      [plan.feature_leads, 'Leads'],
+      [plan.feature_financial, c.financial],
+      [plan.feature_contracts, c.contracts],
+      [plan.feature_leads, c.leads],
     ],
-    'Financeiro, contratos e leads',
+    c.moneyAll,
+    lang,
   );
   if (money) out.push(money);
   const team = groupLabel(
     [
-      [plan.feature_agenda, 'Agenda'],
-      [plan.feature_mensagens, 'Mensagens'],
-      [plan.feature_team_chat, 'Chat da equipe'],
+      [plan.feature_agenda, c.agenda],
+      [plan.feature_mensagens, c.messages],
+      [plan.feature_team_chat, c.teamChat],
     ],
-    'Agenda, mensagens e chat da equipe',
+    c.teamAll,
+    lang,
   );
   if (team) out.push(team);
-  if (plan.feature_instagram_automation) out.push('Respostas automáticas no Instagram');
-  if (plan.feature_briefing_audio) out.push('Briefing em áudio');
+  if (plan.feature_instagram_automation) out.push(c.automation);
+  if (plan.feature_briefing_audio) out.push(c.briefingAudio);
   return out;
 }
 
-const CLIENT_PHRASE: Record<ClientBucket, string> = {
-  '1-2': '1 a 2 clientes',
-  '3-5': '3 a 5 clientes',
-  '6-15': '6 a 15 clientes',
-  '16+': 'mais de 15 clientes',
+const CLIENT_PHRASE: Record<ComecarLang, Record<ClientBucket, string>> = {
+  pt: {
+    '1-2': '1 a 2 clientes',
+    '3-5': '3 a 5 clientes',
+    '6-15': '6 a 15 clientes',
+    '16+': 'mais de 15 clientes',
+  },
+  en: {
+    '1-2': '1 to 2 clients',
+    '3-5': '3 to 5 clients',
+    '6-15': '6 to 15 clients',
+    '16+': 'more than 15 clients',
+  },
 };
 
-const TEAM_PHRASE: Record<TeamBucket, string> = {
-  '1': 'sem equipe',
-  '2': 'com mais uma pessoa',
-  '3-5': 'com uma equipe de 3 a 5',
-  '6+': 'com uma equipe de 6 ou mais',
+const TEAM_PHRASE: Record<ComecarLang, Record<TeamBucket, string>> = {
+  pt: {
+    '1': 'sem equipe',
+    '2': 'com mais uma pessoa',
+    '3-5': 'com uma equipe de 3 a 5',
+    '6+': 'com uma equipe de 6 ou mais',
+  },
+  en: {
+    '1': 'on their own',
+    '2': 'with one more person',
+    '3-5': 'with a team of 3 to 5',
+    '6+': 'with a team of 6 or more',
+  },
 };
 
-export function recommendationReason(clients: ClientBucket, team: TeamBucket): string {
-  return `Pensado para quem atende ${CLIENT_PHRASE[clients]} ${TEAM_PHRASE[team]}.`;
+export function recommendationReason(
+  clients: ClientBucket,
+  team: TeamBucket,
+  lang: ComecarLang = 'pt',
+): string {
+  const client = CLIENT_PHRASE[lang][clients];
+  const crew = TEAM_PHRASE[lang][team];
+  return lang === 'en'
+    ? `Built for agencies serving ${client} ${crew}.`
+    : `Pensado para quem atende ${client} ${crew}.`;
 }
 
 /** Only the smallest answer set fits Free's 2 clients and 1 user. */
@@ -142,34 +215,70 @@ export function findFreePlan(plans: BillingPlan[]): BillingPlan | null {
   return plans.find((p) => p.id === 'free') ?? null;
 }
 
-function clientsPhrase(max: number | null): string {
+function clientsPhrase(max: number | null, lang: ComecarLang): string {
+  if (lang === 'en') {
+    if (max === null) return 'unlimited clients';
+    return max === 1 ? '1 client' : `${max} clients`;
+  }
   if (max === null) return 'clientes ilimitados';
   return max === 1 ? '1 cliente' : `${max} clientes`;
 }
 
-function teamPhrase(max: number | null): string {
+function teamPhrase(max: number | null, lang: ComecarLang): string {
+  if (lang === 'en') {
+    if (max === null) return 'unlimited users';
+    return max <= 1 ? 'just you' : `up to ${max} people`;
+  }
   if (max === null) return 'usuários ilimitados';
   return max <= 1 ? 'só você' : `até ${max} pessoas`;
 }
 
-/** "A", "A e B", "A, B e C", already lower-case. */
-function joinAnd(parts: string[]): string {
+/** "A", "A e B", "A, B e C" ("A, B and C"), already lower-case. */
+function joinAnd(parts: string[], lang: ComecarLang): string {
   if (parts.length <= 1) return parts.join('');
-  return `${parts.slice(0, -1).join(', ')} e ${parts[parts.length - 1]}`;
+  const and = lang === 'en' ? 'and' : 'e';
+  return `${parts.slice(0, -1).join(', ')} ${and} ${parts[parts.length - 1]}`;
 }
+
+const FREE_COPY = {
+  pt: {
+    noFree: 'Plano gratuito, com limites menores e menos recursos.',
+    portal: 'portal de aprovação',
+    reports: 'relatórios',
+    autoSync: 'métricas automáticas',
+    without: (missing: string[]) => `sem ${missing.join(' nem ')}`,
+    tail: (name: string) => `Teste o ${name} e decida depois.`,
+    noFreeNote: (tail: string) => `O Free também serve para começar, com limites menores. ${tail}`,
+    covers: (clients: string) => `O Free também cobre ${clients}`,
+    butWithout: (covers: string, missing: string, tail: string) =>
+      `${covers}, mas sem ${missing}. ${tail}`,
+  },
+  en: {
+    noFree: 'Free plan, with lower limits and fewer features.',
+    portal: 'approval portal',
+    reports: 'reports',
+    autoSync: 'automatic metrics',
+    without: (missing: string[]) => `no ${missing.join(' or ')}`,
+    tail: (name: string) => `Try ${name} and decide later.`,
+    noFreeNote: (tail: string) => `Free also works to get started, with lower limits. ${tail}`,
+    covers: (clients: string) => `Free also covers ${clients}`,
+    butWithout: (covers: string, missing: string, tail: string) =>
+      `${covers}, but without ${missing}. ${tail}`,
+  },
+};
 
 /**
  * The line under "Continuar no Free", read from the Free row: "2 clientes, só você, sem
  * portal de aprovação nem relatórios." With no Free row it states no plan figure at all.
  */
-export function freePlanSummary(free: BillingPlan | null): string {
-  if (!free) return 'Plano gratuito, com limites menores e menos recursos.';
-  const missing = [
-    !planHasPortal(free) && 'portal de aprovação',
-    !planHasReports(free) && 'relatórios',
-  ].filter((m): m is string => Boolean(m));
-  const parts = [clientsPhrase(free.max_clients), teamPhrase(free.max_team_members)];
-  if (missing.length > 0) parts.push(`sem ${missing.join(' nem ')}`);
+export function freePlanSummary(free: BillingPlan | null, lang: ComecarLang = 'pt'): string {
+  const c = FREE_COPY[lang];
+  if (!free) return c.noFree;
+  const missing = [!planHasPortal(free) && c.portal, !planHasReports(free) && c.reports].filter(
+    (m): m is string => Boolean(m),
+  );
+  const parts = [clientsPhrase(free.max_clients, lang), teamPhrase(free.max_team_members, lang)];
+  if (missing.length > 0) parts.push(c.without(missing));
   return `${parts.join(', ')}.`;
 }
 
@@ -178,17 +287,22 @@ export function freePlanSummary(free: BillingPlan | null): string {
  * cobre 2 clientes, mas sem portal de aprovação, relatórios e métricas automáticas. Teste o
  * Start e decida depois." With no Free row it states no plan figure at all.
  */
-export function freePlanNote(free: BillingPlan | null, recommendedName: string): string {
-  const tail = `Teste o ${recommendedName} e decida depois.`;
-  if (!free) return `O Free também serve para começar, com limites menores. ${tail}`;
+export function freePlanNote(
+  free: BillingPlan | null,
+  recommendedName: string,
+  lang: ComecarLang = 'pt',
+): string {
+  const c = FREE_COPY[lang];
+  const tail = c.tail(recommendedName);
+  if (!free) return c.noFreeNote(tail);
   const missing = [
-    !planHasPortal(free) && 'portal de aprovação',
-    !planHasReports(free) && 'relatórios',
-    !free.feature_auto_sync_cron && 'métricas automáticas',
+    !planHasPortal(free) && c.portal,
+    !planHasReports(free) && c.reports,
+    !free.feature_auto_sync_cron && c.autoSync,
   ].filter((m): m is string => Boolean(m));
-  const covers = `O Free também cobre ${clientsPhrase(free.max_clients)}`;
+  const covers = c.covers(clientsPhrase(free.max_clients, lang));
   return missing.length > 0
-    ? `${covers}, mas sem ${joinAnd(missing)}. ${tail}`
+    ? c.butWithout(covers, joinAnd(missing, lang), tail)
     : `${covers}. ${tail}`;
 }
 

@@ -129,7 +129,11 @@ export function loadLazyNamespaces(instance: I18nInstance = i18n): Promise<void>
 }
 
 export function changeLanguage(lang: Language) {
-  localStorage.setItem(STORAGE_KEY, lang);
+  try {
+    localStorage.setItem(STORAGE_KEY, lang);
+  } catch {
+    // Storage blocked (private mode, disabled cookies): the language still changes for this session.
+  }
   i18n.changeLanguage(lang);
 }
 

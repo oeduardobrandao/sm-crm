@@ -46,6 +46,13 @@ import {
 import { captureEvent } from '@/lib/analytics';
 import { captureCheckoutStarted } from '@/lib/checkout-analytics';
 import ComecarPage from '../ComecarPage';
+import i18n from 'i18next';
+import ptSetup from '../../../../../../packages/i18n/locales/pt/setup.json';
+import enSetup from '../../../../../../packages/i18n/locales/en/setup.json';
+
+// `setup` is a lazy namespace the shared test setup does not bundle.
+i18n.addResourceBundle('pt', 'setup', ptSetup, true, true);
+i18n.addResourceBundle('en', 'setup', enSetup, true, true);
 
 const assign = vi.fn();
 
@@ -169,7 +176,10 @@ function renderPage(search = '') {
  * here: that would make the two cases indistinguishable and leave the absent path
  * uncovered.
  */
-async function renderPageWithEnv(whatsAppNumber: string | undefined) {
+async function renderPageWithEnv(
+  whatsAppNumber: string | undefined,
+  billingCurrency: 'brl' | 'usd' = 'brl',
+) {
   // The whatsapp module reads import.meta.env at module scope, so we must reset
   // and dynamically import to test different env values.
   vi.resetModules();
@@ -208,7 +218,10 @@ async function renderPageWithEnv(whatsAppNumber: string | undefined) {
   vi.mocked(useAuthDynamic).mockReturnValue({ role: 'owner', loading: false } as never);
   vi.mocked(listActivePlansDynamic).mockResolvedValue(PLANS as never);
   vi.mocked(getWorkspaceSubscriptionDynamic).mockResolvedValue(NEVER_SUBSCRIBED as never);
-  vi.mocked(getEffectivePlanWithSourceDynamic).mockResolvedValue(plan(null));
+  vi.mocked(getEffectivePlanWithSourceDynamic).mockResolvedValue({
+    ...plan(null),
+    billingCurrency,
+  } as never);
   vi.mocked(startCheckoutDynamic).mockResolvedValue('https://checkout.stripe.com/abc');
 
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -437,6 +450,14 @@ describe('ComecarPage', () => {
     await renderPageWithEnv('5511999999999');
     expect(await screen.findByText('Fale com a gente no WhatsApp')).toBeInTheDocument();
     expect(screen.getByText('Prefere falar com uma pessoa?')).toBeInTheDocument();
+    vi.unstubAllEnvs();
+  });
+
+  it('does not render the WhatsApp support section for a USD workspace, even with the number set', async () => {
+    await renderPageWithEnv('5511999999999', 'usd');
+    await screen.findByRole('heading', { level: 1 });
+    expect(screen.queryByText('Fale com a gente no WhatsApp')).not.toBeInTheDocument();
+    expect(screen.queryByText('Prefere falar com uma pessoa?')).not.toBeInTheDocument();
     vi.unstubAllEnvs();
   });
 

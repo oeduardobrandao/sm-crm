@@ -1,3 +1,4 @@
+import type { SiteLocale } from './locale';
 import { SITE_NAME, SITE_URL, SOCIAL_PROFILES } from './site-meta';
 import { BLOG_AUTHOR, postAuthor, postOgImage, postPath } from './blog';
 import type { BlogPost } from './blog.schema';
@@ -15,31 +16,35 @@ export function organizationJsonLd(): object {
   };
 }
 
-export function webSiteJsonLd(): object {
+export function webSiteJsonLd(locale: SiteLocale = 'pt'): object {
   return {
     '@context': CONTEXT,
     '@type': 'WebSite',
     name: SITE_NAME,
     url: `${SITE_URL}/`,
-    inLanguage: 'pt-BR',
+    inLanguage: locale === 'en' ? 'en-US' : 'pt-BR',
   };
 }
 
-export function softwareApplicationJsonLd(): object {
+export function softwareApplicationJsonLd(locale: SiteLocale = 'pt'): object {
+  const en = locale === 'en';
   return {
     '@context': CONTEXT,
     '@type': 'SoftwareApplication',
     name: SITE_NAME,
     applicationCategory: 'BusinessApplication',
     operatingSystem: 'Web',
-    url: `${SITE_URL}/`,
-    description:
-      'CRM para agências e gestores de social media: clientes, aprovações, agendamento no Instagram e no TikTok, relatórios e financeiro.',
+    url: `${SITE_URL}${en ? '/en' : '/'}`,
+    description: en
+      ? 'CRM for social media agencies and managers: clients, post approvals, Instagram and TikTok scheduling, reports and finances.'
+      : 'CRM para agências e gestores de social media: clientes, aprovações, agendamento no Instagram e no TikTok, relatórios e financeiro.',
     offers: {
       '@type': 'Offer',
       price: '0',
-      priceCurrency: 'BRL',
-      description: 'Plano Free — comece sem custo, sem cartão de crédito.',
+      priceCurrency: en ? 'USD' : 'BRL',
+      description: en
+        ? 'Free plan: start at no cost, no credit card required.'
+        : 'Plano Free — comece sem custo, sem cartão de crédito.',
     },
   };
 }

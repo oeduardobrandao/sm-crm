@@ -1,4 +1,6 @@
 import { useEffect, useRef } from 'react';
+import { landingContent, type SiteLocale } from '@/content/locale';
+import { landingAsset } from './landing-images';
 
 const LID_SCROLL_RANGE = 320;
 
@@ -16,10 +18,22 @@ const HERO_IPHONE_SIZES =
   '(max-width: 720px) calc(25vw - 10px), (max-width: 980px) calc(25vw - 14px), (max-width: 1196px) calc(20vw - 11px), 228px';
 const LID_MIN_VIEWPORT = 981;
 
+/** Runs every candidate of a `srcset` through {@link landingAsset}. */
+export function localizeSrcSet(locale: SiteLocale, srcSet: string): string {
+  return srcSet
+    .split(',')
+    .map((candidate) => {
+      const [url, ...descriptor] = candidate.trim().split(' ');
+      return [landingAsset(locale, url), ...descriptor].join(' ');
+    })
+    .join(', ');
+}
+
 /** Hero device mockups for the landing page (dark renders). On desktop the
  * MacBook "opens" as the visitor scrolls: `--lp2-lid` goes 0 -> 1 over the
  * first LID_SCROLL_RANGE px and landing-v2.css maps it to a tilt. */
-export function HeroDevicesDark() {
+export function HeroDevicesDark({ locale = 'pt' }: { locale?: SiteLocale }) {
+  const { heroAlts } = landingContent(locale);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = ref.current;
@@ -60,24 +74,24 @@ export function HeroDevicesDark() {
     <div className="lp2-hd" ref={ref}>
       <img
         className="lp2-hd-macbook"
-        src="/landing/hero-macbook-dark.webp"
-        srcSet={HERO_MACBOOK_SRCSET}
+        src={landingAsset(locale, '/landing/hero-macbook-dark.webp')}
+        srcSet={localizeSrcSet(locale, HERO_MACBOOK_SRCSET)}
         sizes={HERO_MACBOOK_SIZES}
         width={1800}
         height={1087}
-        alt="MacBook com o quadro de entregas do Mesaas: fluxos por etapa, do briefing à aprovação do cliente"
+        alt={heroAlts.macbook}
         loading="eager"
         fetchPriority="high"
         decoding="async"
       />
       <img
         className="lp2-hd-iphone"
-        src="/landing/hero-iphone-dark.webp"
-        srcSet={HERO_IPHONE_SRCSET}
+        src={landingAsset(locale, '/landing/hero-iphone-dark.webp')}
+        srcSet={localizeSrcSet(locale, HERO_IPHONE_SRCSET)}
         sizes={HERO_IPHONE_SIZES}
         width={560}
         height={1160}
-        alt="iPhone com o Hub do cliente: aprovações pendentes e próximo post"
+        alt={heroAlts.iphone}
         loading="eager"
         decoding="async"
       />

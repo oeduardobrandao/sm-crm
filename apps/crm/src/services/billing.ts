@@ -4,7 +4,9 @@ import { toBillingCurrency, type BillingCurrency } from '../lib/planPrice';
 
 export type { ReverseTrialState } from '../lib/reverseTrial';
 
-export type BillingInterval = 'month' | 'year';
+import type { BillingInterval } from '../lib/billingInterval';
+
+export type { BillingInterval };
 
 export interface BillingPlan {
   id: string;
@@ -45,6 +47,9 @@ export interface PublicPricingPlan {
   name: string;
   price_brl: number | null;
   price_brl_annual: number | null;
+  /** USD cents; the /en pricing shows a paid plan only when both are set. */
+  price_usd?: number | null;
+  price_usd_annual?: number | null;
   sort_order: number;
   max_clients: number | null;
   max_team_members: number | null;
@@ -145,7 +150,7 @@ export async function listPublicPricingPlans(): Promise<PublicPricingPlan[]> {
   const { data, error } = await supabase
     .from('plans')
     .select(
-      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, max_workflow_templates, max_instagram_accounts, max_hub_tokens, rate_report_generations_per_month, storage_quota_bytes, feature_analytics_reports, feature_post_scheduling, feature_tiktok, feature_leads, feature_financial, feature_contracts, feature_brand_customization, feature_mcp, feature_instagram_automation, feature_briefing_audio, pagarme_12x_enabled, pagarme_installment_cents',
+      'id, name, price_brl, price_brl_annual, price_usd, price_usd_annual, sort_order, max_clients, max_team_members, max_workflow_templates, max_instagram_accounts, max_hub_tokens, rate_report_generations_per_month, storage_quota_bytes, feature_analytics_reports, feature_post_scheduling, feature_tiktok, feature_leads, feature_financial, feature_contracts, feature_brand_customization, feature_mcp, feature_instagram_automation, feature_briefing_audio, pagarme_12x_enabled, pagarme_installment_cents',
     )
     .eq('is_active', true)
     .order('sort_order', { ascending: true });

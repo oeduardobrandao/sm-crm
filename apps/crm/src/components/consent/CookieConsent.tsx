@@ -1,9 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { siteLocaleForPath } from '@/content/siteLocale';
 import { isNativeApp } from '@/native/platform';
-import { OPEN_PREFERENCES_EVENT, setConsent, type ConsentCategory } from '@/lib/consent';
+import {
+  consentPathChanged,
+  OPEN_PREFERENCES_EVENT,
+  setConsent,
+  type ConsentCategory,
+} from '@/lib/consent';
 import { clearPendingSupportChat } from '@/lib/supportChat';
 import { useConsent } from '@/lib/useConsent';
 import { CookiePreferencesDialog } from './CookiePreferencesDialog';
@@ -16,6 +22,17 @@ import { CookiePreferencesDialog } from './CookiePreferencesDialog';
 export default function CookieConsent() {
   const { t } = useTranslation();
   const consent = useConsent();
+  // US pages (`/en`) are opt-out: main.tsx writes the US default before React mounts and
+  // <UsCookieNotice /> takes the banner's place. Checked synchronously from the router (the server
+  // renders the same pathname), so `/en` never flashes the Brazilian banner, even before the
+  // default exists.
+  const { pathname } = useLocation();
+  const usPage = siteLocaleForPath(pathname) === 'en';
+  // A `us_default` record only counts on `/en`: after a client-side move to or from `/en`, re-read
+  // consent so the effects stop (or start) tags and the banner appears where it should.
+  useEffect(() => {
+    consentPathChanged();
+  }, [pathname]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [focus, setFocus] = useState<ConsentCategory | undefined>();
   // The dialog has no Radix <Trigger> (any link on any page opens it by event), so Radix has nothing
@@ -58,7 +75,7 @@ export default function CookieConsent() {
     <>
       {/* No banner inside the iOS app: undecided already means nothing non-essential loads, the
           support chat asks for its own consent when opened, and Perfil keeps the preferences link. */}
-      {consent === null && !isNativeApp() && (
+      {consent === null && !usPage && !isNativeApp() && (
         <section
           role="region"
           aria-live="polite"

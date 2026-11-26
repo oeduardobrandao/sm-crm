@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   isPlaceholderSlug,
   isValidBrPhone,
+  normalizeInternationalPhone,
   safeNextPath,
   slugifyWorkspaceName,
   workspaceSlugSuffix,
@@ -85,5 +86,32 @@ describe('safeNextPath', () => {
   it('returns null for a missing value', () => {
     expect(safeNextPath(null)).toBeNull();
     expect(safeNextPath('')).toBeNull();
+  });
+});
+
+describe('normalizeInternationalPhone', () => {
+  it.each([
+    ['+1 (415) 555-0132', '14155550132'],
+    ['415.555.0132', '14155550132'],
+    ['(415) 555-0132', '14155550132'],
+    ['14155550132', '14155550132'],
+    ['+44 20 7946 0958', '442079460958'],
+    // A `+` means the country code is already there: a 10-digit number keeps its digits.
+    ['+4155550132', '4155550132'],
+    ['  +55 11 99999-9999 ', '5511999999999'],
+  ])('%s -> %s', (input, expected) => {
+    expect(normalizeInternationalPhone(input)).toBe(expected);
+  });
+
+  it.each([
+    '123',
+    '+1 555',
+    '1234567890123456',
+    '',
+    '   ',
+    '415-555-0132 ext 4',
+    '++1 415 555 0132',
+  ])('rejects %j', (input) => {
+    expect(normalizeInternationalPhone(input)).toBeNull();
   });
 });

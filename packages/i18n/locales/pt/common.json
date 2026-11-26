@@ -206,9 +206,17 @@
       "marketingDescription": "Google Ads, Meta (Instagram e Facebook) e ChatGPT (OpenAI): medem quais anúncios trouxeram você até o Mesaas e permitem mostrar nossos anúncios de novo a quem já visitou o site.",
       "revokeNote": "Ao desativar uma ferramenta, o efeito é aplicado por completo ao recarregar a página.",
       "save": "Salvar preferências",
-      "cancel": "Cancelar"
+      "cancel": "Cancelar",
+      "gpc": "Seu navegador enviou o Global Privacy Control, então a publicidade fica desligada."
     },
-    "link": "Preferências de cookies"
+    "link": "Preferências de cookies",
+    "us": {
+      "notice": "Usamos cookies para análise e publicidade.",
+      "doNotSell": "Não vender nem compartilhar minhas informações pessoais",
+      "settings": "Preferências de cookies",
+      "dismiss": "Fechar aviso",
+      "doNotSellDone": "Pronto. Não vamos vender nem compartilhar suas informações pessoais para publicidade."
+    }
   },
   "topbar": {
     "search": "Buscar...",

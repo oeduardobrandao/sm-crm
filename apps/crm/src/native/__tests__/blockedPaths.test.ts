@@ -39,18 +39,27 @@ describe('isBlockedInNativeApp', () => {
     'https://mesaas.com.br/comecar?plan=max',
     'https://www.mesaas.com.br/',
     '//www.mesaas.com.br/precos',
+    '/en',
+    '/en/',
+    '/en/pricing',
+    'https://www.mesaas.com.br/en/pricing',
   ])('blocks %s', (path) => {
     expect(isBlockedInNativeApp(path)).toBe(true);
   });
 
   it.each([
     '/dashboard',
+    '/entregas',
     '/configuracao/notificacoes',
     '/politica-de-privacidade',
     '/termos-de-uso',
     '/lgpd',
+    '/en/privacy',
+    '/en/terms',
     '/precosx',
     '/blogger',
+    '/english',
+    '/enx',
     '/login',
     'https://example.com/precos',
     'https://www.mesaas.com.br/politica-de-privacidade',
@@ -106,6 +115,18 @@ describe('openSitePageInNativeApp', () => {
     });
     expect(openSitePageInNativeApp('/termos-de-uso')).toBe(true);
     expect(openUrl).toHaveBeenCalledWith({ url: 'https://www.mesaas.com.br/termos-de-uso' });
+  });
+
+  it('opens the English legal pages in Safari too', () => {
+    const openUrl = vi.fn().mockResolvedValue(undefined);
+    setCapacitor({
+      isNativePlatform: () => true,
+      isPluginAvailable: (name) => name === 'MesaasNative',
+      Plugins: { MesaasNative: { openUrl } },
+    });
+    expect(openSitePageInNativeApp('/en/privacy#cookies')).toBe(true);
+    expect(openUrl).toHaveBeenCalledWith({ url: 'https://www.mesaas.com.br/en/privacy' });
+    expect(openSitePageInNativeApp('/en/terms')).toBe(true);
   });
 
   it('leaves app routes alone', () => {

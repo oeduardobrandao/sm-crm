@@ -1,11 +1,12 @@
-/** Build-time server render of the landing page (`/`).
+/** Build-time server render of the landing pages (`/` in Portuguese, `/en` in English).
  *
  * Built by Vite in SSR mode (apps/crm/vite.ssr.config.ts) into node_modules/.cache/landing-ssr,
  * never into dist/, and imported by scripts/seo/prerender.tsx, which writes the result into
  * dist/index.html inside `<div id="root" data-ssr="landing">`. main.tsx then hydrates it.
  *
  * The tree must equal the client's: the same `[{ path: '*', element: <App /> }]` data route
- * that main.tsx gives createBrowserRouter, the same i18n resources, language `pt`. Everything
+ * that main.tsx gives createBrowserRouter, the same i18n resources, the same language (`pt` on
+ * `/`, `en` on `/en`, which is what main.tsx starts each path in). Everything
  * the landing reads from the browser at render time renders its "anonymous first visit" state
  * here and on the hydrating client's first render, so hydration finds no mismatch. */
 import { prerender } from 'react-dom/static';
@@ -22,14 +23,18 @@ import App, { preloadLanding } from './App';
 
 const routes: RouteObject[] = [{ path: '*', element: <App /> }];
 
-export async function render(url: string): Promise<{ html: string }> {
+export async function render(url: '/' | '/en'): Promise<{ html: string }> {
   // Once per process. Vitest's setup already initialised the shared singleton in `pt`.
   if (!i18n.isInitialized) {
     initI18n(I18N_RESOURCES, { lazy: I18N_LAZY, initialLanguage: 'pt' });
   }
-  // Same fast path the client takes on `/` before its first render, so both render the
-  // resolved landing component rather than one suspending and the other not.
-  if (url === '/') await preloadLanding();
+  // The singleton is shared by every render in this process (prerender renders both landings),
+  // so each render sets its own language. i18next's own changeLanguage: the @mesaas/i18n wrapper
+  // also writes localStorage, which Node does not have.
+  await i18n.changeLanguage(url === '/en' ? 'en' : 'pt');
+  // Same fast path the client takes on `/` and `/en` before its first render, so both render
+  // the resolved landing component rather than one suspending and the other not.
+  await preloadLanding();
 
   const handler = createStaticHandler(routes);
   // createStaticHandler needs an absolute URL; the origin is never rendered.

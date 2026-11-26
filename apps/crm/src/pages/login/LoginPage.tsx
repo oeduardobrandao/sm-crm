@@ -11,6 +11,7 @@ import { Sparkles, ArrowLeft, Play, Check, MailCheck, CircleAlert } from 'lucide
 import { signIn, signUp, resetPassword, resendSignupConfirmation } from '../../lib/supabase';
 import { clearStoredReferral, getStoredReferral } from '../../lib/referral';
 import { captureEvent, identifySignup } from '@/lib/analytics';
+import { readSignupMarket } from '@/lib/signupMarket';
 import { trackMetaEvent } from '@/lib/metaPixelLoader';
 import { trackOpenAiAdsEvent } from '@/lib/openaiAdsLoader';
 import { markSignupStarted } from './signupStarted';
@@ -85,6 +86,9 @@ export default function LoginPage() {
   const intentQuery = planIntent
     ? buildPlanIntentQuery(planIntent.planId, planIntent.interval)
     : '';
+  // Only an exact single `market=us` (an /en CTA) is honored. Read from the URL, which a tab
+  // switch never changes, so the value survives switching to the login tab and back.
+  const signupMarket = native ? undefined : readSignupMarket(location.search);
   const tabParam = new URLSearchParams(location.search).get('tab');
   const initialTab: TabKey =
     tabParam === 'register' && !native ? 'register' : tabParam === 'forgot' ? 'forgot' : 'login';
@@ -263,7 +267,12 @@ export default function LoginPage() {
       result = await signUp(
         email,
         regPassword,
-        { nome, empresa: '', ...(refCode ? { ref_code: refCode } : {}) },
+        {
+          nome,
+          empresa: '',
+          ...(refCode ? { ref_code: refCode } : {}),
+          ...(signupMarket ? { market: signupMarket } : {}),
+        },
         confirmRedirectPath,
       );
     } catch (err) {
@@ -303,7 +312,8 @@ export default function LoginPage() {
     if (data?.user?.id) identifySignup(data.user.id);
     // A atribuição já foi gravada com o usuário; não reaproveitar em outro cadastro deste navegador.
     if (refCode) clearStoredReferral();
-    captureEvent('signup_completed');
+    if (signupMarket) captureEvent('signup_completed', { market: signupMarket });
+    else captureEvent('signup_completed');
     trackMetaEvent('CompleteRegistration');
     trackOpenAiAdsEvent({ name: 'registration_completed', data: { type: 'customer_action' } });
     // With email confirmation disabled signUp returns a live session, so the

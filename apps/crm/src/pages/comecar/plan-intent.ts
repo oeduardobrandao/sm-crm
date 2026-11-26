@@ -1,4 +1,4 @@
-import type { BillingInterval } from '@/services/billing';
+import type { BillingInterval } from '@/lib/billingInterval';
 
 /** Plans a visitor can pick for themselves. Mirrors PAID_PLANS in billing-checkout. */
 const SELECTABLE_PLAN_IDS = new Set(['start', 'pro', 'max']);

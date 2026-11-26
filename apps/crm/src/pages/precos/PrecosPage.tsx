@@ -2,15 +2,16 @@ import '../landing/landing-styles';
 import { LandingHeader, LandingFooter, useLandingChrome } from '../landing/LandingChrome';
 import { PricingSection } from '../landing/PricingSection';
 import { FaqSection } from '../landing/FaqSection';
-import { PRECOS } from '@/content/precos.content';
+import { localizedPath, precosContent, type SiteLocale } from '@/content/locale';
 import { usePageMeta } from '@/lib/usePageMeta';
 
-export default function PrecosPage() {
+export default function PrecosPage({ locale = 'pt' }: { locale?: SiteLocale }) {
+  const PRECOS = precosContent(locale);
   useLandingChrome();
-  usePageMeta('/precos');
+  usePageMeta(localizedPath(locale, 'pricing'));
   return (
     <>
-      <LandingHeader variant="subpage" />
+      <LandingHeader variant="subpage" locale={locale} />
       <main id="main-content" tabIndex={-1}>
         <section className="lp-pad" id="top">
           <div className="lp-container">
@@ -20,10 +21,10 @@ export default function PrecosPage() {
             </div>
           </div>
         </section>
-        <PricingSection />
-        <FaqSection items={[...PRECOS.faq]} />
+        <PricingSection locale={locale} />
+        <FaqSection items={[...PRECOS.faq]} locale={locale} />
       </main>
-      <LandingFooter />
+      <LandingFooter locale={locale} />
     </>
   );
 }

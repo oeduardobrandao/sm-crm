@@ -1,10 +1,17 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 
 import { TrialPlanPicker } from '../TrialPlanPicker';
 import { catalog, free, max, pro, start } from './plan-fixtures';
+import i18n from 'i18next';
+import ptSetup from '../../../../../../packages/i18n/locales/pt/setup.json';
+import enSetup from '../../../../../../packages/i18n/locales/en/setup.json';
+
+// `setup` is a lazy namespace the shared test setup does not bundle.
+i18n.addResourceBundle('pt', 'setup', ptSetup, true, true);
+i18n.addResourceBundle('en', 'setup', enSetup, true, true);
 
 const now = new Date('2026-10-27T12:00:00-03:00');
 
@@ -194,5 +201,38 @@ describe('TrialPlanPicker', () => {
     const { container } = renderPicker();
     answer('1 a 2', 'Só eu');
     expect(container.textContent).not.toContain('—');
+  });
+
+  it('renders in English for an English UI (USD workspace)', async () => {
+    await act(() => i18n.changeLanguage('en'));
+    try {
+      const usd = catalog.map((p) =>
+        p.id === 'pro' ? { ...p, price_usd: 4900, price_usd_annual: 49000 } : p,
+      );
+      renderPicker({ plans: usd, currency: 'usd' });
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+        "Let's set up your account",
+      );
+      expect(screen.getByText('Most popular')).toBeInTheDocument();
+      fireEvent.click(
+        within(
+          screen.getByRole('group', { name: 'How many clients do you serve today?' }),
+        ).getByRole('button', { name: '1 to 2' }),
+      );
+      fireEvent.click(
+        within(
+          screen.getByRole('group', { name: 'How many people work with you, counting yourself?' }),
+        ).getByRole('button', { name: 'Just me' }),
+      );
+      expect(screen.getByText('Recommended for you')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Start 30 days of Pro free' })).toBeInTheDocument();
+      expect(
+        screen.getByText(/\$0 today\. First charge of \$49(\.00)?\/mo around November 26/),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Continue on Free' })).toBeInTheDocument();
+      expect(document.body.textContent).not.toMatch(/[ãçéíóú]/);
+    } finally {
+      await act(() => i18n.changeLanguage('pt'));
+    }
   });
 });
