@@ -5,6 +5,7 @@ vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 import {
   CLIENT_BUCKETS,
   TEAM_BUCKETS,
+  bucketLabel,
   estimateFirstCharge,
   findFreePlan,
   freePlanNote,
@@ -231,5 +232,48 @@ describe('Free copy read from the Free row', () => {
     expect(freePlanSummary(null)).not.toMatch(/\d/);
     expect(freePlanNote(null, 'Start')).not.toMatch(/\d/);
     expect(freePlanNote(null, 'Start')).toMatch(/Teste o Start e decida depois\.$/);
+  });
+});
+
+describe('English copy (USD workspaces on /comecar)', () => {
+  it('translates the bucket labels', () => {
+    expect(CLIENT_BUCKETS.map((b) => bucketLabel(b, 'en'))).toEqual([
+      '1 to 2',
+      '3 to 5',
+      '6 to 15',
+      'More than 15',
+    ]);
+    expect(TEAM_BUCKETS.map((b) => bucketLabel(b, 'en'))).toEqual([
+      'Just me',
+      '2 people',
+      '3 to 5',
+      '6 or more',
+    ]);
+    expect(bucketLabel(CLIENT_BUCKETS[0], 'pt')).toBe('1 a 2');
+  });
+
+  it('lists unlocks in English, joining partial groups with "and"', () => {
+    expect(planUnlocks(pro, 'en')).toContain('Instagram auto-replies');
+    expect(planUnlocks({ ...base, feature_financial: true, feature_leads: true }, 'en')).toContain(
+      'Finance and leads',
+    );
+  });
+
+  it('writes the reason and the Free lines in English', () => {
+    expect(recommendationReason('1-2', '1', 'en')).toBe(
+      'Built for agencies serving 1 to 2 clients on their own.',
+    );
+    expect(freePlanSummary(free, 'en')).toBe('2 clients, just you, no approval portal or reports.');
+    expect(freePlanNote(free, 'Start', 'en')).toBe(
+      'Free also covers 2 clients, but without approval portal, reports and automatic metrics. Try Start and decide later.',
+    );
+    expect(freePlanSummary(null, 'en')).toBe('Free plan, with lower limits and fewer features.');
+  });
+
+  it('never emits an em dash in English', () => {
+    for (const p of [free, start, pro, max]) {
+      for (const s of planUnlocks(p, 'en')) expect(s).not.toContain('—');
+    }
+    expect(freePlanNote(free, 'Pro', 'en')).not.toContain('—');
   });
 });

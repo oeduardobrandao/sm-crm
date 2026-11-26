@@ -44,6 +44,7 @@ import {
 import { getConsent } from '../lib/consent';
 import { useConsent } from '../lib/useConsent';
 import { purgeSupportStorage } from '../lib/legacyStorage';
+import { applyAccountLanguageFallback } from '../lib/signupMarket';
 import { isNativeApp } from '../native/platform';
 import { unregisterNativePush } from '../native/push';
 
@@ -290,9 +291,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     purgeSupportStorage();
   }, [supportConsent]);
 
+  // US signup opened on a device with no saved language (spec §5): pick English as soon as the
+  // session's user is known, before the profile (and /workspace-setup, /comecar) can render. Once
+  // per user id: getSession and the listener's INITIAL_SESSION both report the same user.
+  const languageFallbackUserId = useRef<string | null>(null);
+
   useEffect(() => {
     let active = true;
     const initialAuthGeneration = authGeneration.current;
+    const applyLanguageFallbackOnce = (nextUser: User | null) => {
+      if (!nextUser || languageFallbackUserId.current === nextUser.id) return;
+      languageFallbackUserId.current = nextUser.id;
+      applyAccountLanguageFallback(nextUser);
+    };
 
     // Resolve only the session here. Profile hydration belongs to the user
     // effect below so every session transition has exactly one request owner.
@@ -301,6 +312,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!active || authGeneration.current !== initialAuthGeneration) return;
         const sessionUser = data.session?.user ?? null;
         activeUserId.current = sessionUser?.id ?? null;
+        applyLanguageFallbackOnce(sessionUser);
         setUser(sessionUser);
         setSessionReady(true);
       },
@@ -334,6 +346,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // it here. Not on the first session (previousUserId null): that is the pre-paint's own user.
       if (userChanged && previousUserId !== null) resetVidroLook();
       activeUserId.current = nextUserId;
+      applyLanguageFallbackOnce(nextUser);
       setUser(nextUser);
       setSessionReady(true);
       if (userChanged) {

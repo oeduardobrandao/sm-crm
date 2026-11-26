@@ -395,6 +395,46 @@ describe('LoginPage', () => {
     expect(meta).not.toHaveProperty('marketing_opt_in');
   });
 
+  it('sends market us from an /en signup link, next to empresa empty', async () => {
+    mockedSignUp.mockResolvedValue({
+      data: { session: null, user: { id: 'uuid-us' } },
+      error: null,
+    } as never);
+    const { container } = renderRegister('/login?tab=register&market=us');
+    fillRegisterForm(container);
+    submitRegister(container);
+    await waitFor(() => expect(mockedSignUp).toHaveBeenCalledTimes(1));
+    const meta = mockedSignUp.mock.calls[0][2] as Record<string, unknown>;
+    expect(meta).toMatchObject({ market: 'us', empresa: '' });
+    expect(mockedCaptureEvent).toHaveBeenCalledWith('signup_completed', { market: 'us' });
+  });
+
+  it('keeps market us across a switch to the login tab and back', async () => {
+    mockedSignUp.mockResolvedValue({ data: { session: null }, error: null } as never);
+    const { container } = renderRegister('/login?tab=register&market=us');
+    fireEvent.click(screen.getByRole('button', { name: 'Entrar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Criar conta' }));
+    fillRegisterForm(container);
+    submitRegister(container);
+    await waitFor(() => expect(mockedSignUp).toHaveBeenCalledTimes(1));
+    expect(mockedSignUp.mock.calls[0][2]).toMatchObject({ market: 'us' });
+  });
+
+  it.each([
+    '/login?tab=register',
+    '/login?tab=register&market=US',
+    '/login?tab=register&market=br',
+    '/login?tab=register&market=us&market=br',
+    '/login?tab=register&market=us%20',
+  ])('sends no market key from %s', async (entry) => {
+    mockedSignUp.mockResolvedValue({ data: { session: null }, error: null } as never);
+    const { container } = renderRegister(entry);
+    fillRegisterForm(container);
+    submitRegister(container);
+    await waitFor(() => expect(mockedSignUp).toHaveBeenCalledTimes(1));
+    expect(mockedSignUp.mock.calls[0][2]).not.toHaveProperty('market');
+  });
+
   it('maps a server error to Portuguese copy', async () => {
     mockedSignUp.mockResolvedValue({
       error: { status: 429, message: 'email rate limit exceeded' },
