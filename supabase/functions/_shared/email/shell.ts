@@ -86,12 +86,12 @@ export interface MesaasEmailInput {
   footerLines: string[];
   /** Trusted HTML rows (already escaped by the caller), rendered after footerLines and before the tagline. */
   footerHtml?: string[];
-  /** Rendered language (default pt). */
-  lang?: Lang;
+  /** Rendered language (required: no silent Portuguese default). */
+  lang: Lang;
 }
 
 export function mesaasEmail(p: MesaasEmailInput): string {
-  const lang = p.lang ?? "pt";
+  const lang = p.lang;
   const header = `<tr><td class="m-px" style="padding: 28px 40px 24px; border-bottom: 1px solid ${EMAIL.divider};"><img src="${EMAIL_LOGO_URL}" width="158" height="20" alt="Mesaas" style="display: block; border: 0; outline: none; color: ${EMAIL.ink}; font-size: 18px; line-height: 20px; font-weight: 700;"></td></tr>`;
   const footer = [...p.footerLines.map(escapeHtml), ...(p.footerHtml ?? []), escapeHtml(shellText(lang).tagline)]
     .map((l, i, all) => `<p style="margin: 0 0 ${i === all.length - 1 ? 0 : 6}px; word-break: break-word;">${l}</p>`).join("");
@@ -107,8 +107,8 @@ export interface BrandedEmailInput {
   logoUrl: string | null | undefined;
   sections: string[];
   footerHtml: string[];
-  /** Rendered language (default pt). */
-  lang?: Lang;
+  /** Rendered language (required: no silent Portuguese default). */
+  lang: Lang;
 }
 
 export function brandedEmail(p: BrandedEmailInput): string {
@@ -119,5 +119,5 @@ export function brandedEmail(p: BrandedEmailInput): string {
   });
   const footer = p.footerHtml
     .map((l, i, all) => `<p style="margin: 0 0 ${i === all.length - 1 ? 0 : 6}px; word-break: break-word;">${l}</p>`).join("");
-  return documentOpen(p.preheader, p.lang ?? "pt") + cardOpen() + band + sectionRows(p.sections, 32) + documentClose(footer);
+  return documentOpen(p.preheader, p.lang) + cardOpen() + band + sectionRows(p.sections, 32) + documentClose(footer);
 }

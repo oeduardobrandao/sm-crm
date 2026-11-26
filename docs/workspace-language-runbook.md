@@ -46,10 +46,9 @@ nada sai em inglês).
    `stripe-webhook`, `pagarme-webhook`, `instagram-connect-link`, `instagram-integration`,
    `report-worker`, `instagram-analytics`, `resend-webhook`, `client-event-email-cron`,
    `agenda-cliente-email`, `agenda-lembretes-email`, `hub-auth`, `client-email-unsub`.
-   Levam `--no-verify-jwt`: `nurture-unsub`, `notification-push-cron`, `agenda-cliente-email`,
-   `agenda-lembretes-email`, `hub-auth` e `client-email-unsub` (lista do CLAUDE.md). Confira
-   `client-event-email-cron` (cron com `x-cron-secret`) contra o CLAUDE.md e use a flag se ele
-   estiver listado.
+   Toda função desta lista é implantada com `--no-verify-jwt` (todas têm `verify_jwt = false` em
+   `supabase/config.toml`; um caminho de deploy que não lê o `config.toml` devolveria 401 nos
+   webhooks de pagamento e nos crons).
    Para achar importadores de um módulo que mudou:
    `grep -rl "<modulo>" supabase/functions/*/index.ts supabase/functions/*/handler.ts`.
 2. Templates do Supabase Auth (seção abaixo), **staging e depois prod**.
@@ -61,7 +60,9 @@ Só frontend, sem deploy além do PR 1. Merge direto.
 
 ## PR 4: relatórios e texto de IA (Fase D)
 
-1. `report-docs` e `instagram-report-generator-v2`.
+1. `report-docs` (confere o JWT do usuário sozinho e não tem entrada no `config.toml`: deploy
+   normal, sem a flag) e `instagram-report-generator-v2` (`--no-verify-jwt`, `verify_jwt = false`
+   no `config.toml`).
 2. Merge (o frontend não muda além da Fase C).
 
 ## Templates do Supabase Auth (Reset password, Invite user, Magic link)
@@ -70,11 +71,12 @@ Painel do Supabase > Authentication > Email Templates. Faça **staging primeiro,
 Antes de editar cada template, copie o HTML atual do painel para um lugar seguro (rollback).
 
 Cada corpo ramifica por `.Data.language`, com o mesmo guarda `printf "%v"` do "Confirm signup" (um
-valor ausente vira a string `<no value>`, que cai no `else`). O `market` fica na condição para
-quem se cadastrou em `/en` antes de existir `language` no metadata:
+valor ausente vira a string `<no value>`, que cai no `else`). O `market` só conta quando
+`language` não está definido (quem se cadastrou em `/en` antes de existir `language` no metadata);
+um dono que trocou para `pt` não é sobrescrito por `market:"us"`:
 
 ```
-{{ if or (eq (printf "%v" .Data.language) "en") (eq (printf "%v" .Data.market) "us") }}
+{{ if or (eq (printf "%v" .Data.language) "en") (and (ne (printf "%v" .Data.language) "pt") (eq (printf "%v" .Data.market) "us")) }}
   ...corpo em inglês (abaixo)...
 {{ else }}
   ...corpo atual em português, copiado do template de hoje, sem alterar um byte...
@@ -89,9 +91,15 @@ na memória). Use o mesmo layout, botão e rodapé do template em português.
 
 O campo Subject do Supabase é uma linha só e **não ramifica** como o corpo (achado do runbook do
 site em inglês, `docs/us-english-site-runbook.md`). O plano dizia "o mesmo vale para os
-assuntos"; isso não é possível, então este runbook segue a abordagem daquele: **assunto neutro
-nos dois idiomas** (opção a), porque um americano que recebe só português pode achar que é spam.
-Alternativa: manter o assunto em português e aceitar a lacuna. Decisão a registrar no deploy.
+assuntos"; isso não é possível. Duas opções:
+
+- **Assunto neutro nos dois idiomas** (a mesma abordagem do runbook do site): um americano que
+  recebe só português pode achar que é spam. **Isto muda a linha de assunto que todo usuário
+  brasileiro recebe hoje, então precisa da aprovação do dono antes do deploy.**
+- **Manter o assunto em português**: é a opção que preserva a saída atual em `pt`, ao custo de
+  a lacuna no assunto dos e-mails em inglês.
+
+Decisão a registrar no deploy.
 Sugestão de assuntos (confirme o assunto atual de cada template e preserve o texto em português):
 
 | Template | Assunto sugerido |
@@ -156,6 +164,9 @@ Se o template de hoje usa outro placeholder além de `{{ .ConfirmationURL }}` (p
 
 ### Verificação depois de editar (staging, depois prod)
 
+- Condição do template, quatro casos de metadata (ajuste pelo painel): `{market:us}` (sem
+  `language`) sai em inglês; `{market:us, language:pt}` sai em português; `{language:en}` sai em
+  inglês; metadata sem nenhum dos dois sai em português.
 - Redefinir senha para um usuário sem `language` no metadata: e-mail em português igual ao de hoje.
 - Mesmo fluxo para um usuário com `language: "en"` (ajuste o metadata pelo painel ou por
   `workspace_set_language` num workspace de teste): e-mail em inglês, botão com a URL certa.

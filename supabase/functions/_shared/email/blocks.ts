@@ -75,7 +75,7 @@ export function link(href: string | null | undefined, text: string, color: strin
     : t;
 }
 
-export function fallbackLink(href: string | null | undefined, lang: Lang = "pt"): string {
+export function fallbackLink(href: string | null | undefined, lang: Lang): string {
   const url = linkSeguro(href);
   if (!url) return "";
   const text = lang === "en"
@@ -175,8 +175,8 @@ export interface EventCardInput {
   /** Raw text lines under the title; the first is the "quando". */
   lines: string[];
   meetingUrl?: string | null;
-  /** Rendered language (default pt). */
-  lang?: Lang;
+  /** Rendered language (required: no silent Portuguese default). */
+  lang: Lang;
 }
 
 export function eventCard(e: EventCardInput): string {

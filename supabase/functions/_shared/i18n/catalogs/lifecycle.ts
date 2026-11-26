@@ -187,7 +187,7 @@ export const lifecycleText = defineCatalog({
     },
     reminder: {
       subject: (planName: string, daysLeft: number) =>
-        `Your Mesaas${planName ? ` ${planName}` : ""} trial ends in ${daysLeft} days`,
+        `Your Mesaas${planName ? ` ${planName}` : ""} trial ends in ${daysLeft === 1 ? "1 day" : `${daysLeft} days`}`,
       greetNamed: (name: string) => `Hi, ${name},`,
       greetAnon: "Hi,",
       leadPlan: (plan: string) => `Your free ${plan} plan trial in the workspace`,

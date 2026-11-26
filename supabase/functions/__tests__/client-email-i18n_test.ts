@@ -76,7 +76,7 @@ Deno.test("en: digest with events, linhas and many posts", () => {
   assertStringIncludes(html, "and 2 more posts waiting for approval.");
   assertStringIncludes(html, "Events waiting for your confirmation");
   assertStringIncludes(html, "Thursday, October 15 · 9:00 AM to 10:00 AM");
-  assertStringIncludes(html, "Editorial line for October is waiting for your approval");
+  assertStringIncludes(html, "Editorial plan for October is waiting for your approval");
   const only = buildClientEventEmail({ ...CE, pendingPosts: [], unreadMessages: 0, pendingEvents: [ev] });
   assertStringIncludes(only, "1 event is waiting for your confirmation");
   assertStringIncludes(only, "Hi Mary! Please confirm your attendance at the upcoming events:");

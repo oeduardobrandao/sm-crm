@@ -39,7 +39,7 @@ const CATALOGS: Entry[] = [
 
 // Representative arguments for function-valued entries.
 const SAMPLE_ARGS = ["Sample", "Sample", "Sample", 3, "2026-01-02T12:00:00Z"];
-const BAD = /[ãçõ—]/;
+const BAD = /[À-ÿ—]/;
 
 function keysDeep(v: unknown, prefix = ""): string[] {
   if (v && typeof v === "object" && !Array.isArray(v)) {

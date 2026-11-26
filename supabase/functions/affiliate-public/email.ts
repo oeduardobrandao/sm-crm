@@ -5,6 +5,7 @@ import { button, heading, paragraph } from "../_shared/email/blocks.ts";
 export function buildAffiliateLinkEmail(params: { nome: string; link: string }): string {
   const first = params.nome.split(" ")[0] || params.nome;
   return mesaasEmail({
+    lang: "pt",
     preheader: "Seu link de acesso ao painel de afiliado. Vale por 15 minutos.",
     eyebrow: "Programa de afiliados",
     sections: [

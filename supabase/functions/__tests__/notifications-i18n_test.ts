@@ -83,7 +83,7 @@ Deno.test("en: representative notification headings", () => {
   assertEquals(h("publish/undefined").heading, "Publishing failed");
   assertEquals(h("event_reminder/2h").heading, "In 2 hours: Call");
   assertEquals(h("event_reminder/allday-1d").heading, "Tomorrow: Call");
-  assertEquals(h("linha/dec").heading, "C requested changes to the editorial line for December");
+  assertEquals(h("linha/dec").heading, "C requested changes to the editorial plan for December");
   assertEquals(h("linha/dec").body, "1 comment");
   assertEquals(h("something_unknown/null").heading, "New notification on Mesaas");
   assertEquals(resolveDigestItem(C.RENDER_CASES["post_correction/full"], "en").badge?.label, "Correction");

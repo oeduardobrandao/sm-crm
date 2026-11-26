@@ -104,6 +104,7 @@ export function buildDemoAccessEmail(
     ? ` Ela já vem com alguns exemplos (${joinPt(examples)}) para você explorar.`
     : "";
   return mesaasEmail({
+    lang: "pt",
     preheader: "Defina sua senha para entrar no Mesaas.",
     eyebrow: "Conta demo",
     sections: [
@@ -113,7 +114,7 @@ export function buildDemoAccessEmail(
           "body",
           "0",
         ),
-      button(params.actionLink, "Definir minha senha") + fallbackLink(params.actionLink) +
+      button(params.actionLink, "Definir minha senha") + fallbackLink(params.actionLink, "pt") +
         paragraph(
           "Este link expira. Se ele não funcionar mais, use “Esqueci minha senha” na página de login.",
           "small",

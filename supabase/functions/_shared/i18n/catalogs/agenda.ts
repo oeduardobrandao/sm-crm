@@ -128,6 +128,6 @@ export const agendaText = defineCatalog({
     headingStartsIn: (lead: string) => `Your event starts in ${lead}`,
     reminderCta: "Open in Events",
     reminderFooter:
-      "You are receiving this reminder because you are part of this event. To turn it off, go to Settings, Notifications.",
+      "You are receiving this reminder because you are part of this event. To turn it off, go to Settings > Notifications.",
   },
 });
