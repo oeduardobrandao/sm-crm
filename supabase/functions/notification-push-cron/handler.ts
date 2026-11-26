@@ -18,7 +18,9 @@
  * more become one summary, so a burst of client activity buzzes once.
  */
 import type { ApnsEnvironment, ApnsMessage, ApnsResult } from "../_shared/apns.ts";
-import { type RenderedNotification, renderNotification } from "../_shared/notification-render.ts";
+import { majorityLang, type RenderedNotification, renderNotification } from "../_shared/notification-render.ts";
+import { notificationsText } from "../_shared/i18n/catalogs/notifications.ts";
+import type { Lang } from "../_shared/i18n/lang.ts";
 
 interface DbError { message: string }
 type Result<T> = PromiseLike<{ data: T | null; error: DbError | null }>;
@@ -67,6 +69,8 @@ export interface NotificationPushCronDeps {
   send: ((token: string, environment: ApnsEnvironment, message: ApnsMessage) => Promise<ApnsResult>) | null;
   now: () => Date;
   nowMs?: () => number;
+  /** Language of a workspace (workspaces.language). Absent or failing resolves to "pt". */
+  workspaceLang?: (contaId: string) => Promise<Lang>;
   report?: (detail: { failed: number; errors: Array<{ accountId?: string; error: string }> }) => Promise<void>;
 }
 
@@ -89,9 +93,10 @@ const clamp = (t: string | undefined) =>
   t && t.length > BODY_MAX ? `${t.slice(0, BODY_MAX).trimEnd()}…` : t;
 
 /** What one user's push says. Exported for tests. */
-export function buildPushMessage(rows: ClaimedPushRow[], badge: number | undefined): ApnsMessage {
+export function buildPushMessage(rows: ClaimedPushRow[], badge: number | undefined, lang: Lang): ApnsMessage {
+  const t = notificationsText(lang);
   const items: Array<RenderedNotification & { id: string }> = rows
-    .map((r) => ({ ...renderNotification(r), id: r.id }))
+    .map((r) => ({ ...renderNotification(r, lang), id: r.id }))
     .sort((a, b) => a.priority - b.priority);
 
   if (items.length === 1) {
@@ -108,8 +113,8 @@ export function buildPushMessage(rows: ClaimedPushRow[], badge: number | undefin
   const rest = items.length - titles.length;
   return {
     alert: {
-      title: `${items.length} novas notificações no Mesaas`,
-      body: clamp(rest > 0 ? `${titles.join(", ")} e mais ${rest}.` : `${titles.join(", ")}.`),
+      title: t.pushGrouped(items.length),
+      body: clamp(rest > 0 ? t.preheaderMore(titles.join(", "), rest) : `${titles.join(", ")}.`),
     },
     badge,
     threadId: "summary",
@@ -169,6 +174,19 @@ export async function runNotificationPushCron(deps: NotificationPushCronDeps): P
   if (countErr) console.error("[notification-push-cron] badge counts failed:", countErr.message);
   for (const c of counts ?? []) badges.set(c.user_id, c.unread);
 
+  // Language per workspace, looked up once per run. A push follows its rows'
+  // workspace; a summary that mixes workspaces follows the majority (tie: pt).
+  const wsLang = new Map<string, Promise<Lang>>();
+  const langOfWorkspace = (contaId: string): Promise<Lang> => {
+    if (!deps.workspaceLang) return Promise.resolve("pt" as Lang);
+    let hit = wsLang.get(contaId);
+    if (!hit) {
+      hit = deps.workspaceLang(contaId).catch(() => "pt" as Lang);
+      wsLang.set(contaId, hit);
+    }
+    return hit;
+  };
+
   let sent = 0, failed = 0, released = 0;
   const deadTokens: string[] = [];
   const errors: Array<{ accountId?: string; error: string }> = [];
@@ -184,7 +202,8 @@ export async function runNotificationPushCron(deps: NotificationPushCronDeps): P
     const [userId, userRows] = entries[i];
     const userDevices = devicesByUser.get(userId) ?? [];
     if (userDevices.length === 0) continue; // device disabled between claim and read
-    const message = buildPushMessage(userRows, badges.get(userId));
+    const lang = majorityLang(await Promise.all(userRows.map((r) => langOfWorkspace(r.workspace_id))));
+    const message = buildPushMessage(userRows, badges.get(userId), lang);
 
     const results = await Promise.allSettled(userDevices.map((d) => send(d.token, d.environment, message)));
     results.forEach((r, idx) => {

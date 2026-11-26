@@ -1,0 +1,1553 @@
+{
+ "render/post_publish_failed/full": {
+  "priority": 1,
+  "heading": "Falha na publicação",
+  "body": "O Instagram retornou um erro não reconhecido. Tente novamente e, se persistir, fale com o suporte.",
+  "context": "Clínica Aurora · Post de maio",
+  "link": "/x"
+ },
+ "item/post_publish_failed/full": {
+  "priority": 1,
+  "heading": "Falha na publicação",
+  "body": "O Instagram retornou um erro não reconhecido. Tente novamente e, se persistir, fale com o suporte.",
+  "context": "Clínica Aurora · Post de maio",
+  "link": "/x",
+  "badge": {
+   "tone": "danger",
+   "label": "Falha na publicação"
+  }
+ },
+ "render/post_publish_failed/null": {
+  "priority": 1,
+  "heading": "Falha na publicação",
+  "body": "O Instagram retornou um erro não reconhecido. Tente novamente e, se persistir, fale com o suporte.",
+  "link": "/"
+ },
+ "item/post_publish_failed/null": {
+  "priority": 1,
+  "heading": "Falha na publicação",
+  "body": "O Instagram retornou um erro não reconhecido. Tente novamente e, se persistir, fale com o suporte.",
+  "link": "/",
+  "badge": {
+   "tone": "danger",
+   "label": "Falha na publicação"
+  }
+ },
+ "render/post_correction/full": {
+  "priority": 2,
+  "heading": "Correção solicitada pelo cliente",
+  "body": "Troque a foto da capa.",
+  "context": "Clínica Aurora · Post de maio",
+  "link": "/x"
+ },
+ "item/post_correction/full": {
+  "priority": 2,
+  "heading": "Correção solicitada pelo cliente",
+  "body": "Troque a foto da capa.",
+  "context": "Clínica Aurora · Post de maio",
+  "link": "/x",
+  "badge": {
+   "tone": "warning",
+   "label": "Correção"
+  }
+ },
+ "render/post_correction/null": {
+  "priority": 2,
+  "heading": "Correção solicitada pelo cliente",
+  "link": "/"
+ },
+ "item/post_correction/null": {
+  "priority": 2,
+  "heading": "Correção solicitada pelo cliente",
+  "link": "/",
+  "badge": {
+   "tone": "warning",
+   "label": "Correção"
+  }
+ },
+ "render/post_message/full": {
+  "priority": 2,
+  "heading": "Nova mensagem no post",
+  "body": "Troque a foto da capa.",
+  "context": "Clínica Aurora · Post de maio",
+  "link": "/x"
+ },
+ "item/post_message/full": {
+  "priority": 2,
+  "heading": "Nova mensagem no post",
+  "body": "Troque a foto da capa.",
+  "context": "Clínica Aurora · Post de maio",
+  "link": "/x",
+  "badge": {
+   "tone": "info",
+   "label": "Mensagem"
+  }
+ },
+ "render/post_message/null": {
+  "priority": 2,
+  "heading": "Nova mensagem no post",
+  "link": "/"
+ },
+ "item/post_message/null": {
+  "priority": 2,
+  "heading": "Nova mensagem no post",
+  "link": "/",
+  "badge": {
+   "tone": "info",
+   "label": "Mensagem"
+  }
+ },
+ "render/client_message/full": {
+  "priority": 2,
+  "heading": "Nova mensagem do cliente",
+  "body": "Troque a foto da capa.",
+  "context": "Clínica Aurora",
+  "link": "/x"
+ },
+ "item/client_message/full": {
+  "priority": 2,
+  "heading": "Nova mensagem do cliente",
+  "body": "Troque a foto da capa.",
+  "context": "Clínica Aurora",
+  "link": "/x",
+  "badge": {
+   "tone": "info",
+   "label": "Mensagem"
+  }
+ },
+ "render/client_message/null": {
+  "priority": 2,
+  "heading": "Nova mensagem do cliente",
+  "link": "/"
+ },
+ "item/client_message/null": {
+  "priority": 2,
+  "heading": "Nova mensagem do cliente",
+  "link": "/",
+  "badge": {
+   "tone": "info",
+   "label": "Mensagem"
+  }
+ },
+ "render/deadline_approaching/full": {
+  "priority": 3,
+  "heading": "Prazo se aproximando",
+  "body": "Campanha · Aprovação",
+  "context": "Clínica Aurora",
+  "link": "/x"
+ },
+ "item/deadline_approaching/full": {
+  "priority": 3,
+  "heading": "Prazo se aproximando",
+  "body": "Campanha · Aprovação",
+  "context": "Clínica Aurora",
+  "link": "/x",
+  "badge": {
+   "tone": "warning",
+   "label": "Prazo"
+  }
+ },
+ "render/deadline_approaching/null": {
+  "priority": 3,
+  "heading": "Prazo se aproximando",
+  "link": "/"
+ },
+ "item/deadline_approaching/null": {
+  "priority": 3,
+  "heading": "Prazo se aproximando",
+  "link": "/",
+  "badge": {
+   "tone": "warning",
+   "label": "Prazo"
+  }
+ },
+ "render/task_assigned/full": {
+  "priority": 4,
+  "heading": "Tarefa atribuída a você",
+  "body": "Revisar legenda",
+  "context": "Clínica Aurora",
+  "link": "/x"
+ },
+ "item/task_assigned/full": {
+  "priority": 4,
+  "heading": "Tarefa atribuída a você",
+  "body": "Revisar legenda",
+  "context": "Clínica Aurora",
+  "link": "/x",
+  "badge": {
+   "tone": "neutral",
+   "label": "Tarefa"
+  }
+ },
+ "render/task_assigned/null": {
+  "priority": 4,
+  "heading": "Tarefa atribuída a você",
+  "link": "/"
+ },
+ "item/task_assigned/null": {
+  "priority": 4,
+  "heading": "Tarefa atribuída a você",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Tarefa"
+  }
+ },
+ "render/post_assigned/full": {
+  "priority": 4,
+  "heading": "Post atribuído a você",
+  "body": "Post de maio",
+  "context": "Clínica Aurora",
+  "link": "/x"
+ },
+ "item/post_assigned/full": {
+  "priority": 4,
+  "heading": "Post atribuído a você",
+  "body": "Post de maio",
+  "context": "Clínica Aurora",
+  "link": "/x",
+  "badge": {
+   "tone": "neutral",
+   "label": "Post"
+  }
+ },
+ "render/post_assigned/null": {
+  "priority": 4,
+  "heading": "Post atribuído a você",
+  "link": "/"
+ },
+ "item/post_assigned/null": {
+  "priority": 4,
+  "heading": "Post atribuído a você",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Post"
+  }
+ },
+ "render/mention/full": {
+  "priority": 5,
+  "heading": "Ana mencionou você",
+  "body": "Veja isso @você",
+  "context": "Reunião de pauta",
+  "link": "/x"
+ },
+ "item/mention/full": {
+  "priority": 5,
+  "heading": "Ana mencionou você",
+  "body": "Veja isso @você",
+  "context": "Reunião de pauta",
+  "link": "/x",
+  "badge": {
+   "tone": "info",
+   "label": "Menção"
+  }
+ },
+ "render/mention/null": {
+  "priority": 5,
+  "heading": "Alguém mencionou você",
+  "link": "/"
+ },
+ "item/mention/null": {
+  "priority": 5,
+  "heading": "Alguém mencionou você",
+  "link": "/",
+  "badge": {
+   "tone": "info",
+   "label": "Menção"
+  }
+ },
+ "render/post_approved/full": {
+  "priority": 6,
+  "heading": "Post aprovado pelo cliente",
+  "body": "Troque a foto da capa.",
+  "context": "Clínica Aurora · Post de maio",
+  "link": "/x"
+ },
+ "item/post_approved/full": {
+  "priority": 6,
+  "heading": "Post aprovado pelo cliente",
+  "body": "Troque a foto da capa.",
+  "context": "Clínica Aurora · Post de maio",
+  "link": "/x",
+  "badge": {
+   "tone": "success",
+   "label": "Aprovado"
+  }
+ },
+ "render/post_approved/null": {
+  "priority": 6,
+  "heading": "Post aprovado pelo cliente",
+  "link": "/"
+ },
+ "item/post_approved/null": {
+  "priority": 6,
+  "heading": "Post aprovado pelo cliente",
+  "link": "/",
+  "badge": {
+   "tone": "success",
+   "label": "Aprovado"
+  }
+ },
+ "render/event_invited/full": {
+  "priority": 4,
+  "heading": "Bruno convidou você para um evento",
+  "body": "Gravação",
+  "context": "Evento recorrente",
+  "link": "/x"
+ },
+ "item/event_invited/full": {
+  "priority": 4,
+  "heading": "Bruno convidou você para um evento",
+  "body": "Gravação",
+  "context": "Evento recorrente",
+  "link": "/x",
+  "badge": {
+   "tone": "neutral",
+   "label": "Agenda"
+  }
+ },
+ "render/event_invited/null": {
+  "priority": 4,
+  "heading": "Alguém convidou você para um evento",
+  "link": "/"
+ },
+ "item/event_invited/null": {
+  "priority": 4,
+  "heading": "Alguém convidou você para um evento",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Agenda"
+  }
+ },
+ "render/event_updated/full": {
+  "priority": 3,
+  "heading": "Evento alterado: Gravação",
+  "context": "Evento recorrente",
+  "link": "/x"
+ },
+ "item/event_updated/full": {
+  "priority": 3,
+  "heading": "Evento alterado: Gravação",
+  "context": "Evento recorrente",
+  "link": "/x",
+  "badge": {
+   "tone": "neutral",
+   "label": "Agenda"
+  }
+ },
+ "render/event_updated/null": {
+  "priority": 3,
+  "heading": "Evento alterado",
+  "link": "/"
+ },
+ "item/event_updated/null": {
+  "priority": 3,
+  "heading": "Evento alterado",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Agenda"
+  }
+ },
+ "render/event_cancelled/full": {
+  "priority": 3,
+  "heading": "Evento cancelado: Gravação",
+  "context": "Evento recorrente",
+  "link": "/x"
+ },
+ "item/event_cancelled/full": {
+  "priority": 3,
+  "heading": "Evento cancelado: Gravação",
+  "context": "Evento recorrente",
+  "link": "/x",
+  "badge": {
+   "tone": "neutral",
+   "label": "Agenda"
+  }
+ },
+ "render/event_cancelled/null": {
+  "priority": 3,
+  "heading": "Evento cancelado",
+  "link": "/"
+ },
+ "item/event_cancelled/null": {
+  "priority": 3,
+  "heading": "Evento cancelado",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Agenda"
+  }
+ },
+ "render/event_client_rsvp/full": {
+  "priority": 4,
+  "heading": "Cliente confirmou presença: Gravação",
+  "context": "Clínica Aurora",
+  "link": "/x"
+ },
+ "item/event_client_rsvp/full": {
+  "priority": 4,
+  "heading": "Cliente confirmou presença: Gravação",
+  "context": "Clínica Aurora",
+  "link": "/x",
+  "badge": {
+   "tone": "info",
+   "label": "Resposta"
+  }
+ },
+ "render/event_client_rsvp/null": {
+  "priority": 4,
+  "heading": "Cliente respondeu ao evento",
+  "link": "/"
+ },
+ "item/event_client_rsvp/null": {
+  "priority": 4,
+  "heading": "Cliente respondeu ao evento",
+  "link": "/",
+  "badge": {
+   "tone": "info",
+   "label": "Resposta"
+  }
+ },
+ "render/event_guest_rsvp/full": {
+  "priority": 4,
+  "heading": "Carla confirmou presença: Gravação",
+  "context": "Convidado externo",
+  "link": "/x"
+ },
+ "item/event_guest_rsvp/full": {
+  "priority": 4,
+  "heading": "Carla confirmou presença: Gravação",
+  "context": "Convidado externo",
+  "link": "/x",
+  "badge": {
+   "tone": "info",
+   "label": "Resposta"
+  }
+ },
+ "render/event_guest_rsvp/null": {
+  "priority": 4,
+  "heading": "Convidado respondeu ao evento",
+  "context": "Convidado externo",
+  "link": "/"
+ },
+ "item/event_guest_rsvp/null": {
+  "priority": 4,
+  "heading": "Convidado respondeu ao evento",
+  "context": "Convidado externo",
+  "link": "/",
+  "badge": {
+   "tone": "info",
+   "label": "Resposta"
+  }
+ },
+ "render/event_reschedule_requested/full": {
+  "priority": 2,
+  "heading": "Cliente pediu para remarcar: Gravação",
+  "context": "Clínica Aurora",
+  "link": "/x"
+ },
+ "item/event_reschedule_requested/full": {
+  "priority": 2,
+  "heading": "Cliente pediu para remarcar: Gravação",
+  "context": "Clínica Aurora",
+  "link": "/x",
+  "badge": {
+   "tone": "warning",
+   "label": "Remarcação"
+  }
+ },
+ "render/event_reschedule_requested/null": {
+  "priority": 2,
+  "heading": "Cliente pediu para remarcar",
+  "link": "/"
+ },
+ "item/event_reschedule_requested/null": {
+  "priority": 2,
+  "heading": "Cliente pediu para remarcar",
+  "link": "/",
+  "badge": {
+   "tone": "warning",
+   "label": "Remarcação"
+  }
+ },
+ "render/linha_editorial_aprovada/full": {
+  "priority": 4,
+  "heading": "Clínica Aurora aprovou a linha editorial “Gravação”",
+  "body": "2 comentários",
+  "link": "/x"
+ },
+ "item/linha_editorial_aprovada/full": {
+  "priority": 4,
+  "heading": "Clínica Aurora aprovou a linha editorial “Gravação”",
+  "body": "2 comentários",
+  "link": "/x",
+  "badge": {
+   "tone": "success",
+   "label": "Linha aprovada"
+  }
+ },
+ "render/linha_editorial_aprovada/null": {
+  "priority": 4,
+  "heading": "Cliente aprovou a linha editorial",
+  "link": "/"
+ },
+ "item/linha_editorial_aprovada/null": {
+  "priority": 4,
+  "heading": "Cliente aprovou a linha editorial",
+  "link": "/",
+  "badge": {
+   "tone": "success",
+   "label": "Linha aprovada"
+  }
+ },
+ "render/linha_editorial_ajustes/full": {
+  "priority": 4,
+  "heading": "Clínica Aurora pediu ajustes na linha editorial “Gravação”",
+  "body": "2 comentários",
+  "link": "/x"
+ },
+ "item/linha_editorial_ajustes/full": {
+  "priority": 4,
+  "heading": "Clínica Aurora pediu ajustes na linha editorial “Gravação”",
+  "body": "2 comentários",
+  "link": "/x",
+  "badge": {
+   "tone": "warning",
+   "label": "Ajustes na linha"
+  }
+ },
+ "render/linha_editorial_ajustes/null": {
+  "priority": 4,
+  "heading": "Cliente pediu ajustes na linha editorial",
+  "link": "/"
+ },
+ "item/linha_editorial_ajustes/null": {
+  "priority": 4,
+  "heading": "Cliente pediu ajustes na linha editorial",
+  "link": "/",
+  "badge": {
+   "tone": "warning",
+   "label": "Ajustes na linha"
+  }
+ },
+ "render/post_edit_suggestion/full": {
+  "priority": 2,
+  "heading": "Sugestão de edição atualizada",
+  "context": "Clínica Aurora · Post de maio",
+  "link": "/x"
+ },
+ "item/post_edit_suggestion/full": {
+  "priority": 2,
+  "heading": "Sugestão de edição atualizada",
+  "context": "Clínica Aurora · Post de maio",
+  "link": "/x",
+  "badge": {
+   "tone": "neutral",
+   "label": "Notificação"
+  }
+ },
+ "render/post_edit_suggestion/null": {
+  "priority": 2,
+  "heading": "Sugestão de edição do cliente",
+  "link": "/"
+ },
+ "item/post_edit_suggestion/null": {
+  "priority": 2,
+  "heading": "Sugestão de edição do cliente",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Notificação"
+  }
+ },
+ "render/post_client_reference/full": {
+  "priority": 5,
+  "heading": "Clínica Aurora enviou referências em Post de maio",
+  "link": "/x"
+ },
+ "item/post_client_reference/full": {
+  "priority": 5,
+  "heading": "Clínica Aurora enviou referências em Post de maio",
+  "link": "/x",
+  "badge": {
+   "tone": "neutral",
+   "label": "Notificação"
+  }
+ },
+ "render/post_client_reference/null": {
+  "priority": 5,
+  "heading": "Cliente enviou referências em um post",
+  "link": "/"
+ },
+ "item/post_client_reference/null": {
+  "priority": 5,
+  "heading": "Cliente enviou referências em um post",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Notificação"
+  }
+ },
+ "render/post_material_complete/full": {
+  "priority": 5,
+  "heading": "Clínica Aurora enviou o que tinha (2 de 5 itens) em Post de maio",
+  "link": "/x"
+ },
+ "item/post_material_complete/full": {
+  "priority": 5,
+  "heading": "Clínica Aurora enviou o que tinha (2 de 5 itens) em Post de maio",
+  "link": "/x",
+  "badge": {
+   "tone": "neutral",
+   "label": "Notificação"
+  }
+ },
+ "render/post_material_complete/null": {
+  "priority": 5,
+  "heading": "Cliente enviou todos os itens pedidos em um post",
+  "link": "/"
+ },
+ "item/post_material_complete/null": {
+  "priority": 5,
+  "heading": "Cliente enviou todos os itens pedidos em um post",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Notificação"
+  }
+ },
+ "render/idea_submitted/full": {
+  "priority": 5,
+  "heading": "Nova solicitação do cliente",
+  "body": "Série de reels",
+  "context": "Clínica Aurora",
+  "link": "/x"
+ },
+ "item/idea_submitted/full": {
+  "priority": 5,
+  "heading": "Nova solicitação do cliente",
+  "body": "Série de reels",
+  "context": "Clínica Aurora",
+  "link": "/x",
+  "badge": {
+   "tone": "neutral",
+   "label": "Notificação"
+  }
+ },
+ "render/idea_submitted/null": {
+  "priority": 5,
+  "heading": "Nova ideia do cliente",
+  "link": "/"
+ },
+ "item/idea_submitted/null": {
+  "priority": 5,
+  "heading": "Nova ideia do cliente",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Notificação"
+  }
+ },
+ "render/briefing_answered/full": {
+  "priority": 5,
+  "heading": "Briefing respondido",
+  "body": "Qual o tom de voz?",
+  "context": "Clínica Aurora",
+  "link": "/x"
+ },
+ "item/briefing_answered/full": {
+  "priority": 5,
+  "heading": "Briefing respondido",
+  "body": "Qual o tom de voz?",
+  "context": "Clínica Aurora",
+  "link": "/x",
+  "badge": {
+   "tone": "neutral",
+   "label": "Notificação"
+  }
+ },
+ "render/briefing_answered/null": {
+  "priority": 5,
+  "heading": "Briefing respondido",
+  "link": "/"
+ },
+ "item/briefing_answered/null": {
+  "priority": 5,
+  "heading": "Briefing respondido",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Notificação"
+  }
+ },
+ "render/event_reminder/full": {
+  "priority": 2,
+  "heading": "Em 1 hora: Gravação",
+  "link": "/x"
+ },
+ "item/event_reminder/full": {
+  "priority": 2,
+  "heading": "Em 1 hora: Gravação",
+  "link": "/x",
+  "badge": {
+   "tone": "neutral",
+   "label": "Notificação"
+  }
+ },
+ "render/event_reminder/null": {
+  "priority": 2,
+  "heading": "Lembrete: Evento",
+  "link": "/"
+ },
+ "item/event_reminder/null": {
+  "priority": 2,
+  "heading": "Lembrete: Evento",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Notificação"
+  }
+ },
+ "render/something_unknown/full": {
+  "priority": 9,
+  "heading": "Nova notificação no Mesaas",
+  "link": "/x"
+ },
+ "item/something_unknown/full": {
+  "priority": 9,
+  "heading": "Nova notificação no Mesaas",
+  "link": "/x",
+  "badge": {
+   "tone": "neutral",
+   "label": "Notificação"
+  }
+ },
+ "render/something_unknown/null": {
+  "priority": 9,
+  "heading": "Nova notificação no Mesaas",
+  "link": "/"
+ },
+ "item/something_unknown/null": {
+  "priority": 9,
+  "heading": "Nova notificação no Mesaas",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Notificação"
+  }
+ },
+ "render/publish/TOKEN_EXPIRED": {
+  "priority": 1,
+  "heading": "Conexão com o Instagram expirou",
+  "body": "A autorização da conta do Instagram expirou ou foi revogada. Reconecte a conta na página do cliente e reagende o post.",
+  "context": "A · B",
+  "link": "/p"
+ },
+ "item/publish/TOKEN_EXPIRED": {
+  "priority": 1,
+  "heading": "Conexão com o Instagram expirou",
+  "body": "A autorização da conta do Instagram expirou ou foi revogada. Reconecte a conta na página do cliente e reagende o post.",
+  "context": "A · B",
+  "link": "/p",
+  "badge": {
+   "tone": "danger",
+   "label": "Falha na publicação"
+  }
+ },
+ "render/publish/MEDIA_TOO_LARGE": {
+  "priority": 1,
+  "heading": "Mídia muito pesada para o Instagram",
+  "body": "O Instagram recusou o arquivo por tamanho. Imagens: até 8 MB. Vídeos: até 250 MB. Ajuste a mídia na galeria e tente novamente.",
+  "context": "A · B",
+  "link": "/p"
+ },
+ "item/publish/MEDIA_TOO_LARGE": {
+  "priority": 1,
+  "heading": "Mídia muito pesada para o Instagram",
+  "body": "O Instagram recusou o arquivo por tamanho. Imagens: até 8 MB. Vídeos: até 250 MB. Ajuste a mídia na galeria e tente novamente.",
+  "context": "A · B",
+  "link": "/p",
+  "badge": {
+   "tone": "danger",
+   "label": "Falha na publicação"
+  }
+ },
+ "render/publish/CAROUSEL_LIMIT": {
+  "priority": 1,
+  "heading": "Carrossel acima do limite do Instagram",
+  "body": "A publicação via API aceita no máximo 10 itens por carrossel. Remova itens na galeria e tente novamente.",
+  "context": "A · B",
+  "link": "/p"
+ },
+ "item/publish/CAROUSEL_LIMIT": {
+  "priority": 1,
+  "heading": "Carrossel acima do limite do Instagram",
+  "body": "A publicação via API aceita no máximo 10 itens por carrossel. Remova itens na galeria e tente novamente.",
+  "context": "A · B",
+  "link": "/p",
+  "badge": {
+   "tone": "danger",
+   "label": "Falha na publicação"
+  }
+ },
+ "render/publish/NO_MEDIA": {
+  "priority": 1,
+  "heading": "Post sem mídia anexada",
+  "body": "O post foi agendado sem nenhuma imagem ou vídeo. Anexe a mídia na galeria e reagende.",
+  "context": "A · B",
+  "link": "/p"
+ },
+ "item/publish/NO_MEDIA": {
+  "priority": 1,
+  "heading": "Post sem mídia anexada",
+  "body": "O post foi agendado sem nenhuma imagem ou vídeo. Anexe a mídia na galeria e reagende.",
+  "context": "A · B",
+  "link": "/p",
+  "badge": {
+   "tone": "danger",
+   "label": "Falha na publicação"
+  }
+ },
+ "render/publish/MEDIA_UNSUPPORTED": {
+  "priority": 1,
+  "heading": "Instagram não conseguiu processar a mídia",
+  "body": "O arquivo tem formato, proporção ou duração que o Instagram não aceita. Confira a mídia na galeria e tente novamente.",
+  "context": "A · B",
+  "link": "/p"
+ },
+ "item/publish/MEDIA_UNSUPPORTED": {
+  "priority": 1,
+  "heading": "Instagram não conseguiu processar a mídia",
+  "body": "O arquivo tem formato, proporção ou duração que o Instagram não aceita. Confira a mídia na galeria e tente novamente.",
+  "context": "A · B",
+  "link": "/p",
+  "badge": {
+   "tone": "danger",
+   "label": "Falha na publicação"
+  }
+ },
+ "render/publish/TRIAL_INELIGIBLE": {
+  "priority": 1,
+  "heading": "Reel de teste não aceito",
+  "body": "O post precisa de exatamente um vídeo e a conta precisa ser profissional, pública e ter 1.000+ seguidores. Ajuste o post ou a conta, ou desligue o Reel de teste, e tente novamente.",
+  "context": "A · B",
+  "link": "/p"
+ },
+ "item/publish/TRIAL_INELIGIBLE": {
+  "priority": 1,
+  "heading": "Reel de teste não aceito",
+  "body": "O post precisa de exatamente um vídeo e a conta precisa ser profissional, pública e ter 1.000+ seguidores. Ajuste o post ou a conta, ou desligue o Reel de teste, e tente novamente.",
+  "context": "A · B",
+  "link": "/p",
+  "badge": {
+   "tone": "danger",
+   "label": "Falha na publicação"
+  }
+ },
+ "render/publish/CAPTION_TOO_LONG": {
+  "priority": 1,
+  "heading": "Legenda acima do limite do Instagram",
+  "body": "O Instagram aceita no máximo 2.200 caracteres na legenda. Reduza o texto na galeria e tente novamente.",
+  "context": "A · B",
+  "link": "/p"
+ },
+ "item/publish/CAPTION_TOO_LONG": {
+  "priority": 1,
+  "heading": "Legenda acima do limite do Instagram",
+  "body": "O Instagram aceita no máximo 2.200 caracteres na legenda. Reduza o texto na galeria e tente novamente.",
+  "context": "A · B",
+  "link": "/p",
+  "badge": {
+   "tone": "danger",
+   "label": "Falha na publicação"
+  }
+ },
+ "render/publish/ACCOUNT_RESTRICTED": {
+  "priority": 1,
+  "heading": "Acesso da conta restrito pelo Instagram",
+  "body": "O Instagram restringiu o acesso desta conta. Confira o aplicativo do Instagram por avisos ou restrições antes de tentar novamente.",
+  "context": "A · B",
+  "link": "/p"
+ },
+ "item/publish/ACCOUNT_RESTRICTED": {
+  "priority": 1,
+  "heading": "Acesso da conta restrito pelo Instagram",
+  "body": "O Instagram restringiu o acesso desta conta. Confira o aplicativo do Instagram por avisos ou restrições antes de tentar novamente.",
+  "context": "A · B",
+  "link": "/p",
+  "badge": {
+   "tone": "danger",
+   "label": "Falha na publicação"
+  }
+ },
+ "render/publish/COLLABORATOR_INVALID": {
+  "priority": 1,
+  "heading": "O Instagram recusou um colaborador",
+  "body": "Confira se o @ está certo e se o perfil é público. Edite os colaboradores e tente novamente.",
+  "context": "A · B",
+  "link": "/p"
+ },
+ "item/publish/COLLABORATOR_INVALID": {
+  "priority": 1,
+  "heading": "O Instagram recusou um colaborador",
+  "body": "Confira se o @ está certo e se o perfil é público. Edite os colaboradores e tente novamente.",
+  "context": "A · B",
+  "link": "/p",
+  "badge": {
+   "tone": "danger",
+   "label": "Falha na publicação"
+  }
+ },
+ "render/publish/CONTAINER_EXPIRED": {
+  "priority": 1,
+  "heading": "Publicação preparada expirou no Instagram",
+  "body": "O Instagram descarta publicações preparadas que não são concluídas em 24 horas. Tente novamente para recomeçar do zero.",
+  "context": "A · B",
+  "link": "/p"
+ },
+ "item/publish/CONTAINER_EXPIRED": {
+  "priority": 1,
+  "heading": "Publicação preparada expirou no Instagram",
+  "body": "O Instagram descarta publicações preparadas que não são concluídas em 24 horas. Tente novamente para recomeçar do zero.",
+  "context": "A · B",
+  "link": "/p",
+  "badge": {
+   "tone": "danger",
+   "label": "Falha na publicação"
+  }
+ },
+ "render/publish/RATE_LIMIT": {
+  "priority": 1,
+  "heading": "Limite de publicações do Instagram atingido",
+  "body": "O Instagram limita a quantidade de publicações via API em 24 horas por conta. Aguarde um pouco e tente novamente.",
+  "context": "A · B",
+  "link": "/p"
+ },
+ "item/publish/RATE_LIMIT": {
+  "priority": 1,
+  "heading": "Limite de publicações do Instagram atingido",
+  "body": "O Instagram limita a quantidade de publicações via API em 24 horas por conta. Aguarde um pouco e tente novamente.",
+  "context": "A · B",
+  "link": "/p",
+  "badge": {
+   "tone": "danger",
+   "label": "Falha na publicação"
+  }
+ },
+ "render/publish/IG_TRANSIENT": {
+  "priority": 1,
+  "heading": "Instabilidade temporária do Instagram",
+  "body": "O Instagram retornou um erro temporário. Normalmente funciona ao tentar novamente.",
+  "context": "A · B",
+  "link": "/p"
+ },
+ "item/publish/IG_TRANSIENT": {
+  "priority": 1,
+  "heading": "Instabilidade temporária do Instagram",
+  "body": "O Instagram retornou um erro temporário. Normalmente funciona ao tentar novamente.",
+  "context": "A · B",
+  "link": "/p",
+  "badge": {
+   "tone": "danger",
+   "label": "Falha na publicação"
+  }
+ },
+ "render/publish/INTERNAL": {
+  "priority": 1,
+  "heading": "Erro interno ao publicar",
+  "body": "Algo falhou do nosso lado, não é um problema do post nem da conta. Tente novamente e, se persistir, fale com o suporte informando o post.",
+  "context": "A · B",
+  "link": "/p"
+ },
+ "item/publish/INTERNAL": {
+  "priority": 1,
+  "heading": "Erro interno ao publicar",
+  "body": "Algo falhou do nosso lado, não é um problema do post nem da conta. Tente novamente e, se persistir, fale com o suporte informando o post.",
+  "context": "A · B",
+  "link": "/p",
+  "badge": {
+   "tone": "danger",
+   "label": "Falha na publicação"
+  }
+ },
+ "render/publish/UNKNOWN": {
+  "priority": 1,
+  "heading": "Falha na publicação",
+  "body": "O Instagram retornou um erro não reconhecido. Tente novamente e, se persistir, fale com o suporte.",
+  "context": "A · B",
+  "link": "/p"
+ },
+ "item/publish/UNKNOWN": {
+  "priority": 1,
+  "heading": "Falha na publicação",
+  "body": "O Instagram retornou um erro não reconhecido. Tente novamente e, se persistir, fale com o suporte.",
+  "context": "A · B",
+  "link": "/p",
+  "badge": {
+   "tone": "danger",
+   "label": "Falha na publicação"
+  }
+ },
+ "render/publish/SOMETHING_ELSE": {
+  "priority": 1,
+  "heading": "Falha na publicação",
+  "body": "O Instagram retornou um erro não reconhecido. Tente novamente e, se persistir, fale com o suporte.",
+  "context": "A · B",
+  "link": "/p"
+ },
+ "item/publish/SOMETHING_ELSE": {
+  "priority": 1,
+  "heading": "Falha na publicação",
+  "body": "O Instagram retornou um erro não reconhecido. Tente novamente e, se persistir, fale com o suporte.",
+  "context": "A · B",
+  "link": "/p",
+  "badge": {
+   "tone": "danger",
+   "label": "Falha na publicação"
+  }
+ },
+ "render/publish/undefined": {
+  "priority": 1,
+  "heading": "Falha na publicação",
+  "body": "O Instagram retornou um erro não reconhecido. Tente novamente e, se persistir, fale com o suporte.",
+  "link": "/p"
+ },
+ "item/publish/undefined": {
+  "priority": 1,
+  "heading": "Falha na publicação",
+  "body": "O Instagram retornou um erro não reconhecido. Tente novamente e, se persistir, fale com o suporte.",
+  "link": "/p",
+  "badge": {
+   "tone": "danger",
+   "label": "Falha na publicação"
+  }
+ },
+ "render/event_client_rsvp/sim": {
+  "priority": 4,
+  "heading": "Cliente confirmou presença: T",
+  "context": "C",
+  "link": "/"
+ },
+ "item/event_client_rsvp/sim": {
+  "priority": 4,
+  "heading": "Cliente confirmou presença: T",
+  "context": "C",
+  "link": "/",
+  "badge": {
+   "tone": "info",
+   "label": "Resposta"
+  }
+ },
+ "render/event_guest_rsvp/sim": {
+  "priority": 4,
+  "heading": "Convidado confirmou presença: T",
+  "context": "Convidado externo",
+  "link": "/"
+ },
+ "item/event_guest_rsvp/sim": {
+  "priority": 4,
+  "heading": "Convidado confirmou presença: T",
+  "context": "Convidado externo",
+  "link": "/",
+  "badge": {
+   "tone": "info",
+   "label": "Resposta"
+  }
+ },
+ "render/event_client_rsvp/nao": {
+  "priority": 4,
+  "heading": "Cliente recusou o evento: T",
+  "context": "C",
+  "link": "/"
+ },
+ "item/event_client_rsvp/nao": {
+  "priority": 4,
+  "heading": "Cliente recusou o evento: T",
+  "context": "C",
+  "link": "/",
+  "badge": {
+   "tone": "info",
+   "label": "Resposta"
+  }
+ },
+ "render/event_guest_rsvp/nao": {
+  "priority": 4,
+  "heading": "Convidado recusou o evento: T",
+  "context": "Convidado externo",
+  "link": "/"
+ },
+ "item/event_guest_rsvp/nao": {
+  "priority": 4,
+  "heading": "Convidado recusou o evento: T",
+  "context": "Convidado externo",
+  "link": "/",
+  "badge": {
+   "tone": "info",
+   "label": "Resposta"
+  }
+ },
+ "render/event_client_rsvp/talvez": {
+  "priority": 4,
+  "heading": "Cliente respondeu ao evento: T",
+  "context": "C",
+  "link": "/"
+ },
+ "item/event_client_rsvp/talvez": {
+  "priority": 4,
+  "heading": "Cliente respondeu ao evento: T",
+  "context": "C",
+  "link": "/",
+  "badge": {
+   "tone": "info",
+   "label": "Resposta"
+  }
+ },
+ "render/event_guest_rsvp/talvez": {
+  "priority": 4,
+  "heading": "Convidado respondeu ao evento: T",
+  "context": "Convidado externo",
+  "link": "/"
+ },
+ "item/event_guest_rsvp/talvez": {
+  "priority": 4,
+  "heading": "Convidado respondeu ao evento: T",
+  "context": "Convidado externo",
+  "link": "/",
+  "badge": {
+   "tone": "info",
+   "label": "Resposta"
+  }
+ },
+ "render/event_guest_rsvp/email": {
+  "priority": 4,
+  "heading": "g@example.com confirmou presença",
+  "context": "Convidado externo",
+  "link": "/"
+ },
+ "item/event_guest_rsvp/email": {
+  "priority": 4,
+  "heading": "g@example.com confirmou presença",
+  "context": "Convidado externo",
+  "link": "/",
+  "badge": {
+   "tone": "info",
+   "label": "Resposta"
+  }
+ },
+ "render/event_cancelled/removido": {
+  "priority": 3,
+  "heading": "Você foi removido de X",
+  "link": "/"
+ },
+ "item/event_cancelled/removido": {
+  "priority": 3,
+  "heading": "Você foi removido de X",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Agenda"
+  }
+ },
+ "render/event_cancelled/removido-sem-titulo": {
+  "priority": 3,
+  "heading": "Você foi removido de um evento",
+  "link": "/"
+ },
+ "item/event_cancelled/removido-sem-titulo": {
+  "priority": 3,
+  "heading": "Você foi removido de um evento",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Agenda"
+  }
+ },
+ "render/event_cancelled/plain": {
+  "priority": 3,
+  "heading": "Evento cancelado: X",
+  "link": "/"
+ },
+ "item/event_cancelled/plain": {
+  "priority": 3,
+  "heading": "Evento cancelado: X",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Agenda"
+  }
+ },
+ "render/post_material_complete/ws": {
+  "priority": 5,
+  "heading": "A enviou todos os itens pedidos em B",
+  "link": "/"
+ },
+ "item/post_material_complete/ws": {
+  "priority": 5,
+  "heading": "A enviou todos os itens pedidos em B",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Notificação"
+  }
+ },
+ "render/idea_submitted/ideia": {
+  "priority": 5,
+  "heading": "Nova ideia do cliente",
+  "body": "I",
+  "context": "C",
+  "link": "/"
+ },
+ "item/idea_submitted/ideia": {
+  "priority": 5,
+  "heading": "Nova ideia do cliente",
+  "body": "I",
+  "context": "C",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Notificação"
+  }
+ },
+ "render/post_edit_suggestion/new": {
+  "priority": 2,
+  "heading": "Sugestão de edição do cliente",
+  "context": "A · B",
+  "link": "/"
+ },
+ "item/post_edit_suggestion/new": {
+  "priority": 2,
+  "heading": "Sugestão de edição do cliente",
+  "context": "A · B",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Notificação"
+  }
+ },
+ "render/linha/title": {
+  "priority": 4,
+  "heading": "C aprovou a linha editorial “Linha de verão”",
+  "body": "1 comentário",
+  "link": "/"
+ },
+ "item/linha/title": {
+  "priority": 4,
+  "heading": "C aprovou a linha editorial “Linha de verão”",
+  "body": "1 comentário",
+  "link": "/",
+  "badge": {
+   "tone": "success",
+   "label": "Linha aprovada"
+  }
+ },
+ "render/linha/dec": {
+  "priority": 4,
+  "heading": "C pediu ajustes na linha editorial de dezembro",
+  "body": "1 comentário",
+  "link": "/"
+ },
+ "item/linha/dec": {
+  "priority": 4,
+  "heading": "C pediu ajustes na linha editorial de dezembro",
+  "body": "1 comentário",
+  "link": "/",
+  "badge": {
+   "tone": "warning",
+   "label": "Ajustes na linha"
+  }
+ },
+ "render/linha/jan0": {
+  "priority": 4,
+  "heading": "C aprovou a linha editorial de janeiro",
+  "link": "/"
+ },
+ "item/linha/jan0": {
+  "priority": 4,
+  "heading": "C aprovou a linha editorial de janeiro",
+  "link": "/",
+  "badge": {
+   "tone": "success",
+   "label": "Linha aprovada"
+  }
+ },
+ "render/linha/bad-period": {
+  "priority": 4,
+  "heading": "C aprovou a linha editorial",
+  "link": "/"
+ },
+ "item/linha/bad-period": {
+  "priority": 4,
+  "heading": "C aprovou a linha editorial",
+  "link": "/",
+  "badge": {
+   "tone": "success",
+   "label": "Linha aprovada"
+  }
+ },
+ "render/event_reminder/none": {
+  "priority": 2,
+  "heading": "Lembrete: Call",
+  "link": "/"
+ },
+ "item/event_reminder/none": {
+  "priority": 2,
+  "heading": "Lembrete: Call",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Notificação"
+  }
+ },
+ "render/event_reminder/allday-0": {
+  "priority": 2,
+  "heading": "Hoje: Call",
+  "link": "/"
+ },
+ "item/event_reminder/allday-0": {
+  "priority": 2,
+  "heading": "Hoje: Call",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Notificação"
+  }
+ },
+ "render/event_reminder/allday-neg": {
+  "priority": 2,
+  "heading": "Hoje: Call",
+  "link": "/"
+ },
+ "item/event_reminder/allday-neg": {
+  "priority": 2,
+  "heading": "Hoje: Call",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Notificação"
+  }
+ },
+ "render/event_reminder/allday-1d": {
+  "priority": 2,
+  "heading": "Amanhã: Call",
+  "link": "/"
+ },
+ "item/event_reminder/allday-1d": {
+  "priority": 2,
+  "heading": "Amanhã: Call",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Notificação"
+  }
+ },
+ "render/event_reminder/allday-3d": {
+  "priority": 2,
+  "heading": "Em 3 dias: Call",
+  "link": "/"
+ },
+ "item/event_reminder/allday-3d": {
+  "priority": 2,
+  "heading": "Em 3 dias: Call",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Notificação"
+  }
+ },
+ "render/event_reminder/now": {
+  "priority": 2,
+  "heading": "Agora: Call",
+  "link": "/"
+ },
+ "item/event_reminder/now": {
+  "priority": 2,
+  "heading": "Agora: Call",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Notificação"
+  }
+ },
+ "render/event_reminder/neg": {
+  "priority": 2,
+  "heading": "Agora: Call",
+  "link": "/"
+ },
+ "item/event_reminder/neg": {
+  "priority": 2,
+  "heading": "Agora: Call",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Notificação"
+  }
+ },
+ "render/event_reminder/tomorrow": {
+  "priority": 2,
+  "heading": "Amanhã: Call",
+  "link": "/"
+ },
+ "item/event_reminder/tomorrow": {
+  "priority": 2,
+  "heading": "Amanhã: Call",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Notificação"
+  }
+ },
+ "render/event_reminder/3d": {
+  "priority": 2,
+  "heading": "Em 3 dias: Call",
+  "link": "/"
+ },
+ "item/event_reminder/3d": {
+  "priority": 2,
+  "heading": "Em 3 dias: Call",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Notificação"
+  }
+ },
+ "render/event_reminder/1h": {
+  "priority": 2,
+  "heading": "Em 1 hora: Call",
+  "link": "/"
+ },
+ "item/event_reminder/1h": {
+  "priority": 2,
+  "heading": "Em 1 hora: Call",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Notificação"
+  }
+ },
+ "render/event_reminder/2h": {
+  "priority": 2,
+  "heading": "Em 2 horas: Call",
+  "link": "/"
+ },
+ "item/event_reminder/2h": {
+  "priority": 2,
+  "heading": "Em 2 horas: Call",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Notificação"
+  }
+ },
+ "render/event_reminder/1min": {
+  "priority": 2,
+  "heading": "Em 1 minuto: Call",
+  "link": "/"
+ },
+ "item/event_reminder/1min": {
+  "priority": 2,
+  "heading": "Em 1 minuto: Call",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Notificação"
+  }
+ },
+ "render/event_reminder/45min": {
+  "priority": 2,
+  "heading": "Em 45 minutos: Call",
+  "link": "/"
+ },
+ "item/event_reminder/45min": {
+  "priority": 2,
+  "heading": "Em 45 minutos: Call",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Notificação"
+  }
+ },
+ "render/event_reminder/90min": {
+  "priority": 2,
+  "heading": "Em 90 minutos: Call",
+  "link": "/"
+ },
+ "item/event_reminder/90min": {
+  "priority": 2,
+  "heading": "Em 90 minutos: Call",
+  "link": "/",
+  "badge": {
+   "tone": "neutral",
+   "label": "Notificação"
+  }
+ },
+ "digest/1/subject": "T1 no Mesaas",
+ "digest/1/preheader": "T1.",
+ "digest/1/html": "<!DOCTYPE html>\n<html lang=\"pt-BR\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n<meta name=\"color-scheme\" content=\"light\">\n<meta name=\"supported-color-schemes\" content=\"light\">\n<style>body, table, td, p, a, li, h1, span, strong { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Helvetica, Arial, sans-serif; }\na[x-apple-data-detectors] { color: inherit !important; text-decoration: none !important; }\n@media (max-width: 600px) {\n  .m-px { padding-left: 24px !important; padding-right: 24px !important; }\n  .m-h1 { font-size: 22px !important; line-height: 28px !important; }\n  .m-btn { width: 100% !important; }\n  .m-btn a { display: block !important; }\n  .m-stack { display: block !important; width: 100% !important; padding: 0 0 12px 0 !important; }\n  .m-kpi { display: block !important; width: auto !important; margin: 0 0 12px 0 !important; }\n  .m-kpi-gap { display: none !important; }\n}</style>\n<!--[if mso]><style>body, table, td, p, a, li, h1, span, strong { font-family: 'Segoe UI', Arial, sans-serif !important; }</style><![endif]-->\n</head>\n<body style=\"margin: 0; padding: 0; background: #f5f6f8;\">\n<div style=\"display:none; max-height:0; overflow:hidden; mso-hide:all;\">T1.&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>\n<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8;\">\n<tr><td align=\"center\" style=\"padding: 32px 12px 40px;\">\n<table role=\"presentation\" width=\"560\" cellpadding=\"0\" cellspacing=\"0\" style=\"width: 100%; max-width: 560px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Helvetica, Arial, sans-serif;\">\n<tr><td><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" bgcolor=\"#ffffff\" style=\"background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; border-collapse: separate; overflow: hidden;\"><tr><td class=\"m-px\" style=\"padding: 28px 40px 24px; border-bottom: 1px solid #eef0f3;\"><img src=\"https://www.mesaas.com.br/logo-black-email.png\" width=\"158\" height=\"20\" alt=\"Mesaas\" style=\"display: block; border: 0; outline: none; color: #12151a; font-size: 18px; line-height: 20px; font-weight: 700;\"></td></tr><tr><td class=\"m-px\" style=\"padding: 36px 40px 0;\"><p style=\"margin: 0 0 14px; font-size: 13px; line-height: 18px; font-weight: 600; color: #4b5563;\"><span style=\"display: inline-block; width: 8px; height: 8px; border-radius: 4px; background: #ffbf30; margin-right: 8px;\"></span>Resumo de notificações</p><h1 class=\"m-h1\" style=\"margin: 0 0 16px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 24px; line-height: 30px; font-weight: 700; letter-spacing: -0.01em; color: #12151a; word-break: break-word; overflow-wrap: anywhere;\">Você tem 1 novidade</h1></td></tr>\n<tr><td class=\"m-px\" style=\"padding: 24px 40px 0;\"><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td style=\"padding: 20px 0; \">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T1</p>\n    <p style=\"margin: 2px 0 0; font-size: 13px; line-height: 20px; color: #4b5563; word-break: break-word; overflow-wrap: anywhere;\">Ctx 1</p>\n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 1</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l1\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr></table></td></tr>\n<tr><td style=\"height: 36px; line-height: 36px; font-size: 0;\">&nbsp;</td></tr></table>\n</td></tr>\n<tr><td class=\"m-px\" style=\"padding: 24px 40px 0; font-size: 12px; line-height: 18px; color: #4b5563;\"><p style=\"margin: 0 0 6px; word-break: break-word;\">Você recebeu este e-mail porque tem notificações não lidas no Mesaas. Ajuste em Configurações · Notificações.</p><p style=\"margin: 0 0 0px; word-break: break-word;\">Mesaas · Plataforma de gestão para agências de social media</p></td></tr>\n</table>\n</td></tr>\n</table>\n</body>\n</html>",
+ "digest/2/subject": "Você tem 2 novidades no Mesaas",
+ "digest/2/preheader": "T1 e T2.",
+ "digest/2/html": "<!DOCTYPE html>\n<html lang=\"pt-BR\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n<meta name=\"color-scheme\" content=\"light\">\n<meta name=\"supported-color-schemes\" content=\"light\">\n<style>body, table, td, p, a, li, h1, span, strong { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Helvetica, Arial, sans-serif; }\na[x-apple-data-detectors] { color: inherit !important; text-decoration: none !important; }\n@media (max-width: 600px) {\n  .m-px { padding-left: 24px !important; padding-right: 24px !important; }\n  .m-h1 { font-size: 22px !important; line-height: 28px !important; }\n  .m-btn { width: 100% !important; }\n  .m-btn a { display: block !important; }\n  .m-stack { display: block !important; width: 100% !important; padding: 0 0 12px 0 !important; }\n  .m-kpi { display: block !important; width: auto !important; margin: 0 0 12px 0 !important; }\n  .m-kpi-gap { display: none !important; }\n}</style>\n<!--[if mso]><style>body, table, td, p, a, li, h1, span, strong { font-family: 'Segoe UI', Arial, sans-serif !important; }</style><![endif]-->\n</head>\n<body style=\"margin: 0; padding: 0; background: #f5f6f8;\">\n<div style=\"display:none; max-height:0; overflow:hidden; mso-hide:all;\">T1 e T2.&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>\n<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8;\">\n<tr><td align=\"center\" style=\"padding: 32px 12px 40px;\">\n<table role=\"presentation\" width=\"560\" cellpadding=\"0\" cellspacing=\"0\" style=\"width: 100%; max-width: 560px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Helvetica, Arial, sans-serif;\">\n<tr><td><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" bgcolor=\"#ffffff\" style=\"background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; border-collapse: separate; overflow: hidden;\"><tr><td class=\"m-px\" style=\"padding: 28px 40px 24px; border-bottom: 1px solid #eef0f3;\"><img src=\"https://www.mesaas.com.br/logo-black-email.png\" width=\"158\" height=\"20\" alt=\"Mesaas\" style=\"display: block; border: 0; outline: none; color: #12151a; font-size: 18px; line-height: 20px; font-weight: 700;\"></td></tr><tr><td class=\"m-px\" style=\"padding: 36px 40px 0;\"><p style=\"margin: 0 0 14px; font-size: 13px; line-height: 18px; font-weight: 600; color: #4b5563;\"><span style=\"display: inline-block; width: 8px; height: 8px; border-radius: 4px; background: #ffbf30; margin-right: 8px;\"></span>Resumo de notificações</p><h1 class=\"m-h1\" style=\"margin: 0 0 16px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 24px; line-height: 30px; font-weight: 700; letter-spacing: -0.01em; color: #12151a; word-break: break-word; overflow-wrap: anywhere;\">Você tem 2 novidades</h1></td></tr>\n<tr><td class=\"m-px\" style=\"padding: 24px 40px 0;\"><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T1</p>\n    <p style=\"margin: 2px 0 0; font-size: 13px; line-height: 20px; color: #4b5563; word-break: break-word; overflow-wrap: anywhere;\">Ctx 1</p>\n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 1</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l1\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; \">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T2</p>\n    \n    \n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l2\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr></table></td></tr>\n<tr><td style=\"height: 36px; line-height: 36px; font-size: 0;\">&nbsp;</td></tr></table>\n</td></tr>\n<tr><td class=\"m-px\" style=\"padding: 24px 40px 0; font-size: 12px; line-height: 18px; color: #4b5563;\"><p style=\"margin: 0 0 6px; word-break: break-word;\">Você recebeu este e-mail porque tem notificações não lidas no Mesaas. Ajuste em Configurações · Notificações.</p><p style=\"margin: 0 0 0px; word-break: break-word;\">Mesaas · Plataforma de gestão para agências de social media</p></td></tr>\n</table>\n</td></tr>\n</table>\n</body>\n</html>",
+ "digest/3/subject": "Você tem 3 novidades no Mesaas",
+ "digest/3/preheader": "T1, T2 e T3.",
+ "digest/3/html": "<!DOCTYPE html>\n<html lang=\"pt-BR\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n<meta name=\"color-scheme\" content=\"light\">\n<meta name=\"supported-color-schemes\" content=\"light\">\n<style>body, table, td, p, a, li, h1, span, strong { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Helvetica, Arial, sans-serif; }\na[x-apple-data-detectors] { color: inherit !important; text-decoration: none !important; }\n@media (max-width: 600px) {\n  .m-px { padding-left: 24px !important; padding-right: 24px !important; }\n  .m-h1 { font-size: 22px !important; line-height: 28px !important; }\n  .m-btn { width: 100% !important; }\n  .m-btn a { display: block !important; }\n  .m-stack { display: block !important; width: 100% !important; padding: 0 0 12px 0 !important; }\n  .m-kpi { display: block !important; width: auto !important; margin: 0 0 12px 0 !important; }\n  .m-kpi-gap { display: none !important; }\n}</style>\n<!--[if mso]><style>body, table, td, p, a, li, h1, span, strong { font-family: 'Segoe UI', Arial, sans-serif !important; }</style><![endif]-->\n</head>\n<body style=\"margin: 0; padding: 0; background: #f5f6f8;\">\n<div style=\"display:none; max-height:0; overflow:hidden; mso-hide:all;\">T1, T2 e T3.&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>\n<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8;\">\n<tr><td align=\"center\" style=\"padding: 32px 12px 40px;\">\n<table role=\"presentation\" width=\"560\" cellpadding=\"0\" cellspacing=\"0\" style=\"width: 100%; max-width: 560px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Helvetica, Arial, sans-serif;\">\n<tr><td><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" bgcolor=\"#ffffff\" style=\"background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; border-collapse: separate; overflow: hidden;\"><tr><td class=\"m-px\" style=\"padding: 28px 40px 24px; border-bottom: 1px solid #eef0f3;\"><img src=\"https://www.mesaas.com.br/logo-black-email.png\" width=\"158\" height=\"20\" alt=\"Mesaas\" style=\"display: block; border: 0; outline: none; color: #12151a; font-size: 18px; line-height: 20px; font-weight: 700;\"></td></tr><tr><td class=\"m-px\" style=\"padding: 36px 40px 0;\"><p style=\"margin: 0 0 14px; font-size: 13px; line-height: 18px; font-weight: 600; color: #4b5563;\"><span style=\"display: inline-block; width: 8px; height: 8px; border-radius: 4px; background: #ffbf30; margin-right: 8px;\"></span>Resumo de notificações</p><h1 class=\"m-h1\" style=\"margin: 0 0 16px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 24px; line-height: 30px; font-weight: 700; letter-spacing: -0.01em; color: #12151a; word-break: break-word; overflow-wrap: anywhere;\">Você tem 3 novidades</h1></td></tr>\n<tr><td class=\"m-px\" style=\"padding: 24px 40px 0;\"><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T1</p>\n    <p style=\"margin: 2px 0 0; font-size: 13px; line-height: 20px; color: #4b5563; word-break: break-word; overflow-wrap: anywhere;\">Ctx 1</p>\n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 1</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l1\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T2</p>\n    \n    \n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l2\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; \">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T3</p>\n    \n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 3</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l3\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr></table></td></tr>\n<tr><td style=\"height: 36px; line-height: 36px; font-size: 0;\">&nbsp;</td></tr></table>\n</td></tr>\n<tr><td class=\"m-px\" style=\"padding: 24px 40px 0; font-size: 12px; line-height: 18px; color: #4b5563;\"><p style=\"margin: 0 0 6px; word-break: break-word;\">Você recebeu este e-mail porque tem notificações não lidas no Mesaas. Ajuste em Configurações · Notificações.</p><p style=\"margin: 0 0 0px; word-break: break-word;\">Mesaas · Plataforma de gestão para agências de social media</p></td></tr>\n</table>\n</td></tr>\n</table>\n</body>\n</html>",
+ "digest/4/subject": "Você tem 4 novidades no Mesaas",
+ "digest/4/preheader": "T1, T2, T3 e mais 1.",
+ "digest/4/html": "<!DOCTYPE html>\n<html lang=\"pt-BR\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n<meta name=\"color-scheme\" content=\"light\">\n<meta name=\"supported-color-schemes\" content=\"light\">\n<style>body, table, td, p, a, li, h1, span, strong { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Helvetica, Arial, sans-serif; }\na[x-apple-data-detectors] { color: inherit !important; text-decoration: none !important; }\n@media (max-width: 600px) {\n  .m-px { padding-left: 24px !important; padding-right: 24px !important; }\n  .m-h1 { font-size: 22px !important; line-height: 28px !important; }\n  .m-btn { width: 100% !important; }\n  .m-btn a { display: block !important; }\n  .m-stack { display: block !important; width: 100% !important; padding: 0 0 12px 0 !important; }\n  .m-kpi { display: block !important; width: auto !important; margin: 0 0 12px 0 !important; }\n  .m-kpi-gap { display: none !important; }\n}</style>\n<!--[if mso]><style>body, table, td, p, a, li, h1, span, strong { font-family: 'Segoe UI', Arial, sans-serif !important; }</style><![endif]-->\n</head>\n<body style=\"margin: 0; padding: 0; background: #f5f6f8;\">\n<div style=\"display:none; max-height:0; overflow:hidden; mso-hide:all;\">T1, T2, T3 e mais 1.&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>\n<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8;\">\n<tr><td align=\"center\" style=\"padding: 32px 12px 40px;\">\n<table role=\"presentation\" width=\"560\" cellpadding=\"0\" cellspacing=\"0\" style=\"width: 100%; max-width: 560px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Helvetica, Arial, sans-serif;\">\n<tr><td><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" bgcolor=\"#ffffff\" style=\"background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; border-collapse: separate; overflow: hidden;\"><tr><td class=\"m-px\" style=\"padding: 28px 40px 24px; border-bottom: 1px solid #eef0f3;\"><img src=\"https://www.mesaas.com.br/logo-black-email.png\" width=\"158\" height=\"20\" alt=\"Mesaas\" style=\"display: block; border: 0; outline: none; color: #12151a; font-size: 18px; line-height: 20px; font-weight: 700;\"></td></tr><tr><td class=\"m-px\" style=\"padding: 36px 40px 0;\"><p style=\"margin: 0 0 14px; font-size: 13px; line-height: 18px; font-weight: 600; color: #4b5563;\"><span style=\"display: inline-block; width: 8px; height: 8px; border-radius: 4px; background: #ffbf30; margin-right: 8px;\"></span>Resumo de notificações</p><h1 class=\"m-h1\" style=\"margin: 0 0 16px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 24px; line-height: 30px; font-weight: 700; letter-spacing: -0.01em; color: #12151a; word-break: break-word; overflow-wrap: anywhere;\">Você tem 4 novidades</h1></td></tr>\n<tr><td class=\"m-px\" style=\"padding: 24px 40px 0;\"><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T1</p>\n    <p style=\"margin: 2px 0 0; font-size: 13px; line-height: 20px; color: #4b5563; word-break: break-word; overflow-wrap: anywhere;\">Ctx 1</p>\n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 1</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l1\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T2</p>\n    \n    \n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l2\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T3</p>\n    \n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 3</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l3\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; \">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; font-size: 12px; line-height: 18px; font-weight: 600;\">Notificação</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T4</p>\n    <p style=\"margin: 2px 0 0; font-size: 13px; line-height: 20px; color: #4b5563; word-break: break-word; overflow-wrap: anywhere;\">Ctx 4</p>\n    \n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l4\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr></table></td></tr>\n<tr><td style=\"height: 36px; line-height: 36px; font-size: 0;\">&nbsp;</td></tr></table>\n</td></tr>\n<tr><td class=\"m-px\" style=\"padding: 24px 40px 0; font-size: 12px; line-height: 18px; color: #4b5563;\"><p style=\"margin: 0 0 6px; word-break: break-word;\">Você recebeu este e-mail porque tem notificações não lidas no Mesaas. Ajuste em Configurações · Notificações.</p><p style=\"margin: 0 0 0px; word-break: break-word;\">Mesaas · Plataforma de gestão para agências de social media</p></td></tr>\n</table>\n</td></tr>\n</table>\n</body>\n</html>",
+ "digest/25/subject": "Você tem 25 novidades no Mesaas",
+ "digest/25/preheader": "T1, T2, T3 e mais 22.",
+ "digest/25/html": "<!DOCTYPE html>\n<html lang=\"pt-BR\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n<meta name=\"color-scheme\" content=\"light\">\n<meta name=\"supported-color-schemes\" content=\"light\">\n<style>body, table, td, p, a, li, h1, span, strong { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Helvetica, Arial, sans-serif; }\na[x-apple-data-detectors] { color: inherit !important; text-decoration: none !important; }\n@media (max-width: 600px) {\n  .m-px { padding-left: 24px !important; padding-right: 24px !important; }\n  .m-h1 { font-size: 22px !important; line-height: 28px !important; }\n  .m-btn { width: 100% !important; }\n  .m-btn a { display: block !important; }\n  .m-stack { display: block !important; width: 100% !important; padding: 0 0 12px 0 !important; }\n  .m-kpi { display: block !important; width: auto !important; margin: 0 0 12px 0 !important; }\n  .m-kpi-gap { display: none !important; }\n}</style>\n<!--[if mso]><style>body, table, td, p, a, li, h1, span, strong { font-family: 'Segoe UI', Arial, sans-serif !important; }</style><![endif]-->\n</head>\n<body style=\"margin: 0; padding: 0; background: #f5f6f8;\">\n<div style=\"display:none; max-height:0; overflow:hidden; mso-hide:all;\">T1, T2, T3 e mais 22.&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>\n<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8;\">\n<tr><td align=\"center\" style=\"padding: 32px 12px 40px;\">\n<table role=\"presentation\" width=\"560\" cellpadding=\"0\" cellspacing=\"0\" style=\"width: 100%; max-width: 560px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Helvetica, Arial, sans-serif;\">\n<tr><td><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" bgcolor=\"#ffffff\" style=\"background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; border-collapse: separate; overflow: hidden;\"><tr><td class=\"m-px\" style=\"padding: 28px 40px 24px; border-bottom: 1px solid #eef0f3;\"><img src=\"https://www.mesaas.com.br/logo-black-email.png\" width=\"158\" height=\"20\" alt=\"Mesaas\" style=\"display: block; border: 0; outline: none; color: #12151a; font-size: 18px; line-height: 20px; font-weight: 700;\"></td></tr><tr><td class=\"m-px\" style=\"padding: 36px 40px 0;\"><p style=\"margin: 0 0 14px; font-size: 13px; line-height: 18px; font-weight: 600; color: #4b5563;\"><span style=\"display: inline-block; width: 8px; height: 8px; border-radius: 4px; background: #ffbf30; margin-right: 8px;\"></span>Resumo de notificações</p><h1 class=\"m-h1\" style=\"margin: 0 0 16px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 24px; line-height: 30px; font-weight: 700; letter-spacing: -0.01em; color: #12151a; word-break: break-word; overflow-wrap: anywhere;\">Você tem 25 novidades</h1></td></tr>\n<tr><td class=\"m-px\" style=\"padding: 24px 40px 0;\"><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T1</p>\n    <p style=\"margin: 2px 0 0; font-size: 13px; line-height: 20px; color: #4b5563; word-break: break-word; overflow-wrap: anywhere;\">Ctx 1</p>\n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 1</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l1\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T2</p>\n    \n    \n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l2\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T3</p>\n    \n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 3</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l3\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; font-size: 12px; line-height: 18px; font-weight: 600;\">Notificação</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T4</p>\n    <p style=\"margin: 2px 0 0; font-size: 13px; line-height: 20px; color: #4b5563; word-break: break-word; overflow-wrap: anywhere;\">Ctx 4</p>\n    \n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l4\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T5</p>\n    \n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 5</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l5\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T6</p>\n    \n    \n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l6\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T7</p>\n    <p style=\"margin: 2px 0 0; font-size: 13px; line-height: 20px; color: #4b5563; word-break: break-word; overflow-wrap: anywhere;\">Ctx 7</p>\n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 7</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l7\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; font-size: 12px; line-height: 18px; font-weight: 600;\">Notificação</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T8</p>\n    \n    \n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l8\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T9</p>\n    \n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 9</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l9\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T10</p>\n    <p style=\"margin: 2px 0 0; font-size: 13px; line-height: 20px; color: #4b5563; word-break: break-word; overflow-wrap: anywhere;\">Ctx 10</p>\n    \n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l10\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T11</p>\n    \n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 11</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l11\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; font-size: 12px; line-height: 18px; font-weight: 600;\">Notificação</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T12</p>\n    \n    \n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l12\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T13</p>\n    <p style=\"margin: 2px 0 0; font-size: 13px; line-height: 20px; color: #4b5563; word-break: break-word; overflow-wrap: anywhere;\">Ctx 13</p>\n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 13</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l13\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T14</p>\n    \n    \n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l14\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T15</p>\n    \n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 15</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l15\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; font-size: 12px; line-height: 18px; font-weight: 600;\">Notificação</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T16</p>\n    <p style=\"margin: 2px 0 0; font-size: 13px; line-height: 20px; color: #4b5563; word-break: break-word; overflow-wrap: anywhere;\">Ctx 16</p>\n    \n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l16\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T17</p>\n    \n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 17</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l17\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T18</p>\n    \n    \n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l18\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T19</p>\n    <p style=\"margin: 2px 0 0; font-size: 13px; line-height: 20px; color: #4b5563; word-break: break-word; overflow-wrap: anywhere;\">Ctx 19</p>\n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 19</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l19\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; font-size: 12px; line-height: 18px; font-weight: 600;\">Notificação</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T20</p>\n    \n    \n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l20\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T21</p>\n    \n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 21</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l21\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T22</p>\n    <p style=\"margin: 2px 0 0; font-size: 13px; line-height: 20px; color: #4b5563; word-break: break-word; overflow-wrap: anywhere;\">Ctx 22</p>\n    \n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l22\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T23</p>\n    \n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 23</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l23\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; font-size: 12px; line-height: 18px; font-weight: 600;\">Notificação</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T24</p>\n    \n    \n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l24\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; \">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T25</p>\n    <p style=\"margin: 2px 0 0; font-size: 13px; line-height: 20px; color: #4b5563; word-break: break-word; overflow-wrap: anywhere;\">Ctx 25</p>\n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 25</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l25\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr></table></td></tr>\n<tr><td style=\"height: 36px; line-height: 36px; font-size: 0;\">&nbsp;</td></tr></table>\n</td></tr>\n<tr><td class=\"m-px\" style=\"padding: 24px 40px 0; font-size: 12px; line-height: 18px; color: #4b5563;\"><p style=\"margin: 0 0 6px; word-break: break-word;\">Você recebeu este e-mail porque tem notificações não lidas no Mesaas. Ajuste em Configurações · Notificações.</p><p style=\"margin: 0 0 0px; word-break: break-word;\">Mesaas · Plataforma de gestão para agências de social media</p></td></tr>\n</table>\n</td></tr>\n</table>\n</body>\n</html>",
+ "digest/32/subject": "Você tem 32 novidades no Mesaas",
+ "digest/32/preheader": "T1, T2, T3 e mais 29.",
+ "digest/32/html": "<!DOCTYPE html>\n<html lang=\"pt-BR\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n<meta name=\"color-scheme\" content=\"light\">\n<meta name=\"supported-color-schemes\" content=\"light\">\n<style>body, table, td, p, a, li, h1, span, strong { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Helvetica, Arial, sans-serif; }\na[x-apple-data-detectors] { color: inherit !important; text-decoration: none !important; }\n@media (max-width: 600px) {\n  .m-px { padding-left: 24px !important; padding-right: 24px !important; }\n  .m-h1 { font-size: 22px !important; line-height: 28px !important; }\n  .m-btn { width: 100% !important; }\n  .m-btn a { display: block !important; }\n  .m-stack { display: block !important; width: 100% !important; padding: 0 0 12px 0 !important; }\n  .m-kpi { display: block !important; width: auto !important; margin: 0 0 12px 0 !important; }\n  .m-kpi-gap { display: none !important; }\n}</style>\n<!--[if mso]><style>body, table, td, p, a, li, h1, span, strong { font-family: 'Segoe UI', Arial, sans-serif !important; }</style><![endif]-->\n</head>\n<body style=\"margin: 0; padding: 0; background: #f5f6f8;\">\n<div style=\"display:none; max-height:0; overflow:hidden; mso-hide:all;\">T1, T2, T3 e mais 29.&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>\n<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8;\">\n<tr><td align=\"center\" style=\"padding: 32px 12px 40px;\">\n<table role=\"presentation\" width=\"560\" cellpadding=\"0\" cellspacing=\"0\" style=\"width: 100%; max-width: 560px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Helvetica, Arial, sans-serif;\">\n<tr><td><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" bgcolor=\"#ffffff\" style=\"background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; border-collapse: separate; overflow: hidden;\"><tr><td class=\"m-px\" style=\"padding: 28px 40px 24px; border-bottom: 1px solid #eef0f3;\"><img src=\"https://www.mesaas.com.br/logo-black-email.png\" width=\"158\" height=\"20\" alt=\"Mesaas\" style=\"display: block; border: 0; outline: none; color: #12151a; font-size: 18px; line-height: 20px; font-weight: 700;\"></td></tr><tr><td class=\"m-px\" style=\"padding: 36px 40px 0;\"><p style=\"margin: 0 0 14px; font-size: 13px; line-height: 18px; font-weight: 600; color: #4b5563;\"><span style=\"display: inline-block; width: 8px; height: 8px; border-radius: 4px; background: #ffbf30; margin-right: 8px;\"></span>Resumo de notificações</p><h1 class=\"m-h1\" style=\"margin: 0 0 16px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 24px; line-height: 30px; font-weight: 700; letter-spacing: -0.01em; color: #12151a; word-break: break-word; overflow-wrap: anywhere;\">Você tem 32 novidades</h1></td></tr>\n<tr><td class=\"m-px\" style=\"padding: 24px 40px 0;\"><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T1</p>\n    <p style=\"margin: 2px 0 0; font-size: 13px; line-height: 20px; color: #4b5563; word-break: break-word; overflow-wrap: anywhere;\">Ctx 1</p>\n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 1</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l1\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T2</p>\n    \n    \n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l2\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T3</p>\n    \n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 3</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l3\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; font-size: 12px; line-height: 18px; font-weight: 600;\">Notificação</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T4</p>\n    <p style=\"margin: 2px 0 0; font-size: 13px; line-height: 20px; color: #4b5563; word-break: break-word; overflow-wrap: anywhere;\">Ctx 4</p>\n    \n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l4\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T5</p>\n    \n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 5</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l5\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T6</p>\n    \n    \n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l6\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T7</p>\n    <p style=\"margin: 2px 0 0; font-size: 13px; line-height: 20px; color: #4b5563; word-break: break-word; overflow-wrap: anywhere;\">Ctx 7</p>\n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 7</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l7\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; font-size: 12px; line-height: 18px; font-weight: 600;\">Notificação</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T8</p>\n    \n    \n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l8\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T9</p>\n    \n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 9</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l9\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T10</p>\n    <p style=\"margin: 2px 0 0; font-size: 13px; line-height: 20px; color: #4b5563; word-break: break-word; overflow-wrap: anywhere;\">Ctx 10</p>\n    \n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l10\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T11</p>\n    \n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 11</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l11\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; font-size: 12px; line-height: 18px; font-weight: 600;\">Notificação</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T12</p>\n    \n    \n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l12\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T13</p>\n    <p style=\"margin: 2px 0 0; font-size: 13px; line-height: 20px; color: #4b5563; word-break: break-word; overflow-wrap: anywhere;\">Ctx 13</p>\n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 13</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l13\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T14</p>\n    \n    \n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l14\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T15</p>\n    \n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 15</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l15\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; font-size: 12px; line-height: 18px; font-weight: 600;\">Notificação</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T16</p>\n    <p style=\"margin: 2px 0 0; font-size: 13px; line-height: 20px; color: #4b5563; word-break: break-word; overflow-wrap: anywhere;\">Ctx 16</p>\n    \n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l16\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T17</p>\n    \n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 17</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l17\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T18</p>\n    \n    \n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l18\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T19</p>\n    <p style=\"margin: 2px 0 0; font-size: 13px; line-height: 20px; color: #4b5563; word-break: break-word; overflow-wrap: anywhere;\">Ctx 19</p>\n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 19</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l19\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; font-size: 12px; line-height: 18px; font-weight: 600;\">Notificação</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T20</p>\n    \n    \n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l20\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T21</p>\n    \n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 21</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l21\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T22</p>\n    <p style=\"margin: 2px 0 0; font-size: 13px; line-height: 20px; color: #4b5563; word-break: break-word; overflow-wrap: anywhere;\">Ctx 22</p>\n    \n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l22\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T23</p>\n    \n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 23</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l23\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; font-size: 12px; line-height: 18px; font-weight: 600;\">Notificação</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T24</p>\n    \n    \n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l24\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T25</p>\n    <p style=\"margin: 2px 0 0; font-size: 13px; line-height: 20px; color: #4b5563; word-break: break-word; overflow-wrap: anywhere;\">Ctx 25</p>\n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 25</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l25\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T26</p>\n    \n    \n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l26\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T27</p>\n    \n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 27</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l27\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; font-size: 12px; line-height: 18px; font-weight: 600;\">Notificação</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T28</p>\n    <p style=\"margin: 2px 0 0; font-size: 13px; line-height: 20px; color: #4b5563; word-break: break-word; overflow-wrap: anywhere;\">Ctx 28</p>\n    \n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l28\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; border-bottom: 1px solid #eef0f3;\">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T29</p>\n    \n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td height=\"10\" style=\"height: 10px; font-size: 0; line-height: 0;\">&nbsp;</td></tr></table><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse: separate;\"><tr><td bgcolor=\"#f5f6f8\" style=\"background: #f5f6f8; border-radius: 10px; padding: 16px 18px; font-size: 14px; line-height: 22px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">Corpo 29</td></tr></table>\n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l29\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr><tr><td style=\"padding: 20px 0; \">\n    <p style=\"margin: 0 0 10px;\"><span style=\"display: inline-block; padding: 2px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 12px; line-height: 18px; font-weight: 600;\">Mensagem</span></p>\n    <p style=\"margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: #12151a; word-break: break-word;\">T30</p>\n    \n    \n    <p style=\"margin: 12px 0 0; font-size: 14px;\"><a href=\"https://app.example.test/l30\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Abrir no Mesaas</a></p>\n  </td></tr></table></td></tr>\n<tr><td class=\"m-px\" style=\"padding: 24px 40px 0;\"><p style=\"margin: 0 0 12px; font-size: 15px; line-height: 24px; color: #374151; word-break: break-word; overflow-wrap: anywhere;\">E mais 2 notificações.</p><a href=\"https://app.example.test/dashboard\" style=\"color: #12151a; font-weight: 600; text-decoration: underline;\">Ver todas no Mesaas</a></td></tr>\n<tr><td style=\"height: 36px; line-height: 36px; font-size: 0;\">&nbsp;</td></tr></table>\n</td></tr>\n<tr><td class=\"m-px\" style=\"padding: 24px 40px 0; font-size: 12px; line-height: 18px; color: #4b5563;\"><p style=\"margin: 0 0 6px; word-break: break-word;\">Você recebeu este e-mail porque tem notificações não lidas no Mesaas. Ajuste em Configurações · Notificações.</p><p style=\"margin: 0 0 0px; word-break: break-word;\">Mesaas · Plataforma de gestão para agências de social media</p></td></tr>\n</table>\n</td></tr>\n</table>\n</body>\n</html>",
+ "push/single": {
+  "alert": {
+   "title": "Ana mencionou você",
+   "subtitle": "Post",
+   "body": "oi"
+  },
+  "badge": 3,
+  "threadId": "mention",
+  "data": {
+   "link": "/x",
+   "notification_id": "n1"
+  }
+ },
+ "push/two": {
+  "alert": {
+   "title": "2 novas notificações no Mesaas",
+   "body": "Nova mensagem do cliente, Ana mencionou você."
+  },
+  "badge": 3,
+  "threadId": "summary",
+  "data": {
+   "link": null,
+   "notification_id": null
+  }
+ },
+ "push/five": {
+  "alert": {
+   "title": "5 novas notificações no Mesaas",
+   "body": "Correção solicitada pelo cliente, Correção solicitada pelo cliente, Correção solicitada pelo cliente e mais 2."
+  },
+  "badge": 3,
+  "threadId": "summary",
+  "data": {
+   "link": null,
+   "notification_id": null
+  }
+ },
+ "push/three": {
+  "alert": {
+   "title": "3 novas notificações no Mesaas",
+   "body": "Tarefa atribuída a você, Tarefa atribuída a você, N0 mencionou você."
+  },
+  "badge": 3,
+  "threadId": "summary",
+  "data": {
+   "link": null,
+   "notification_id": null
+  }
+ }
+}

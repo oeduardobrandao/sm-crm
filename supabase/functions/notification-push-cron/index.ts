@@ -3,6 +3,7 @@ import { timingSafeEqual } from "../_shared/crypto.ts";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { createJsonResponder } from "../_shared/http.ts";
 import { createApnsClient } from "../_shared/apns.ts";
+import { workspaceLang } from "../_shared/i18n/workspace-lang.ts";
 import { reportCronFailure } from "../_shared/triage.ts";
 import {
   createNotificationPushCronHandler,
@@ -62,6 +63,7 @@ Deno.serve(createNotificationPushCronHandler({
         db: svc as unknown as NotificationPushCronDeps["db"],
         send: apns ? (token, environment, message) => apns.send(token, environment, message) : null,
         now: () => new Date(),
+        workspaceLang: (contaId) => workspaceLang(svc, contaId),
         report: (detail) => reportCronFailure(svc, CRON_NAME, detail),
       };
       const result = await runNotificationPushCron(deps);

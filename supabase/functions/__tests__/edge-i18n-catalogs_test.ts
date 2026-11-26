@@ -8,6 +8,7 @@ import { shellText } from "../_shared/email/shell.ts";
 import { lifecycleText } from "../_shared/i18n/catalogs/lifecycle.ts";
 import { nurtureText } from "../_shared/i18n/catalogs/nurture.ts";
 import { nurtureUnsubText } from "../_shared/i18n/catalogs/nurture-unsub.ts";
+import { notificationsText } from "../_shared/i18n/catalogs/notifications.ts";
 
 type Entry = { name: string; get: (lang: "pt" | "en") => Record<string, unknown> };
 
@@ -16,6 +17,7 @@ const CATALOGS: Entry[] = [
   { name: "lifecycle", get: lifecycleText },
   { name: "nurture", get: nurtureText },
   { name: "nurture-unsub", get: nurtureUnsubText },
+  { name: "notifications", get: notificationsText },
   // Append: { name: "<family>", get: <catalogAccessor> },
 ];
 

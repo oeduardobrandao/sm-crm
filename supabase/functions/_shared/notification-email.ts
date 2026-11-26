@@ -3,6 +3,8 @@ import { appBaseUrl } from "./app-url.ts";
 import { mesaasEmail } from "./email/shell.ts";
 import { badge, callout, heading, link, paragraph, spacer } from "./email/blocks.ts";
 import { type BadgeTone, EMAIL } from "./email/tokens.ts";
+import type { Lang } from "./i18n/lang.ts";
+import { notificationsText } from "./i18n/catalogs/notifications.ts";
 import { type NotificationRow, type RenderedNotification, renderNotification } from "./notification-render.ts";
 
 export interface DigestItem extends RenderedNotification {
@@ -10,64 +12,73 @@ export interface DigestItem extends RenderedNotification {
   badge?: { tone: BadgeTone; label: string };
 }
 
-const DIGEST_BADGES: Record<string, { tone: BadgeTone; label: string }> = {
-  post_publish_failed: { tone: "danger", label: "Falha na publicação" },
-  post_correction: { tone: "warning", label: "Correção" },
-  post_approved: { tone: "success", label: "Aprovado" },
-  post_message: { tone: "info", label: "Mensagem" },
-  client_message: { tone: "info", label: "Mensagem" },
-  mention: { tone: "info", label: "Menção" },
-  deadline_approaching: { tone: "warning", label: "Prazo" },
-  task_assigned: { tone: "neutral", label: "Tarefa" },
-  post_assigned: { tone: "neutral", label: "Post" },
-  event_invited: { tone: "neutral", label: "Agenda" },
-  event_updated: { tone: "neutral", label: "Agenda" },
-  event_cancelled: { tone: "neutral", label: "Agenda" },
-  event_client_rsvp: { tone: "info", label: "Resposta" },
-  event_guest_rsvp: { tone: "info", label: "Resposta" },
-  event_reschedule_requested: { tone: "warning", label: "Remarcação" },
-  linha_editorial_aprovada: { tone: "success", label: "Linha aprovada" },
-  linha_editorial_ajustes: { tone: "warning", label: "Ajustes na linha" },
+type BadgeKey = keyof ReturnType<typeof notificationsText>["badges"];
+
+const DIGEST_BADGES: Record<string, { tone: BadgeTone; key: BadgeKey }> = {
+  post_publish_failed: { tone: "danger", key: "post_publish_failed" },
+  post_correction: { tone: "warning", key: "post_correction" },
+  post_approved: { tone: "success", key: "post_approved" },
+  post_message: { tone: "info", key: "message" },
+  client_message: { tone: "info", key: "message" },
+  mention: { tone: "info", key: "mention" },
+  deadline_approaching: { tone: "warning", key: "deadline_approaching" },
+  task_assigned: { tone: "neutral", key: "task_assigned" },
+  post_assigned: { tone: "neutral", key: "post_assigned" },
+  event_invited: { tone: "neutral", key: "agenda" },
+  event_updated: { tone: "neutral", key: "agenda" },
+  event_cancelled: { tone: "neutral", key: "agenda" },
+  event_client_rsvp: { tone: "info", key: "rsvp" },
+  event_guest_rsvp: { tone: "info", key: "rsvp" },
+  event_reschedule_requested: { tone: "warning", key: "reschedule" },
+  linha_editorial_aprovada: { tone: "success", key: "linha_aprovada" },
+  linha_editorial_ajustes: { tone: "warning", key: "linha_ajustes" },
 };
-const DEFAULT_BADGE = { tone: "neutral" as const, label: "Notificação" };
+
+function defaultBadge(lang: Lang): { tone: BadgeTone; label: string } {
+  return { tone: "neutral", label: notificationsText(lang).badges.default };
+}
 
 const DIGEST_FROM = "Mesaas <notificacoes@mesaas.com.br>";
 
-export function resolveDigestItem(row: NotificationRow): DigestItem {
+export function resolveDigestItem(row: NotificationRow, lang: Lang): DigestItem {
   // Object.hasOwn: a type like "constructor" must not hit Object.prototype.
-  const b = Object.hasOwn(DIGEST_BADGES, row.type) ? DIGEST_BADGES[row.type] : DEFAULT_BADGE;
-  return { ...renderNotification(row), badge: b };
+  const def = Object.hasOwn(DIGEST_BADGES, row.type) ? DIGEST_BADGES[row.type] : null;
+  const badge = def ? { tone: def.tone, label: notificationsText(lang).badges[def.key] } : defaultBadge(lang);
+  return { ...renderNotification(row, lang), badge };
 }
 
-export function digestSubject(items: DigestItem[]): string {
+export function digestSubject(items: DigestItem[], lang: Lang): string {
+  const t = notificationsText(lang);
   if (items.length === 1) {
     // Name the single item by its heading (already em-dash-free).
-    return `${items[0].heading} no Mesaas`;
+    return t.subjectOne(items[0].heading);
   }
-  return `Você tem ${items.length} novidades no Mesaas`;
+  return t.subjectMany(items.length);
 }
 
-export function digestPreheader(items: DigestItem[]): string {
+export function digestPreheader(items: DigestItem[], lang: Lang): string {
+  const t = notificationsText(lang);
   const titles = items.slice(0, 3).map((i) => i.heading);
   const rest = items.length - titles.length;
-  if (rest > 0) return `${titles.join(", ")} e mais ${rest}.`;
-  if (titles.length <= 1) return `${titles[0] ?? "Você tem novidades no Mesaas"}.`;
-  return `${titles.slice(0, -1).join(", ")} e ${titles[titles.length - 1]}.`;
+  if (rest > 0) return t.preheaderMore(titles.join(", "), rest);
+  if (titles.length <= 1) return `${titles[0] ?? t.preheaderEmpty}.`;
+  const init = titles.slice(0, -1);
+  return t.preheaderAnd(init.join(", "), titles[titles.length - 1], init.length);
 }
 
 /** Comment bodies are unbounded; the full text is one click away in the app. */
 const BODY_MAX = 300;
 const clamp = (t: string) => (t.length > BODY_MAX ? `${t.slice(0, BODY_MAX).trimEnd()}…` : t);
 
-function itemRow(it: DigestItem, appBase: string, last: boolean): string {
-  const b = it.badge ?? DEFAULT_BADGE;
+function itemRow(it: DigestItem, appBase: string, last: boolean, lang: Lang): string {
+  const b = it.badge ?? defaultBadge(lang);
   const bd = last ? "" : `border-bottom: 1px solid ${EMAIL.divider};`;
   return `<tr><td style="padding: 20px 0; ${bd}">
     <p style="margin: 0 0 10px;">${badge(b.tone, b.label)}</p>
     <p style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: ${EMAIL.ink}; word-break: break-word;">${escapeHtml(it.heading)}</p>
     ${it.context ? paragraph(it.context, "small", "2px 0 0") : ""}
     ${it.body ? spacer(10) + callout(escapeHtml(clamp(it.body))) : ""}
-    <p style="margin: 12px 0 0; font-size: 14px;">${link(`${appBase}${it.link}`, "Abrir no Mesaas")}</p>
+    <p style="margin: 12px 0 0; font-size: 14px;">${link(`${appBase}${it.link}`, notificationsText(lang).openApp)}</p>
   </td></tr>`;
 }
 
@@ -76,22 +87,24 @@ function itemRow(it: DigestItem, appBase: string, last: boolean): string {
  * summarised in one line that links to the app. */
 export const DIGEST_RENDER_CAP = 30;
 
-export function buildDigestHtml(items: DigestItem[], appBase: string): string {
+export function buildDigestHtml(items: DigestItem[], appBase: string, lang: Lang): string {
+  const t = notificationsText(lang);
   const n = items.length;
   const shown = items.slice(0, DIGEST_RENDER_CAP);
   const extra = n - shown.length;
-  const rows = shown.map((it, i) => itemRow(it, appBase, i === shown.length - 1)).join("");
+  const rows = shown.map((it, i) => itemRow(it, appBase, i === shown.length - 1, lang)).join("");
   return mesaasEmail({
-    preheader: digestPreheader(items),
-    eyebrow: "Resumo de notificações",
+    preheader: digestPreheader(items, lang),
+    eyebrow: t.eyebrow,
     sections: [
-      heading(n === 1 ? "Você tem 1 novidade" : `Você tem ${n} novidades`),
+      heading(n === 1 ? t.headingOne : t.headingMany(n)),
       `<table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table>`,
       ...(extra > 0
-        ? [paragraph(extra === 1 ? "E mais 1 notificação." : `E mais ${extra} notificações.`, "body", "0 0 12px") + link(`${appBase}/dashboard`, "Ver todas no Mesaas")]
+        ? [paragraph(extra === 1 ? t.moreOne : t.moreMany(extra), "body", "0 0 12px") + link(`${appBase}/dashboard`, t.seeAll)]
         : []),
     ],
-    footerLines: ["Você recebeu este e-mail porque tem notificações não lidas no Mesaas. Ajuste em Configurações · Notificações."],
+    footerLines: [t.footer],
+    lang,
   });
 }
 
@@ -106,7 +119,7 @@ export async function buildDigestIdempotencyKey(userId: string, ids: string[]): 
 }
 
 export async function sendNotificationDigestEmail(
-  p: { to: string; items: DigestItem[]; idempotencyKey: string },
+  p: { to: string; items: DigestItem[]; idempotencyKey: string; lang: Lang },
 ): Promise<{ skipped: boolean }> {
   const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
   if (!RESEND_API_KEY) return { skipped: true };
@@ -123,8 +136,8 @@ export async function sendNotificationDigestEmail(
     body: JSON.stringify({
       from: DIGEST_FROM,
       to: [p.to],
-      subject: digestSubject(p.items),
-      html: buildDigestHtml(p.items, base),
+      subject: digestSubject(p.items, p.lang),
+      html: buildDigestHtml(p.items, base, p.lang),
       tags: [{ name: "type", value: "notification_digest" }],
     }),
     signal: AbortSignal.timeout(10_000),
