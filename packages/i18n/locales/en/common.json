@@ -84,7 +84,10 @@
     "no": "No",
     "search": "Search",
     "importCsv": "Import CSV",
-    "back": "Back"
+    "back": "Back",
+    "closeSearch": "Close search",
+    "noResults": "No results",
+    "openInstagram": "Open on Instagram"
   },
   "status": {
     "ativo": "Active",
@@ -282,7 +285,8 @@
   },
   "plan": {
     "limitReached": "Plan limit reached.",
-    "csvLocked": "CSV import is not available on your plan."
+    "csvLocked": "CSV import is not available on your plan.",
+    "limitReachedTitle": "Plan limit reached"
   },
   "optional": "(optional)",
   "usage": {

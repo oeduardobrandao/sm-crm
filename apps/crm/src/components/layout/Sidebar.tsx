@@ -330,8 +330,8 @@ export default function Sidebar({
       className="sidebar-pin-btn"
       onClick={() => setRailOpen((v) => !v)}
       aria-expanded={railOpen}
-      aria-label={railOpen ? 'Fechar menu lateral' : 'Abrir menu lateral'}
-      title={railOpen ? 'Fechar menu lateral' : 'Abrir menu lateral'}
+      aria-label={railOpen ? t('shell:sidebar.close') : t('shell:sidebar.open')}
+      title={railOpen ? t('shell:sidebar.close') : t('shell:sidebar.open')}
     >
       <i className="ph ph-sidebar-simple" />
     </button>
@@ -341,8 +341,8 @@ export default function Sidebar({
       className="sidebar-pin-btn"
       onClick={onTogglePinned}
       aria-pressed={pinned}
-      aria-label={pinned ? 'Recolher menu lateral' : 'Fixar menu lateral aberto'}
-      title={pinned ? 'Recolher menu lateral' : 'Fixar menu lateral aberto'}
+      aria-label={pinned ? t('shell:sidebar.collapse') : t('shell:sidebar.pinOpen')}
+      title={pinned ? t('shell:sidebar.collapse') : t('shell:sidebar.pinOpen')}
     >
       <i className="ph ph-sidebar-simple" />
     </button>

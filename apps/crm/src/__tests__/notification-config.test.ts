@@ -360,7 +360,7 @@ describe('getNotificationDisplay in English', () => {
       cliente_nome: 'Acme',
       periodo: '2026-03-01',
     });
-    expect(linha.title).toBe('Acme approved the March editorial line');
+    expect(linha.title).toBe('Acme approved the March editorial plan');
 
     const cleanup = getNotificationDisplay('storage_autoclean_report', {
       files_count: 1,

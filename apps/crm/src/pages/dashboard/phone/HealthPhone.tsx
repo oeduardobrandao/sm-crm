@@ -224,7 +224,7 @@ export function HealthPhone() {
         trailing={
           <>
             <PhoneIconButton
-              label={searchOpen ? 'Fechar busca' : t('health.search')}
+              label={searchOpen ? t('actions.closeSearch', { ns: 'common' }) : t('health.search')}
               aria-expanded={searchOpen}
               onClick={() => {
                 if (searchOpen) {

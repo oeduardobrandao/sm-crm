@@ -75,7 +75,7 @@
   "page": {
     "titleAria": "Report title",
     "notFound": "Report not found.",
-    "saving": "Saving...",
+    "saving": "Saving…",
     "addWidget": "Add widget",
     "exportPdf": "Export PDF",
     "openPdf": "Open PDF",
@@ -83,11 +83,11 @@
     "saveAsTemplate": "Save as template",
     "applyTemplate": "Apply template",
     "refreshData": "Refresh data",
-    "refreshing": "Refreshing...",
+    "refreshing": "Refreshing…",
     "viewAsClient": "View as client"
   },
   "toast": {
-    "pdfGenerating": "Generating PDF... this can take up to a minute.",
+    "pdfGenerating": "Generating PDF… this can take up to a minute.",
     "pdfDone": "PDF generated.",
     "pdfDonePhone": "PDF generated. Tap Open PDF.",
     "pdfError": "Could not export the PDF",
@@ -193,7 +193,7 @@
     "makeDefault": "Set as workspace default",
     "cancel": "Cancel",
     "save": "Save",
-    "saving": "Saving...",
+    "saving": "Saving…",
     "saved": "Template saved.",
     "error": "Could not save the template."
   },
@@ -213,7 +213,7 @@
     "deleteError": "Could not delete the template."
   },
   "text": {
-    "placeholder": "Write your analysis...",
+    "placeholder": "Write your analysis…",
     "toolbarAria": "Text formatting",
     "heading": "Heading",
     "subheading": "Subheading",
@@ -298,7 +298,7 @@
     "editNote": "Edit the layout on a computer.",
     "back": "Back",
     "generateAgain": "Generate again",
-    "exporting": "Generating PDF..."
+    "exporting": "Generating PDF…"
   },
   "template": {
     "sampleNote": "Sample data. Real numbers appear when the report is generated.",

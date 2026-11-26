@@ -27,7 +27,8 @@ function getPasswordStrength(password: string): { percent: number; key: string }
 }
 
 export default function ConfigurarSenhaPage() {
-  const { t } = useTranslation('auth');
+  const { t, i18n } = useTranslation('auth');
+  const isEn = i18n.language?.startsWith('en');
   const navigate = useNavigate();
   const redirectTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [loading, setLoading] = useState(false);
@@ -407,11 +408,17 @@ export default function ConfigurarSenhaPage() {
               {isInvite && (
                 <p style={{ textAlign: 'center', fontSize: 12, color: '#888780', lineHeight: 1.6 }}>
                   {t('setPassword.termsPrefix')}{' '}
-                  <a href="/politica-de-privacidade" style={{ color: '#1a3d2b' }}>
+                  <a
+                    href={isEn ? '/en/terms' : '/politica-de-privacidade'}
+                    style={{ color: '#1a3d2b' }}
+                  >
                     {t('setPassword.termsLink')}
                   </a>{' '}
                   {t('setPassword.termsAnd')}{' '}
-                  <a href="/politica-de-privacidade" style={{ color: '#1a3d2b' }}>
+                  <a
+                    href={isEn ? '/en/privacy' : '/politica-de-privacidade'}
+                    style={{ color: '#1a3d2b' }}
+                  >
                     {t('setPassword.privacyLink')}
                   </a>{' '}
                   {t('setPassword.termsSuffix')}

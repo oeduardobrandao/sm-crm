@@ -326,4 +326,16 @@ describe('ConfigurarSenhaPage in English', () => {
     expect(screen.getByLabelText('New password')).toBeInTheDocument();
     expect(screen.queryByText('Configurar Senha')).not.toBeInTheDocument();
   });
+
+  it('links the invite footer to the English terms and privacy pages', async () => {
+    __queueSupabaseResult('profiles', 'select', { data: OWNER_PROFILE });
+    renderPage();
+    act(() => {
+      __emitAuthChange('INITIAL_SESSION', INVITE_SESSION as any);
+    });
+    await waitFor(() => {
+      expect(screen.getByText('Terms of Use').closest('a')).toHaveAttribute('href', '/en/terms');
+    });
+    expect(screen.getByText('Privacy Policy').closest('a')).toHaveAttribute('href', '/en/privacy');
+  });
 });

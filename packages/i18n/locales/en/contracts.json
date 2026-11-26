@@ -23,7 +23,7 @@
     "created": "Contract created",
     "saveError": "Could not save",
     "removed": "Contract removed",
-    "removeError": "Could not remove",
+    "removeError": "Could not delete",
     "csvImported_one": "{{count}} contract imported successfully!",
     "csvImported_other": "{{count}} contracts imported successfully!",
     "csvImported_zero": "{{count}} contracts imported successfully!"

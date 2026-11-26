@@ -405,7 +405,7 @@ export default function ClientesPage() {
     <Button
       onClick={openAdd}
       disabled={clientsAtLimit}
-      title={clientsAtLimit ? 'Limite do plano atingido' : undefined}
+      title={clientsAtLimit ? tc('plan.limitReachedTitle') : undefined}
     >
       <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('newClient')}
     </Button>

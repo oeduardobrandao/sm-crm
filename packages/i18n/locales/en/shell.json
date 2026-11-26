@@ -45,7 +45,11 @@
     "logoAlt": "Logo"
   },
   "sidebar": {
-    "home": "Mesaas, go to home"
+    "home": "Mesaas, go to home",
+    "close": "Close sidebar",
+    "open": "Open sidebar",
+    "collapse": "Collapse sidebar",
+    "pinOpen": "Keep sidebar open"
   },
   "restriction": {
     "financeiro": {

@@ -40,7 +40,7 @@ export function DashboardPhone({ isAgent, cards, footer }: Props) {
         subtitle={today.summary}
         actions={
           <PhoneIconButton
-            label="Buscar"
+            label={t('actions.search', { ns: 'common' })}
             aria-haspopup="dialog"
             onClick={() => {
               setSearchMounted(true);

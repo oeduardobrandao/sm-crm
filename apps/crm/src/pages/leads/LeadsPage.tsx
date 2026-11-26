@@ -456,7 +456,7 @@ export default function LeadsPage() {
     <Button
       onClick={openAdd}
       disabled={leadsAtLimit}
-      title={leadsAtLimit ? 'Limite do plano atingido' : undefined}
+      title={leadsAtLimit ? tc('plan.limitReachedTitle') : undefined}
     >
       <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('newLead')}
     </Button>

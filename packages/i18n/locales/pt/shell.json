@@ -45,7 +45,11 @@
     "logoAlt": "Logo"
   },
   "sidebar": {
-    "home": "Mesaas, ir para o início"
+    "home": "Mesaas, ir para o início",
+    "close": "Fechar menu lateral",
+    "open": "Abrir menu lateral",
+    "collapse": "Recolher menu lateral",
+    "pinOpen": "Fixar menu lateral aberto"
   },
   "restriction": {
     "financeiro": {

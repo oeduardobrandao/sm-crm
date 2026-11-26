@@ -194,7 +194,7 @@ function Frame({
     <div className="phone-kit phone-an">
       <PhoneNavBar
         fallbackTo="/analytics"
-        backLabel="Voltar"
+        backLabel={t('actions.back', { ns: 'common' })}
         trailing={
           onSync ? (
             <PhoneIconButton
