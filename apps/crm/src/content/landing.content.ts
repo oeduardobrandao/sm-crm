@@ -136,6 +136,8 @@ export interface LandingContent {
     billedAnnuallyTemplate: string;
     /** Brazil-only 12x installment copy; absent for markets without Pagar.me. */
     installments?: { noInterestTemplate: string; offTemplate: string };
+    /** Shown when no paid plan has a price in the market's currency (en: USD not set yet). */
+    comingSoon?: string;
   };
   planComparison: {
     title: string;
@@ -460,7 +462,7 @@ export const LANDING: LandingContent = {
     user: ['usuário', 'usuários'],
     openDashboard: 'Acessar painel',
     subscribeTemplate: 'Assinar {plan}',
-    discoverTemplate: 'Conheça o plano {plan}',
+    discoverTemplate: 'Conheça o plano {plan}.',
     billedAnnuallyTemplate: 'cobrado anualmente ({total}/ano)',
     installments: {
       noInterestTemplate: '12x no cartão, sem juros · ou {total} à vista',

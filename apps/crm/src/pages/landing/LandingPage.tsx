@@ -124,7 +124,7 @@ export default function LandingPage({
         <HowItWorks locale={locale} />
         {/* Testimonials are Portuguese-speaking customers: no English counterpart yet. */}
         {locale === 'pt' && <Testimonials />}
-        <PricingSection />
+        <PricingSection locale={locale} />
         <FaqSection items={[...content.faq]} locale={locale} />
         <CtaFinal locale={locale} />
       </main>

@@ -288,8 +288,9 @@ export const LANDING_EN: LandingContent = {
     user: ['user', 'users'],
     openDashboard: 'Open dashboard',
     subscribeTemplate: 'Subscribe to {plan}',
-    discoverTemplate: 'Meet the {plan} plan',
+    discoverTemplate: 'Meet the {plan} plan.',
     billedAnnuallyTemplate: 'billed annually ({total}/year)',
+    comingSoon: 'Paid plans in US dollars are coming soon.',
   },
   planComparison: {
     title: 'Compare plans',

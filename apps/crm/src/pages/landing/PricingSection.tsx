@@ -8,9 +8,12 @@ import {
   listPublicPricingPlans,
   type PublicPricingPlan,
 } from '@/services/billing';
-import { buildPlanIntentQuery } from '@/pages/comecar/plan-intent';
 import { isPagarme12xEnabled } from '@/lib/pagarme-gate';
+import { formatPlanPrice } from '@/lib/planPrice';
+import { landingContent, signupHref, type SiteLocale } from '@/content/locale';
 import PlanComparison from './PlanComparison';
+
+type Content = ReturnType<typeof landingContent>;
 
 /** Centavos → display string. R$ 0 stays "R$ 0"; otherwise pt-BR currency (e.g. R$ 99,90). */
 function formatPrice(centavos: number): string {
@@ -18,58 +21,66 @@ function formatPrice(centavos: number): string {
   return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-const PLAN_MARKETING: Record<string, { description: string; cta: string; highlight?: boolean }> = {
-  free: {
-    description: 'Para conhecer a plataforma.',
-    cta: 'Usar o Free',
-  },
-  start: {
-    description: 'Para freelancers montando a carteira.',
-    cta: 'Começar teste grátis',
-  },
-  pro: {
-    description: 'Para freelancers com a carteira cheia.',
-    cta: 'Começar teste grátis',
-    highlight: true,
-  },
-  max: {
-    description: 'Para agências com equipe.',
-    cta: 'Começar teste grátis',
-  },
-};
+/** English renders USD ($29.00, "$0" for zero); Portuguese keeps the BRL formatter above. */
+function priceFormatter(locale: SiteLocale): (cents: number) => string {
+  return locale === 'en' ? (cents) => formatPlanPrice(cents, 'usd', 'en-US') : formatPrice;
+}
 
-function displayLimit(limit: number | null): string {
-  return limit == null ? 'Ilimitado' : String(limit);
+function fill(template: string, values: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (_, key: string) => values[key] ?? '');
 }
 
 /** "15 clientes" / "Clientes ilimitados" — for the single-line limits chip. */
-function limitPhrase(limit: number | null, singular: string, plural: string): string {
-  if (limit == null) return `${plural.charAt(0).toUpperCase()}${plural.slice(1)} ilimitados`;
+function limitPhrase(
+  limit: number | null,
+  [singular, plural]: [string, string],
+  unlimitedSuffix: string,
+): string {
+  if (limit == null)
+    return `${plural.charAt(0).toUpperCase()}${plural.slice(1)} ${unlimitedSuffix}`;
   return `${limit} ${limit === 1 ? singular : plural}`;
 }
 
-/** Splits "R$ 139,90" so the centavos render smaller ("R$ 139" + ",90"). */
-function PriceValue({ amount }: { amount: number }) {
-  const formatted = formatPrice(amount);
-  const comma = formatted.lastIndexOf(',');
-  if (comma === -1) return <>{formatted}</>;
+/** Splits "R$ 139,90" so the centavos render smaller ("R$ 139" + ",90"); en splits "$29.00". */
+function PriceValue({ amount, format }: { amount: number; format: (cents: number) => string }) {
+  const formatted = format(amount);
+  const sep = formatted.lastIndexOf(formatted.includes(',') ? ',' : '.');
+  if (sep === -1) return <>{formatted}</>;
   return (
     <>
-      {formatted.slice(0, comma)}
-      <span className="price-cents">{formatted.slice(comma)}</span>
+      {formatted.slice(0, sep)}
+      <span className="price-cents">{formatted.slice(sep)}</span>
     </>
   );
 }
 
-function annualSavingsPct(plans: PublicPricingPlan[]): number {
+const isFreePlan = (plan: PublicPricingPlan, locale: SiteLocale) =>
+  locale === 'en'
+    ? plan.id === 'free' || (plan.price_usd === 0 && plan.price_usd_annual === 0)
+    : plan.price_brl === 0 && plan.price_brl_annual === 0;
+
+/** English shows Free plus the paid plans priced in USD (both monthly and annual set). */
+function plansForLocale(plans: PublicPricingPlan[], locale: SiteLocale): PublicPricingPlan[] {
+  if (locale !== 'en') return plans;
+  return plans.filter(
+    (plan) => isFreePlan(plan, locale) || (plan.price_usd != null && plan.price_usd_annual != null),
+  );
+}
+
+function annualSavingsPct(plans: PublicPricingPlan[], locale: SiteLocale): number {
   return plans.reduce((best, plan) => {
-    if (!plan.price_brl || !plan.price_brl_annual) return best;
-    const saving = Math.round((1 - plan.price_brl_annual / (plan.price_brl * 12)) * 100);
+    const monthly = locale === 'en' ? plan.price_usd : plan.price_brl;
+    const annual = locale === 'en' ? plan.price_usd_annual : plan.price_brl_annual;
+    if (!monthly || !annual) return best;
+    const saving = Math.round((1 - annual / (monthly * 12)) * 100);
     return Math.max(best, saving);
   }, 0);
 }
 
-export function PricingSection() {
+export function PricingSection({ locale = 'pt' }: { locale?: SiteLocale }) {
+  const content: Content = landingContent(locale);
+  const t = content.pricing;
+  const format = priceFormatter(locale);
   const user = useLandingUser();
   const [period, setPeriod] = useState<'month' | 'year'>('month');
   const pricingRef = useRef<HTMLElement>(null);
@@ -95,7 +106,7 @@ export function PricingSection() {
   }, []);
 
   const {
-    data: plans = [],
+    data: allPlans = [],
     isPending,
     isError,
     refetch,
@@ -125,7 +136,9 @@ export function PricingSection() {
       !hasUsedTrial(subscription, effectivePlan)
     : true;
 
-  const savingsPct = annualSavingsPct(plans);
+  const plans = plansForLocale(allPlans, locale);
+  const savingsPct = annualSavingsPct(plans, locale);
+  const hasPaidPlan = plans.some((plan) => !isFreePlan(plan, locale));
 
   const isYear = period === 'year';
   const isLoadingPlans = !shouldLoadPlans || isPending;
@@ -133,21 +146,21 @@ export function PricingSection() {
   // Visitors must sign up before checkout. Paid plans carry the choice through
   // signup so the trial starts without another plan decision.
   const planHref = (id: string) => {
-    if (id === 'free') return user ? '/dashboard' : '/login?tab=register';
+    if (id === 'free') return user ? '/dashboard' : signupHref(locale);
     if (user) return '/configuracao/cobranca';
-    return `/login?tab=register&${buildPlanIntentQuery(id, period)}`;
+    return signupHref(locale, id, period);
   };
 
   // Paid plans read "Assinar" once the trial is spent (or not known to be on offer).
   const ctaLabel = (plan: PublicPricingPlan, trialCta: string) => {
-    if (plan.id === 'free') return user ? 'Acessar painel' : trialCta;
-    return trialOffered ? trialCta : `Assinar ${plan.name}`;
+    if (plan.id === 'free') return user ? t.openDashboard : trialCta;
+    return trialOffered ? trialCta : fill(t.subscribeTemplate, { plan: plan.name });
   };
 
   const planAction = (plan: PublicPricingPlan) => {
-    const marketing = PLAN_MARKETING[plan.id] ?? {
-      description: `Conheça o plano ${plan.name}.`,
-      cta: `Assinar ${plan.name}`,
+    const marketing = content.planMarketing[plan.id] ?? {
+      description: fill(t.discoverTemplate, { plan: plan.name }),
+      cta: fill(t.subscribeTemplate, { plan: plan.name }),
     };
     return {
       href: planHref(plan.id),
@@ -160,21 +173,19 @@ export function PricingSection() {
     <section ref={pricingRef} className="lp-pad" id="pricing">
       <div className="lp-container">
         <div className="section-head reveal">
-          <h2>Comece pequeno e cresça sem trocar de ferramenta.</h2>
-          <p>
-            Crie sua conta e use o Pro por 14 dias, sem cartão. Se preferir escolher o plano agora,
-            os planos pagos têm 30 dias grátis com cartão. Sem fidelidade, cancele quando quiser.
-          </p>
-          <div className="pricing-promo-note">14 dias de Pro grátis, sem cartão. Sem cupom.</div>
+          <h2>{t.title}</h2>
+          <p>{`${t.promo} ${t.body}`}</p>
+          <div className="pricing-promo-note">{t.promoNote}</div>
         </div>
 
         <div className="pricing-toggle-row reveal">
-          <div className="pricing-toggle" role="group" aria-label="Período de cobrança">
+          <div className="pricing-toggle" role="group" aria-label={t.periodLabel}>
             <button aria-pressed={!isYear} onClick={() => setPeriod('month')}>
-              Mensal
+              {t.monthly}
             </button>
             <button aria-pressed={isYear} onClick={() => setPeriod('year')}>
-              Anual{savingsPct > 0 && <span className="pricing-off">−{savingsPct}%</span>}
+              {t.yearly}
+              {savingsPct > 0 && <span className="pricing-off">−{savingsPct}%</span>}
             </button>
           </div>
         </div>
@@ -183,7 +194,7 @@ export function PricingSection() {
           {isLoadingPlans ? (
             <>
               <span className="pricing-loading-status" role="status">
-                Carregando planos
+                {t.loading}
               </span>
               {Array.from({ length: 4 }).map((_, index) => (
                 <div key={index} className="plan-card plan-card-skeleton" aria-hidden="true">
@@ -198,37 +209,40 @@ export function PricingSection() {
             </>
           ) : isError ? (
             <div className="pricing-state" role="alert">
-              <p>Não foi possível carregar os planos agora.</p>
+              <p>{t.loadError}</p>
               <button type="button" className="lp-btn lp-btn-outline" onClick={() => refetch()}>
-                Tentar novamente
+                {t.retry}
               </button>
             </div>
           ) : plans.length === 0 ? (
             <div className="pricing-state">
-              <p>Os planos estão temporariamente indisponíveis.</p>
+              <p>{t.unavailable}</p>
             </div>
           ) : (
             plans.map((plan) => {
-              const marketing = PLAN_MARKETING[plan.id] ?? {
-                description: `Conheça o plano ${plan.name}.`,
-                cta: `Assinar ${plan.name}`,
+              const marketing = content.planMarketing[plan.id] ?? {
+                description: fill(t.discoverTemplate, { plan: plan.name }),
+                cta: fill(t.subscribeTemplate, { plan: plan.name }),
               };
-              const hasAnnualPrice = plan.price_brl_annual != null && plan.price_brl_annual > 0;
-              const isFree = plan.price_brl === 0 && plan.price_brl_annual === 0;
+              const monthlyCents = locale === 'en' ? plan.price_usd : plan.price_brl;
+              const annualCents = locale === 'en' ? plan.price_usd_annual : plan.price_brl_annual;
+              const hasAnnualPrice = annualCents != null && annualCents > 0;
+              const isFree = isFreePlan(plan, locale);
               // PRIMARY AMOUNT RULE: a gated year card's prominent price is the 12x's own
               // parcela (pagarme_installment_cents), never price_brl_annual / 12 — that
               // derivation would contradict the exact figure the checkout dialog charges.
               // Non-gated cards (or gate off) keep today's derivation unchanged.
-              const gated = isYear && hasAnnualPrice && isPagarme12xEnabled(plan);
+              const gated =
+                locale === 'pt' && isYear && hasAnnualPrice && isPagarme12xEnabled(plan);
               const amount = isYear
                 ? isFree
                   ? 0
                   : gated
                     ? plan.pagarme_installment_cents!
                     : hasAnnualPrice
-                      ? plan.price_brl_annual! / 12
+                      ? annualCents! / 12
                       : null
-                : plan.price_brl;
+                : monthlyCents;
               // The discount vs. paying monthly all year, always computed from the real
               // catalog values (never a hard-coded percentage — plans discount unevenly).
               const upfrontOffPct =
@@ -242,30 +256,36 @@ export function PricingSection() {
                 >
                   <div className="plan-head">
                     <h3>{plan.name}</h3>
-                    {marketing.highlight && <span className="plan-badge">Mais popular</span>}
+                    {marketing.highlight && <span className="plan-badge">{t.popular}</span>}
                   </div>
                   <div className="price-row">
                     <span className="price">
-                      {amount == null ? 'Sob consulta' : <PriceValue amount={amount} />}
+                      {amount == null ? (
+                        t.onRequest
+                      ) : (
+                        <PriceValue amount={amount} format={format} />
+                      )}
                     </span>
-                    {amount != null && <span className="price-sub">/mês</span>}
+                    {amount != null && <span className="price-sub">{t.perMonth}</span>}
                   </div>
                   <div className="price-annual-note">
                     {isYear && hasAnnualPrice
-                      ? gated
-                        ? `12x no cartão, sem juros · ou ${formatPrice(plan.price_brl_annual!)} à vista${
-                            upfrontOffPct != null ? ` (${upfrontOffPct}% off)` : ''
+                      ? gated && t.installments
+                        ? `${fill(t.installments.noInterestTemplate, {
+                            total: formatPrice(plan.price_brl_annual!),
+                          })}${
+                            upfrontOffPct != null
+                              ? fill(t.installments.offTemplate, { pct: String(upfrontOffPct) })
+                              : ''
                           }`
-                        : `cobrado anualmente (${formatPrice(plan.price_brl_annual!)}/ano)`
+                        : fill(t.billedAnnuallyTemplate, { total: format(annualCents!) })
                       : ' '}
                   </div>
-                  {!isFree && trialOffered && (
-                    <div className="plan-trial-note">30 dias grátis com cartão</div>
-                  )}
+                  {!isFree && trialOffered && <div className="plan-trial-note">{t.trialNote}</div>}
                   <div className="plan-tag">{marketing.description}</div>
                   <div className="plan-limits-line">
-                    {limitPhrase(plan.max_clients, 'cliente', 'clientes')} ·{' '}
-                    {limitPhrase(plan.max_team_members, 'usuário', 'usuários')}
+                    {limitPhrase(plan.max_clients, t.client, t.unlimitedSuffix)} ·{' '}
+                    {limitPhrase(plan.max_team_members, t.user, t.unlimitedSuffix)}
                   </div>
                   <div className="plan-cta">
                     <a
@@ -280,8 +300,11 @@ export function PricingSection() {
             })
           )}
         </div>
+        {!isLoadingPlans && !isError && plans.length > 0 && !hasPaidPlan && t.comingSoon && (
+          <p className="pricing-coming-soon">{t.comingSoon}</p>
+        )}
         {!isLoadingPlans && !isError && plans.length > 0 && (
-          <PlanComparison plans={plans} actionFor={planAction} />
+          <PlanComparison plans={plans} actionFor={planAction} locale={locale} />
         )}
       </div>
     </section>
