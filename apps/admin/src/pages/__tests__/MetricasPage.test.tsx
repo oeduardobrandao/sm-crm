@@ -7,6 +7,7 @@ vi.mock('../../lib/api', () => ({
   getDeposits: vi.fn(() => new Promise(() => {})),
   getMetricsHistory: vi.fn(() => new Promise(() => {})),
   backfillMetrics: vi.fn(),
+  getAcquisitionChannels: vi.fn(() => new Promise(() => {})),
 }));
 vi.mock('react-chartjs-2', () => ({ Bar: () => null, Line: () => null }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));

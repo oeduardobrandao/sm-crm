@@ -8,6 +8,7 @@ vi.mock('../../lib/api', () => ({
   getDeposits: vi.fn(),
   getMetricsHistory: vi.fn(),
   backfillMetrics: vi.fn(),
+  getAcquisitionChannels: vi.fn(),
 }));
 vi.mock('react-chartjs-2', () => ({
   Bar: ({ data }: { data: { datasets: { label: string }[] } }) => (
@@ -22,6 +23,7 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 import {
   backfillMetrics,
+  getAcquisitionChannels,
   getDeposits,
   getMetricsHistory,
   type DepositsResponse,
@@ -145,6 +147,18 @@ beforeEach(() => {
   restorePhone = mockPhone();
   vi.mocked(getMetricsHistory).mockResolvedValue(HISTORY);
   vi.mocked(getDeposits).mockResolvedValue(DEPOSITS);
+  vi.mocked(getAcquisitionChannels).mockResolvedValue({
+    channels: [
+      {
+        channel: 'meta_ads',
+        signups: 10,
+        ever_paid: 4,
+        paying_now: 3,
+        mrr_cents: { brl: 30000, usd: 0 },
+        campaigns: [],
+      },
+    ],
+  });
 });
 
 afterEach(() => {
@@ -178,6 +192,17 @@ describe('MetricasPage (phone)', () => {
     const list = screen.getByRole('list', { name: 'Por mês' });
     expect(within(list).getByText('Setembro de 2026 (até hoje)')).toBeInTheDocument();
     expect(within(list).getByText(/churn 0,0% logos/)).toBeInTheDocument();
+  });
+
+  it('shows one card per acquisition channel under movement and churn', async () => {
+    renderPage('/#churn');
+    const card = await screen.findByTestId('channel-card-meta_ads');
+    expect(within(card).getByText('Meta Ads')).toBeInTheDocument();
+    expect(within(card).getByText('Cadastros').nextSibling).toHaveTextContent('10');
+    expect(within(card).getByText('Pagando hoje').nextSibling).toHaveTextContent('3');
+    expect(within(card).getByText('MRR (R$)').nextSibling).toHaveTextContent('300,00');
+    expect(within(card).getByText('MRR (US$)').nextSibling).toHaveTextContent('-');
+    expect(screen.getByTestId('channel-card-total')).toBeInTheDocument();
   });
 
   it('opens the deposits tab with the summary and the provider rows', async () => {
