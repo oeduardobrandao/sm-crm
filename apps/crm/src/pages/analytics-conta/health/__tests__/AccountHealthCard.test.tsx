@@ -76,8 +76,17 @@ function makeHealth(
   };
 }
 
-function renderCard(health: AccountHealth | null | undefined, onOpenPost = vi.fn()) {
-  return render(<AccountHealthCard health={health} isLoading={false} onOpenPost={onOpenPost} />);
+function renderCard(
+  health: AccountHealth | null | undefined,
+  onOpenPost = vi.fn(),
+  { expand = true }: { expand?: boolean } = {},
+) {
+  const result = render(
+    <AccountHealthCard health={health} isLoading={false} onOpenPost={onOpenPost} />,
+  );
+  const more = screen.queryByRole('button', { name: 'Ver mais' });
+  if (expand && more) fireEvent.click(more);
+  return result;
 }
 
 describe('fixture helper', () => {
@@ -93,6 +102,29 @@ describe('fixture helper', () => {
 });
 
 describe('AccountHealthCard', () => {
+  it('starts collapsed: verdict, summary and highlight only, details behind Ver mais', () => {
+    renderCard(makeHealth(), vi.fn(), { expand: false });
+    expect(
+      screen.getByText(
+        'Somando as 4 métricas, você está à frente de 71% das contas do seu tamanho.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Taxa de engajamento')).not.toBeInTheDocument();
+    expect(screen.queryByText(/resultado normal da sua conta/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Estimativa de mercado|Comparado com/)).not.toBeInTheDocument();
+
+    const more = screen.getByRole('button', { name: 'Ver mais' });
+    expect(more).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(more);
+    const less = screen.getByRole('button', { name: 'Ver menos' });
+    expect(less).toHaveAttribute('aria-expanded', 'true');
+    expect(document.getElementById(less.getAttribute('aria-controls')!)).not.toBeNull();
+    expect(screen.getByText('Taxa de engajamento')).toBeInTheDocument();
+
+    fireEvent.click(less);
+    expect(screen.queryByText('Taxa de engajamento')).not.toBeInTheDocument();
+  });
+
   it('renders the print fixture (all mesaas)', () => {
     renderCard(makeHealth());
     expect(screen.getByText('Seu Instagram está indo bem?')).toBeInTheDocument();

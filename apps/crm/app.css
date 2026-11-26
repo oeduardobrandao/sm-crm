@@ -20872,6 +20872,36 @@ button.phone-stat-tile:active {
   text-underline-offset: 3px;
   cursor: pointer;
 }
+.ig-health-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  background: none;
+  border: 0;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 6px;
+}
+.ig-health--collapsed .ig-health-top {
+  border-bottom: 0;
+}
+.ig-health-more:hover {
+  color: var(--text-main);
+}
+.ig-health-more svg {
+  width: 16px;
+  height: 16px;
+  transition: transform 0.15s ease;
+}
+.ig-health-more svg.is-open {
+  transform: rotate(180deg);
+}
+.ig-health-more:focus-visible,
 .ig-health-best__link:focus-visible {
   outline: 2px solid var(--primary-color);
   outline-offset: 2px;

@@ -2,7 +2,7 @@
 // migrations 20261201000001..03, 19 market seed rows) goes through the real data-layer mapper
 // and the card. Guards against the mocked shapes drifting from what Postgres actually returns
 // (untrimmed numerics, `0.5000`, integer cuts, null metrics for an account with no posts).
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/supabase');
@@ -34,6 +34,7 @@ describe('AccountHealthCard with the real RPC payload', () => {
     for (const b of Object.values(health?.benchmarks ?? {})) expect(b?.cuts).toHaveLength(99);
 
     render(<AccountHealthCard health={health} isLoading={false} onOpenPost={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Ver mais' }));
     expect(
       screen.getByText(/Somando as 4 métricas, você está à frente de cerca de \d+%/),
     ).toBeInTheDocument();
