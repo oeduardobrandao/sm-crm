@@ -4,18 +4,10 @@ import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { holdUnsavedWork } from '@mesaas/app-lifecycle';
-import { changeLanguage } from '@mesaas/i18n';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import {
   AlertDialog,
@@ -29,15 +21,15 @@ import {
 import { useAuth } from '../../../context/AuthContext';
 import { isClientScoped } from '@/lib/permissions';
 import { supabase } from '../../../lib/supabase';
-import { getCurrentWorkspace, updateWorkspace, setWorkspaceLanguage } from '../../../store';
+import { getCurrentWorkspace, updateWorkspace } from '../../../store';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { WorkspaceLanguageField } from '../components/WorkspaceLanguageField';
 import { WorkspacePhone } from './phone/WorkspacePhone';
 
 /** Workspace identity (name + logo) and the Instagram auto-sync switch. */
 export default function WorkspaceTab() {
   const { t } = useTranslation('settings');
-  const { profile, can, membership, role } = useAuth();
-  const isOwner = role === 'owner';
+  const { profile, can, membership } = useAuth();
   // Acesso por cliente: the import wizard creates clients, which a restricted member
   // never does, so its entry is hidden for them.
   const showImport = !isClientScoped(membership);
@@ -143,22 +135,6 @@ export default function WorkspaceTab() {
       toast.error(t('shared.error', { message: (err as Error).message }));
     }
   };
-
-  const handleLanguageChange = async (value: string) => {
-    const next = value === 'en' ? 'en' : 'pt';
-    if (!workspace || next === workspace.language) return;
-    try {
-      const saved = await setWorkspaceLanguage(next);
-      await queryClient.invalidateQueries({ queryKey: ['currentWorkspace'] });
-      // Saves the owner's explicit choice for this browser and switches the UI.
-      changeLanguage(saved);
-      toast.success(t('workspace.languageUpdated'));
-    } catch {
-      toast.error(t('workspace.languageError'));
-    }
-  };
-
-  const languageLabel = (lang: string) => (lang === 'en' ? 'English (US)' : 'Português (Brasil)');
 
   // --- Instagram auto-sync ---
   const { data: igAccounts } = useQuery({
@@ -299,25 +275,7 @@ export default function WorkspaceTab() {
               {t('actions.save')}
             </Button>
           </div>
-          <div style={{ marginTop: 16 }}>
-            <Label style={{ display: 'block', marginBottom: 6 }}>{t('workspace.language')}</Label>
-            {isOwner ? (
-              <Select value={workspace.language} onValueChange={handleLanguageChange}>
-                <SelectTrigger aria-label={t('workspace.language')} className="max-w-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="pt">{languageLabel('pt')}</SelectItem>
-                  <SelectItem value="en">{languageLabel('en')}</SelectItem>
-                </SelectContent>
-              </Select>
-            ) : (
-              <p style={{ margin: 0 }}>{languageLabel(workspace.language)}</p>
-            )}
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: 6 }}>
-              {t('workspace.languageHint')}
-            </p>
-          </div>
+          <WorkspaceLanguageField variant="desktop" />
         </div>
       )}
 

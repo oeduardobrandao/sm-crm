@@ -15,14 +15,14 @@ const { useAuthMock, storeMock, changeLanguageMock, toastMock } = vi.hoisted(() 
   toastMock: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
 }));
 
-vi.mock('../../../context/AuthContext', () => ({ useAuth: useAuthMock }));
-vi.mock('../../../store', () => storeMock);
+vi.mock('../../../../context/AuthContext', () => ({ useAuth: useAuthMock }));
+vi.mock('../../../../store', () => storeMock);
 vi.mock('sonner', () => ({ toast: toastMock }));
 vi.mock('@mesaas/i18n', async (orig) => ({
   ...(await orig<typeof import('@mesaas/i18n')>()),
   changeLanguage: changeLanguageMock,
 }));
-vi.mock('../../../lib/supabase', () => ({
+vi.mock('../../../../lib/supabase', () => ({
   supabase: {
     storage: { from: () => ({}) },
     from: () => ({ select: () => ({ eq: async () => ({ data: [] }) }) }),
@@ -51,7 +51,8 @@ vi.mock('@/components/ui/select', async () => {
   };
 });
 
-import WorkspaceTab from '../tabs/WorkspaceTab';
+import { WorkspaceLanguageField } from '../WorkspaceLanguageField';
+import { WorkspacePhone } from '../../tabs/phone/WorkspacePhone';
 
 function renderTab(role: 'owner' | 'admin') {
   useAuthMock.mockReturnValue({
@@ -64,13 +65,13 @@ function renderTab(role: 'owner' | 'admin') {
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
-        <WorkspaceTab />
+        <WorkspaceLanguageField variant="desktop" />
       </MemoryRouter>
     </QueryClientProvider>,
   );
 }
 
-describe('WorkspaceTab language', () => {
+describe('WorkspaceLanguageField', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     storeMock.getCurrentWorkspace.mockResolvedValue({
@@ -112,5 +113,53 @@ describe('WorkspaceTab language', () => {
     await waitFor(() => expect(toastMock.error).toHaveBeenCalled());
     expect(changeLanguageMock).not.toHaveBeenCalled();
     expect(screen.getByLabelText('Idioma do workspace')).toHaveValue('pt');
+  });
+});
+
+describe('WorkspacePhone language', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    storeMock.getCurrentWorkspace.mockResolvedValue({
+      id: 'ws-1',
+      name: 'WS',
+      logo_url: null,
+      language: 'pt',
+    });
+  });
+
+  it('shows the language row for an owner and opens the picker', async () => {
+    useAuthMock.mockReturnValue({
+      profile: { id: 'u1', conta_id: 'ws-1' },
+      role: 'owner',
+      can: makeCan(fakeMembership({ role: 'owner' })),
+      membership: fakeMembership({ role: 'owner' }),
+    });
+    storeMock.setWorkspaceLanguage.mockResolvedValue('en');
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <WorkspacePhone
+            loaded
+            canEdit
+            name="WS"
+            onNameChange={() => {}}
+            onSaveName={() => {}}
+            logoUrl={null}
+            logoBusy={false}
+            onPickLogo={() => {}}
+            onRemoveLogo={() => {}}
+            showImport={false}
+            autoSync={null}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    const row = await screen.findByRole('button', { name: /Idioma do workspace/ });
+    expect(row).toHaveTextContent('Português (Brasil)');
+    fireEvent.click(row);
+    fireEvent.click(await screen.findByRole('button', { name: 'English (US)' }));
+    await waitFor(() => expect(storeMock.setWorkspaceLanguage).toHaveBeenCalledWith('en'));
+    await waitFor(() => expect(changeLanguageMock).toHaveBeenCalledWith('en'));
   });
 });

@@ -10,6 +10,7 @@ import {
   ConfigPhoneScreen,
   ConfigPhoneSkeleton,
 } from '../../phone/ConfigPhoneScreen';
+import { WorkspaceLanguageField } from '../../components/WorkspaceLanguageField';
 import './workspacePhone.css';
 
 export interface WorkspacePhoneProps {
@@ -100,6 +101,8 @@ export function WorkspacePhone(props: WorkspacePhoneProps) {
           }}
         />
       </GroupedList>
+
+      <WorkspaceLanguageField variant="phone" />
 
       {props.autoSync && (
         <GroupedList header={t('workspace.autoSyncTitle')} footer={t('workspace.autoSyncHint')}>
