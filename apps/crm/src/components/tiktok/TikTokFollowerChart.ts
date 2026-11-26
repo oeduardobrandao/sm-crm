@@ -3,7 +3,7 @@
 // =============================================
 import { formatDate } from '../../store';
 import { Chart, registerables } from 'chart.js';
-import { i18n } from '@mesaas/i18n';
+import { i18n, getIntlLocale } from '@mesaas/i18n';
 import type { TikTokFollowerHistoryEntry } from '../../services/tiktok';
 
 function t(key: string, opts?: Record<string, unknown>) {
@@ -80,7 +80,7 @@ export function renderTikTokFollowerChart(
           displayColors: false,
           callbacks: {
             label: function (context: any) {
-              const locale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
+              const locale = getIntlLocale();
               return t('tiktok.followerTooltip', {
                 count: context.parsed.y.toLocaleString(locale),
               });

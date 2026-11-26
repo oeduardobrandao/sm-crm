@@ -1,7 +1,7 @@
 // Period and formatting helpers for the client Google Meu Negócio tab (desktop and phone).
 // Dates from the server are plain YYYY-MM-DD / YYYY-MM strings (São Paulo days): they are read
 // at UTC noon and formatted in UTC, so no time zone moves them to the day before.
-import { getIntlLocale } from '@mesaas/i18n';
+import { getIntlLocale, intlLocaleFor } from '@mesaas/i18n';
 import type { AnalyticsRange, GbpOverview } from '../../../services/gbpAnalytics';
 
 /** The tab's own presets (not YouTube's 7/28/90): the server accepts exactly these `days`. */
@@ -12,8 +12,7 @@ export const GBP_MAX_CUSTOM_DAYS = 548;
 
 const DAY_MS = 86_400_000;
 
-const isEn = (language: string) => language.startsWith('en');
-const locale = (language: string) => (isEn(language) ? 'en-US' : 'pt-BR');
+const locale = (language: string) => intlLocaleFor(language);
 
 /** `YYYY-MM-DD` → epoch ms at UTC noon. */
 const dayMs = (iso: string) => Date.parse(`${iso}T12:00:00Z`);

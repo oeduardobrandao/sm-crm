@@ -236,6 +236,11 @@
     "semCliente": "No client",
     "semResponsavel": "Unassigned",
     "semData": "No date",
+    "dateFmt": {
+      "day": "EEEE, MMMM d",
+      "dayShort": "EEE, MMM d",
+      "weekday": "EEE"
+    },
     "groupMeta": {
       "oldest_one": "Oldest was due {{count}} day ago",
       "oldest_other": "Oldest was due {{count}} days ago",

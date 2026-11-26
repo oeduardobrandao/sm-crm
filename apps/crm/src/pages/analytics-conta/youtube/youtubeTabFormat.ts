@@ -2,7 +2,7 @@
 import type { AnalyticsRange, YtOverview, YtVideoRow } from '../../../services/youtubeAnalytics';
 import { sanitizeUrl } from '../../../utils/security';
 import { formatDuration as tiktokDuration } from '../tiktok/tiktokTabFormat';
-import { getIntlLocale } from '@mesaas/i18n';
+import { getIntlLocale, intlLocaleFor } from '@mesaas/i18n';
 
 export { dimmed } from '../tiktok/tiktokTabFormat';
 
@@ -94,7 +94,7 @@ function dayDate(day: string): Date {
   return new Date(Date.UTC(y, m - 1, d, 12));
 }
 
-const locale = (language: string) => (language.startsWith('en') ? 'en-US' : 'pt-BR');
+const locale = (language: string) => intlLocaleFor(language);
 
 /** "Dados até" dates: "25 de out." (pt) / "Oct 25" (en). */
 export function formatThrough(day: string, language: string): string {

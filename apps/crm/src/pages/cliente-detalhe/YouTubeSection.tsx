@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { getIntlLocale } from '@mesaas/i18n';
 import { toast } from 'sonner';
 import { AlertTriangle, Clock, Loader2, Youtube } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -28,13 +29,13 @@ import { useGoogleProductSync } from './components/useGoogleProductSync';
 
 // maximumFractionDigits: 1 is needed for "12,4 mil": bare compact notation keeps only two
 // significant digits for values under 100 mil ("12 mil").
-const compactNumber = new Intl.NumberFormat('pt-BR', {
-  notation: 'compact',
-  maximumFractionDigits: 1,
-});
-
 function formatCount(value: number | null | undefined): string {
-  return value == null ? '-' : compactNumber.format(value);
+  return value == null
+    ? '-'
+    : new Intl.NumberFormat(getIntlLocale(), {
+        notation: 'compact',
+        maximumFractionDigits: 1,
+      }).format(value);
 }
 
 function channelUrl(handle: string | null, channelId: string): string {

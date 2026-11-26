@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowRight, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { i18n, useDateFnsLocale } from '@mesaas/i18n';
 import { ListSkeleton } from '@/components/ui/skeletons';
 import { getClientes } from '../../../store';
 import { useTodayCard } from '../useTodayCard';
@@ -49,6 +49,10 @@ function contextWithout(item: AgendaItem, name: string): string {
  */
 export function InicioPrazos({ onlyMine }: { onlyMine: boolean }) {
   const { t, status, scope, membroId, now, buckets, complete } = useTodayCard();
+  const dateLocale = useDateFnsLocale();
+  // date-fns patterns per language (`dashboard:inicio.dateFmt`); the locale hook re-renders on a switch.
+  const dateFmt = (name: 'day' | 'dayShort' | 'weekday') =>
+    i18n.t(`inicio.dateFmt.${name}`, { ns: 'dashboard' });
   const mine = scope === 'mine';
   const filterMine = onlyMine && !mine;
 
@@ -109,7 +113,7 @@ export function InicioPrazos({ onlyMine }: { onlyMine: boolean }) {
   };
 
   const dayLabel = (d: Date) => {
-    const s = format(d, "EEEE, d 'de' MMMM", { locale: ptBR });
+    const s = format(d, dateFmt('day'), { locale: dateLocale });
     return s.charAt(0).toUpperCase() + s.slice(1);
   };
 
@@ -135,7 +139,7 @@ export function InicioPrazos({ onlyMine }: { onlyMine: boolean }) {
       const first = g.items.find((i) => i.when)?.when;
       return first
         ? t('inicio.groupMeta.next', {
-            date: format(first, "EEEEEE, d 'de' MMM", { locale: ptBR }),
+            date: format(first, dateFmt('dayShort'), { locale: dateLocale }),
           })
         : kindsSummary(g.items);
     }
@@ -195,7 +199,7 @@ export function InicioPrazos({ onlyMine }: { onlyMine: boolean }) {
   const dayNames = perDay.map((_, i) => {
     const d = new Date(now);
     d.setDate(d.getDate() + i + 1);
-    return format(d, 'EEEEEE', { locale: ptBR });
+    return format(d, dateFmt('weekday'), { locale: dateLocale });
   });
 
   if (status !== 'ready') {

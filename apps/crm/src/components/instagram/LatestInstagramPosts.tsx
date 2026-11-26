@@ -18,12 +18,9 @@ import { SkeletonStatus } from '@/components/ui/skeletons';
 import { getInstagramPosts, type InstagramPostSummary } from '@/services/instagram';
 import { sanitizeUrl } from '@/utils/security';
 import { InstagramPostCarousel } from './InstagramPostCarousel';
+import { useIntlLocale } from '@mesaas/i18n';
 
 const POSTS_PER_PAGE = 10;
-
-function displayLocale(resolvedLanguage: string | undefined): string {
-  return resolvedLanguage?.toLowerCase().startsWith('en') ? 'en-US' : 'pt-BR';
-}
 
 function metricValue(value: number, locale: string): string {
   return (Number(value) || 0).toLocaleString(locale);
@@ -158,8 +155,8 @@ function InstagramPostsPagination({
 }
 
 function LatestInstagramPostCard({ post }: { post: InstagramPostSummary }): ReactElement {
-  const { t, i18n } = useTranslation('clients');
-  const locale = displayLocale(i18n.resolvedLanguage ?? i18n.language);
+  const { t } = useTranslation('clients');
+  const locale = useIntlLocale();
   const thumbnailUrl = sanitizeUrl(post.thumbnail_url);
   const permalink = sanitizeUrl(post.permalink);
   const mediaType =

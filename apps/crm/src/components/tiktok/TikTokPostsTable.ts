@@ -4,14 +4,14 @@
 import { getTikTokPosts } from '../../services/tiktok';
 import { formatDate } from '../../store';
 import { escapeHTML, sanitizeUrl } from '../../router';
-import { i18n } from '@mesaas/i18n';
+import { i18n, getIntlLocale } from '@mesaas/i18n';
 
 function t(key: string, opts?: Record<string, unknown>) {
   return i18n.t(key, { ns: 'clients', ...opts });
 }
 
 function numFmt(n: number | null | undefined): string {
-  const locale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
+  const locale = getIntlLocale();
   return (n ?? 0).toLocaleString(locale);
 }
 

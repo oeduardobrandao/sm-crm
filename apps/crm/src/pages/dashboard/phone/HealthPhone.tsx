@@ -36,6 +36,7 @@ import { useClientHealthActions } from '../useClientHealthActions';
 import { PhoneSection } from './PhoneSection';
 import { ClienteFoto } from '@/components/ClienteFoto';
 import { useCachedClienteFotoUrl } from '@/hooks/useClienteAvatars';
+import { useIntlLocale } from '@mesaas/i18n';
 
 const EMPTY_SUMMARY: ClientHealthSummary = {
   total: 0,
@@ -86,8 +87,8 @@ function StatusBadge({ c }: { c: ClientHealth }) {
 
 /** Body of the client sheet: the desktop card's metrics and all its actions. */
 function HealthDetail({ c }: { c: ClientHealth }) {
-  const { t, i18n } = useTranslation('dashboard');
-  const locale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
+  const { t } = useTranslation('dashboard');
+  const locale = useIntlLocale();
   const navigate = useNavigate();
   const { closeThen } = useSheetActions();
   const { busy, handleConnect, handleSync } = useClientHealthActions(c);

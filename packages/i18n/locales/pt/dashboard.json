@@ -236,6 +236,11 @@
     "semCliente": "Sem cliente",
     "semResponsavel": "Sem responsável",
     "semData": "Sem data",
+    "dateFmt": {
+      "day": "EEEE, d 'de' MMMM",
+      "dayShort": "EEEEEE, d 'de' MMM",
+      "weekday": "EEEEEE"
+    },
     "groupMeta": {
       "oldest_one": "O mais antigo venceu há {{count}} dia",
       "oldest_other": "O mais antigo venceu há {{count}} dias",
