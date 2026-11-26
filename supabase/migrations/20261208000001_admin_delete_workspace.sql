@@ -12,7 +12,7 @@
 --   1. trava a linha do workspace e reconfere a cobrança pelo espelho (allowlist: sem linha,
 --      status nulo, `canceled` ou `incomplete_expired`; qualquer outro recusa com
 --      `active_subscription`);
---   2. calcula os órfãos (sem outro workspace_members, fora de platform_admins);
+--   2. guarda os membros (o login de cada um é avaliado no fim, passo 8);
 --   3. reaponta profiles.active_workspace_id / conta_id de quem está nele para outro workspace
 --      do qual participa (o FK de active_workspace_id é NO ACTION; conta_id é lido como o
 --      workspace atual em vários lugares). Sem outro workspace, active_workspace_id fica NULL e
@@ -67,7 +67,9 @@ as $$
      and not c.relispartition
      and a.attname in ('conta_id', 'workspace_id')
      and a.atttypid = 'uuid'::regtype
-     and c.relname not in ('workspaces', 'profiles')
+     -- youtube_pdf_purges é fila: o youtube-sync-cron apaga o objeto pelo storage_path e precisa
+     -- da linha, com ou sem workspace.
+     and c.relname not in ('workspaces', 'profiles', 'youtube_pdf_purges')
      and not exists (
        select 1 from pg_constraint k
         where k.contype = 'f' and k.conrelid = c.oid
@@ -78,6 +80,81 @@ $$;
 
 revoke all on function public.admin_delete_workspace_loose_tables() from public, anon, authenticated;
 grant execute on function public.admin_delete_workspace_loose_tables() to service_role;
+
+-- O login de p_user pode sair junto com o workspace p_conta? Só quando apagar o usuário não leva
+-- nada de outro workspace: várias tabelas de dado (clientes.user_id, contratos, transacoes,
+-- membros, workflows...) têm FK ON DELETE CASCADE para auth.users, então um ex-membro que criou
+-- clientes em outro workspace levaria esses clientes junto. Regra (fail closed):
+--   * sem outro workspace_members e fora de platform_admins;
+--   * para cada tabela com FK CASCADE para auth.users ou profiles: se ela tem conta_id ou
+--     workspace_id, nenhuma linha do usuário fora de p_conta; se não tem, nenhuma linha, a não
+--     ser nas tabelas só do próprio usuário (preferências, dispositivos, dispensas de banner etc.).
+--     p_check_unscoped = false pula esse último teste (a prévia roda antes do DELETE, quando as
+--     linhas do próprio workspace ainda existem nessas tabelas); a exclusão sempre roda com true.
+-- Tabela nova com FK CASCADE para auth.users entra na regra sozinha e, sem coluna de workspace,
+-- bloqueia o delete do login até ser posta na lista abaixo: o erro é manter um login, nunca
+-- apagar dado de outro cliente.
+create or replace function public.admin_delete_workspace_login_deletable(
+  p_user uuid,
+  p_conta uuid,
+  p_check_unscoped boolean
+)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  r record;
+  v_hit boolean;
+begin
+  if exists (select 1 from public.workspace_members where user_id = p_user and workspace_id <> p_conta)
+     or exists (select 1 from public.platform_admins where user_id = p_user) then
+    return false;
+  end if;
+
+  for r in
+    select format('%I.%I', n.nspname, c.relname) as tbl,
+           a.attname::text as usercol,
+           (select w.attname::text from pg_attribute w
+             where w.attrelid = c.oid and w.attnum > 0 and not w.attisdropped
+               and w.attname in ('conta_id', 'workspace_id') and w.atttypid = 'uuid'::regtype
+             order by w.attname limit 1) as wscol,
+           c.relname::text as relname
+      from pg_constraint k
+      join pg_class c on c.oid = k.conrelid
+      join pg_namespace n on n.oid = c.relnamespace
+      join pg_attribute a on a.attrelid = k.conrelid and a.attnum = k.conkey[1]
+     where k.contype = 'f' and k.confdeltype = 'c'
+       and k.confrelid in ('auth.users'::regclass, 'public.profiles'::regclass)
+       and cardinality(k.conkey) = 1
+       and n.nspname = 'public'
+       and c.relname not in ('profiles', 'workspace_members', 'platform_admins')
+  loop
+    if r.wscol is not null then
+      execute format('select exists (select 1 from %s where %I = $1 and %I is distinct from $2)',
+                     r.tbl, r.usercol, r.wscol)
+        into v_hit using p_user, p_conta;
+    elsif not p_check_unscoped or r.relname in (
+        'banner_dismissals', 'crisp_contacts', 'crisp_sessions', 'kb_video_progress',
+        'loops_contacts', 'notification_email_prefs', 'notification_inapp_prefs',
+        'notification_push_prefs', 'popup_interactions', 'push_devices') then
+      v_hit := false;
+    else
+      execute format('select exists (select 1 from %s where %I = $1)', r.tbl, r.usercol)
+        into v_hit using p_user;
+    end if;
+    if v_hit then
+      return false;
+    end if;
+  end loop;
+  return true;
+end;
+$$;
+
+revoke all on function public.admin_delete_workspace_login_deletable(uuid, uuid, boolean) from public, anon, authenticated;
+grant execute on function public.admin_delete_workspace_login_deletable(uuid, uuid, boolean) to service_role;
 
 create or replace function public.admin_delete_workspace_preview(p_conta uuid)
 returns jsonb
@@ -124,9 +201,7 @@ begin
                'email', u.email,
                'name', coalesce(nullif(p.nome, ''), u.raw_user_meta_data->>'full_name'),
                'login_deleted',
-                 not exists (select 1 from public.workspace_members o
-                              where o.user_id = wm.user_id and o.workspace_id <> p_conta)
-                 and not exists (select 1 from public.platform_admins pa where pa.user_id = wm.user_id)
+                 public.admin_delete_workspace_login_deletable(wm.user_id, p_conta, false)
              ) order by (wm.role = 'owner') desc, wm.joined_at)
         from public.workspace_members wm
         left join auth.users u on u.id = wm.user_id
@@ -159,6 +234,7 @@ declare
   v_col text;
   v_pass int;
   v_last_error text;
+  v_audit_id bigint;
 begin
   select id, name, created_by into v_ws from public.workspaces where id = p_conta for update;
   if not found then
@@ -174,12 +250,6 @@ begin
   select coalesce(array_agg(user_id), '{}') into v_members
     from public.workspace_members where workspace_id = p_conta;
 
-  select coalesce(array_agg(m), '{}') into v_orphans
-    from unnest(v_members) m
-   where not exists (select 1 from public.workspace_members o
-                      where o.user_id = m and o.workspace_id <> p_conta)
-     and not exists (select 1 from public.platform_admins pa where pa.user_id = m);
-
   select email into v_owner_email from auth.users where id = v_ws.created_by;
 
   insert into public.audit_log (conta_id, actor_user_id, action, resource_type, resource_id, metadata)
@@ -189,9 +259,9 @@ begin
     'owner_user_id', v_ws.created_by,
     'owner_email', v_owner_email,
     'member_count', cardinality(v_members),
-    'logins_to_delete', cardinality(v_orphans),
     'subscription_status', v_status
-  ));
+  ))
+  returning id into v_audit_id;
 
   -- 3. Quem está com este workspace aberto vai para outro do qual participa (o mais recente).
   update public.profiles p
@@ -245,6 +315,16 @@ begin
       errcode = 'P0001',
       detail = format('pendentes: %s; último erro: %s', array_to_string(v_pending, ', '), v_last_error);
   end if;
+
+  -- 8. Logins que podem sair, calculado depois da varredura: o que sobrou do usuário em
+  --    qualquer tabela já é de outro workspace (ver admin_delete_workspace_login_deletable).
+  select coalesce(array_agg(m), '{}') into v_orphans
+    from unnest(v_members) m
+   where public.admin_delete_workspace_login_deletable(m, p_conta, true);
+
+  update public.audit_log
+     set metadata = metadata || jsonb_build_object('logins_to_delete', cardinality(v_orphans))
+   where id = v_audit_id;
 
   return jsonb_build_object(
     'workspace_id', p_conta,

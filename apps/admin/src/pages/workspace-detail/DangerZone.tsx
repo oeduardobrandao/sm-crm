@@ -5,11 +5,11 @@ import { GlassPanel } from '../../components/shell/GlassPanel';
 import { Button } from '../../components/ui/button';
 
 const COPY =
-  'Exclui o workspace, todos os dados dele e o login de quem não participa de outro workspace. Não dá para desfazer.';
+  'Exclui o workspace, todos os dados dele e o login de quem não tem nada em outro workspace. Não dá para desfazer.';
 
 export function DangerZonePanel({ onDelete }: { onDelete: () => void }) {
   return (
-    <GlassPanel title="Zona de perigo" titleId="wd-danger-zone" className="border-destructive/40">
+    <GlassPanel title="Zona de perigo" titleId="wd-danger-zone" className="!border-destructive/40">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="m-0 max-w-[60ch] text-sm text-muted-foreground">{COPY}</p>
         <Button variant="destructive" onClick={onDelete}>

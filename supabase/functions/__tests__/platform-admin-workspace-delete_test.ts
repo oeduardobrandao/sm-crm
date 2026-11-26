@@ -172,6 +172,7 @@ Deno.test("delete: RPC races into active_subscription -> 409; deadlock -> 409; o
   const cases: Array<[unknown, number]> = [
     [{ message: "active_subscription" }, 409],
     [{ code: "40P01", message: "deadlock detected" }, 409],
+    [{ code: "57014", message: "canceling statement due to statement timeout" }, 503],
     [{ message: "workspace_delete_incomplete" }, 500],
   ];
   for (const [error, status] of cases) {

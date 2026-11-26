@@ -143,9 +143,9 @@ export function DeleteWorkspaceDialog({
               <div className="flex flex-col gap-1">
                 <p className="m-0 font-semibold">Exclusão permanente, sem backup.</p>
                 <p className="m-0 text-muted-foreground">
-                  Clientes, posts, arquivos e mídias, tarefas, financeiro, contratos, relatórios,
-                  integrações e o Hub dos clientes somem na hora. Os links do Hub param de
-                  funcionar.
+                  Clientes, posts, tarefas, financeiro, contratos, relatórios, integrações e o Hub
+                  dos clientes somem na hora, e os links do Hub param de funcionar. Arquivos e
+                  mídias saem do armazenamento pela limpeza automática.
                 </p>
               </div>
             </div>
@@ -189,7 +189,7 @@ export function DeleteWorkspaceDialog({
                       {losing.length === 1 ? 'Login excluído junto' : 'Logins excluídos junto'}
                     </p>
                     <p className="m-0 text-muted-foreground">
-                      Não participam de outro workspace: {losing.map(memberLabel).join(', ')}.
+                      Não têm nada em outro workspace: {losing.map(memberLabel).join(', ')}.
                     </p>
                   </div>
                 ) : null}
@@ -197,7 +197,7 @@ export function DeleteWorkspaceDialog({
                   <div className="text-sm">
                     <p className="m-0 font-semibold">Mantêm o login</p>
                     <p className="m-0 text-muted-foreground">
-                      Participam de outro workspace ou são admins da plataforma:{' '}
+                      Participam ou têm dados em outro workspace, ou são admins da plataforma:{' '}
                       {keeping.map(memberLabel).join(', ')}.
                     </p>
                   </div>

@@ -74,7 +74,7 @@ describe('DeleteWorkspaceDialog', () => {
     expect(screen.getByText('340 posts')).toBeTruthy();
     expect(screen.getByText('1 arquivo')).toBeTruthy();
     expect(
-      screen.getByText(/Não participam de outro workspace: ana@socialbee\.com\.br/),
+      screen.getByText(/Não têm nada em outro workspace: ana@socialbee\.com\.br/),
     ).toBeTruthy();
     expect(screen.getByText(/admins da plataforma: bia@outra\.com/)).toBeTruthy();
   });

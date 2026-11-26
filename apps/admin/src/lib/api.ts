@@ -747,7 +747,8 @@ export interface DeleteWorkspacePreview {
     role: string;
     email: string | null;
     name: string | null;
-    /** No other workspace and not a platform admin: the login is deleted too. */
+    /** No membership or data in another workspace and not a platform admin: the login is
+     *  deleted too (re-checked after the delete, so it can only turn into a kept login). */
     login_deleted: boolean;
   }>;
   /** Why the delete is refused right now (active or unverifiable subscription), or null. */

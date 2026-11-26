@@ -31,6 +31,7 @@ const MSG_UNVERIFIED =
   "Não foi possível confirmar na Stripe ou no Pagar.me que a assinatura está cancelada. Tente de novo em instantes.";
 const MSG_CONFLICT = "O workspace mudou durante a exclusão. Tente de novo.";
 const MSG_FAILED = "Não foi possível excluir o workspace. Nada foi apagado.";
+const MSG_TIMEOUT = "A exclusão passou do tempo limite. Nada foi apagado. Tente de novo.";
 
 export interface DeletePreviewMember {
   user_id: string;
@@ -191,6 +192,8 @@ export async function deleteWorkspace(
     if (text.includes("workspace_not_found")) return { status: 404, body: { error: MSG_NOT_FOUND } };
     if (text.includes("active_subscription")) return { status: 409, body: { error: MSG_ACTIVE_SUB } };
     if (text.includes("40P01") || text.includes("deadlock")) return { status: 409, body: { error: MSG_CONFLICT } };
+    // statement_timeout / lock_timeout do authenticator (8 s): a transação inteira volta.
+    if (text.includes("57014") || text.includes("55P03")) return { status: 503, body: { error: MSG_TIMEOUT } };
     console.error("[platform-admin:delete-workspace] rpc failed", { workspaceId, error });
     return { status: 500, body: { error: MSG_FAILED } };
   }

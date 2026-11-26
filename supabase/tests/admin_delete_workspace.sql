@@ -72,12 +72,26 @@ rollback;
 
 -- 3. Workspace com dados reais: preview, exclusão, órfãos, profiles, filas e auditoria.
 begin;
+-- Paridade com prod: lá clientes.user_id tem FK ON DELETE CASCADE para auth.users (o banco local
+-- não tem). É ela que faria o delete de um login levar clientes de outro workspace.
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+     where conrelid = 'public.clientes'::regclass and contype = 'f' and confdeltype = 'c'
+       and confrelid = 'auth.users'::regclass) then
+    alter table public.clientes add constraint clientes_user_id_prod_parity_fkey
+      foreign key (user_id) references auth.users(id) on delete cascade not valid;
+  end if;
+end $$;
 do $$
 declare
   v_owner uuid := gen_random_uuid();   -- só neste workspace: login sai
   v_orphan uuid := gen_random_uuid();  -- membro com papel customizado, só aqui: login sai
   v_multi uuid := gen_random_uuid();   -- membro de outro workspace: login fica, profile reaponta
   v_admin uuid := gen_random_uuid();   -- admin da plataforma membro só daqui: login fica
+  v_ex uuid := gen_random_uuid();      -- só membro daqui, mas criou cliente em outro workspace:
+                                       -- clientes.user_id é ON DELETE CASCADE, então o login fica
   v_ws uuid; v_ws_multi uuid; v_ws_orphan_own uuid;
   v_role uuid; v_cli bigint; v_wf bigint; v_post bigint; v_file bigint; v_tarefa bigint; v_tag bigint;
   v_r2 text;
@@ -90,6 +104,7 @@ begin
   insert into auth.users (id, email) values (v_orphan, 'orfao@x.test');
   insert into auth.users (id, email) values (v_multi, 'multi@x.test');
   insert into auth.users (id, email) values (v_admin, 'admin@x.test');
+  insert into auth.users (id, email) values (v_ex, 'ex@x.test');
   insert into platform_admins (user_id, email) values (v_admin, 'admin@x.test');
 
   select id into v_ws from workspaces where created_by = v_owner;
@@ -100,7 +115,7 @@ begin
     values (v_ws, '{"max_team_members": 50}'::jsonb);
 
   -- o órfão e o admin só participam do workspace excluído
-  delete from workspace_members where user_id in (v_orphan, v_admin);
+  delete from workspace_members where user_id in (v_orphan, v_admin, v_ex);
 
   insert into workspace_roles (conta_id, nome, permissions)
     values (v_ws, 'Papel customizado', '{"entregas":"ver"}'::jsonb) returning id into v_role;
@@ -108,6 +123,9 @@ begin
   insert into workspace_members (user_id, workspace_id, role, joined_at)
     values (v_multi, v_ws, 'agent', now() - interval '1 day');
   insert into workspace_members (user_id, workspace_id, role) values (v_admin, v_ws, 'admin');
+  insert into workspace_members (user_id, workspace_id, role) values (v_ex, v_ws, 'agent');
+  insert into clientes (conta_id, user_id, nome, sigla, cor)
+    values (v_ws_multi, v_ex, 'Cliente de outro workspace', 'OW', '#111');
   update profiles set conta_id = v_ws, active_workspace_id = v_ws where id in (v_orphan, v_multi, v_admin);
 
   insert into clientes (conta_id, user_id, nome, sigla, cor)
@@ -145,7 +163,7 @@ begin
   assert (v_prev->'counts'->>'clientes')::int = 1, 'preview conta 1 cliente';
   assert (v_prev->'counts'->>'posts')::int = 1, 'preview conta 1 post';
   assert (v_prev->'counts'->>'arquivos')::int = 1, 'preview conta 1 arquivo';
-  assert (v_prev->'counts'->>'membros')::int = 4, 'preview conta 4 membros';
+  assert (v_prev->'counts'->>'membros')::int = 5, 'preview conta 5 membros';
   assert v_prev->'members'->0->>'user_id' = v_owner::text, 'dono vem primeiro';
   for v_m in select * from jsonb_array_elements(v_prev->'members') loop
     assert (v_m->>'login_deleted')::boolean = ((v_m->>'user_id')::uuid in (v_owner, v_orphan)),
@@ -189,6 +207,10 @@ begin
   assert (select active_workspace_id from profiles where id = v_orphan) is null, 'órfão fica sem workspace até o login sair';
   assert (select active_workspace_id from profiles where id = v_admin) is null, 'admin sem outro workspace fica nulo';
   assert exists (select 1 from auth.users where id = v_owner), 'a RPC não apaga logins (a function apaga depois)';
+  assert exists (select 1 from clientes where conta_id = v_ws_multi and user_id = v_ex),
+    'cliente do ex-membro em outro workspace continua';
+  assert not admin_delete_workspace_login_deletable(v_ex, v_ws, true), 'ex-membro com dado em outro workspace mantém o login';
+  assert admin_delete_workspace_login_deletable(v_owner, v_ws, true), 'dono só deste workspace perde o login';
 
   select * into v_audit from audit_log where action = 'admin-delete-workspace' and resource_id = v_ws::text;
   assert found, 'auditoria gravada';
