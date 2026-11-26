@@ -375,7 +375,8 @@ export default function ComecarPage() {
         ? null
         : 'Pedimos o cartão agora, mas nada é cobrado nos primeiros 30 dias.';
 
-  const footerHelp = isWhatsAppSupportEnabled() && (
+  // WhatsApp support is a Brazilian channel: a USD workspace never sees it (spec §7).
+  const footerHelp = currency !== 'usd' && isWhatsAppSupportEnabled() && (
     <p className="comecar-foot__help">
       Prefere falar com uma pessoa?{' '}
       <WhatsAppSupportButton

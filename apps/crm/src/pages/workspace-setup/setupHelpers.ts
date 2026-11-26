@@ -46,6 +46,21 @@ export function isValidBrPhone(value: string): boolean {
   return digits >= 10 && digits <= 13;
 }
 
+/**
+ * Phone for a USD workspace, stored as digits only with the country code first and no `+`
+ * (`14155550132`), the shape every digits-only reader already expects. Formatting characters
+ * (spaces, dots, dashes, parentheses) are dropped. A 10-digit number typed without `+` is a US
+ * number and gets `1` prepended; otherwise 8 to 15 digits including the country code (E.164).
+ * Null for anything else, including letters (an extension) or a stray second `+`.
+ */
+export function normalizeInternationalPhone(input: string): string | null {
+  const trimmed = input.trim();
+  if (!/^\+?[\d\s().-]+$/.test(trimmed)) return null;
+  const digits = trimmed.replace(/\D/g, '');
+  if (!trimmed.startsWith('+') && digits.length === 10) return `1${digits}`;
+  return digits.length >= 8 && digits.length <= 15 ? digits : null;
+}
+
 const LOCAL_ORIGIN = 'http://setup.local';
 
 /**

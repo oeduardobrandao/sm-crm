@@ -1,0 +1,28 @@
+{
+  "workspace": {
+    "step": "Step 2 of 2",
+    "title": "Almost there",
+    "sub": "Tell us a bit about your agency so we can set up your workspace.",
+    "nomeLabel": "Your name",
+    "nomePlaceholder": "Ann Smith",
+    "empresaLabel": "Company or agency name",
+    "empresaPlaceholder": "Digital Agency",
+    "phoneLabelBr": "Phone / WhatsApp",
+    "phonePlaceholderBr": "(11) 99999-9999",
+    "phoneHintBr": "We'll use it to send your account information via SMS and WhatsApp.",
+    "phoneLabelIntl": "Phone",
+    "phonePlaceholderIntl": "+1 (415) 555-0132",
+    "phoneHintIntl": "Include the country code if you're outside the US.",
+    "marketingOptIn": "I agree to receive news and marketing messages via SMS and WhatsApp. You can opt out at any time.",
+    "errorNome": "Enter your name.",
+    "errorEmpresa": "Enter your company or agency name.",
+    "errorPhoneBr": "Enter a phone number with area code, like (11) 99999-9999.",
+    "errorPhoneIntl": "Enter a phone number with area code, like (415) 555-0132.",
+    "saveFailed": "We couldn't save. Try again.",
+    "continue": "Continue",
+    "footer": "You can change this later in Settings.",
+    "loading": "Loading",
+    "currencyMismatch": "We couldn't set up your account in US dollars. Try again in a moment.",
+    "retry": "Try again"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "workspace": {
+    "step": "Passo 2 de 2",
+    "title": "Falta pouco",
+    "sub": "Conte um pouco sobre sua agência para configurarmos seu espaço.",
+    "nomeLabel": "Seu nome",
+    "nomePlaceholder": "Ana dos Santos",
+    "empresaLabel": "Nome da empresa ou agência",
+    "empresaPlaceholder": "Agência Digital",
+    "phoneLabelBr": "Telefone / WhatsApp",
+    "phonePlaceholderBr": "(11) 99999-9999",
+    "phoneHintBr": "Usaremos para enviar informações da sua conta por SMS e WhatsApp.",
+    "phoneLabelIntl": "Telefone",
+    "phonePlaceholderIntl": "+1 (415) 555-0132",
+    "phoneHintIntl": "Com o código do país se você estiver fora dos EUA.",
+    "marketingOptIn": "Aceito receber novidades e comunicações de marketing por SMS e WhatsApp. Você pode cancelar quando quiser.",
+    "errorNome": "Informe seu nome.",
+    "errorEmpresa": "Informe o nome da empresa ou agência.",
+    "errorPhoneBr": "Informe um telefone com DDD, como (11) 99999-9999.",
+    "errorPhoneIntl": "Informe um telefone com código de área, como (415) 555-0132.",
+    "saveFailed": "Não foi possível salvar. Tente de novo.",
+    "continue": "Continuar",
+    "footer": "Você pode alterar essas informações depois em Configurações.",
+    "loading": "Carregando",
+    "currencyMismatch": "Não foi possível configurar sua conta em dólar. Tente de novo em instantes.",
+    "retry": "Tentar de novo"
+  }
+}
