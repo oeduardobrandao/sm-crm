@@ -6,6 +6,7 @@ import { resetVidroLook } from './vidroLook';
 import { isNativeApp } from '../native/platform';
 import { getMesaasNative } from '../native/mesaasNative';
 import { createNativeAuthStorage } from '../native/authStorage';
+import type { StoredAcquisition } from './acquisition';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -256,6 +257,8 @@ export async function signUp(
     ref_code?: string;
     /** Signup from an `/en` CTA (lib/signupMarket.ts); the billing-market trigger makes the workspace USD. */
     market?: 'us';
+    /** Origem de aquisição (lib/acquisition.ts); lida pelo trigger de criação do workspace. */
+    acq?: StoredAcquisition;
   },
   redirectPath = '/login',
 ) {

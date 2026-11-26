@@ -846,3 +846,85 @@ describe('LoginPage on the web keeps the landing link', () => {
     );
   });
 });
+
+describe('signup acquisition metadata', () => {
+  const touch = {
+    utm_source: 'google',
+    utm_medium: 'cpc',
+    utm_campaign: null,
+    utm_content: null,
+    utm_term: null,
+    click: 'gclid',
+    ref: false,
+    referrer_host: null,
+    landing_path: '/',
+    at: new Date().toISOString(),
+  };
+  const stored = { first: touch, last: touch, v: 1 };
+
+  beforeEach(() => {
+    mockedSignUp.mockReset();
+    mockedUseAuth.mockReset();
+    mockedUseAuth.mockReturnValue({ user: null, loading: false } as never);
+    mockedCaptureEvent.mockReset();
+    mockedIdentifySignup.mockReset();
+    window.localStorage.removeItem('mesaas:acq');
+  });
+
+  afterEach(() => {
+    window.localStorage.removeItem('mesaas:acq');
+  });
+
+  function seed() {
+    window.localStorage.setItem('mesaas:acq', JSON.stringify(stored));
+  }
+
+  async function register() {
+    const { container } = renderRegister('/login?tab=register');
+    fillRegisterForm(container);
+    submitRegister(container);
+    await waitFor(() => expect(mockedSignUp).toHaveBeenCalled());
+  }
+
+  it('sends the stored acquisition in the signUp metadata', async () => {
+    seed();
+    mockedSignUp.mockResolvedValue({ data: { session: { access_token: 't' } }, error: null } as never);
+    await register();
+    expect(mockedSignUp.mock.calls[0][2]).toEqual({ nome: 'Ana Souza', empresa: '', acq: stored });
+  });
+
+  it('omits acq when nothing is stored', async () => {
+    mockedSignUp.mockResolvedValue({ data: { session: { access_token: 't' } }, error: null } as never);
+    await register();
+    expect(mockedSignUp.mock.calls[0][2]).not.toHaveProperty('acq');
+  });
+
+  it('clears acq after a successful signup', async () => {
+    seed();
+    mockedSignUp.mockResolvedValue({
+      data: { session: { access_token: 't' }, user: { id: 'u1', identities: [{}] } },
+      error: null,
+    } as never);
+    await register();
+    await waitFor(() => expect(window.localStorage.getItem('mesaas:acq')).toBeNull());
+  });
+
+  it('keeps acq when the email already has an account', async () => {
+    seed();
+    mockedSignUp.mockResolvedValue({
+      data: { session: null, user: { id: 'fake-uuid', identities: [] } },
+      error: null,
+    } as never);
+    await register();
+    await screen.findByText('Você já tem uma conta');
+    expect(window.localStorage.getItem('mesaas:acq')).not.toBeNull();
+  });
+
+  it('keeps acq when signUp returns an error', async () => {
+    seed();
+    mockedSignUp.mockResolvedValue({ data: null, error: { message: 'boom' } } as never);
+    await register();
+    await waitFor(() => expect(mockedCaptureEvent).not.toHaveBeenCalledWith('signup_completed'));
+    expect(window.localStorage.getItem('mesaas:acq')).not.toBeNull();
+  });
+});
