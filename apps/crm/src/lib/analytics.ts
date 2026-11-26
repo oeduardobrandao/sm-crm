@@ -1,5 +1,5 @@
 // Type-only: the SDK itself is loaded on demand by initAnalytics (see loadSdk below).
-import type { PostHog } from 'posthog-js';
+import type { CaptureResult, PostHog } from 'posthog-js';
 
 /**
  * Product analytics. EU cloud region.
@@ -156,6 +156,18 @@ function applyIdentity(ph: PostHog, userId: string, props: WorkspaceUserProps): 
   ph.group('workspace', props.workspace_id);
 }
 
+/**
+ * posthog `before_send`: every event sent from `/en` or below (the English US site, spec §11)
+ * carries `site_locale: 'en'`, including the SDK's own `$pageview` and autocapture. Read from the
+ * URL at send time, so it follows SPA navigation and never runs during render.
+ */
+export function addSiteLocale(event: CaptureResult | null): CaptureResult | null {
+  if (!event || typeof window === 'undefined') return event;
+  const path = window.location.pathname;
+  if (path !== '/en' && !path.startsWith('/en/')) return event;
+  return { ...event, properties: { ...event.properties, site_locale: 'en' } };
+}
+
 function startSdk(ph: PostHog): void {
   if (!KEY) return;
   if (!initialized) {
@@ -177,6 +189,7 @@ function startSdk(ph: PostHog): void {
       // feature flags, so skip that reload. Deliberately NOT `advanced_disable_flags`: that one
       // also stops remote config from loading, which is what starts session replay and heatmaps.
       advanced_disable_feature_flags: true,
+      before_send: addSiteLocale,
     });
     initialized = true;
   }
@@ -283,20 +296,12 @@ export interface CaptureOptions {
   sendInstantly?: boolean;
 }
 
-/** `/en` and everything under it is the English US site (spec §11). Read at capture time, never at render. */
-function withSiteLocale(props?: Record<string, unknown>): Record<string, unknown> | undefined {
-  const path = typeof window === 'undefined' ? '' : window.location.pathname;
-  if (path !== '/en' && !path.startsWith('/en/')) return props;
-  return { ...props, site_locale: 'en' };
-}
-
 export function captureEvent(
   event: AnalyticsEvent,
-  rawProps?: Record<string, unknown>,
+  props?: Record<string, unknown>,
   opts?: CaptureOptions,
 ): void {
   if (!capturing) return;
-  const props = withSiteLocale(rawProps);
   if (opts?.sendInstantly) {
     run((ph) => ph.capture(event, props, { send_instantly: true }));
     return;

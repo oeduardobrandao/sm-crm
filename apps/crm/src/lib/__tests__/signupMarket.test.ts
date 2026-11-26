@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@mesaas/i18n', () => ({ changeLanguage: vi.fn() }));
+vi.mock('@mesaas/i18n', () => ({
+  changeLanguage: vi.fn(),
+  i18n: { changeLanguage: vi.fn(() => Promise.resolve()) },
+}));
 
-import { changeLanguage } from '@mesaas/i18n';
+import { changeLanguage, i18n } from '@mesaas/i18n';
 import { applyAccountLanguageFallback, readSignupMarket } from '../signupMarket';
 
 const mockedChangeLanguage = vi.mocked(changeLanguage);
@@ -66,5 +69,7 @@ describe('applyAccountLanguageFallback', () => {
       throw new Error('blocked');
     });
     expect(() => applyAccountLanguageFallback(usUser)).not.toThrow();
+    // Not persisted, but this page load still switches to English.
+    expect(i18n.changeLanguage).toHaveBeenCalledWith('en');
   });
 });

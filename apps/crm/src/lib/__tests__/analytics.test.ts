@@ -73,26 +73,28 @@ describe('analytics', () => {
     expect(posthogMock.capture).toHaveBeenCalledWith('hub_link_copied', { cliente_id: 7 });
   });
 
-  it('tags events captured on /en pages with site_locale en, and only there', async () => {
+  it('tags every event sent from /en pages with site_locale en, and only there', async () => {
     vi.stubEnv('VITE_POSTHOG_KEY', 'phc_test');
-    const { initAnalytics, captureEvent } = await import('../analytics');
+    const { initAnalytics, addSiteLocale } = await import('../analytics');
     initAnalytics();
     await vi.dynamicImportSettled();
+    // Wired as before_send, so the SDK's own $pageview and autocapture carry it too.
+    expect(posthogMock.init).toHaveBeenCalledWith(
+      'phc_test',
+      expect.objectContaining({ before_send: addSiteLocale }),
+    );
+    const event = { uuid: 'u', event: '$pageview', properties: { a: 1 } } as never;
     const original = window.location.pathname;
     try {
       for (const path of ['/en', '/en/pricing']) {
         window.history.replaceState(null, '', path);
-        captureEvent('hub_link_copied', { cliente_id: 7 });
-        expect(posthogMock.capture).toHaveBeenLastCalledWith('hub_link_copied', {
-          cliente_id: 7,
-          site_locale: 'en',
-        });
+        expect(addSiteLocale(event)).toMatchObject({ properties: { a: 1, site_locale: 'en' } });
       }
       for (const path of ['/', '/entregas', '/english']) {
         window.history.replaceState(null, '', path);
-        captureEvent('client_created');
-        expect(posthogMock.capture).toHaveBeenLastCalledWith('client_created', undefined);
+        expect(addSiteLocale(event)).toBe(event);
       }
+      expect(addSiteLocale(null)).toBeNull();
     } finally {
       window.history.replaceState(null, '', original);
     }

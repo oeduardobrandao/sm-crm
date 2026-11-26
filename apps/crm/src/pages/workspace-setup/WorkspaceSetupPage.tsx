@@ -78,11 +78,10 @@ export default function WorkspaceSetupPage() {
     queryKey: EFFECTIVE_PLAN_KEY,
     queryFn: getEffectivePlanWithSource,
   });
-  const readCurrency: BillingCurrency | null = planQuery.isError
-    ? usSignup
-      ? 'usd'
-      : 'brl'
-    : (planQuery.data?.billingCurrency ?? null);
+  // A failed background refetch keeps the last good value; only a read that never produced data
+  // falls back to the signup market.
+  const readCurrency: BillingCurrency | null =
+    planQuery.data?.billingCurrency ?? (planQuery.isError ? (usSignup ? 'usd' : 'brl') : null);
 
   // A US signup the part 1 trigger left in BRL is repaired server-side before the form is usable;
   // the RPC reads the market from auth.users itself and is a no-op for anyone else.

@@ -1,4 +1,4 @@
-import { changeLanguage } from '@mesaas/i18n';
+import { changeLanguage, i18n } from '@mesaas/i18n';
 
 /** Same key `@mesaas/i18n` persists the UI language under. */
 const LANGUAGE_STORAGE_KEY = 'mesaas-language';
@@ -36,6 +36,7 @@ export function applyAccountLanguageFallback(
   try {
     changeLanguage('en');
   } catch {
-    // Storage blocked (private mode): the app stays in its current language.
+    // Storage blocked (private mode): switch for this page load without persisting it.
+    void i18n.changeLanguage('en');
   }
 }
