@@ -5,10 +5,11 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { useState } from 'react';
 import { GripVertical, Minus, Plus, SlidersHorizontal, Trash2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { SortableContext, rectSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { BLOCK_COMPONENTS, SIZE_CLASS } from '@mesaas/report-blocks/BlockRenderer';
-import { WIDGET_CATALOG, isFullWidthOnly } from '@mesaas/report-blocks/catalog';
+import { isFullWidthOnly } from '@mesaas/report-blocks/catalog';
 import { blockHasData } from '@mesaas/report-blocks/data-presence';
 import type { ReportPlatform } from '@mesaas/report-blocks/platform';
 import type {
@@ -22,6 +23,7 @@ import { TEXT_BLOCK_TYPES } from '@mesaas/report-blocks/types';
 import { CoverEditor } from './CoverEditor';
 import { SectionHeaderEditor } from './SectionHeaderEditor';
 import { SectionFrameHeader, sectionDisplayName } from './SectionFrameHeader';
+import { widgetLabel } from './editorText';
 import {
   IMAGE_SETTINGS_TOGGLE_ATTR,
   ImageBlockEditor,
@@ -37,14 +39,12 @@ export const SECTIONS_GROUP = '__sections__';
 // omite o bloco (guard de cada widget), mas no editor uma célula vazia parece
 // bug e esconde o próprio widget que o usuário acabou de adicionar.
 function NoDataPlaceholder({ type }: { type: BlockType }) {
-  const label = WIDGET_CATALOG.find((w) => w.type === type)?.label ?? type;
+  const { t } = useTranslation('reportEditor');
+  const label = widgetLabel(type);
   return (
     <div className="rb-edit-nodata">
       <p className="rb-edit-nodata-title">{label}</p>
-      <p className="rb-edit-nodata-hint">
-        Sem dados neste período. Este widget não aparece na visão do cliente; use Atualizar dados se
-        a conta tiver sincronizado depois da geração.
-      </p>
+      <p className="rb-edit-nodata-hint">{t('frame.noDataHint')}</p>
     </div>
   );
 }
@@ -72,6 +72,7 @@ function SortableCell({
   editing: CellEditing;
   droppable: boolean;
 }) {
+  const { t } = useTranslation('reportEditor');
   const { snapshot, platforms, renderTextBlock, onConfigChange, imageContext } = editing;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: block.id,
@@ -135,7 +136,7 @@ function SortableCell({
         <button
           type="button"
           className="rb-edit-btn cursor-grab touch-none"
-          aria-label="Reordenar bloco"
+          aria-label={t('frame.reorderBlock')}
           {...attributes}
           {...listeners}
         >
@@ -146,7 +147,7 @@ function SortableCell({
             <button
               type="button"
               className="rb-edit-btn"
-              aria-label="Diminuir largura"
+              aria-label={t('frame.narrower')}
               onClick={() => editing.onResize(block.id, -1)}
             >
               <Minus className="h-3.5 w-3.5" />
@@ -154,7 +155,7 @@ function SortableCell({
             <button
               type="button"
               className="rb-edit-btn"
-              aria-label="Aumentar largura"
+              aria-label={t('frame.wider')}
               onClick={() => editing.onResize(block.id, 1)}
             >
               <Plus className="h-3.5 w-3.5" />
@@ -163,7 +164,7 @@ function SortableCell({
               <button
                 type="button"
                 className="rb-edit-btn"
-                aria-label="Ajustes da imagem"
+                aria-label={t('frame.imageSettings')}
                 aria-pressed={imgSettingsOpen}
                 {...{ [IMAGE_SETTINGS_TOGGLE_ATTR]: block.id }}
                 onClick={() => setImgSettingsOpen((v) => !v)}
@@ -176,7 +177,7 @@ function SortableCell({
         <button
           type="button"
           className="rb-edit-btn rb-edit-btn-danger"
-          aria-label="Excluir bloco"
+          aria-label={t('frame.removeBlock')}
           onClick={() => editing.onRemove(block.id)}
         >
           <Trash2 className="h-3.5 w-3.5" />
@@ -214,6 +215,7 @@ export function SectionFrame({
   onToggleHideHeader,
   onRemove,
 }: SectionFrameProps) {
+  const { t } = useTranslation('reportEditor');
   const { marker, kind, blocks } = section;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: marker.id,
@@ -235,7 +237,7 @@ export function SectionFrame({
         ? snapshot.account.handle
         : null;
   const unitCount = kind === 'google' ? (snapshot.google?.units.length ?? 0) : 0;
-  const detail = unitCount > 0 ? `${unitCount} ${unitCount === 1 ? 'unidade' : 'unidades'}` : null;
+  const detail = unitCount > 0 ? t('frame.units', { count: unitCount }) : null;
   const cellsDroppable = dragGroup === null || dragGroup === marker.id;
 
   return (
@@ -243,7 +245,7 @@ export function SectionFrame({
       ref={setNodeRef}
       style={style}
       data-section-id={marker.id}
-      aria-label={`Seção ${name}`}
+      aria-label={t('frame.sectionAria', { name })}
       className={`rb-section-frame${marker.id === editing.highlightId ? ' rb-edit-highlight' : ''}`}
     >
       <SectionFrameHeader
@@ -275,10 +277,10 @@ export function SectionFrame({
           <button
             type="button"
             className="rb-section-frame-add"
-            aria-label={`Adicionar widget na seção ${name}`}
+            aria-label={t('frame.addWidgetInSection', { name })}
             onClick={onAddWidget}
           >
-            <Plus className="h-3.5 w-3.5" aria-hidden /> Adicionar widget
+            <Plus className="h-3.5 w-3.5" aria-hidden /> {t('frame.addWidget')}
           </button>
         )}
       </div>

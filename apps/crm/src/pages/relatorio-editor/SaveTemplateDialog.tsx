@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -23,6 +24,7 @@ export interface SaveTemplateDialogProps {
 }
 
 export function SaveTemplateDialog({ open, onOpenChange, getLayout }: SaveTemplateDialogProps) {
+  const { t } = useTranslation('reportEditor');
   const qc = useQueryClient();
   const [name, setName] = useState('');
   const [makeDefault, setMakeDefault] = useState(false);
@@ -46,10 +48,10 @@ export function SaveTemplateDialog({ open, onOpenChange, getLayout }: SaveTempla
       const created = await createReportTemplate(trimmed, stripped);
       if (makeDefault) await setDefaultReportTemplate(created.id);
       qc.invalidateQueries({ queryKey: ['report-templates'] });
-      toast.success('Template salvo.');
+      toast.success(t('saveTemplate.saved'));
       onOpenChange(false);
     } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : 'Erro ao salvar template.';
+      const message = e instanceof Error ? e.message : t('saveTemplate.error');
       toast.error(message);
     } finally {
       setSaving(false);
@@ -60,16 +62,16 @@ export function SaveTemplateDialog({ open, onOpenChange, getLayout }: SaveTempla
     <Dialog open={open} onOpenChange={(v) => !saving && onOpenChange(v)}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Salvar como template</DialogTitle>
+          <DialogTitle>{t('saveTemplate.title')}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="save-template-name">Nome do template</Label>
+            <Label htmlFor="save-template-name">{t('saveTemplate.nameLabel')}</Label>
             <Input
               id="save-template-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Ex: Relatório mensal padrão"
+              placeholder={t('saveTemplate.namePlaceholder')}
               autoFocus
             />
           </div>
@@ -80,16 +82,16 @@ export function SaveTemplateDialog({ open, onOpenChange, getLayout }: SaveTempla
               onCheckedChange={(v) => setMakeDefault(v === true)}
             />
             <Label htmlFor="save-template-default" className="font-normal">
-              Definir como padrão do workspace
+              {t('saveTemplate.makeDefault')}
             </Label>
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} disabled={saving}>
-            Cancelar
+            {t('saveTemplate.cancel')}
           </Button>
           <Button size="sm" onClick={handleSave} disabled={saving || !name.trim()}>
-            {saving ? 'Salvando…' : 'Salvar'}
+            {saving ? t('saveTemplate.saving') : t('saveTemplate.save')}
           </Button>
         </DialogFooter>
       </DialogContent>

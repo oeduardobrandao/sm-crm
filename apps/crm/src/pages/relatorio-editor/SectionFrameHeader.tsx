@@ -6,6 +6,7 @@
 // seção tem widgets.
 import { useRef, useState, type HTMLAttributes } from 'react';
 import { GripVertical, MoreHorizontal, PanelTop } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,18 +26,14 @@ import {
 } from '@/components/ui/alert-dialog';
 import { buttonVariants } from '@/components/ui/button';
 import { PlatformIcon } from '@mesaas/report-blocks/PlatformIcon';
-import { PLATFORM_NAMES } from '@mesaas/report-blocks/platform';
 import {
   SECTION_TITLE_MAX,
   trimSectionTitle,
   type ReportSection,
-  type SectionKind,
 } from '@mesaas/report-blocks/types';
+import { sectionKindName } from './editorText';
 
-/** Nome padrão do tipo de seção: o da plataforma, ou "Geral". */
-export function sectionKindName(kind: SectionKind): string {
-  return kind === 'general' ? 'Geral' : PLATFORM_NAMES[kind];
-}
+export { sectionKindName };
 
 function storedTitle(section: ReportSection): string {
   const t = section.marker.config?.title;
@@ -79,6 +76,7 @@ export function SectionFrameHeader({
   onToggleHideHeader,
   onRemove,
 }: SectionFrameHeaderProps) {
+  const { t } = useTranslation('reportEditor');
   const { kind } = section;
   const kindName = sectionKindName(kind);
   const name = sectionDisplayName(section);
@@ -107,7 +105,7 @@ export function SectionFrameHeader({
       <button
         type="button"
         className="rb-section-frame-grip cursor-grab touch-none"
-        aria-label="Reordenar seção"
+        aria-label={t('sectionHeaderBar.reorder')}
         {...dragHandleProps}
       >
         <GripVertical className="h-4 w-4" aria-hidden />
@@ -120,7 +118,7 @@ export function SectionFrameHeader({
       <input
         ref={inputRef}
         className="rb-section-frame-title"
-        aria-label={`Título da seção ${kindName}`}
+        aria-label={t('sectionHeaderBar.titleAria', { name: kindName })}
         placeholder={kindName}
         maxLength={SECTION_TITLE_MAX}
         value={draft}
@@ -134,13 +132,15 @@ export function SectionFrameHeader({
       ) : detail ? (
         <span className="rb-section-frame-handle">{detail}</span>
       ) : null}
-      {noHeading ? <span className="rb-section-frame-note">Sem título no relatório</span> : null}
+      {noHeading ? (
+        <span className="rb-section-frame-note">{t('sectionHeaderBar.noHeading')}</span>
+      ) : null}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
             type="button"
             className="rb-section-frame-menu"
-            aria-label={`Opções da seção ${name}`}
+            aria-label={t('sectionHeaderBar.menuAria', { name })}
           >
             <MoreHorizontal className="h-4 w-4" aria-hidden />
           </button>
@@ -157,17 +157,17 @@ export function SectionFrameHeader({
           }}
         >
           <DropdownMenuItem onSelect={() => (renamePending.current = true)}>
-            Renomear seção
+            {t('sectionHeaderBar.rename')}
           </DropdownMenuItem>
           <DropdownMenuItem disabled={index <= 0} onSelect={() => onMove(-1)}>
-            Mover para cima
+            {t('sectionHeaderBar.moveUp')}
           </DropdownMenuItem>
           <DropdownMenuItem disabled={index >= count - 1} onSelect={() => onMove(1)}>
-            Mover para baixo
+            {t('sectionHeaderBar.moveDown')}
           </DropdownMenuItem>
           {kind !== 'general' && (
             <DropdownMenuItem onSelect={onToggleHideHeader}>
-              {hidden ? 'Mostrar título no relatório' : 'Ocultar título no relatório'}
+              {hidden ? t('sectionHeaderBar.showTitle') : t('sectionHeaderBar.hideTitle')}
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />
@@ -175,25 +175,23 @@ export function SectionFrameHeader({
             className="text-[var(--danger-text)] focus:text-[var(--danger-text)]"
             onSelect={() => (section.blocks.length > 0 ? setConfirmOpen(true) : onRemove())}
           >
-            Remover seção
+            {t('sectionHeaderBar.remove')}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remover seção?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Os widgets desta seção também saem do relatório.
-            </AlertDialogDescription>
+            <AlertDialogTitle>{t('sectionHeaderBar.confirmTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('sectionHeaderBar.confirmBody')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t('sectionHeaderBar.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               className={buttonVariants({ variant: 'destructive' })}
               onClick={() => onRemove()}
             >
-              Remover
+              {t('sectionHeaderBar.confirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

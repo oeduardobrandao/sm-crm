@@ -8,6 +8,7 @@
 // UI ancorada, DESIGN_SYSTEM: sticky é inutilizado pelo overflow-x:hidden global).
 import { useMemo, useState } from 'react';
 import { GripVertical, PanelTop, Plus } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import {
   DndContext,
   KeyboardSensor,
@@ -25,7 +26,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { WIDGET_CATALOG, isFullWidthOnly } from '@mesaas/report-blocks/catalog';
+import { isFullWidthOnly } from '@mesaas/report-blocks/catalog';
 import { PlatformIcon } from '@mesaas/report-blocks/PlatformIcon';
 import type { ReportPlatform } from '@mesaas/report-blocks/platform';
 import type {
@@ -37,6 +38,7 @@ import type {
 import { toSections } from '@mesaas/report-blocks/types';
 import { FALLBACK_WIDGET_ICON, WIDGET_ICONS } from './widgetIcons';
 import { sectionDisplayName } from './SectionFrameHeader';
+import { widgetLabel } from './editorText';
 import { SECTIONS_GROUP } from './SectionFrame';
 import {
   DEFAULT_ENABLED_PLATFORMS,
@@ -49,8 +51,7 @@ const SIZE_LABEL: Record<BlockSize, string> = { third: '1/3', half: '1/2', full:
 /** Nome legível da camada: label do catálogo; cabeçalho de seção anexa o
  * título configurado; tipo desconhecido cai no próprio type (tolerante). */
 export function layerLabel(block: ReportBlock): string {
-  const entry = WIDGET_CATALOG.find((w) => w.type === block.type);
-  const base = entry?.label ?? block.type;
+  const base = widgetLabel(block.type);
   if (block.type === 'section_header') {
     const title = typeof block.config?.title === 'string' ? block.config.title.trim() : '';
     return title ? `${base} · ${title}` : base;
@@ -66,6 +67,7 @@ interface LayerRowProps {
 }
 
 function LayerRow({ block, active, droppable, onLocate }: LayerRowProps) {
+  const { t } = useTranslation('reportEditor');
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: block.id,
     disabled: { draggable: false, droppable: !droppable },
@@ -86,7 +88,7 @@ function LayerRow({ block, active, droppable, onLocate }: LayerRowProps) {
       <button
         type="button"
         className="rb-layers-handle cursor-grab touch-none"
-        aria-label="Reordenar camada"
+        aria-label={t('layers.reorderLayer')}
         {...attributes}
         {...listeners}
       >
@@ -105,12 +107,13 @@ function LayerRow({ block, active, droppable, onLocate }: LayerRowProps) {
 
 /** Hotspot de inserção: zona fina que revela o "+" no hover ou no foco. */
 function AddGap({ name, position, onAdd }: { name: string; position: number; onAdd: () => void }) {
+  const { t } = useTranslation('reportEditor');
   return (
     <div className="rb-layers-gap">
       <button
         type="button"
         className="rb-layers-add-between"
-        aria-label={`Adicionar widget em ${name}, posição ${position + 1}`}
+        aria-label={t('layers.addAt', { name, position: position + 1 })}
         onClick={onAdd}
       >
         <Plus className="h-3 w-3" aria-hidden />
@@ -136,6 +139,7 @@ function SectionLayer({
   onLocate,
   onAddAt,
 }: SectionLayerProps) {
+  const { t } = useTranslation('reportEditor');
   const { marker, kind, blocks } = section;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: marker.id,
@@ -155,14 +159,14 @@ function SectionLayer({
       }}
     >
       {/* aria-label num <li> não é anunciado; o grupo rotulado é. */}
-      <div role="group" aria-label={`Seção ${name}`}>
+      <div role="group" aria-label={t('layers.sectionGroup', { name })}>
         <div
           className={`rb-layers-row rb-layers-section-row${marker.id === highlightId ? ' rb-layers-row-active' : ''}`}
         >
           <button
             type="button"
             className="rb-layers-handle cursor-grab touch-none"
-            aria-label="Reordenar seção"
+            aria-label={t('layers.reorderSection')}
             {...attributes}
             {...listeners}
           >
@@ -222,6 +226,7 @@ export function LayersPanel({
   onLocate,
   onAddAt,
 }: LayersPanelProps) {
+  const { t } = useTranslation('reportEditor');
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -245,9 +250,9 @@ export function LayersPanel({
   }
 
   return (
-    <aside className="rb-layers-rail" aria-label="Camadas do relatório">
-      <h3 className="rb-layers-title">Camadas</h3>
-      <p className="rb-layers-hint">Arraste para reordenar. Clique para localizar.</p>
+    <aside className="rb-layers-rail" aria-label={t('layers.panelAria')}>
+      <h3 className="rb-layers-title">{t('layers.title')}</h3>
+      <p className="rb-layers-hint">{t('layers.hint')}</p>
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}

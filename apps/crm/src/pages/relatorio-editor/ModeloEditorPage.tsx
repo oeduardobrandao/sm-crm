@@ -3,6 +3,7 @@
 // Sem PDF, atualizar dados, ver como cliente ou salvar/aplicar template.
 import { useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Info, Plus, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -55,9 +56,8 @@ const TEMPLATE_SECTION_OPTS: PlatformSectionOpts = {
   hasTikTokBestTimes: true,
   hasGbpUnits: true,
 };
-const SAMPLE_NOTE = 'Dados de exemplo. Os números reais entram quando o relatório é gerado.';
-
 function AiPlaceholder() {
+  const { t } = useTranslation('reportEditor');
   return (
     <div
       style={{
@@ -72,12 +72,13 @@ function AiPlaceholder() {
       }}
     >
       <Sparkles className="h-4 w-4" aria-hidden="true" />
-      Gerado pela IA em cada relatório
+      {t('template.aiPlaceholder')}
     </div>
   );
 }
 
 function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
+  const { t } = useTranslation('reportEditor');
   const snapshot = useSampleSnapshot();
   const { features } = useWorkspaceLimits();
   const enabledPlatforms = useMemo(() => enabledReportPlatforms(features), [features]);
@@ -129,10 +130,10 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
     return (
       <ReportPhoneView
         title={title}
-        subtitle="Modelo de relatório"
+        subtitle={t('template.subtitle')}
         fallbackTo={SETTINGS_PATH}
-        backLabel="Voltar para Modelos"
-        sampleNote={SAMPLE_NOTE}
+        backLabel={t('template.backToTemplates')}
+        sampleNote={t('template.sampleNote')}
         layout={previewLayout}
         snapshot={snapshot}
       />
@@ -145,7 +146,7 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
       {isTablet && (
         <PhoneNavBar
           className="rb-editor-nav-bar"
-          backLabel="Voltar para Modelos"
+          backLabel={t('template.backToTemplates')}
           fallbackTo={SETTINGS_PATH}
         />
       )}
@@ -166,13 +167,13 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
         {!isTablet && (
           <Button variant="outline" size="sm" asChild>
             <Link to={SETTINGS_PATH}>
-              <ArrowLeft className="h-3.5 w-3.5" /> Modelos
+              <ArrowLeft className="h-3.5 w-3.5" /> {t('template.templatesButton')}
             </Link>
           </Button>
         )}
         <div className="rb-editor-title">
           <input
-            aria-label="Nome do modelo"
+            aria-label={t('template.nameAria')}
             className="rb-editor-title-input"
             value={draftName}
             onChange={(e) => {
@@ -185,10 +186,10 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
             }}
           />
           <p className="rb-editor-subtitle">
-            Modelo de relatório
+            {t('template.subtitle')}
             {saving && (
               <span className="drawer-saving-indicator" style={{ marginLeft: '0.6rem' }}>
-                Salvando…
+                {t('page.saving')}
               </span>
             )}
           </p>
@@ -202,7 +203,7 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
           />
           <AppearancePopover layout={layout} snapshot={snapshot} onChange={commit} />
           <Button size="sm" onClick={() => openWidgetDrawer(null)}>
-            <Plus className="h-3.5 w-3.5" /> Adicionar widget
+            <Plus className="h-3.5 w-3.5" /> {t('page.addWidget')}
           </Button>
         </div>
       </header>
@@ -223,7 +224,7 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
         }}
       >
         <Info className="h-4 w-4" aria-hidden="true" />
-        {SAMPLE_NOTE}
+        {t('template.sampleNote')}
       </p>
 
       <EditorCanvas
@@ -288,6 +289,7 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
 }
 
 export default function ModeloEditorPage() {
+  const { t } = useTranslation('reportEditor');
   // Arquivo solto fora das áreas de soltar não pode descarregar o editor.
   usePreventStrayFileDrop();
   const isPhone = !useIsDesktop(768);
@@ -316,9 +318,11 @@ export default function ModeloEditorPage() {
   if (isError) {
     return (
       <div style={{ padding: isPhone ? 0 : '2rem' }}>
-        {isPhone && <PhoneNavBar backLabel="Voltar para Modelos" fallbackTo={SETTINGS_PATH} />}
-        <p style={{ color: 'var(--text-muted)' }}>Não foi possível carregar o modelo.</p>
-        <Link to={SETTINGS_PATH}>Voltar para os modelos</Link>
+        {isPhone && (
+          <PhoneNavBar backLabel={t('template.backToTemplates')} fallbackTo={SETTINGS_PATH} />
+        )}
+        <p style={{ color: 'var(--text-muted)' }}>{t('template.loadError')}</p>
+        <Link to={SETTINGS_PATH}>{t('template.backLink')}</Link>
       </div>
     );
   }
@@ -326,9 +330,11 @@ export default function ModeloEditorPage() {
   if (!template) {
     return (
       <div style={{ padding: isPhone ? 0 : '2rem' }}>
-        {isPhone && <PhoneNavBar backLabel="Voltar para Modelos" fallbackTo={SETTINGS_PATH} />}
-        <p style={{ color: 'var(--text-muted)' }}>Modelo não encontrado.</p>
-        <Link to={SETTINGS_PATH}>Voltar para os modelos</Link>
+        {isPhone && (
+          <PhoneNavBar backLabel={t('template.backToTemplates')} fallbackTo={SETTINGS_PATH} />
+        )}
+        <p style={{ color: 'var(--text-muted)' }}>{t('template.notFound')}</p>
+        <Link to={SETTINGS_PATH}>{t('template.backLink')}</Link>
       </div>
     );
   }

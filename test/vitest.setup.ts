@@ -112,6 +112,8 @@ import ptAnalyticsFlows from '../packages/i18n/locales/pt/analyticsFlows.json';
 import enAnalyticsFlows from '../packages/i18n/locales/en/analyticsFlows.json';
 import ptAnalyticsPhone from '../packages/i18n/locales/pt/analyticsPhone.json';
 import enAnalyticsPhone from '../packages/i18n/locales/en/analyticsPhone.json';
+import ptReportEditor from '../packages/i18n/locales/pt/reportEditor.json';
+import enReportEditor from '../packages/i18n/locales/en/reportEditor.json';
 
 initI18n({
   pt: {
@@ -165,6 +167,7 @@ initI18n({
     analyticsAccount: ptAnalyticsAccount,
     analyticsFlows: ptAnalyticsFlows,
     analyticsPhone: ptAnalyticsPhone,
+    reportEditor: ptReportEditor,
   },
   en: {
     common: enCommon,
@@ -217,6 +220,7 @@ initI18n({
     analyticsAccount: enAnalyticsAccount,
     analyticsFlows: enAnalyticsFlows,
     analyticsPhone: enAnalyticsPhone,
+    reportEditor: enReportEditor,
   },
 });
 

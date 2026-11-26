@@ -2,6 +2,7 @@
 // autosave. View/print continuam no BlockRenderer do pacote (Hub, PR 3).
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, ExternalLink, MoreHorizontal, Plus } from 'lucide-react';
 import { toast } from 'sonner';
@@ -70,6 +71,7 @@ function snapshotSectionOpts(snapshot: ReportDocSnapshot): PlatformSectionOpts {
 }
 
 function EditorBody({ doc }: { doc: ReportDocumentRow }) {
+  const { t } = useTranslation('reportEditor');
   const qc = useQueryClient();
   const snapshot = doc.data_snapshot!;
   const { features } = useWorkspaceLimits();
@@ -153,7 +155,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
     // feedback claro disso, o usuário não sabia se o clique tinha
     // funcionado (achado do usuário 2026-08-25). O spinner no botão sozinho
     // é fácil de não notar numa espera dessa duração.
-    const toastId = toast.loading('Gerando PDF... isso pode levar até um minuto.');
+    const toastId = toast.loading(t('toast.pdfGenerating'));
     try {
       const { url } = await exportReportPdf(doc.id);
       // Um <a> clicado programaticamente é o ÚNICO mecanismo usado aqui, não
@@ -172,9 +174,9 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
       document.body.appendChild(a);
       a.click();
       a.remove();
-      toast.success('PDF gerado.', { id: toastId });
+      toast.success(t('toast.pdfDone'), { id: toastId });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao exportar PDF', { id: toastId });
+      toast.error(err instanceof Error ? err.message : t('toast.pdfError'), { id: toastId });
     } finally {
       setExporting(false);
     }
@@ -187,13 +189,13 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
   async function handleExportPdfPhone() {
     setExporting(true);
     setPhonePdfUrl(null);
-    const toastId = toast.loading('Gerando PDF... isso pode levar até um minuto.');
+    const toastId = toast.loading(t('toast.pdfGenerating'));
     try {
       const { url } = await exportReportPdf(doc.id);
       setPhonePdfUrl(url);
-      toast.success('PDF gerado. Toque em Abrir PDF.', { id: toastId });
+      toast.success(t('toast.pdfDonePhone'), { id: toastId });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao exportar PDF', { id: toastId });
+      toast.error(err instanceof Error ? err.message : t('toast.pdfError'), { id: toastId });
     } finally {
       setExporting(false);
     }
@@ -204,9 +206,9 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
     try {
       await refreshReportDoc(doc.id);
       await qc.invalidateQueries({ queryKey: ['report-doc', doc.id] });
-      toast.success('Dados atualizados.');
+      toast.success(t('toast.refreshDone'));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao atualizar dados');
+      toast.error(err instanceof Error ? err.message : t('toast.refreshError'));
     } finally {
       setRefreshing(false);
     }
@@ -219,7 +221,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
       warnImagesRemoved={layoutHasFilledImage(layout)}
       onApply={(tpl) => {
         commit(normalizeCoverSize(applyTemplateLayout(tpl.layout, layoutRef.current)));
-        toast.success('Template aplicado.');
+        toast.success(t('toast.templateApplied'));
       }}
     />
   );
@@ -236,21 +238,21 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
           snapshot={snapshot}
           actions={[
             {
-              label: refreshing ? 'Atualizando…' : 'Atualizar dados',
+              label: refreshing ? t('page.refreshing') : t('page.refreshData'),
               disabled: refreshing,
               onSelect: handleRefreshData,
             },
             ...(hubViewLink
               ? [
                   {
-                    label: 'Ver como cliente',
+                    label: t('page.viewAsClient'),
                     // Dentro do toque: window.open fora do gesto é bloqueado no iOS.
                     immediate: true,
                     onSelect: () => window.open(hubViewLink.url, '_blank', 'noopener'),
                   },
                 ]
               : []),
-            { label: 'Aplicar template', onSelect: () => setApplyTplOpen(true) },
+            { label: t('page.applyTemplate'), onSelect: () => setApplyTplOpen(true) },
           ]}
           bottomBar={
             <ReportExportBar
@@ -295,7 +297,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
       >
         <div className="rb-editor-title">
           <input
-            aria-label="Título do relatório"
+            aria-label={t('page.titleAria')}
             className="rb-editor-title-input"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -304,7 +306,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
             {snapshot.period.label}
             {saving && (
               <span className="drawer-saving-indicator" style={{ marginLeft: '0.6rem' }}>
-                Salvando…
+                {t('page.saving')}
               </span>
             )}
           </p>
@@ -318,14 +320,15 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
           />
           <AppearancePopover layout={layout} snapshot={snapshot} onChange={commit} />
           <Button size="sm" onClick={() => openWidgetDrawer(null)}>
-            <Plus className="h-3.5 w-3.5" /> Adicionar widget
+            <Plus className="h-3.5 w-3.5" /> {t('page.addWidget')}
           </Button>
           <Button
             size="sm"
             disabled={exporting}
             onClick={isTablet ? handleExportPdfPhone : handleExportPdf}
           >
-            {exporting ? <Spinner size="sm" /> : <Download className="h-3.5 w-3.5" />} Exportar PDF
+            {exporting ? <Spinner size="sm" /> : <Download className="h-3.5 w-3.5" />}{' '}
+            {t('page.exportPdf')}
           </Button>
           {isTablet && phonePdfUrl && (
             <Button variant="outline" size="sm" asChild>
@@ -335,31 +338,31 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
                 rel="noopener noreferrer"
                 onClick={pdfLinkClick(phonePdfUrl, pdfFilename(doc.title))}
               >
-                <ExternalLink className="h-3.5 w-3.5" /> Abrir PDF
+                <ExternalLink className="h-3.5 w-3.5" /> {t('page.openPdf')}
               </a>
             </Button>
           )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" aria-label="Ações do relatório">
+              <Button variant="outline" size="sm" aria-label={t('page.actionsAria')}>
                 <MoreHorizontal className="h-3.5 w-3.5" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onSelect={() => setSaveTplOpen(true)}>
-                Salvar como template
+                {t('page.saveAsTemplate')}
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => setApplyTplOpen(true)}>
-                Aplicar template
+                {t('page.applyTemplate')}
               </DropdownMenuItem>
               <DropdownMenuItem disabled={refreshing} onSelect={handleRefreshData}>
-                {refreshing ? 'Atualizando…' : 'Atualizar dados'}
+                {refreshing ? t('page.refreshing') : t('page.refreshData')}
               </DropdownMenuItem>
               {hubViewLink && (
                 <DropdownMenuItem
                   onSelect={() => window.open(hubViewLink.url, '_blank', 'noopener')}
                 >
-                  Ver como cliente
+                  {t('page.viewAsClient')}
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>
@@ -431,6 +434,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
 }
 
 export default function RelatorioEditorPage() {
+  const { t } = useTranslation('reportEditor');
   // Arquivo solto fora das áreas de soltar não pode descarregar o editor.
   usePreventStrayFileDrop();
   const isPhone = !useIsDesktop(768);
@@ -453,7 +457,7 @@ export default function RelatorioEditorPage() {
     return (
       <div style={{ padding: isPhone ? 0 : '2rem' }}>
         {isPhone && <PhoneNavBar fallbackTo="/analytics" />}
-        <p style={{ color: 'var(--text-muted)' }}>Relatório não encontrado.</p>
+        <p style={{ color: 'var(--text-muted)' }}>{t('page.notFound')}</p>
       </div>
     );
   }

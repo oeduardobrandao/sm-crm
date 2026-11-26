@@ -11,7 +11,8 @@ import type {
   SectionKind,
 } from '@mesaas/report-blocks/types';
 import { isSectionMarker, toSections } from '@mesaas/report-blocks/types';
-import { PLATFORM_NAMES, type ReportPlatform } from '@mesaas/report-blocks/platform';
+import type { ReportPlatform } from '@mesaas/report-blocks/platform';
+import { platformName, tr } from './editorText';
 import {
   addSection,
   insertBlockInSection,
@@ -93,9 +94,9 @@ export function useBlockEditing(
     // Marcador de seção: removeBlock recusa (só removeSection o tira).
     if (next === layoutRef.current) return;
     applyLayout(next);
-    toast('Bloco excluído.', {
+    toast(tr('editing.blockDeleted'), {
       action: {
-        label: 'Desfazer',
+        label: tr('editing.undo'),
         onClick: () => {
           const now = layoutRef.current;
           // Já voltou (Ctrl+Z antes do toast): nada a fazer nem a avisar.
@@ -106,7 +107,7 @@ export function useBlockEditing(
             return;
           }
           // Limite de widgets, ou a posição agora é de outra seção.
-          toast.info('Não deu para desfazer: o widget não cabe mais nessa posição.');
+          toast.info(tr('editing.undoBlockFailed'));
         },
       },
     });
@@ -147,7 +148,7 @@ export function useBlockEditing(
       // exemplo): avisa em vez de não inserir em silêncio.
       if (!current.blocks.some((b) => b.id === insertTarget.sectionId && isSectionMarker(b))) {
         setInsertTarget(null);
-        toast.error('Essa seção não existe mais. Escolha de novo onde inserir o widget.');
+        toast.error(tr('editing.sectionGone'));
         return;
       }
       const next = insertBlockInSection(
@@ -177,7 +178,7 @@ export function useBlockEditing(
     const markerId = crypto.randomUUID();
     const withGeneral = addSection(current, 'general', null, [], () => markerId);
     if (withGeneral === current) {
-      toast.error('Não deu para adicionar o widget. O relatório já está no limite de seções.');
+      toast.error(tr('editing.widgetLimit'));
       return;
     }
     const next = insertBlockInSection(withGeneral, markerId, type, undefined, makeId);
@@ -197,9 +198,9 @@ export function useBlockEditing(
     // O drawer não pode seguir apontando para a seção que saiu.
     if (insertTarget?.sectionId === id) setInsertTarget(null);
     applyLayout(next);
-    toast('Seção removida.', {
+    toast(tr('editing.sectionRemoved'), {
       action: {
-        label: 'Desfazer',
+        label: tr('editing.undo'),
         onClick: () => {
           const now = layoutRef.current;
           const restored = restoreSection(now, section, index);
@@ -213,8 +214,8 @@ export function useBlockEditing(
           const platformTaken = kind !== 'general' && toSections(now).some((s) => s.kind === kind);
           toast.info(
             kind !== 'general' && platformTaken
-              ? `Não deu para desfazer: já existe uma seção do ${PLATFORM_NAMES[kind]}.`
-              : 'Não deu para desfazer a remoção da seção.',
+              ? tr('editing.undoSectionTaken', { name: platformName(kind) })
+              : tr('editing.undoSectionFailed'),
           );
         },
       },
@@ -232,9 +233,7 @@ export function useBlockEditing(
     const markerId = crypto.randomUUID();
     const next = addSection(current, kind, afterSectionId, blocks, () => markerId);
     if (next === current) {
-      toast.error(
-        'Não deu para adicionar a seção. O relatório já está no limite de seções ou de widgets.',
-      );
+      toast.error(tr('editing.sectionLimit'));
       return;
     }
     applyLayout(next);

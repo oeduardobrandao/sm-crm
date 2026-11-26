@@ -3,6 +3,7 @@
 // deles NUNCA viaja no template. Puras e imutáveis, como layoutOps.
 import type { BlockType, ReportBlock, ReportLayout } from '@mesaas/report-blocks/types';
 import { sectionizeLayout } from '@mesaas/report-blocks/types';
+import { tr } from './editorText';
 
 const AI_TYPES: ReadonlySet<BlockType> = new Set(['ai_summary', 'ai_recommendations', 'ai_goals']);
 
@@ -36,22 +37,23 @@ export function applyTemplateLayout(template: ReportLayout, current: ReportLayou
   return { ...sectioned, blocks };
 }
 
-const AI_SAMPLE_TEXT = {
+const aiSampleText = () => ({
   type: 'doc',
   content: [
     {
       type: 'paragraph',
-      content: [{ type: 'text', text: 'Texto gerado pela IA em cada relatório.' }],
+      content: [{ type: 'text', text: tr('template.aiSampleText') }],
     },
   ],
-};
+});
 
 /** Prévia de um modelo (padrão do sistema, modelo no celular): blocos de IA não
  * guardam texto no modelo e o TextBlock renderiza null sem texto, então ganham
  * um parágrafo de exemplo para não sumirem. Só para exibir; nunca persistir. */
 export function withAiSampleText(layout: ReportLayout): ReportLayout {
+  const text = aiSampleText();
   return {
     ...layout,
-    blocks: layout.blocks.map((b) => (AI_TYPES.has(b.type) ? { ...b, text: AI_SAMPLE_TEXT } : b)),
+    blocks: layout.blocks.map((b) => (AI_TYPES.has(b.type) ? { ...b, text } : b)),
   };
 }

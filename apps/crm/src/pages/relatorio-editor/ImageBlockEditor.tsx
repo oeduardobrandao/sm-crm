@@ -5,6 +5,7 @@
 // entra numa cópia do bloco, na hora de renderizar).
 import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { ImagePlus, TriangleAlert } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
@@ -18,6 +19,7 @@ import { frameWidth, imageAspect, readImageConfig } from '@mesaas/report-blocks/
 import type { BlockSize, ReportBlock, ReportDocSnapshot } from '@mesaas/report-blocks/types';
 import { ImageSettingsPanel } from './ImageSettingsPanel';
 import { REPORT_IMAGE_MIMES, prepareReportImage, validateReportImage } from './reportImageUpload';
+import { tr } from './editorText';
 
 export type ImageEditorContext = { mode: 'report'; clientId: number } | { mode: 'template' };
 
@@ -36,13 +38,12 @@ export interface ImageBlockEditorProps {
  * pointerdown e o onClick do botão reabre na sequência. */
 export const IMAGE_SETTINGS_TOGGLE_ATTR = 'data-img-settings-toggle';
 
-const UPLOAD_FAILED = 'Não foi possível enviar a imagem.';
-
-function uploadErrorMessage(err: unknown): string {
+// retry: only the generic failure offers "try again" (a full plan will not fix itself).
+function uploadError(err: unknown): { message: string; retry: boolean } {
   if (err instanceof FileApiError && err.status === 413) {
-    return 'Sem espaço de armazenamento no plano.';
+    return { message: tr('image.noSpace'), retry: false };
   }
-  return UPLOAD_FAILED;
+  return { message: tr('image.uploadFailed'), retry: true };
 }
 
 function carriesFiles(e: DragEvent): boolean {
@@ -67,6 +68,7 @@ export function ImageBlockEditor({
   settingsOpen,
   onSettingsOpenChange,
 }: ImageBlockEditorProps) {
+  const { t } = useTranslation('reportEditor');
   const cfg = readImageConfig(block.config);
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -124,8 +126,7 @@ export function ImageBlockEditor({
         ratio: 'original',
       });
     } catch (err) {
-      const message = uploadErrorMessage(err);
-      setError({ message, retry: message === UPLOAD_FAILED });
+      setError(uploadError(err));
     } finally {
       busyRef.current = false;
       setUploading(null);
@@ -158,7 +159,7 @@ export function ImageBlockEditor({
       }
     }
     if (!width || !height) {
-      toast.error('Não foi possível abrir esta imagem.');
+      toast.error(t('image.openFailed'));
       return;
     }
     if (f.url) seedImageUrl(f.id, f.url);
@@ -179,7 +180,7 @@ export function ImageBlockEditor({
         side="right"
         sideOffset={12}
         className="w-auto"
-        aria-label="Ajustes da imagem"
+        aria-label={t('frame.imageSettings')}
         onInteractOutside={(e) => {
           const target = e.target instanceof Element ? e.target : null;
           const toggle = target?.closest(`[${IMAGE_SETTINGS_TOGGLE_ATTR}]`);
@@ -207,11 +208,8 @@ export function ImageBlockEditor({
           style={{ aspectRatio: String(aspect), width: frameWidth(aspect), margin: '0 auto' }}
         >
           <ImagePlus className="h-5 w-5" aria-hidden />
-          <p className="rb-img-drop-title">Espaço para imagem</p>
-          <p className="rb-img-drop-hint">
-            Cada relatório criado com este modelo começa com este espaço vazio, já no formato
-            escolhido.
-          </p>
+          <p className="rb-img-drop-title">{t('image.placeholderTitle')}</p>
+          <p className="rb-img-drop-hint">{t('image.placeholderHint')}</p>
         </div>
       </div>
     );
@@ -225,7 +223,7 @@ export function ImageBlockEditor({
       ref={inputRef}
       type="file"
       hidden
-      aria-label="Arquivo de imagem"
+      aria-label={t('image.fileInputAria')}
       accept={REPORT_IMAGE_MIMES.join(',')}
       onChange={(e) => {
         const file = e.target.files?.[0];
@@ -276,7 +274,7 @@ export function ImageBlockEditor({
         <img src={uploading.preview} alt="" style={{ width: '100%', borderRadius: 12 }} />
         <div className="rb-img-progress-bar" role="status">
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ fontWeight: 600 }}>Enviando imagem</span>
+            <span style={{ fontWeight: 600 }}>{t('image.uploading')}</span>
             <span>{uploading.pct}%</span>
           </div>
           <div className="rb-img-progress-track">
@@ -314,7 +312,7 @@ export function ImageBlockEditor({
                     if (lastFile.current) void handleFile(lastFile.current);
                   }}
                 >
-                  Tentar novamente
+                  {t('image.retry')}
                 </Button>
               )}
               <Button
@@ -325,12 +323,12 @@ export function ImageBlockEditor({
                   chooseFile();
                 }}
               >
-                Escolher outra
+                {t('image.chooseAnother')}
               </Button>
               {/* Troca que falhou: a imagem atual continua válida. */}
               {cfg.fileId !== null && (
                 <Button size="sm" variant="ghost" onClick={() => setError(null)}>
-                  Cancelar
+                  {t('image.cancel')}
                 </Button>
               )}
             </div>
@@ -338,19 +336,16 @@ export function ImageBlockEditor({
         ) : (
           <>
             <ImagePlus className="h-5 w-5" aria-hidden />
-            <p className="rb-img-drop-title">Arraste uma imagem para cá</p>
+            <p className="rb-img-drop-title">{t('image.dropTitle')}</p>
             <div style={{ display: 'flex', gap: 8 }}>
               <Button size="sm" variant="outline" onClick={chooseFile}>
-                Enviar imagem
+                {t('image.upload')}
               </Button>
               <Button size="sm" variant="ghost" onClick={() => void openPicker()}>
-                Escolher dos arquivos
+                {t('image.pickFromFiles')}
               </Button>
             </div>
-            <p className="rb-img-drop-hint">
-              JPG, PNG ou WebP até 10 MB. Também dá para colar uma imagem copiada. Imagens enviadas
-              ficam nos Arquivos do cliente.
-            </p>
+            <p className="rb-img-drop-hint">{t('image.dropHint')}</p>
           </>
         )}
       </div>
@@ -359,15 +354,15 @@ export function ImageBlockEditor({
     body = (
       <div className={`rb-img-drop is-error${dragOver ? ' is-over' : ''}`} {...dropHandlers}>
         <TriangleAlert className="h-5 w-5" aria-hidden />
-        <p className="rb-img-drop-title">Imagem indisponível</p>
+        <p className="rb-img-drop-title">{t('image.unavailable')}</p>
         <div style={{ display: 'flex', gap: 8 }}>
           {url.isError && (
             <Button size="sm" variant="outline" onClick={() => void url.refetch()}>
-              Tentar novamente
+              {t('image.retry')}
             </Button>
           )}
           <Button size="sm" variant="outline" onClick={chooseFile}>
-            Trocar imagem
+            {t('image.replace')}
           </Button>
         </div>
       </div>

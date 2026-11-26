@@ -6,6 +6,7 @@
 // modelo, todas valem: dados de exemplo).
 import { useId } from 'react';
 import { PanelTop, Plus } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,9 +14,10 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { PlatformIcon } from '@mesaas/report-blocks/PlatformIcon';
-import { PLATFORM_NAMES, type ReportPlatform } from '@mesaas/report-blocks/platform';
+import type { ReportPlatform } from '@mesaas/report-blocks/platform';
 import { MAX_SECTIONS, PLATFORM_ORDER, type SectionKind } from '@mesaas/report-blocks/types';
 import { DEFAULT_ENABLED_PLATFORMS } from './useBlockEditing';
+import { platformName, tr } from './editorText';
 
 export interface AddSectionMenuProps {
   /** Tipo de cada seção já no layout (uma entrada por seção). */
@@ -28,19 +30,19 @@ export interface AddSectionMenuProps {
 }
 
 /** Descrição do item quando ele pode ser escolhido (sem dica de bloqueio). */
-const PLATFORM_DESCRIPTIONS: Partial<Record<ReportPlatform, string>> = {
-  google: 'Visualizações, ligações, rotas, buscas e avaliações',
-};
+function platformDescription(platform: ReportPlatform): string | null {
+  return platform === 'google' ? tr('addSection.googleDescription') : null;
+}
 
 function platformHint(
   platform: ReportPlatform,
   existing: SectionKind[],
   available: ReportPlatform[] | 'all',
 ): string | null {
-  const name = PLATFORM_NAMES[platform];
-  if (existing.includes(platform)) return `Já existe uma seção do ${name}`;
+  const name = platformName(platform);
+  if (existing.includes(platform)) return tr('addSection.exists', { name });
   if (available !== 'all' && !available.includes(platform)) {
-    return `Sem dados do ${name} neste relatório. Atualize os dados depois de conectar a conta.`;
+    return tr('addSection.noData', { name });
   }
   return null;
 }
@@ -51,6 +53,7 @@ export function AddSectionMenu({
   availablePlatforms,
   onAdd,
 }: AddSectionMenuProps) {
+  const { t } = useTranslation('reportEditor');
   const platforms = PLATFORM_ORDER.filter((p) => enabledPlatforms.includes(p));
   const full = existing.length >= MAX_SECTIONS;
   const fullHintId = useId();
@@ -64,13 +67,13 @@ export function AddSectionMenu({
             disabled={full}
             aria-describedby={full ? fullHintId : undefined}
           >
-            <Plus className="h-3.5 w-3.5" aria-hidden /> Adicionar seção
+            <Plus className="h-3.5 w-3.5" aria-hidden /> {t('addSection.trigger')}
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="center" className="w-72">
           {platforms.map((p) => {
             const hint = platformHint(p, existing, availablePlatforms);
-            const text = hint ?? PLATFORM_DESCRIPTIONS[p] ?? null;
+            const text = hint ?? platformDescription(p);
             return (
               <DropdownMenuItem
                 key={p}
@@ -80,7 +83,7 @@ export function AddSectionMenu({
               >
                 <PlatformIcon platform={p} size={16} className="rb-add-section-icon" />
                 <span className="rb-add-section-text">
-                  <span className="rb-add-section-label">{PLATFORM_NAMES[p]}</span>
+                  <span className="rb-add-section-label">{platformName(p)}</span>
                   {text && <span className="rb-add-section-hint">{text}</span>}
                 </span>
               </DropdownMenuItem>
@@ -89,15 +92,15 @@ export function AddSectionMenu({
           <DropdownMenuItem onSelect={() => onAdd('general')} className="rb-add-section-item">
             <PanelTop className="rb-add-section-icon h-4 w-4" aria-hidden />
             <span className="rb-add-section-text">
-              <span className="rb-add-section-label">Geral</span>
-              <span className="rb-add-section-hint">Texto, imagens e análises da IA</span>
+              <span className="rb-add-section-label">{t('platform.general')}</span>
+              <span className="rb-add-section-hint">{t('addSection.generalDescription')}</span>
             </span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       {full && (
         <span id={fullHintId} className="rb-add-section-full">
-          Limite de {MAX_SECTIONS} seções por relatório
+          {t('addSection.limit', { count: MAX_SECTIONS })}
         </span>
       )}
     </div>

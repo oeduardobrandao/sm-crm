@@ -796,7 +796,7 @@ describe('useLayoutAutosave', () => {
       save,
       cacheKey: (id: string) => ['report-template', id],
       titleField: 'name' as const,
-      errorMessage: 'Erro ao salvar o modelo',
+      errorMessage: () => 'Erro ao salvar o modelo',
     };
     qc.setQueryData(['report-template', 'tpl-1'], {
       id: 'tpl-1',
@@ -834,7 +834,7 @@ describe('useLayoutAutosave', () => {
       save,
       cacheKey: (id: string) => ['report-template', id],
       titleField: 'name' as const,
-      errorMessage: 'Erro ao salvar o modelo',
+      errorMessage: () => 'Erro ao salvar o modelo',
       onSaved,
     };
     const { result } = renderHook(
@@ -859,7 +859,7 @@ describe('useLayoutAutosave', () => {
       save,
       cacheKey: (id: string) => ['report-template', id],
       titleField: 'name' as const,
-      errorMessage: 'Erro ao salvar o modelo',
+      errorMessage: () => 'Erro ao salvar o modelo',
       onSaved,
     };
     const { result } = renderHook(
@@ -883,7 +883,7 @@ describe('useLayoutAutosave', () => {
       save,
       cacheKey: (id: string) => ['report-template', id],
       titleField: 'name' as const,
-      errorMessage: 'Erro ao salvar o modelo',
+      errorMessage: () => 'Erro ao salvar o modelo',
       onSaved,
     };
     const { result, unmount } = renderHook(
@@ -910,7 +910,7 @@ describe('useLayoutAutosave', () => {
       save,
       cacheKey: (id: string) => ['report-template', id],
       titleField: 'name' as const,
-      errorMessage: 'Erro ao salvar o modelo',
+      errorMessage: () => 'Erro ao salvar o modelo',
       onSaved,
     };
     const { result, unmount } = renderHook(
@@ -938,7 +938,7 @@ describe('useLayoutAutosave', () => {
       save: vi.fn().mockRejectedValue(new Error('x')),
       cacheKey: (id: string) => ['report-template', id],
       titleField: 'name' as const,
-      errorMessage: 'Erro ao salvar o modelo',
+      errorMessage: () => 'Erro ao salvar o modelo',
     };
     const { result } = renderHook(
       () => useLayoutAutosave('tpl-1', { layout: baseLayout, title: 'T' }, target),

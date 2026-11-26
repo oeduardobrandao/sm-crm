@@ -2,6 +2,7 @@
 // §Editor): a seção de uma plataforma lista os widgets dela e os neutros; a Geral só os
 // neutros. A capa só aparece na Geral e só enquanto o layout não tem capa. Nunca lista
 // um tipo que insertBlockInSection recusaria na seção.
+import { useTranslation } from 'react-i18next';
 import {
   Sheet,
   SheetContent,
@@ -14,9 +15,10 @@ import {
   WIDGET_CATEGORIES,
   type WidgetCatalogEntry,
 } from '@mesaas/report-blocks/catalog';
-import { PLATFORM_NAMES, type ReportPlatform } from '@mesaas/report-blocks/platform';
+import type { ReportPlatform } from '@mesaas/report-blocks/platform';
 import type { BlockType, ReportDocSnapshot, SectionKind } from '@mesaas/report-blocks/types';
 import { FALLBACK_WIDGET_ICON, WIDGET_ICONS } from './widgetIcons';
+import { sectionKindName, widgetCategoryLabel, widgetLabel } from './editorText';
 
 /** Plataformas com dados no documento: Instagram enquanto não estiver
  * desconectado, TikTok e Google Meu Negócio quando o snapshot traz a seção
@@ -39,8 +41,6 @@ export function drawerWidgets(kind: SectionKind, hasCover: boolean): WidgetCatal
   });
 }
 
-const SECTION_NAMES: Record<SectionKind, string> = { general: 'Geral', ...PLATFORM_NAMES };
-
 export interface AddWidgetDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -59,6 +59,7 @@ export function AddWidgetDrawer({
   section,
   hasCover,
 }: AddWidgetDrawerProps) {
+  const { t } = useTranslation('reportEditor');
   // Sem seção (fim do relatório), a capa nunca: insertBlock a poria na última
   // seção que a aceita, que pode ser a de uma plataforma.
   const widgets = section ? drawerWidgets(section.kind, hasCover) : drawerWidgets('general', true);
@@ -66,11 +67,13 @@ export function AddWidgetDrawer({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="overflow-y-auto">
         <SheetHeader>
-          <SheetTitle>Adicionar widget</SheetTitle>
+          <SheetTitle>{t('drawer.title')}</SheetTitle>
           {section ? (
-            <SheetDescription>Na seção {SECTION_NAMES[section.kind]}</SheetDescription>
+            <SheetDescription>
+              {t('drawer.inSection', { name: sectionKindName(section.kind) })}
+            </SheetDescription>
           ) : (
-            <SheetDescription className="sr-only">No fim do relatório</SheetDescription>
+            <SheetDescription className="sr-only">{t('drawer.atEnd')}</SheetDescription>
           )}
         </SheetHeader>
         {WIDGET_CATEGORIES.filter((cat) => widgets.some((w) => w.category === cat)).map((cat) => (
@@ -84,7 +87,7 @@ export function AddWidgetDrawer({
                 color: 'var(--text-muted)',
               }}
             >
-              {cat}
+              {widgetCategoryLabel(cat)}
             </h4>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
               {widgets
@@ -118,7 +121,7 @@ export function AddWidgetDrawer({
                         style={{ color: 'var(--text-light)' }}
                         aria-hidden
                       />
-                      {w.label}
+                      {widgetLabel(w.type)}
                     </button>
                   );
                 })}

@@ -26,9 +26,11 @@ import {
   Underline,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { Editor } from '@tiptap/core';
 import type { AnyExtension } from '@tiptap/core';
 import type { ReportBlock } from '@mesaas/report-blocks/types';
+import { tr } from './editorText';
 
 export function buildTextBlockExtensions(): AnyExtension[] {
   return [
@@ -38,7 +40,7 @@ export function buildTextBlockExtensions(): AnyExtension[] {
       codeBlock: false,
       link: false,
     }),
-    Placeholder.configure({ placeholder: 'Escreva sua análise…' }),
+    Placeholder.configure({ placeholder: tr('text.placeholder') }),
     TextStyle,
     Color,
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
@@ -48,14 +50,15 @@ export function buildTextBlockExtensions(): AnyExtension[] {
 // Paleta fechada em #rrggbb: o renderer compartilhado só emite cor que passa
 // no regex estrito dele — swatch fora desse formato sumiria na visão do
 // cliente.
-export const TEXT_COLORS: readonly { name: string; hex: string }[] = [
-  { name: 'Cinza', hex: '#6b7280' },
-  { name: 'Vermelho', hex: '#dc2626' },
-  { name: 'Laranja', hex: '#ea580c' },
-  { name: 'Verde', hex: '#16a34a' },
-  { name: 'Azul', hex: '#2563eb' },
-  { name: 'Violeta', hex: '#7c3aed' },
-  { name: 'Rosa', hex: '#db2777' },
+// `id` keys the localized name (text.colorName.*); `name` is the Portuguese label.
+export const TEXT_COLORS: readonly { id: string; name: string; hex: string }[] = [
+  { id: 'gray', name: 'Cinza', hex: '#6b7280' },
+  { id: 'red', name: 'Vermelho', hex: '#dc2626' },
+  { id: 'orange', name: 'Laranja', hex: '#ea580c' },
+  { id: 'green', name: 'Verde', hex: '#16a34a' },
+  { id: 'blue', name: 'Azul', hex: '#2563eb' },
+  { id: 'violet', name: 'Violeta', hex: '#7c3aed' },
+  { id: 'pink', name: 'Rosa', hex: '#db2777' },
 ];
 
 interface ToolbarButtonProps {
@@ -85,6 +88,7 @@ function ToolbarButton({ label, active, onRun, children }: ToolbarButtonProps) {
 }
 
 function Toolbar({ editor }: { editor: Editor }) {
+  const { t } = useTranslation('reportEditor');
   const [colorOpen, setColorOpen] = useState(false);
   const st = useEditorState({
     editor,
@@ -104,16 +108,16 @@ function Toolbar({ editor }: { editor: Editor }) {
     }),
   });
   return (
-    <div className="rb-text-toolbar" role="toolbar" aria-label="Formatação do texto">
+    <div className="rb-text-toolbar" role="toolbar" aria-label={t('text.toolbarAria')}>
       <ToolbarButton
-        label="Título"
+        label={t('text.heading')}
         active={st.h2}
         onRun={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
       >
         <Heading2 className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
-        label="Subtítulo"
+        label={t('text.subheading')}
         active={st.h3}
         onRun={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
       >
@@ -121,28 +125,28 @@ function Toolbar({ editor }: { editor: Editor }) {
       </ToolbarButton>
       <span className="rb-text-toolbar-sep" />
       <ToolbarButton
-        label="Negrito"
+        label={t('text.bold')}
         active={st.bold}
         onRun={() => editor.chain().focus().toggleBold().run()}
       >
         <Bold className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
-        label="Itálico"
+        label={t('text.italic')}
         active={st.italic}
         onRun={() => editor.chain().focus().toggleItalic().run()}
       >
         <Italic className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
-        label="Sublinhado"
+        label={t('text.underline')}
         active={st.underline}
         onRun={() => editor.chain().focus().toggleUnderline().run()}
       >
         <Underline className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
-        label="Tachado"
+        label={t('text.strike')}
         active={st.strike}
         onRun={() => editor.chain().focus().toggleStrike().run()}
       >
@@ -151,20 +155,20 @@ function Toolbar({ editor }: { editor: Editor }) {
       <span className="rb-text-toolbar-sep" />
       <div className="rb-text-toolbar-color">
         <ToolbarButton
-          label="Cor do texto"
+          label={t('text.color')}
           active={Boolean(st.color)}
           onRun={() => setColorOpen((v) => !v)}
         >
           <Palette className="h-3.5 w-3.5" style={st.color ? { color: st.color } : undefined} />
         </ToolbarButton>
         {colorOpen && (
-          <div className="rb-text-swatches" role="listbox" aria-label="Cores do texto">
+          <div className="rb-text-swatches" role="listbox" aria-label={t('text.colorsAria')}>
             {TEXT_COLORS.map((c) => (
               <button
                 key={c.hex}
                 type="button"
                 className="rb-text-swatch"
-                aria-label={`Cor ${c.name}`}
+                aria-label={t('text.colorNamed', { name: t(`text.colorName.${c.id}`) })}
                 style={{ background: c.hex }}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
@@ -176,7 +180,7 @@ function Toolbar({ editor }: { editor: Editor }) {
             <button
               type="button"
               className="rb-text-swatch rb-text-swatch-clear"
-              aria-label="Remover cor"
+              aria-label={t('text.removeColor')}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
                 editor.chain().focus().unsetColor().run();
@@ -190,21 +194,21 @@ function Toolbar({ editor }: { editor: Editor }) {
       </div>
       <span className="rb-text-toolbar-sep" />
       <ToolbarButton
-        label="Alinhar à esquerda"
+        label={t('text.alignLeft')}
         active={!st.alignCenter && !st.alignRight}
         onRun={() => editor.chain().focus().setTextAlign('left').run()}
       >
         <AlignLeft className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
-        label="Centralizar"
+        label={t('text.alignCenter')}
         active={st.alignCenter}
         onRun={() => editor.chain().focus().setTextAlign('center').run()}
       >
         <AlignCenter className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
-        label="Alinhar à direita"
+        label={t('text.alignRight')}
         active={st.alignRight}
         onRun={() => editor.chain().focus().setTextAlign('right').run()}
       >
@@ -212,21 +216,21 @@ function Toolbar({ editor }: { editor: Editor }) {
       </ToolbarButton>
       <span className="rb-text-toolbar-sep" />
       <ToolbarButton
-        label="Lista"
+        label={t('text.list')}
         active={st.bullet}
         onRun={() => editor.chain().focus().toggleBulletList().run()}
       >
         <List className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
-        label="Lista numerada"
+        label={t('text.orderedList')}
         active={st.ordered}
         onRun={() => editor.chain().focus().toggleOrderedList().run()}
       >
         <ListOrdered className="h-3.5 w-3.5" />
       </ToolbarButton>
       <ToolbarButton
-        label="Citação"
+        label={t('text.quote')}
         active={st.quote}
         onRun={() => editor.chain().focus().toggleBlockquote().run()}
       >

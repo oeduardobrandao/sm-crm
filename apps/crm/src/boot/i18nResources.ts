@@ -56,6 +56,7 @@ const LAZY_LOCALES: Record<string, Record<string, () => LocaleModule>> = {
     analyticsAccount: () => import('../../../../packages/i18n/locales/pt/analyticsAccount.json'),
     analyticsFlows: () => import('../../../../packages/i18n/locales/pt/analyticsFlows.json'),
     analyticsPhone: () => import('../../../../packages/i18n/locales/pt/analyticsPhone.json'),
+    reportEditor: () => import('../../../../packages/i18n/locales/pt/reportEditor.json'),
   },
   en: {
     dashboard: () => import('../../../../packages/i18n/locales/en/dashboard.json'),
@@ -102,6 +103,7 @@ const LAZY_LOCALES: Record<string, Record<string, () => LocaleModule>> = {
     analyticsAccount: () => import('../../../../packages/i18n/locales/en/analyticsAccount.json'),
     analyticsFlows: () => import('../../../../packages/i18n/locales/en/analyticsFlows.json'),
     analyticsPhone: () => import('../../../../packages/i18n/locales/en/analyticsPhone.json'),
+    reportEditor: () => import('../../../../packages/i18n/locales/en/reportEditor.json'),
   },
 };
 

@@ -2,6 +2,7 @@
 // inputs com a MESMA tipografia do bloco renderizado (SectionHeaderBlock), com
 // a barra de accent espelhada. O config flui pelo autosave como qualquer
 // edição de layout.
+import { useTranslation } from 'react-i18next';
 import type { ReportBlock } from '@mesaas/report-blocks/types';
 
 export interface SectionHeaderEditorProps {
@@ -10,14 +11,15 @@ export interface SectionHeaderEditorProps {
 }
 
 export function SectionHeaderEditor({ block, onConfigChange }: SectionHeaderEditorProps) {
+  const { t } = useTranslation('reportEditor');
   const title = typeof block.config?.title === 'string' ? block.config.title : '';
   const subtitle = typeof block.config?.subtitle === 'string' ? block.config.subtitle : '';
   return (
     <div style={{ marginTop: '1rem' }}>
       <input
-        aria-label="Título da seção"
+        aria-label={t('sectionHeader.titleAria')}
         value={title}
-        placeholder="Título da seção"
+        placeholder={t('sectionHeader.titlePlaceholder')}
         onChange={(e) => onConfigChange(block.id, { title: e.target.value })}
         className="rb-section-input"
         style={{
@@ -29,9 +31,9 @@ export function SectionHeaderEditor({ block, onConfigChange }: SectionHeaderEdit
         }}
       />
       <input
-        aria-label="Subtítulo da seção"
+        aria-label={t('sectionHeader.subtitleAria')}
         value={subtitle}
-        placeholder="Subtítulo (opcional)"
+        placeholder={t('sectionHeader.subtitlePlaceholder')}
         onChange={(e) => onConfigChange(block.id, { subtitle: e.target.value })}
         className="rb-section-input"
         style={{ fontSize: '0.85rem', opacity: 0.7, marginTop: '0.15rem' }}

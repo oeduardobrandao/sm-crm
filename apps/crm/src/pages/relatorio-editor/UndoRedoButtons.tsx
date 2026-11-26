@@ -1,5 +1,6 @@
 // Botões de desfazer/refazer do cabeçalho dos editores (relatório e modelo).
 import { Redo2, Undo2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 
 const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -13,13 +14,14 @@ export interface UndoRedoButtonsProps {
 }
 
 export function UndoRedoButtons({ canUndo, canRedo, onUndo, onRedo }: UndoRedoButtonsProps) {
+  const { t } = useTranslation('reportEditor');
   return (
     <div style={{ display: 'flex', gap: '0.25rem' }}>
       <Button
         variant="outline"
         size="sm"
-        aria-label="Desfazer"
-        title={`Desfazer (${MOD}Z)`}
+        aria-label={t('undo.undo')}
+        title={`${t('undo.undo')} (${MOD}Z)`}
         disabled={!canUndo}
         onClick={onUndo}
       >
@@ -28,8 +30,8 @@ export function UndoRedoButtons({ canUndo, canRedo, onUndo, onRedo }: UndoRedoBu
       <Button
         variant="outline"
         size="sm"
-        aria-label="Refazer"
-        title={`Refazer (${IS_MAC ? '⇧⌘Z' : 'Ctrl+Y'})`}
+        aria-label={t('undo.redo')}
+        title={`${t('undo.redo')} (${IS_MAC ? '⇧⌘Z' : 'Ctrl+Y'})`}
         disabled={!canRedo}
         onClick={onRedo}
       >

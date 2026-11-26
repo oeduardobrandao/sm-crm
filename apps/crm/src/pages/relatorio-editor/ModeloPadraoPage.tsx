@@ -3,6 +3,7 @@
 // workspace. Só leitura; "Duplicar para editar" cria um modelo editável.
 import { useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ArrowLeft, Copy, Info } from 'lucide-react';
@@ -23,9 +24,9 @@ import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
 import { ReportPhoneView } from './phone/ReportPhoneView';
 
 const SETTINGS_PATH = '/configuracao/relatorios';
-const SAMPLE_NOTE = 'Dados de exemplo. Os números reais entram quando o relatório é gerado.';
-
 export default function ModeloPadraoPage() {
+  const { t } = useTranslation('reportEditor');
+  const systemName = t('template.systemName');
   // Tablet (shell do celular a partir de 768x600): a prévia de desktop dentro do shell.
   const isTablet = useIsTabletShell();
   const isPhone = !useIsDesktop(768) && !isTablet;
@@ -43,24 +44,24 @@ export default function ModeloPadraoPage() {
       await qc.invalidateQueries({ queryKey: ['report-templates'] });
       navigate(`/relatorios/modelos/${row.id}`);
     },
-    onError: () => toast.error('Não foi possível criar o modelo.'),
+    onError: () => toast.error(t('template.duplicateError')),
   });
 
   // Celular (D27): só a prévia; "Duplicar para editar" continua no "…".
   if (isPhone) {
     return (
       <ReportPhoneView
-        title={SYSTEM_TEMPLATE_NAME}
-        subtitle="Modelo embutido. Somente visualização."
+        title={systemName}
+        subtitle={t('template.builtinSubtitle')}
         fallbackTo={SETTINGS_PATH}
-        backLabel="Voltar para Modelos"
-        sampleNote={SAMPLE_NOTE}
+        backLabel={t('template.backToTemplates')}
+        sampleNote={t('template.sampleNote')}
         layout={previewLayout}
         snapshot={snapshot}
-        actionsLabel="Ações do modelo"
+        actionsLabel={t('template.actionsLabel')}
         actions={[
           {
-            label: 'Duplicar para editar',
+            label: t('template.duplicate'),
             disabled: duplicate.isPending,
             onSelect: () => duplicate.mutate(),
           },
@@ -75,7 +76,7 @@ export default function ModeloPadraoPage() {
       {isTablet && (
         <PhoneNavBar
           className="rb-editor-nav-bar"
-          backLabel="Voltar para Modelos"
+          backLabel={t('template.backToTemplates')}
           fallbackTo={SETTINGS_PATH}
         />
       )}
@@ -92,7 +93,7 @@ export default function ModeloPadraoPage() {
         {!isTablet && (
           <Button variant="outline" size="sm" asChild>
             <Link to={SETTINGS_PATH}>
-              <ArrowLeft className="h-3.5 w-3.5" /> Modelos
+              <ArrowLeft className="h-3.5 w-3.5" /> {t('template.templatesButton')}
             </Link>
           </Button>
         )}
@@ -106,14 +107,14 @@ export default function ModeloPadraoPage() {
               color: 'var(--text-main)',
             }}
           >
-            {SYSTEM_TEMPLATE_NAME}
+            {systemName}
           </h1>
           <p style={{ margin: '0.15rem 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-            Modelo embutido. Somente visualização.
+            {t('template.builtinSubtitle')}
           </p>
         </div>
         <Button size="sm" disabled={duplicate.isPending} onClick={() => duplicate.mutate()}>
-          <Copy className="h-3.5 w-3.5" /> Duplicar para editar
+          <Copy className="h-3.5 w-3.5" /> {t('template.duplicate')}
         </Button>
       </header>
 
@@ -133,7 +134,7 @@ export default function ModeloPadraoPage() {
         }}
       >
         <Info className="h-4 w-4" aria-hidden="true" />
-        {SAMPLE_NOTE}
+        {t('template.sampleNote')}
       </p>
 
       <div style={{ maxWidth: 880, margin: '0 auto' }}>
