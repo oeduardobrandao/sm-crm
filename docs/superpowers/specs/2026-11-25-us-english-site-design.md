@@ -306,7 +306,10 @@ Frontend, one migration (`billing_market_apply`) and one dashboard change. No ed
 6. Prod: one real `/en` signup on a throwaway email; confirm the workspace is USD and the app
    is English.
 7. Before ads: part 1 runbook steps 5, 7 and 8 (Stripe USD `currency_options`, portal audit,
-   real USD charge + refund), and lawyer review of `/en/privacy` and `/en/terms`.
+   real USD charge + refund), lawyer review of `/en/privacy` and `/en/terms`, and Part 3
+   shipped (lifecycle emails and the signed-in app in English). Decided by the user: ads wait
+   for Part 3, so this phase does not touch the lifecycle emails; an organic `/en` signup
+   before Part 3 gets them in Portuguese.
 
 ## Left to the builder
 
