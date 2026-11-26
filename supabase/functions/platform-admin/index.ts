@@ -9,6 +9,7 @@ import { handleListWorkspaces } from "./list-workspaces.ts";
 import { handleListWorkspaceEvents } from "./event-history.ts";
 import { handleGetMrr, handleGetTrials } from "./mrr.ts";
 import { handleGetChurned } from "./churn.ts";
+import { handleGetAcquisitionChannels } from "./acquisition.ts";
 import { handleGetDeposits } from "./deposits.ts";
 import { handleEmailMetrics } from "./email-metrics.ts";
 import { handleEmailList } from "./email-list.ts";
@@ -152,6 +153,8 @@ Deno.serve(async (req: Request) => {
         return await handleGetMrr(svc, headers);
       case "get-trials":
         return await handleGetTrials(svc, headers);
+      case "get-acquisition-channels":
+        return await handleGetAcquisitionChannels(svc, body, headers);
       case "get-churned":
         return await handleGetChurned(svc, headers);
       case "get-reverse-trial-funnel":
