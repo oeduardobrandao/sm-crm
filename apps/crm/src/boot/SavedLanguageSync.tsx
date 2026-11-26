@@ -1,19 +1,25 @@
 import { useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { getSavedLanguage, i18n } from '@mesaas/i18n';
-import { siteLocaleForPath } from '@/content/siteLocale';
+import { isPortugueseSitePage, siteLocaleForPath } from '@/content/siteLocale';
 
-/** The prerendered landing hydrates in `pt` (main.tsx passes `initialLanguage: 'pt'` on `/`,
- * matching the server HTML); the visitor's saved language is applied right after hydration. On
- * every other boot i18n already starts in the saved language, so this is a no-op there.
+/** Keeps i18n in the right language as the visitor moves between pages:
  *
- * `/en` pages are English whatever was saved: main.tsx starts them in `en` and EnglishPage
- * saves `en`, so this stays out of the way there. The path is read inside the effect, never
- * during render (the landing is server-rendered). */
+ * - `/en` pages are English whatever was saved: main.tsx starts them in `en` and EnglishPage
+ *   saves `en`, so this stays out of the way there.
+ * - Portuguese-only site pages (the landing, pricing, the blog...) render in `pt` without
+ *   touching the saved language, so a visitor who went through `/en` still gets the Portuguese
+ *   cookie banner and `<html lang="pt-BR">` on the Brazilian site.
+ * - Everything else (login, the app) uses the saved language, including after a client-side
+ *   navigation away from a Portuguese site page.
+ *
+ * The path is read inside the effect, never during render (the landing is server-rendered). */
 export function SavedLanguageSync() {
+  const { pathname } = useLocation();
   useEffect(() => {
-    if (siteLocaleForPath(window.location.pathname) === 'en') return;
-    const saved = getSavedLanguage();
-    if (i18n.language !== saved) void i18n.changeLanguage(saved);
-  }, []);
+    if (siteLocaleForPath(pathname) === 'en') return;
+    const target = isPortugueseSitePage(pathname) ? 'pt' : getSavedLanguage();
+    if (i18n.language !== target) void i18n.changeLanguage(target);
+  }, [pathname]);
   return null;
 }
