@@ -2,8 +2,7 @@ import { createJsonResponder, type JsonResponder } from "../_shared/http.ts";
 import { HUB_SESSION_HEADER, hubAccessDenied, resolveHubToken, sha256Hex } from "../_shared/hub-token.ts";
 import { getClientIP } from "../_shared/rate-limit.ts";
 import { CODE_RE, normalizeEmail } from "./logic.ts";
-import type { Lang } from "../_shared/i18n/lang.ts";
-import { workspaceLang } from "../_shared/i18n/workspace-lang.ts";
+import { type Lang, resolveLang } from "../_shared/i18n/lang.ts";
 import { hubLoginText } from "../_shared/i18n/catalogs/hub-login.ts";
 
 type DbClient = {
@@ -53,6 +52,7 @@ type Workspace = {
   name: string;
   logo_url: string | null;
   brand_color: string | null;
+  language?: string | null;
 };
 
 type LinkResult =
@@ -66,12 +66,11 @@ async function resolveLink(
 ): Promise<LinkResult> {
   const { data: conta } = await db
     .from("workspaces")
-    .select("id, name, logo_url, brand_color, hub_enabled")
+    .select("id, name, logo_url, brand_color, hub_enabled, language")
     .eq("slug", workspaceSlug)
     .maybeSingle();
   if (!conta) return { ok: false, response: json({ error: hubLoginText("pt").workspaceNotFound }, 404) };
-  // Separate lookup: never throws, pt on any failure (a missing column cannot break the login).
-  const lang = await workspaceLang(db, conta.id);
+  const lang = resolveLang(conta.language);
   if (!conta.hub_enabled) return { ok: false, response: json({ error: hubLoginText(lang).hubDisabled }, 403) };
 
   let resolved;

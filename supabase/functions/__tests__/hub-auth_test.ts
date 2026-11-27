@@ -28,7 +28,6 @@ interface DbOpts {
   verify?: { data: unknown; error: unknown };
   sessionDelete?: { data: unknown; error: unknown };
   paused?: boolean;
-  langError?: boolean;
 }
 
 function makeDb(opts: DbOpts = {}) {
@@ -43,19 +42,11 @@ function makeDb(opts: DbOpts = {}) {
   return {
     rpcCalls,
     from: (table: string) => ({
-      select: (cols?: string) =>
+      select: () =>
         table === "workspaces"
           ? {
             eq: () => ({
-              maybeSingle: async () => {
-                // The language lookup is its own query ("language" only).
-                if (cols === "language") {
-                  if (opts.langError) return { data: null, error: { message: "boom" } };
-                  const ws = workspace as { language?: unknown } | null;
-                  return { data: ws ? { language: ws.language } : null, error: null };
-                }
-                return { data: workspace };
-              },
+              maybeSingle: async () => ({ data: workspace }),
             }),
           }
           : tokenQuery,
@@ -580,13 +571,3 @@ Deno.test("language: missing or unknown workspace language, and an unknown works
   assertEquals(await malformed.json(), { error: "Requisição inválida." });
 });
 
-Deno.test("language: a failing language lookup keeps the login working in pt", async () => {
-  const t = setup({ workspace: { ...WORKSPACE_ROW, language: "en" }, langError: true });
-  await t.handler(reqCode("marina@clinica.com"));
-  await t.flush();
-  assertEquals(t.sent.length, 1);
-  assertEquals((t.sent[0] as { lang?: string }).lang, "pt");
-  const res = await t.handler(verify("12"));
-  assertEquals(res.status, 400);
-  assertEquals(await res.json(), { error: "Código inválido ou expirado.", code: "invalid_code" });
-});
