@@ -13,6 +13,7 @@ import { deleteReportDocument } from "./delete-doc.ts";
 import { exportReportPdf } from "./pdf.ts";
 import { convertUrlToPdf } from "../_shared/report-template/pdf-url.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
+import { workspaceLang } from "../_shared/i18n/workspace-lang.ts";
 import { loadClientScope } from "../_shared/client-scope.ts";
 import { assertDocInScope, assertGenerateClientInScope } from "./client-scope-gate.ts";
 
@@ -78,9 +79,11 @@ Deno.serve(async (req) => {
       const { clientId, month, templateId, platforms } = parsed;
       assertGenerateClientInScope(scope, clientId);
 
+      // Idioma do workspace: uma consulta própria por requisição (nunca num select existente).
+      const lang = await workspaceLang(serviceClient, contaId);
       const result = await generateReportDocument(
         serviceClient,
-        { fetch, storage: serviceClient.storage, geminiKey: GEMINI_API_KEY, userId: user.id },
+        { fetch, storage: serviceClient.storage, geminiKey: GEMINI_API_KEY, userId: user.id, lang },
         contaId,
         clientId,
         month,
@@ -110,9 +113,10 @@ Deno.serve(async (req) => {
       if (req.method === "POST" && action === "refresh-data") {
         const allowed = await checkRateLimit(serviceClient, `report-docs:${contaId}`, 20, 3600);
         if (!allowed) return json({ error: "Rate limit exceeded" }, 429);
+        const lang = await workspaceLang(serviceClient, contaId);
         await refreshReportDocument(
           serviceClient,
-          { fetch, storage: serviceClient.storage },
+          { fetch, storage: serviceClient.storage, lang },
           contaId,
           docId,
         );

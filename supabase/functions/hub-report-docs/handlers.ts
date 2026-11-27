@@ -4,6 +4,8 @@
 import { verifyPrintToken } from "../_shared/report-docs/print-token.ts";
 import type { HubToken } from "../_shared/hub-token.ts";
 import { signImageBlocks, type SignFn } from "./sign-images.ts";
+import type { Lang } from "../_shared/i18n/lang.ts";
+import { workspaceLang } from "../_shared/i18n/workspace-lang.ts";
 
 // deno-lint-ignore no-explicit-any
 type Db = any;
@@ -80,6 +82,11 @@ export interface HubReportDocPayload {
   period_start: string;
 }
 
+/** Print page payload: the document plus the workspace language the page renders it in. */
+export interface PrintDocPayload extends HubReportDocPayload {
+  language: Lang;
+}
+
 async function loadReadyDoc(
   db: Db,
   docId: string,
@@ -115,12 +122,15 @@ export async function printDocHandler(
   pt: string,
   nowEpochS: number,
   sign?: SignFn,
-): Promise<HubReportDocPayload | null> {
+): Promise<PrintDocPayload | null> {
   if (!secret || !(await verifyPrintToken(pt, docId, nowEpochS, secret))) return null;
   const doc = await loadReadyDoc(db, docId);
   if (!doc) return null;
+  // Separate query on purpose: a failed or missing language lookup falls back to pt and never
+  // blocks the print (workspaceLang never throws).
+  const language = await workspaceLang(db, doc.conta_id);
   const payload = stripInternalFields(doc);
-  return { ...payload, layout: await signImageBlocks(db, docId, payload.layout, sign) };
+  return { ...payload, layout: await signImageBlocks(db, docId, payload.layout, sign), language };
 }
 
 // loadReadyDoc's row carries client_id/conta_id/status for the ownership and

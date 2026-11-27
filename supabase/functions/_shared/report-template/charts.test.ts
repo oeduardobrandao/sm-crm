@@ -2,7 +2,7 @@ import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.208.
 import { lineChart } from "./charts.ts";
 
 Deno.test("lineChart returns valid SVG with correct data points", () => {
-  const svg = lineChart({
+  const svg = lineChart({ lang: "pt",
     data: [
       { label: "01", value: 100 },
       { label: "15", value: 150 },
@@ -20,7 +20,7 @@ Deno.test("lineChart returns valid SVG with correct data points", () => {
 });
 
 Deno.test("lineChart handles empty data", () => {
-  const svg = lineChart({ data: [], width: 600, height: 200, color: "#eab308" });
+  const svg = lineChart({ lang: "pt", data: [], width: 600, height: 200, color: "#eab308" });
   assertStringIncludes(svg, "<svg");
   assertStringIncludes(svg, "</svg>");
 });
@@ -30,7 +30,7 @@ Deno.test("lineChart: pt-BR tick labels, max 4 ticks", () => {
     label: `2026-06-${String(i + 1).padStart(2, "0")}`,
     value: 100 + i,
   }));
-  const svg = lineChart({ data, width: 660, height: 200, color: "#1C1917" });
+  const svg = lineChart({ lang: "pt", data, width: 660, height: 200, color: "#1C1917" });
   assertStringIncludes(svg, ">1 jun<");
   assertStringIncludes(svg, ">30 jun<");
   assertEquals((svg.match(/class="axis-x"/g) || []).length <= 4, true);
@@ -42,7 +42,7 @@ Deno.test("lineChart: annotation pill and event marker", () => {
     { label: "2026-06-15", value: 20 },
     { label: "2026-06-30", value: 40 },
   ];
-  const svg = lineChart({
+  const svg = lineChart({ lang: "pt",
     data, width: 660, height: 200, color: "#1C1917",
     annotation: "+30 no mês",
     eventMarker: { index: 1, label: "Reel · dia 15" },

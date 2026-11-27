@@ -3,6 +3,9 @@ import { buildCorsHeaders } from "../_shared/cors.ts";
 import { timingSafeEqual } from "../_shared/crypto.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 import { renderReport } from "../_shared/report-template/render.ts";
+import { intlLocale } from "../_shared/i18n/lang.ts";
+import { workspaceLang } from "../_shared/i18n/workspace-lang.ts";
+import { reportTemplateText } from "../_shared/i18n/catalogs/report-template.ts";
 import { convertHtmlToPdf } from "../_shared/report-template/pdf.ts";
 import { generateAINarrative } from "../_shared/report-template/ai.ts";
 import { buildEmailKpis } from "../_shared/report-template/email-kpis.ts";
@@ -378,6 +381,10 @@ Deno.serve(async (req) => {
       report_month: reportMonth,
       include_ai: includeAi,
     } = report;
+
+    // Workspace language (pt on any lookup failure); own query, never part of the report select.
+    const lang = await workspaceLang(serviceClient, contaId);
+    const reportText = reportTemplateText(lang);
 
     // Defense-in-depth: verify the workspace is entitled to generate reports
     if (!(await effectivePlanFeature(serviceClient, contaId, "feature_analytics_reports"))) {
@@ -929,9 +936,9 @@ Deno.serve(async (req) => {
         saves: p.saved || 0,
         likes: p.likes || 0,
         comments: p.comments || 0,
-        caption_preview: caption || "Sem legenda",
+        caption_preview: caption || reportText.noCaption,
         date: p.posted_at
-          ? new Date(p.posted_at).toLocaleDateString("pt-BR")
+          ? new Date(p.posted_at).toLocaleDateString(intlLocale(lang))
           : undefined,
         thumbnail_base64: (thumbnailMap.get(p.id) as string | null) ?? null,
         permalink: p.permalink || undefined,
@@ -973,7 +980,9 @@ Deno.serve(async (req) => {
     // =====================================================================
     // 13. Assemble ReportData
     // =====================================================================
-    const periodLabel = `${MONTHS_PT[monthNum - 1]} ${year}`;
+    const periodLabel = lang === "en"
+      ? `${reportText.months[monthNum - 1].charAt(0).toUpperCase()}${reportText.months[monthNum - 1].slice(1)} ${year}`
+      : `${MONTHS_PT[monthNum - 1]} ${year}`;
     const reportData: ReportData = {
       handle: `@${account.username}`,
       specialty: cliente.nicho || cliente.especialidade || "",
@@ -998,7 +1007,7 @@ Deno.serve(async (req) => {
 
     if (includeAi && GEMINI_API_KEY) {
       console.log(`[report-v2] Generating AI narrative for report ${reportId}`);
-      const aiResult = await generateAINarrative(reportData, GEMINI_API_KEY);
+      const aiResult = await generateAINarrative(reportData, GEMINI_API_KEY, lang);
       if (aiResult.status === "success") {
         aiOutput = aiResult.output;
         aiStatus = "success";
@@ -1019,7 +1028,7 @@ Deno.serve(async (req) => {
     // 15. Render HTML
     // =====================================================================
     console.log(`[report-v2] Rendering HTML for report ${reportId}`);
-    const html = renderReport({ data: reportData, branding, aiOutput });
+    const html = renderReport({ data: reportData, branding, aiOutput, lang });
 
     // =====================================================================
     // 16. Convert to PDF via Gotenberg

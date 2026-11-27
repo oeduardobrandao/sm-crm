@@ -4,7 +4,9 @@ import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 import { generateAINarrative, type GenerateResult } from "../_shared/report-template/ai.ts";
 import { type ThumbnailStorage } from "../_shared/instagram-thumbnail-cache.ts";
 import { monthWindow } from "../_shared/report-docs/month-window.ts";
-import { buildDefaultLayout, NEXT_STEPS_TITLE } from "../_shared/report-docs/default-layout.ts";
+import { buildDefaultLayout, isNextStepsTitle } from "../_shared/report-docs/default-layout.ts";
+import type { Lang } from "../_shared/i18n/lang.ts";
+import { reportDocsText } from "../_shared/i18n/catalogs/report-docs.ts";
 import {
   narrativePlatforms, selectPlatformSections, showAllPlatformHeadings,
 } from "../_shared/report-docs/platform-filter.ts";
@@ -24,14 +26,16 @@ import { saoPauloDate } from "../_shared/sao-paulo-date.ts";
 
 export { GenerateError } from "./errors.ts";
 
-const METRIC_PRIORITY_INSTAGRAM =
-  "METRIC PRIORITY: 'views' (visualizações) is the primary performance metric for " +
+const viewsLabel = (lang: Lang) => (lang === "en" ? "'views'" : "'views' (visualizações)");
+
+const metricPriorityInstagram = (lang: Lang) =>
+  `METRIC PRIORITY: ${viewsLabel(lang)} is the primary performance metric for ` +
   "this report. Lead the executive summary, analysis, recommendations and " +
   "suggested_goals with views wherever the data provides them; treat reach as " +
   "secondary context.";
 
-const metricPriorityWithOthers = (others: string) =>
-  "METRIC PRIORITY: on Instagram, 'views' (visualizações) is the primary performance metric. " +
+const metricPriorityWithOthers = (others: string, lang: Lang) =>
+  `METRIC PRIORITY: on Instagram, ${viewsLabel(lang)} is the primary performance metric. ` +
   "Lead the Instagram part of the executive summary, analysis, recommendations and " +
   "suggested_goals with Instagram views wherever the data provides them; treat reach as " +
   `secondary context. This priority does not apply to the ${others} data.`;
@@ -44,12 +48,12 @@ export function metricPriorityGuidance(n: {
   tiktok: boolean;
   google?: boolean;
   instagramHasViews: boolean;
-}): string | undefined {
+}, lang: Lang): string | undefined {
   if (!n.instagram || !n.instagramHasViews) return undefined;
-  const others = [n.tiktok ? "TikTok" : null, n.google ? "Google Meu Negócio" : null].filter(
+  const others = [n.tiktok ? "TikTok" : null, n.google ? (lang === "en" ? "Google Business Profile" : "Google Meu Negócio") : null].filter(
     (x): x is string => x !== null,
   );
-  return others.length > 0 ? metricPriorityWithOthers(others.join(" or ")) : METRIC_PRIORITY_INSTAGRAM;
+  return others.length > 0 ? metricPriorityWithOthers(others.join(" or "), lang) : metricPriorityInstagram(lang);
 }
 
 export interface GenerateDeps {
@@ -57,6 +61,8 @@ export interface GenerateDeps {
   storage: ThumbnailStorage;
   geminiKey: string;
   userId: string;
+  /** Idioma do workspace (workspaceLang, carregado uma vez por requisição). */
+  lang: Lang;
 }
 
 // deno-lint-ignore no-explicit-any
@@ -77,7 +83,7 @@ export async function generateReportDocument(
   const currentMonth = saoPauloDate(new Date()).slice(0, 7);
   let w;
   try {
-    w = monthWindow(month);
+    w = monthWindow(month, deps.lang);
   } catch {
     throw new GenerateError("bad_month");
   }
@@ -177,6 +183,7 @@ export async function generateReportDocument(
     hasTags: snapshot.tags_performance.length > 0,
     hasTikTokBestTimes: (snapshot.tiktok?.best_times.length ?? 0) > 0,
     hasGbpUnits: (snapshot.google?.unit_rows.length ?? 0) > 1,
+    lang: deps.lang,
   };
   // Modelo do workspace (spec 2026-10-28-report-platform-sections §Generation): seções das
   // plataformas desmarcadas (ou sem dados) saem inteiras; só um modelo com alguma seção de
@@ -212,6 +219,7 @@ export async function generateReportDocument(
   let summaryDoc = textDoc(fallbackSummaryParagraphs(
     snapshot.kpis,
     snapshot.period.label,
+    deps.lang,
     narrativeTiktok || narrativeGoogle
       ? { instagram: narrativeInstagram, tiktok: narrativeTiktok, google: narrativeGoogle }
       : undefined,
@@ -247,12 +255,13 @@ export async function generateReportDocument(
         tiktok: narrativeTiktok !== null,
         google: narrativeGoogle !== null,
         instagramHasViews: snapshot.kpis.views?.value != null,
-      });
+      }, deps.lang);
       const promptOpts = guidance ? { extraGuidance: guidance } : undefined;
       const ai = await Promise.race([
         generateAINarrative(
-          snapshotToReportData(snapshot, narrative),
+          snapshotToReportData(snapshot, narrative, deps.lang),
           deps.geminiKey,
+          deps.lang,
           controller.signal,
           promptOpts,
         ),
@@ -269,7 +278,7 @@ export async function generateReportDocument(
         aiContent = output;
         summaryDoc = aiSummaryDoc(output);
         recsDoc = aiRecommendationsDoc(output);
-        goalsDoc = aiGoalsDoc(output);
+        goalsDoc = aiGoalsDoc(output, deps.lang);
       } else {
         const reason = "error" in ai ? ai.error : (ai as GenerateResult).status;
         console.warn(`[report-docs] AI falhou: ${reason}`);
@@ -285,7 +294,7 @@ export async function generateReportDocument(
   const finalBase = !templateLayout && recsDoc === null
     ? fromSections(
       toSections(baseLayout).filter(
-        (sec) => !(sec.kind === "general" && sec.marker.config?.title === NEXT_STEPS_TITLE),
+        (sec) => !(sec.kind === "general" && isNextStepsTitle(sec.marker.config?.title)),
       ),
       baseLayout,
     )
@@ -300,7 +309,7 @@ export async function generateReportDocument(
       client_id: clientId,
       instagram_account_id: igAccountId,
       tiktok_account_id: tiktokAccountId,
-      title: `Relatório de ${w.label}`,
+      title: reportDocsText(deps.lang).docTitle(w.label),
       period_start: w.startDate,
       period_end: w.endDateExclusive,
       layout,

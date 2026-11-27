@@ -1,4 +1,4 @@
-import { assert, assertEquals, assertExists } from "https://deno.land/std@0.208.0/assert/mod.ts";
+import { assert, assertEquals, assertExists, assertStringIncludes } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { FakeTime } from "https://deno.land/std@0.208.0/testing/time.ts";
 import { GenerateError, generateReportDocument, metricPriorityGuidance } from "./generate.ts";
 import { buildDefaultLayout, NEXT_STEPS_TITLE } from "../_shared/report-docs/default-layout.ts";
@@ -85,6 +85,7 @@ const deps = {
   storage: {} as any,
   geminiKey: "",
   userId: "user-1",
+  lang: "pt" as const,
 };
 
 Deno.test("cliente de outro workspace: not_found", async () => {
@@ -1166,7 +1167,7 @@ Deno.test("narrative follows the final layout: a full template that cannot take 
 });
 
 Deno.test("metricPriorityGuidance: Instagram-only text unchanged; with TikTok it is scoped to Instagram; none without views", () => {
-  const igOnly = metricPriorityGuidance({ instagram: true, tiktok: false, instagramHasViews: true });
+  const igOnly = metricPriorityGuidance({ instagram: true, tiktok: false, instagramHasViews: true }, "pt");
   assertEquals(
     igOnly,
     "METRIC PRIORITY: 'views' (visualizações) is the primary performance metric for " +
@@ -1174,14 +1175,14 @@ Deno.test("metricPriorityGuidance: Instagram-only text unchanged; with TikTok it
       "suggested_goals with views wherever the data provides them; treat reach as " +
       "secondary context.",
   );
-  const both = metricPriorityGuidance({ instagram: true, tiktok: true, instagramHasViews: true }) ?? "";
+  const both = metricPriorityGuidance({ instagram: true, tiktok: true, instagramHasViews: true }, "pt") ?? "";
   assert(both.includes("Instagram"), both);
   assert(!both.includes("for this report"), both);
-  const withGoogle = metricPriorityGuidance({ instagram: true, tiktok: false, google: true, instagramHasViews: true }) ?? "";
+  const withGoogle = metricPriorityGuidance({ instagram: true, tiktok: false, google: true, instagramHasViews: true }, "pt") ?? "";
   assert(withGoogle.endsWith("does not apply to the Google Meu Negócio data."), withGoogle);
   assert(!withGoogle.includes("for this report"), withGoogle);
-  assertEquals(metricPriorityGuidance({ instagram: true, tiktok: true, instagramHasViews: false }), undefined);
-  assertEquals(metricPriorityGuidance({ instagram: false, tiktok: true, instagramHasViews: true }), undefined);
+  assertEquals(metricPriorityGuidance({ instagram: true, tiktok: true, instagramHasViews: false }, "pt"), undefined);
+  assertEquals(metricPriorityGuidance({ instagram: false, tiktok: true, instagramHasViews: true }, "pt"), undefined);
 });
 
 // ─── Fix round 2: só modelo com bloco de plataforma ganha seção ───────────────────────
@@ -1294,4 +1295,83 @@ Deno.test("generate: feature_google_business RPC error fails the generation", as
   } catch (e) { err = e; }
   assert(err !== undefined);
   assertEquals(db.inserts.length, 0);
+});
+
+// --- idioma do workspace -----------------------------------------------------
+
+const enDb = (aiClient = false) =>
+  makeDb({
+    clientes: { id: 1, conta_id: "c", nome: "X", especialidade: "Derma", include_ai_analysis: aiClient },
+    instagram_accounts: { id: "ig-1", username: "dra.x", follower_count: 100 },
+    instagram_posts: [],
+    instagram_follower_history: [],
+    instagram_analytics_cache: null,
+    instagram_account_metrics_daily: [],
+    workspaces: { name: "DK", logo_url: null, brand_color: "#123456", report_splash_url: null },
+  });
+
+type InsertedDoc = {
+  title: string;
+  data_snapshot: { period: { label: string } };
+  layout: { blocks: { type: string; text?: unknown; config?: { title?: string } }[] };
+};
+
+Deno.test("lang pt: título e rótulo do período como sempre", async () => {
+  const db = enDb();
+  await generateReportDocument(db, deps, "c", 1, "2026-07", null);
+  const row = db.inserts[0] as InsertedDoc;
+  assertEquals(row.title, "Relatório de Julho de 2026");
+  assertEquals(row.data_snapshot.period.label, "Julho de 2026");
+  assert(row.layout.blocks.some((b) => b.config?.title === "Métricas principais"));
+});
+
+Deno.test("lang en: title, period label, section headers and no-AI summary in English", async () => {
+  const db = enDb();
+  await generateReportDocument(db, { ...deps, lang: "en" }, "c", 1, "2026-07", null);
+  const row = db.inserts[0] as InsertedDoc;
+  assertEquals(row.title, "Report for July 2026");
+  assertEquals(row.data_snapshot.period.label, "July 2026");
+  const titles = row.layout.blocks.map((b) => b.config?.title);
+  assert(titles.includes("Key metrics"));
+  assert(titles.includes("Growth and formats"));
+  assert(!titles.includes("Métricas principais"));
+  const summary = row.layout.blocks.find((b) => b.type === "ai_summary");
+  assertStringIncludes(JSON.stringify(summary?.text), "Summary for July 2026");
+});
+
+Deno.test("lang en: AI failure still drops the English 'Next steps' section", async () => {
+  const db = enDb(true);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = ((input: unknown, init?: RequestInit) => {
+    if (typeof input === "string" && input.includes("generativelanguage.googleapis.com")) {
+      return Promise.resolve(new Response("not json", { status: 500 }));
+    }
+    return originalFetch(input as Parameters<typeof fetch>[0], init);
+  }) as typeof fetch;
+  try {
+    await generateReportDocument(db, { ...deps, lang: "en", geminiKey: "fake-key" }, "c", 1, "2026-07", null);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  const row = db.inserts[0] as InsertedDoc;
+  assert(!row.layout.blocks.some((b) => b.config?.title === "Next steps"));
+  assert(!row.layout.blocks.some((b) => b.type === "ai_recommendations"));
+});
+
+Deno.test("en prompt with the real metric guidance has no Portuguese and no Brazilian", async () => {
+  const { buildAIPrompt } = await import("../_shared/report-template/ai.ts");
+  const mk = (o: { tiktok: boolean; google: boolean }) =>
+    metricPriorityGuidance({ instagram: true, ...o, instagramHasViews: true }, "en") ?? "";
+  for (const o of [{ tiktok: false, google: false }, { tiktok: true, google: true }]) {
+    const guidance = mk(o);
+    const data = {
+      handle: "@x", specialty: "", period: "June 2026", report_month: "2026-06", kpis: {}, kpi_deltas: {},
+      top_posts: [], content_breakdown: [], audience: null, comparison: null,
+      ...(o.google ? { google: { units: 1, window: null, kpis: {}, kpis_previous_period: {} } } : {}),
+    } as never;
+    const { systemPrompt } = buildAIPrompt(data, "en", { extraGuidance: guidance });
+    assert(!/[À-ÿ]/.test(systemPrompt), systemPrompt.match(/\S*[À-ÿ]\S*/)?.[0]);
+    assert(!systemPrompt.includes("Brazilian"));
+    assert(!systemPrompt.includes("visualizações"));
+  }
 });
