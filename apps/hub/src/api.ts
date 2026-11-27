@@ -129,10 +129,26 @@ export function setLoginRequiredListener(fn: ((error: unknown) => void) | null) 
   loginRequiredListener = fn;
 }
 
-/** Tells the listener, then hands the error back for the caller to throw. */
-export function notifyLoginRequired<E>(error: E): E {
+/**
+ * Tells the listener, then hands the error back for the caller to throw. `sentSession` is the
+ * session the request went out with (null for none). When the stored one has changed since (a
+ * login finished, or a sibling answer already dropped it), this is a late answer about a
+ * session that is no longer the current one: the error is marked `staleSession` and the
+ * handler leaves the stored session alone. Without that, a slow 401 from before a login
+ * wiped the session the login had just stored.
+ */
+export function notifyLoginRequired<E extends object>(error: E, sentSession?: string | null): E {
+  if (sentSession !== undefined && sentSession !== getHubSession()) {
+    Object.defineProperty(error, 'staleSession', { value: true });
+  }
   loginRequiredListener?.(error);
   return error;
+}
+
+/** The session a request's headers carry (what hubHeaders put there), or null. */
+export function sessionOf(headers: unknown): string | null {
+  const value = (headers as Record<string, unknown> | undefined)?.['x-hub-session'];
+  return typeof value === 'string' ? value : null;
 }
 
 function throwIfAborted(signal?: AbortSignal) {
@@ -182,7 +198,9 @@ async function request<T>(
       typeof body.code === 'string' ? body.code : undefined,
       body,
     );
-    throw notifyLogin && isLoginRequired(error) ? notifyLoginRequired(error) : error;
+    throw notifyLogin && isLoginRequired(error)
+      ? notifyLoginRequired(error, sessionOf(init.headers))
+      : error;
   }
 }
 

@@ -252,6 +252,18 @@ describe('login_required handling', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['hub-bootstrap'] });
   });
 
+  it('leaves the stored session alone on a late answer about an older session', () => {
+    window.localStorage.setItem(HUB_SESSION_STORAGE_KEY, 'sess-new');
+    const qc = createHubQueryClient();
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
+    const late = Object.assign(new HubApiError('Login necessário.', 401, 'login_required'), {
+      staleSession: true,
+    });
+    handleLoginRequired(qc, late);
+    expect(window.localStorage.getItem(HUB_SESSION_STORAGE_KEY)).toBe('sess-new');
+    expect(invalidate).not.toHaveBeenCalled();
+  });
+
   it('ignores other errors', () => {
     window.localStorage.setItem(HUB_SESSION_STORAGE_KEY, 'sess-1');
     const qc = createHubQueryClient();
@@ -291,6 +303,31 @@ describe('login_required handling', () => {
       expect(window.localStorage.getItem(HUB_SESSION_STORAGE_KEY)).toBeNull();
       expect(invalidate).toHaveBeenCalledTimes(1);
       expect(invalidate).toHaveBeenCalledWith({ queryKey: ['hub-bootstrap'] });
+    });
+
+    it('a late 401 to a request sent before a login leaves the new session stored', async () => {
+      const qc = createHubQueryClient();
+      const invalidate = vi.spyOn(qc, 'invalidateQueries');
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => {
+          // The login finishes while this request (sent with no session) is still in flight.
+          window.localStorage.setItem(HUB_SESSION_STORAGE_KEY, 'sess-new');
+          return {
+            ok: false,
+            status: 401,
+            json: async () => ({ error: 'Login necessário.', code: 'login_required' }),
+          };
+        }),
+      );
+
+      await expect(submitApproval('tk', 1, 'aprovado')).rejects.toMatchObject({
+        code: 'login_required',
+        staleSession: true,
+      });
+
+      expect(window.localStorage.getItem(HUB_SESSION_STORAGE_KEY)).toBe('sess-new');
+      expect(invalidate).not.toHaveBeenCalled();
     });
 
     it('with no stored session and a bootstrap that succeeded, refetches bootstrap once', async () => {

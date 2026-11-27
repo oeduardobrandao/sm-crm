@@ -178,6 +178,9 @@
       "signOut": "Sign out"
     },
     "invalidLink": "Invalid or expired link.",
+    "loadFailed": "We couldn't load the portal.",
+    "loadFailedHint": "Check your connection and try again.",
+    "tryAgain": "Try again",
     "accessDisabled": "Access disabled.",
     "contactAgency": "Please contact the agency.",
     "somethingWentWrong": "Something went wrong",

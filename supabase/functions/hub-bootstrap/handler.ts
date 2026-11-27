@@ -85,7 +85,7 @@ export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
 
     const db = deps.createDb();
 
-    const { data: conta } = await db
+    const { data: conta, error: contaError } = await db
       .from("workspaces")
       .select(
         "id, name, logo_url, brand_color, hub_enabled, hub_surface_theme, hub_font_display, " +
@@ -95,6 +95,12 @@ export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
       .eq("slug", workspaceSlug)
       .maybeSingle();
 
+    // A failed lookup is not a missing workspace: 500, so the Hub offers a retry instead of
+    // telling the client the link is invalid.
+    if (contaError) {
+      console.error("[hub-bootstrap] workspace lookup failed", (contaError as { code?: unknown }).code ?? "unknown");
+      return json({ error: "Erro interno." }, 500);
+    }
     if (!conta) return json({ error: "Workspace não encontrado." }, 404);
     if (!conta.hub_enabled) return json({ error: "Hub desativado." }, 403);
 

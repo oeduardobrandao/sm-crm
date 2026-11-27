@@ -178,6 +178,9 @@
       "signOut": "Sair"
     },
     "invalidLink": "Link inválido ou expirado.",
+    "loadFailed": "Não foi possível carregar o portal.",
+    "loadFailedHint": "Verifique sua conexão e tente de novo.",
+    "tryAgain": "Tentar novamente",
     "accessDisabled": "Acesso desativado.",
     "contactAgency": "Entre em contato com a agência.",
     "somethingWentWrong": "Algo deu errado",
