@@ -8,6 +8,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from 'react';
+import { BoardScroller } from '@/components/BoardScroller';
 import {
   DndContext,
   DragOverlay,
@@ -1274,7 +1275,7 @@ export function KanbanView({
   }
 
   const renderRowBoard = (row: BoardRow) => (
-    <div className="board-container">
+    <BoardScroller>
       {row.columns.map((column, colIdx) => {
         const stepName = column.nome;
         const tint = columnTint(stepName);
@@ -1488,7 +1489,7 @@ export function KanbanView({
           </div>
         );
       })}
-    </div>
+    </BoardScroller>
   );
 
   // The tab strip is always on: with one template it's a single tab plus the trailing

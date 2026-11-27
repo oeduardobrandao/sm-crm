@@ -5399,6 +5399,23 @@ body.role-agent input[name='valor_total'] {
   min-height: 300px;
 }
 
+/* Espaço + arrastar rola o quadro (usePanOnSpace). O cursor vale também sobre cards e
+   botões, que têm cursor próprio. */
+.board-container[data-panning] {
+  user-select: none;
+  scroll-snap-type: none;
+}
+
+.board-container[data-panning],
+.board-container[data-panning] * {
+  cursor: grab !important;
+}
+
+.board-container[data-panning='dragging'],
+.board-container[data-panning='dragging'] * {
+  cursor: grabbing !important;
+}
+
 .board-column {
   min-width: 285px;
   max-width: 320px;
