@@ -52,7 +52,7 @@ function row(over: Record<string, unknown> = {}): Record<string, unknown> {
     fim: "2026-12-03T14:00:00+00:00",
     dia_inteiro: false,
     data_inicio_local: "2026-12-03",
-    data_fim_local: "2026-12-03",
+    data_fim_local: "2026-12-04",
     titulo: "Reunião",
     descricao: "Pauta",
     local: "Sala 1",
@@ -254,6 +254,12 @@ Deno.test("formatOcorrencia: recurrence mapped back to English keys", () => {
   assertEquals(out.recurrence, {
     freq: "weekly", interval: 1, weekdays: [2], monthly_mode: null, monthly_ordinal: null, until: null, count: 4,
   });
+});
+
+Deno.test("formatOcorrencia: timed end_date is the inclusive last day", () => {
+  const out = formatOcorrencia(row({ data_inicio_local: "2026-12-03", data_fim_local: "2026-12-04" }), new Map());
+  assertEquals(out.start_date, "2026-12-03");
+  assertEquals(out.end_date, "2026-12-03");
 });
 
 // ---- agendaPrivados / list ---------------------------------------------------------------------

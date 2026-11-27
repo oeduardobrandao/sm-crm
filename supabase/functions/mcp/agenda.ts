@@ -1,8 +1,9 @@
 // deno-lint-ignore-file no-explicit-any
-// Agenda do workspace para o MCP. Tudo passa pelas RPCs `agenda_*_as` (Tasks 2-3), que julgam
-// permissão, escopo de cliente e privacidade em `p_conta` com o usuário da chave como ator. A única
-// consulta direta é a resolução de pessoas, sempre filtrada por `conta_id = ctx.conta_id` (o service
-// role ignora RLS, então o filtro é a barreira) e com lista fechada de campos.
+// Agenda do workspace para o MCP. Tudo passa pelas RPCs `agenda_*_as`, que julgam permissão, escopo
+// de cliente e privacidade em `p_conta` com o usuário da chave como ator. A única consulta direta é a
+// resolução de pessoas, com lista fechada de campos: `membros` sempre filtrado por
+// `conta_id = ctx.conta_id` (o service role ignora RLS, então o filtro é a barreira); o fallback em
+// `profiles` só busca nomes de user ids que vieram das linhas do RPC, já restritas a `p_conta`.
 import { McpInputError } from "../_shared/mcp-token.ts";
 import type { McpKeyContext } from "../_shared/mcp-token.ts";
 import type { Deps } from "./queries.ts";
@@ -336,7 +337,9 @@ function mapRegraOut(regra: any): Record<string, unknown> | null {
 /** Uma ocorrência no formato do MCP. Linha mascarada sai reduzida; e-mail de convidado nunca sai. */
 export function formatOcorrencia(row: any, people: People): AgendaOccurrence {
   const allDay = row.dia_inteiro === true;
-  const endDate = allDay && row.data_fim_local ? addDays(String(row.data_fim_local), -1) : (row.data_fim_local ?? null);
+  // data_fim_local é exclusivo nos dois modos (_agenda_listar_core: com horário é o dia do fim menos
+  // 1 microssegundo, mais um dia); no MCP end_date é o último dia, inclusivo.
+  const endDate = row.data_fim_local ? addDays(String(row.data_fim_local), -1) : null;
   const base = {
     occurrence_id: row.ocorrencia_id,
     event_id: row.evento_id,
