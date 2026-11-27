@@ -92,6 +92,12 @@
       "source": "/oauth/google/callback",
       "destination": "https://skjzpekeqefvlojenfsw.supabase.co/functions/v1/google-integration/callback"
     },
+    { "source": "/:workspace/hub/(.*)", "destination": "/maintenance.html" },
+    { "source": "/convite/(.*)", "destination": "/maintenance.html" },
+    {
+      "source": "/(login|configurar-senha|workspace-setup|comecar|conectar|descadastrar|cancelar-avisos|oauth|dashboard|clientes|financeiro|contratos|leads|equipe|configuracao|calendario|entregas|tarefas|post-express|arquivos|analytics-fluxos|analytics|relatorios|ideias|mensagens|automacoes|ajuda|importar|afiliados)(/.*)?",
+      "destination": "/maintenance.html"
+    },
     { "source": "/:workspace/hub/:token/(.*)", "destination": "/hub/index.html" },
     { "source": "/:workspace/hub/:token", "destination": "/hub/index.html" },
     { "source": "/relatorios/print/:docId", "destination": "/hub/index.html" },
