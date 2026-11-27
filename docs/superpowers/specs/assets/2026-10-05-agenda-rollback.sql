@@ -2190,6 +2190,7 @@ DROP TABLE IF EXISTS public.agenda_eventos;
 -- referenced by the dropped RLS policy and trigger only
 DROP FUNCTION IF EXISTS
   public.agenda_pode_ver_evento(bigint, boolean, uuid),
+  public.agenda_pode_ver_evento(bigint, boolean, uuid, uuid),
   public.agenda_eventos_guard(),
   public.agenda_hoje(text);
 
