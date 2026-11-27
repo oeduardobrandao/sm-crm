@@ -5,6 +5,7 @@ import { createJsonResponder } from "../_shared/http.ts";
 import { appBaseUrl } from "../_shared/app-url.ts";
 import { sendViaResend } from "../_shared/lifecycle-emails.ts";
 import { reportCronFailure } from "../_shared/triage.ts";
+import { workspaceLang } from "../_shared/i18n/workspace-lang.ts";
 import {
   type AgendaLembreteDb,
   createAgendaLembretesEmailHandler,
@@ -46,6 +47,17 @@ Deno.serve(createAgendaLembretesEmailHandler({
         db: svc as unknown as AgendaLembreteDb,
         sendEmail: sendViaResend,
         appBaseUrl: appBaseUrl(),
+        occurrenceLang: async (ocorrenciaId) => {
+          try {
+            const { data } = await svc.from("agenda_ocorrencias").select("conta_id").eq("id", ocorrenciaId)
+              .maybeSingle();
+            const contaId = (data as { conta_id?: string } | null)?.conta_id;
+            return contaId ? await workspaceLang(svc, contaId) : "pt";
+          } catch {
+            console.error(`[${CRON_NAME}] occurrence workspace lookup failed`);
+            return "pt";
+          }
+        },
         now: () => Date.now(),
       });
       return json({ success: true, ...result });

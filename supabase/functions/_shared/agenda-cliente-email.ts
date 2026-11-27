@@ -19,6 +19,8 @@ import { corSegura, linkSeguro } from "./email/safe.ts";
 import { brandedEmail } from "./email/shell.ts";
 import { button, callout, dateList, eventCard, heading, link, paragraph, quote, spacer } from "./email/blocks.ts";
 import { EMAIL } from "./email/tokens.ts";
+import { type Lang, intlLocale } from "./i18n/lang.ts";
+import { agendaText } from "./i18n/catalogs/agenda.ts";
 
 // ─── Contract types (shapes from the plan's "Shared contracts") ─────────────
 
@@ -107,6 +109,8 @@ export interface AgendaClienteEmailCtx {
   unsubUrl: string;
   /** DTSTAMP for the attached calendar. */
   agora: Date;
+  /** Language the e-mail and the attached calendar are written in (the workspace language). */
+  lang: Lang;
 }
 
 export interface AgendaClienteEmail {
@@ -127,40 +131,56 @@ export class SnapshotVazioError extends Error {
 // ─── Date/time formatting in the occurrence's own time zone ──────────────────
 
 const TZ_PADRAO = "America/Sao_Paulo";
+const TZ_PADRAO_EN = "America/New_York";
 const DIAS_LISTADOS = 10;
 
+/** The zone an e-mail does not need to name: the workspace language's default. */
+function tzPadrao(lang: Lang): string {
+  return lang === "en" ? TZ_PADRAO_EN : TZ_PADRAO;
+}
+
 /** An unknown IANA name makes Intl throw; fall back rather than fail the send. */
-function tzSegura(tz: string | null | undefined): string {
-  if (!tz) return TZ_PADRAO;
+function tzSegura(tz: string | null | undefined, lang: Lang = "pt"): string {
+  if (!tz) return tzPadrao(lang);
   try {
     new Intl.DateTimeFormat("pt-BR", { timeZone: tz });
     return tz;
   } catch {
-    return TZ_PADRAO;
+    return tzPadrao(lang);
   }
 }
 
-function partes(d: Date, tz: string, opts: Intl.DateTimeFormatOptions): Record<string, string> {
+function partes(d: Date, tz: string, opts: Intl.DateTimeFormatOptions, lang: Lang = "pt"): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const p of new Intl.DateTimeFormat("pt-BR", { timeZone: tz, hourCycle: "h23", ...opts }).formatToParts(d)) {
+  for (const p of new Intl.DateTimeFormat(intlLocale(lang), { timeZone: tz, hourCycle: lang === "en" ? "h12" : "h23", ...opts }).formatToParts(d)) {
     out[p.type] = p.value;
   }
   return out;
 }
 
-/** "Quinta, 9 de outubro". */
-function rotuloDia(d: Date, tz: string): string {
-  const p = partes(d, tz, { weekday: "long", day: "numeric", month: "long" });
-  const dia = (p.weekday ?? "").replace(/-feira$/, "");
-  return `${dia.charAt(0).toUpperCase()}${dia.slice(1)}, ${p.day} de ${p.month}`;
+/** "Quinta, 9 de outubro" / "Thursday, October 9". */
+export function rotuloDia(d: Date, tz: string, lang: Lang = "pt"): string {
+  const p = partes(d, tz, { weekday: "long", day: "numeric", month: "long" }, lang);
+  return agendaText(lang).dayLabel(p.weekday ?? "", p.day ?? "", p.month ?? "");
 }
 
-function relogio(d: Date, tz: string): string {
+/** "14:00" / "2:00 PM". */
+export function relogio(d: Date, tz: string, lang: Lang = "pt"): string {
+  if (lang === "en") {
+    const p = partes(d, tz, { hour: "numeric", minute: "2-digit" }, lang);
+    return `${p.hour}:${p.minute} ${p.dayPeriod}`;
+  }
   const p = partes(d, tz, { hour: "2-digit", minute: "2-digit" });
   return `${p.hour}:${p.minute}`;
 }
 
-function ymd(d: Date, tz: string): string {
+/** "OUT" / "OCT" and the day number for the date tile. */
+export function mesDiaTile(d: Date, tz: string, lang: Lang = "pt"): { mes: string; dia: string } {
+  const p = partes(d, tz, { day: "numeric", month: "short" }, lang);
+  return { mes: (p.month ?? "").replace(".", "").toUpperCase(), dia: p.day ?? "" };
+}
+
+export function ymd(d: Date, tz: string): string {
   const p = partes(d, tz, { year: "numeric", month: "2-digit", day: "2-digit" });
   return `${p.year}-${p.month}-${p.day}`;
 }
@@ -194,8 +214,9 @@ export interface QuandoAgenda {
  * All-day: "Quinta, 9 de outubro · dia inteiro" (dates carry no zone).
  * Returns raw text; callers escape it for HTML.
  */
-export function formatarQuandoAgenda(q: QuandoAgenda): string {
-  const tz = tzSegura(q.tz);
+export function formatarQuandoAgenda(q: QuandoAgenda, lang: Lang = "pt"): string {
+  const t = agendaText(lang);
+  const tz = tzSegura(q.tz, lang);
   if (q.dia_inteiro) {
     const primeiro = q.data_inicio_local && YMD_RE.test(q.data_inicio_local)
       ? q.data_inicio_local
@@ -203,23 +224,23 @@ export function formatarQuandoAgenda(q: QuandoAgenda): string {
     const ultimo = q.data_fim_local && YMD_RE.test(q.data_fim_local)
       ? menosUmDia(q.data_fim_local)
       : ymd(new Date(new Date(q.fim).getTime() - 1), tz);
-    const rotuloPrimeiro = rotuloDia(dataLocal(primeiro), "UTC");
-    if (ultimo <= primeiro) return `${rotuloPrimeiro} · dia inteiro`;
-    return `${rotuloPrimeiro} a ${rotuloDia(dataLocal(ultimo), "UTC")} · dia inteiro`;
+    const rotuloPrimeiro = rotuloDia(dataLocal(primeiro), "UTC", lang);
+    if (ultimo <= primeiro) return `${rotuloPrimeiro} · ${t.allDay}`;
+    return `${rotuloPrimeiro}${t.rangeTo}${rotuloDia(dataLocal(ultimo), "UTC", lang)} · ${t.allDay}`;
   }
   const inicio = new Date(q.inicio);
   const fim = new Date(q.fim);
-  const sufixo = tz === TZ_PADRAO ? "" : ` (${tz})`;
-  const comeco = `${rotuloDia(inicio, tz)} · ${relogio(inicio, tz)}`;
-  if (ymd(inicio, tz) === ymd(fim, tz)) return `${comeco} a ${relogio(fim, tz)}${sufixo}`;
-  return `${comeco} a ${rotuloDia(fim, tz)} · ${relogio(fim, tz)}${sufixo}`;
+  const sufixo = tz === tzPadrao(lang) ? "" : ` (${tz})`;
+  const comeco = `${rotuloDia(inicio, tz, lang)} · ${relogio(inicio, tz, lang)}`;
+  if (ymd(inicio, tz) === ymd(fim, tz)) return `${comeco}${t.rangeTo}${relogio(fim, tz, lang)}${sufixo}`;
+  return `${comeco}${t.rangeTo}${rotuloDia(fim, tz, lang)} · ${relogio(fim, tz, lang)}${sufixo}`;
 }
 
 /** "OUT" / "15" for the date tile. All-day rows use `data_inicio_local` as a
  * plain calendar date (same rule as formatarQuandoAgenda) so the tile can
  * never land a day off from the "quando" line. */
-export function mesDiaAgenda(q: QuandoAgenda): { mes: string; dia: string } {
-  const tz = tzSegura(q.tz);
+export function mesDiaAgenda(q: QuandoAgenda, lang: Lang = "pt"): { mes: string; dia: string } {
+  const tz = tzSegura(q.tz, lang);
   let d: Date;
   let zona: string;
   if (q.dia_inteiro) {
@@ -232,17 +253,16 @@ export function mesDiaAgenda(q: QuandoAgenda): { mes: string; dia: string } {
     d = new Date(q.inicio);
     zona = tz;
   }
-  const p = partes(d, zona, { day: "numeric", month: "short" });
-  return { mes: (p.month ?? "").replace(".", "").toUpperCase(), dia: p.day ?? "" };
+  return mesDiaTile(d, zona, lang);
 }
 
 /** A suggested start alone (no end): "Quinta, 9 de outubro · 14:00". */
-function formatarInicioSugerido(iso: string, diaInteiro: boolean, tzBruta: string): string {
-  const tz = tzSegura(tzBruta);
+function formatarInicioSugerido(iso: string, diaInteiro: boolean, tzBruta: string, lang: Lang): string {
+  const tz = tzSegura(tzBruta, lang);
   const d = new Date(iso);
-  if (diaInteiro) return rotuloDia(d, tz);
-  const sufixo = tz === TZ_PADRAO ? "" : ` (${tz})`;
-  return `${rotuloDia(d, tz)} · ${relogio(d, tz)}${sufixo}`;
+  if (diaInteiro) return rotuloDia(d, tz, lang);
+  const sufixo = tz === tzPadrao(lang) ? "" : ` (${tz})`;
+  return `${rotuloDia(d, tz, lang)} · ${relogio(d, tz, lang)}${sufixo}`;
 }
 
 // ─── .ics attachment ──────────────────────────────────────────────────────────
@@ -255,8 +275,8 @@ export function base64Utf8(texto: string): string {
   return btoa(bin);
 }
 
-function paraIcs(o: AgendaClienteOcorrencia): IcsEvento {
-  const tz = tzSegura(o.tz);
+function paraIcs(o: AgendaClienteOcorrencia, lang: Lang): IcsEvento {
+  const tz = tzSegura(o.tz, lang);
   const dataInicio = o.data_inicio_local && YMD_RE.test(o.data_inicio_local)
     ? o.data_inicio_local
     : ymd(new Date(o.inicio), tz);
@@ -281,18 +301,19 @@ function paraIcs(o: AgendaClienteOcorrencia): IcsEvento {
 // ─── HTML pieces ───────────────────────────────────────────────────────────────
 
 /** Card for the first active occurrence; a series lists its dates below (one <li> each). */
-function cartaoEvento(ativas: AgendaClienteOcorrencia[], cor: string, organizador: string | null): string {
+function cartaoEvento(ativas: AgendaClienteOcorrencia[], cor: string, organizador: string | null, lang: Lang): string {
+  const t = agendaText(lang);
   const base = ativas[0];
-  const { mes, dia } = mesDiaAgenda(base);
-  const linhas = [formatarQuandoAgenda(base)];
-  if (base.local?.trim()) linhas.push(`Local: ${base.local.trim()}`);
-  if (organizador) linhas.push(`Organizado por ${organizador}`);
-  let html = eventCard({ mes, dia, tileColor: cor, titulo: base.titulo, lines: linhas, meetingUrl: base.link_reuniao });
+  const { mes, dia } = mesDiaAgenda(base, lang);
+  const linhas = [formatarQuandoAgenda(base, lang)];
+  if (base.local?.trim()) linhas.push(t.location(base.local.trim()));
+  if (organizador) linhas.push(t.organizedBy(organizador));
+  let html = eventCard({ mes, dia, tileColor: cor, titulo: base.titulo, lines: linhas, meetingUrl: base.link_reuniao, lang });
   if (ativas.length > 1) {
     const visiveis = ativas.slice(0, DIAS_LISTADOS).map((o) =>
-      `${o.titulo !== base.titulo ? `${o.titulo}: ` : ""}${formatarQuandoAgenda(o)}`
+      `${o.titulo !== base.titulo ? `${o.titulo}: ` : ""}${formatarQuandoAgenda(o, lang)}`
     );
-    html += spacer(14) + dateList(visiveis, ativas.length - visiveis.length);
+    html += spacer(14) + dateList(visiveis, ativas.length - visiveis.length, false, lang);
   }
   if (base.descricao?.trim()) {
     html += `<p style="margin: 14px 0 0; font-size: 14px; line-height: 22px; color: ${EMAIL.text}; word-break: break-word;">${escapeHtml(base.descricao.trim()).replace(/\r?\n/g, "<br>")}</p>`;
@@ -300,32 +321,45 @@ function cartaoEvento(ativas: AgendaClienteOcorrencia[], cor: string, organizado
   return html;
 }
 
-function listaCanceladas(canceladas: AgendaClienteOcorrencia[], rotulo: string): string {
-  const visiveis = canceladas.slice(0, DIAS_LISTADOS).map((o) => `${o.titulo}: ${formatarQuandoAgenda(o)}`);
+function listaCanceladas(canceladas: AgendaClienteOcorrencia[], rotulo: string, lang: Lang): string {
+  const visiveis = canceladas.slice(0, DIAS_LISTADOS).map((o) => `${o.titulo}: ${formatarQuandoAgenda(o, lang)}`);
   return callout(
     `<p style="margin: 0 0 6px; font-size: 13px; font-weight: 600; color: ${EMAIL.muted};">${escapeHtml(rotulo)}</p>` +
-      dateList(visiveis, canceladas.length - visiveis.length, true),
+      dateList(visiveis, canceladas.length - visiveis.length, true, lang),
   );
 }
 
 // ─── Builder ──────────────────────────────────────────────────────────────────
 
+const ASSUNTOS_PT = agendaText("pt");
+
+/** Portuguese subject prefixes (kept for callers and tests that match the pt copy). */
 export const AGENDA_CLIENTE_ASSUNTOS = {
-  convite: "Novo evento: ",
-  alteracao: "Evento atualizado: ",
-  cancelamento: "Evento cancelado: ",
-  remarcacao_aceita: "Remarcação aceita: ",
-  remarcacao_recusada: "Remarcação não aceita: ",
+  convite: ASSUNTOS_PT.subjectConvite,
+  alteracao: ASSUNTOS_PT.subjectAlteracao,
+  cancelamento: ASSUNTOS_PT.subjectCancelamento,
+  remarcacao_aceita: ASSUNTOS_PT.subjectRemarcacaoAceita,
+  remarcacao_recusada: ASSUNTOS_PT.subjectRemarcacaoRecusada,
 } as const;
 
 /** Guest invite subject: the guest has no relationship with the workspace yet. */
-export const ASSUNTO_CONVITE_CONVIDADO = "Convite: ";
+export const ASSUNTO_CONVITE_CONVIDADO = ASSUNTOS_PT.subjectConviteConvidado;
 
-export const AVISO_CANCELAMENTO = "Se você adicionou este evento ao seu calendário, remova-o.";
-export const AVISO_ALTERACAO =
-  "Se você adicionou este evento ao seu calendário, abra o arquivo anexo para atualizá-lo.";
+export const AVISO_CANCELAMENTO = ASSUNTOS_PT.cancelamentoNotice;
+export const AVISO_ALTERACAO = ASSUNTOS_PT.alteracaoNotice;
 
 type Variante = keyof typeof AGENDA_CLIENTE_ASSUNTOS;
+
+function prefixoAssunto(t: ReturnType<typeof agendaText>, v: Variante, convidado: boolean): string {
+  if (convidado && v === "convite") return t.subjectConviteConvidado;
+  switch (v) {
+    case "convite": return t.subjectConvite;
+    case "alteracao": return t.subjectAlteracao;
+    case "cancelamento": return t.subjectCancelamento;
+    case "remarcacao_aceita": return t.subjectRemarcacaoAceita;
+    case "remarcacao_recusada": return t.subjectRemarcacaoRecusada;
+  }
+}
 
 /** E-mail kind decided at send time from the snapshot (spec §5). */
 export function varianteAgendaCliente(item: Pick<AgendaClienteEmailItem, "tipo" | "ocorrencias">): Variante {
@@ -344,11 +378,13 @@ export function montarEmailAgendaCliente(
   const ehRemarcacao = item.tipo === "remarcacao_aceita" || item.tipo === "remarcacao_recusada";
   if (ocorrencias.length === 0 && !ehRemarcacao) throw new SnapshotVazioError();
 
+  const lang = ctx.lang;
+  const t = agendaText(lang);
   const variante = varianteAgendaCliente(item);
   const ativas = ocorrencias.filter((o) => o.estado === "ativa");
   const canceladas = ocorrencias.filter((o) => o.estado === "cancelada");
   const principal = ativas[0] ?? ocorrencias[0] ?? null;
-  const titulo = principal?.titulo?.trim() || "Evento";
+  const titulo = principal?.titulo?.trim() || t.eventFallback;
 
   const convidado = ehConvidado(item);
   const workspaceName = item.workspace_nome?.trim() || "Mesaas";
@@ -357,13 +393,10 @@ export function montarEmailAgendaCliente(
   // Sorriso"), so a first-word greeting reads "Olá, Clínica!". A guest's name
   // is optional (the team may only have typed the e-mail).
   const nome = ((convidado ? item.nome : item.cliente_nome ?? item.nome) ?? "").trim();
-  const saudacao = nome ? `Olá, ${nome}!` : "Olá!";
+  const saudacao = nome ? t.greeting(nome) : t.greetingAnon;
   const organizador = item.organizador_nome?.trim() || null;
 
-  const prefixoAssunto = convidado && variante === "convite"
-    ? ASSUNTO_CONVITE_CONVIDADO
-    : AGENDA_CLIENTE_ASSUNTOS[variante];
-  const subject = `${prefixoAssunto}${sanitizeSubjectValue(titulo)}`;
+  const subject = `${prefixoAssunto(t, variante, convidado)}${sanitizeSubjectValue(titulo)}`;
 
   const remarcacao = item.remarcacao;
   const respostaEquipe = remarcacao?.resposta_equipe?.trim() || null;
@@ -377,56 +410,54 @@ export function montarEmailAgendaCliente(
   switch (variante) {
     case "convite": {
       if (convidado) {
-        h1 = "Convite";
-        abertura = organizador
-          ? `${organizador} convidou você em nome de ${workspaceName}.`
-          : `${workspaceName} convidou você para um evento.`;
+        h1 = t.guestH1;
+        abertura = organizador ? t.guestOpenOrg(organizador, workspaceName) : t.guestOpen(workspaceName);
         preheader = abertura;
       } else {
-        h1 = "Novo evento";
-        abertura = `${workspaceName} compartilhou um evento com você.`;
+        h1 = t.conviteH1;
+        abertura = t.conviteOpen(workspaceName);
         preheader = abertura;
       }
-      if (ativas.length > 0) secoes.push(cartaoEvento(ativas, brandColor, organizador));
-      aviso = "Para adicionar ao seu calendário, abra o arquivo anexo.";
+      if (ativas.length > 0) secoes.push(cartaoEvento(ativas, brandColor, organizador, lang));
+      aviso = t.conviteNotice;
       break;
     }
     case "alteracao": {
-      h1 = "Evento atualizado";
-      abertura = `${workspaceName} atualizou um evento.`;
+      h1 = t.alteracaoH1;
+      abertura = t.alteracaoOpen(workspaceName);
       preheader = abertura;
-      if (ativas.length > 0) secoes.push(cartaoEvento(ativas, brandColor, organizador));
-      if (canceladas.length > 0) secoes.push(listaCanceladas(canceladas, "Datas canceladas"));
-      aviso = AVISO_ALTERACAO;
+      if (ativas.length > 0) secoes.push(cartaoEvento(ativas, brandColor, organizador, lang));
+      if (canceladas.length > 0) secoes.push(listaCanceladas(canceladas, t.canceledDates, lang));
+      aviso = t.alteracaoNotice;
       break;
     }
     case "cancelamento": {
-      h1 = "Evento cancelado";
-      abertura = `${workspaceName} cancelou um evento.`;
+      h1 = t.cancelamentoH1;
+      abertura = t.cancelamentoOpen(workspaceName);
       preheader = abertura;
-      secoes.push(listaCanceladas(canceladas, canceladas.length === 1 ? "Data cancelada" : "Datas canceladas"));
-      aviso = AVISO_CANCELAMENTO;
+      secoes.push(listaCanceladas(canceladas, canceladas.length === 1 ? t.canceledDate : t.canceledDates, lang));
+      aviso = t.cancelamentoNotice;
       break;
     }
     case "remarcacao_aceita": {
-      h1 = "Remarcação aceita";
-      abertura = `${workspaceName} aceitou seu pedido de remarcação.${ativas.length > 0 ? " O novo horário é:" : ""}`;
-      preheader = `${workspaceName} aceitou seu pedido de remarcação.`;
-      if (ativas.length > 0) secoes.push(cartaoEvento(ativas, brandColor, organizador));
-      if (respostaEquipe) secoes.push(quote("Mensagem da equipe", respostaEquipe));
-      if (ativas.length > 0) aviso = AVISO_ALTERACAO;
+      h1 = t.aceitaH1;
+      abertura = t.aceitaOpen(workspaceName, ativas.length > 0);
+      preheader = t.aceitaPreheader(workspaceName);
+      if (ativas.length > 0) secoes.push(cartaoEvento(ativas, brandColor, organizador, lang));
+      if (respostaEquipe) secoes.push(quote(t.teamMessage, respostaEquipe));
+      if (ativas.length > 0) aviso = t.alteracaoNotice;
       break;
     }
     case "remarcacao_recusada": {
-      h1 = "Remarcação não aceita";
-      preheader = `${workspaceName} não pôde aceitar o horário que você sugeriu.`;
+      h1 = t.recusadaH1;
+      preheader = t.recusadaPreheader(workspaceName);
       const sugerido = remarcacao?.inicio_sugerido
-        ? ` (${formatarInicioSugerido(remarcacao.inicio_sugerido, principal?.dia_inteiro ?? false, principal?.tz ?? TZ_PADRAO)})`
+        ? ` (${formatarInicioSugerido(remarcacao.inicio_sugerido, principal?.dia_inteiro ?? false, principal?.tz ?? tzPadrao(lang), lang)})`
         : "";
-      abertura = `${workspaceName} não pôde aceitar o horário que você sugeriu${sugerido}.`;
-      if (respostaEquipe) secoes.push(quote("Mensagem da equipe", respostaEquipe));
+      abertura = t.recusadaOpen(workspaceName, sugerido);
+      if (respostaEquipe) secoes.push(quote(t.teamMessage, respostaEquipe));
       if (ativas.length > 0) {
-        secoes.push(paragraph("O horário que continua valendo:", "body", "0 0 10px") + cartaoEvento(ativas, brandColor, organizador));
+        secoes.push(paragraph(t.stillValid, "body", "0 0 10px") + cartaoEvento(ativas, brandColor, organizador, lang));
       }
       break;
     }
@@ -437,8 +468,10 @@ export function montarEmailAgendaCliente(
   const anexar = ativas.length > 0 && variante !== "remarcacao_recusada";
   const attachments: ResendAttachment[] = anexar
     ? [{
-      filename: "evento.ics",
-      content: base64Utf8(gerarCalendario({ nome: workspaceName, eventos: ativas.map(paraIcs), agora: ctx.agora })),
+      filename: lang === "en" ? "event.ics" : "evento.ics",
+      content: base64Utf8(
+        gerarCalendario({ nome: workspaceName, eventos: ativas.map((o) => paraIcs(o, lang)), agora: ctx.agora, lang }),
+      ),
       content_type: "text/calendar; charset=utf-8",
     }]
     : [];
@@ -449,10 +482,10 @@ export function montarEmailAgendaCliente(
   if (convidado) {
     // A guest has nothing to answer on a cancellation (spec §3.6: no button).
     destino = variante === "cancelamento" ? null : linkSeguro(ctx.botaoUrl ?? null);
-    rotuloBotao = "Responder ao convite";
+    rotuloBotao = t.btnRespond;
   } else if (ctx.botaoUrl !== undefined) {
     destino = linkSeguro(ctx.botaoUrl);
-    rotuloBotao = confirmar ? "Confirmar presença" : "Ver no portal";
+    rotuloBotao = confirmar ? t.btnConfirm : t.btnView;
   } else {
     const hubBase = ctx.hubUrl.replace(/\/+$/, "");
     destino = !hubBase
@@ -460,7 +493,7 @@ export function montarEmailAgendaCliente(
       : ativas.length > 0
       ? `${hubBase}/agenda?ocorrencia=${ativas[0].ocorrencia_id}`
       : `${hubBase}/agenda`;
-    rotuloBotao = confirmar ? "Confirmar presença" : "Ver no portal";
+    rotuloBotao = confirmar ? t.btnConfirm : t.btnView;
   }
   const fecho = [
     aviso ? paragraph(aviso, "small", "0 0 16px") : "",
@@ -474,9 +507,10 @@ export function montarEmailAgendaCliente(
     logoUrl: item.logo_url ?? null,
     sections: [heading(h1) + paragraph(`${saudacao} ${abertura}`, "body", "0"), ...secoes, fecho].filter((s) => s !== ""),
     footerHtml: [
-      `Enviado por ${escapeHtml(workspaceName)} via Mesaas`,
-      link(ctx.unsubUrl, "Não quero mais receber esses avisos", EMAIL.muted),
+      t.sentBy(escapeHtml(workspaceName)),
+      link(ctx.unsubUrl, t.unsub, EMAIL.muted),
     ],
+    lang,
   });
 
   return { subject, html, attachments };

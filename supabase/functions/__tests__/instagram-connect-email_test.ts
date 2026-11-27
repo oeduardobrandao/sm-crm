@@ -30,7 +30,7 @@ Deno.test("CONNECT_LINK_SUBJECT: bounds an absurdly long workspace name", () => 
 });
 
 Deno.test("buildConnectLinkEmail: contains both names and the link", () => {
-  const html = buildConnectLinkEmail({
+  const html = buildConnectLinkEmail({ lang: "pt",
     agencyName: "Agência Y",
     clienteName: "Clínica X",
     connectUrl: `${BASE}/conectar/tok-123`,
@@ -42,7 +42,7 @@ Deno.test("buildConnectLinkEmail: contains both names and the link", () => {
 });
 
 Deno.test("buildConnectLinkEmail: escapes names into the HTML", () => {
-  const html = buildConnectLinkEmail({
+  const html = buildConnectLinkEmail({ lang: "pt",
     agencyName: '<script>alert(1)</script>',
     clienteName: "Tom & Jerry",
     connectUrl: `${BASE}/conectar/tok-123`,
@@ -53,7 +53,7 @@ Deno.test("buildConnectLinkEmail: escapes names into the HTML", () => {
 });
 
 Deno.test("buildConnectLinkEmail: no em-dash in user-visible copy", () => {
-  const html = buildConnectLinkEmail({
+  const html = buildConnectLinkEmail({ lang: "pt",
     agencyName: "Agência Y",
     clienteName: "Clínica X",
     connectUrl: `${BASE}/conectar/tok-123`,
@@ -63,7 +63,7 @@ Deno.test("buildConnectLinkEmail: no em-dash in user-visible copy", () => {
 });
 
 Deno.test("buildConnectedNoticeEmail: names the client and the @username", () => {
-  const html = buildConnectedNoticeEmail({
+  const html = buildConnectedNoticeEmail({ lang: "pt",
     clienteName: "Clínica X",
     igUsername: "clinicax",
     clienteUrl: `${BASE}/clientes/42`,
@@ -76,7 +76,7 @@ Deno.test("buildConnectedNoticeEmail: names the client and the @username", () =>
 });
 
 Deno.test("connect link: eyebrow, steps, fallback link, new shell", () => {
-  const html = buildConnectLinkEmail({ agencyName: "Agência Lume", clienteName: "Clínica <S>", connectUrl: "https://app.test/c/abc", appBaseUrl: "https://app.test" });
+  const html = buildConnectLinkEmail({ lang: "pt", agencyName: "Agência Lume", clienteName: "Clínica <S>", connectUrl: "https://app.test/c/abc", appBaseUrl: "https://app.test" });
   assert(html.includes("A pedido de Agência Lume"));
   assert(html.includes("Conecte o Instagram de Clínica &lt;S&gt;"));
   assert(html.includes("Se o botão não funcionar") && html.includes("https://app.test/c/abc"));
@@ -84,7 +84,7 @@ Deno.test("connect link: eyebrow, steps, fallback link, new shell", () => {
 });
 
 Deno.test("connected notice: eyebrow and button", () => {
-  const html = buildConnectedNoticeEmail({ clienteName: "Clínica", igUsername: "clinica", clienteUrl: "https://app.test/clientes/1", appBaseUrl: "https://app.test" });
+  const html = buildConnectedNoticeEmail({ lang: "pt", clienteName: "Clínica", igUsername: "clinica", clienteUrl: "https://app.test/clientes/1", appBaseUrl: "https://app.test" });
   assert(html.includes("Instagram conectado") && html.includes("@clinica") && html.includes("Ver o cliente"));
 });
 
@@ -98,7 +98,7 @@ Deno.test("send functions tag the email: instagram_connect and instagram_connect
     return Promise.resolve(new Response("{}", { status: 200 }));
   }) as typeof fetch;
   try {
-    await sendConnectLinkEmail({
+    await sendConnectLinkEmail({ lang: "pt",
       to: "c@x.test",
       replyTo: "ag@x.test",
       agencyName: "Ag",
@@ -107,7 +107,7 @@ Deno.test("send functions tag the email: instagram_connect and instagram_connect
       appBaseUrl: BASE,
       idempotencyKey: "k1",
     });
-    await sendConnectedNoticeEmail({
+    await sendConnectedNoticeEmail({ lang: "pt",
       to: "ag@x.test",
       clienteName: "Cli",
       igUsername: "cli",

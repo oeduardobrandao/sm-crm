@@ -6,7 +6,7 @@ import {
 import { buildDemoAccessEmail, buildInviteEmail, type DemoSeedCounts } from "../_shared/invite-email.ts";
 
 Deno.test("buildInviteEmail: includes the action link and workspace name", () => {
-  const html = buildInviteEmail({
+  const html = buildInviteEmail({ lang: "pt",
     actionLink: "https://x.test/verify?token=abc",
     workspaceName: "Agência Z",
   });
@@ -15,7 +15,7 @@ Deno.test("buildInviteEmail: includes the action link and workspace name", () =>
 });
 
 Deno.test("buildInviteEmail: escapes HTML in the workspace name (XSS)", () => {
-  const html = buildInviteEmail({
+  const html = buildInviteEmail({ lang: "pt",
     actionLink: "https://x.test/v",
     workspaceName: "<script>alert(1)</script>",
   });
@@ -24,7 +24,7 @@ Deno.test("buildInviteEmail: escapes HTML in the workspace name (XSS)", () => {
 });
 
 Deno.test("buildInviteEmail: escapes ampersands in the action link", () => {
-  const html = buildInviteEmail({
+  const html = buildInviteEmail({ lang: "pt",
     actionLink: "https://x.test/v?a=1&b=2",
     workspaceName: "W",
   });
@@ -34,7 +34,7 @@ Deno.test("buildInviteEmail: escapes ampersands in the action link", () => {
 });
 
 Deno.test("invite: new shell, fallback link, escaped workspace", () => {
-  const html = buildInviteEmail({ actionLink: "https://auth.test/verify?a=1&b=2", workspaceName: "Agência <L>" });
+  const html = buildInviteEmail({ lang: "pt", actionLink: "https://auth.test/verify?a=1&b=2", workspaceName: "Agência <L>" });
   assert(html.includes("Você foi convidado para o Agência &lt;L&gt;"));
   assert(html.includes("Definir minha senha") && html.includes("Se o botão não funcionar"));
   assert(html.includes(`href="https://auth.test/verify?a=1&amp;b=2"`));

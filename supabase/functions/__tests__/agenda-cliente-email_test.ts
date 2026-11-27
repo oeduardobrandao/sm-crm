@@ -712,3 +712,29 @@ Deno.test("agenda-cliente: brand band kept, light brand flips tile/button text, 
   assert(!/[📅💬]/u.test(html));
   assert(html.includes(`<meta name="color-scheme" content="light">`));
 });
+
+
+Deno.test("run: the e-mail follows the item's workspace language, looked up once per workspace; failure is pt", async () => {
+  const { db } = makeDb([
+    item({ conta_id: "ws-en" }),
+    item({ id: 6, conta_id: "ws-en" }),
+    item({ id: 7, conta_id: "ws-pt" }),
+    item({ id: 8, conta_id: "ws-bad" }),
+  ]);
+  const lookups: string[] = [];
+  const { deps, sent } = baseDeps(db, {
+    workspaceLang: (c: string) => {
+      lookups.push(c);
+      if (c === "ws-bad") return Promise.reject(new Error("db down"));
+      return Promise.resolve(c === "ws-en" ? "en" : "pt");
+    },
+  });
+  const r = await runAgendaClienteEmail(deps);
+  assertEquals(r, { enviados: 4, falhas: 0 });
+  assertEquals(lookups, ["ws-en", "ws-pt", "ws-bad"]);
+  assertEquals(sent[0][1], "New event: Gravação");
+  assert((sent[0][2] as string).includes('<html lang="en"'));
+  assertEquals(sent[1][1], "New event: Gravação");
+  assertEquals(sent[2][1], "Novo evento: Gravação");
+  assertEquals(sent[3][1], "Novo evento: Gravação");
+});

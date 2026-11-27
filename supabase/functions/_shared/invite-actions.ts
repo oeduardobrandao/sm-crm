@@ -2,6 +2,8 @@
 import { classifyExistingUser, coerceHasPassword } from "./invite-classify.ts";
 import { sendPendingWorkspaceInvite } from "./invite-pending.ts";
 import { sendInviteEmail } from "./invite-email.ts";
+import { workspaceLang } from "./i18n/workspace-lang.ts";
+import { inviteText } from "./i18n/catalogs/invite.ts";
 import { effectivePlanLimit } from "./entitlements-rpc.ts";
 import { seatsAvailable } from "./invite-seats.ts";
 
@@ -472,7 +474,16 @@ export async function inviteOrResend(
       }
       const { data: conta } = await adminClient
         .from("contas").select("nome").eq("id", input.contaId).maybeSingle();
-      await sendInviteEmail({ to: email, actionLink: link.properties.action_link, workspaceName: conta?.nome || "seu workspace" });
+      // Language of the inviting workspace, resolved once for this action (a failed lookup
+      // logs and falls back to pt, never blocks the invite). Used for the email and Auth metadata.
+      const lang = await workspaceLang(adminClient, input.contaId);
+      await syncInviteeLanguage(adminClient, existingUser, lang);
+      await sendInviteEmail({
+        to: email,
+        actionLink: link.properties.action_link,
+        workspaceName: conta?.nome || inviteText(lang).workspaceFallback,
+        lang,
+      });
       const ins = await adminClient.from("invites").insert({
         conta_id: input.contaId, email, role: effectiveRole, invited_by: input.invitedBy,
         status: "pending", membro_id: membroId, role_id: roleId,
@@ -493,14 +504,39 @@ export async function inviteOrResend(
     const affectedWorkspaceIds = [...new Set([
       ...impact.memberWorkspaceIds, ...impact.pendingWorkspaceIds, input.contaId,
     ])];
-    const inviteId = await sendNewUserInvite(adminClient, input, email, membroId, roleId);
+    const inviteLang = await workspaceLang(adminClient, input.contaId);
+    const inviteId = await sendNewUserInvite(adminClient, input, email, membroId, roleId, inviteLang);
     return { route: "reinvited", affectedWorkspaceIds, inviteId };
   }
 
   // (3) New user.
   await deletePriorInvites(adminClient, email, input.contaId);
-  const inviteId = await sendNewUserInvite(adminClient, input, email, membroId, roleId);
+  const inviteLang = await workspaceLang(adminClient, input.contaId);
+  const inviteId = await sendNewUserInvite(adminClient, input, email, membroId, roleId, inviteLang);
   return { route: "invited", inviteId };
+}
+
+/**
+ * Auth emails (password reset, magic link) read `user_metadata.language`. A user who OWNS a
+ * workspace keeps the language of that workspace (workspace_set_language writes it), so only a
+ * user without an owner membership gets the inviting workspace's language. Merges with the
+ * existing metadata (keeps `market`, `nome`, ...). Best-effort: a failure logs and never fails
+ * the invite or resend.
+ */
+async function syncInviteeLanguage(adminClient: any, user: any, lang: string): Promise<void> {
+  try {
+    const { data: owned, error: ownErr } = await adminClient
+      .from("workspace_members").select("id")
+      .eq("user_id", user.id).eq("role", "owner").limit(1).maybeSingle();
+    if (ownErr) throw ownErr;
+    if (owned) return;
+    const { error } = await adminClient.auth.admin.updateUserById(user.id, {
+      user_metadata: { ...(user.user_metadata ?? {}), language: lang },
+    });
+    if (error) throw error;
+  } catch (e) {
+    console.error("[invite-actions] invitee language sync failed", e);
+  }
 }
 
 async function deletePriorInvites(adminClient: any, email: string, contaId: string): Promise<void> {
@@ -517,7 +553,7 @@ async function deletePriorInvites(adminClient: any, email: string, contaId: stri
  * from `input.roleId` here, or a resend that relies on inheritance would
  * silently lose it again at this second hop.
  */
-async function sendNewUserInvite(adminClient: any, input: InviteOrResendInput, email: string, membroId: number | null, roleId: string | null): Promise<string> {
+async function sendNewUserInvite(adminClient: any, input: InviteOrResendInput, email: string, membroId: number | null, roleId: string | null, lang: string): Promise<string> {
   // Same chassis rule as inviteOrResend's top-of-function effectiveRole:
   // invites.role is 'agent' whenever roleId is present. Threaded through to
   // sendAuthInvite's user_metadata.role too (rather than keeping that at the
@@ -537,7 +573,7 @@ async function sendNewUserInvite(adminClient: any, input: InviteOrResendInput, e
     },
     sendAuthInvite: async (p) => {
       const { error } = await adminClient.auth.admin.inviteUserByEmail(p.email, {
-        data: { conta_id: p.contaId, role: p.role, nome: p.email.split("@")[0] },
+        data: { conta_id: p.contaId, role: p.role, nome: p.email.split("@")[0], language: lang },
         redirectTo: p.redirectTo,
       });
       if (error) throw error;

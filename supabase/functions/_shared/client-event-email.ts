@@ -5,6 +5,8 @@ import { brandedEmail } from "./email/shell.ts";
 import { button, callout, eventCard, heading, link, paragraph, postList, sectionTitle, spacer } from "./email/blocks.ts";
 import { corSegura } from "./email/safe.ts";
 import { EMAIL } from "./email/tokens.ts";
+import type { Lang } from "./i18n/lang.ts";
+import { clientEventText } from "./i18n/catalogs/client-event.ts";
 
 /**
  * Client-facing "you have pending items" email (Fase 2 do Hub: pendências).
@@ -26,6 +28,8 @@ export interface ClientEventEmailParams {
   /** Linhas editoriais sent to the client and still awaiting an answer
    *  (spec §8.4). Optional so every older caller keeps its exact output. */
   linhas?: ClientEventLinha[];
+  /** Language the e-mail is written in (the client's workspace language). */
+  lang: Lang;
 }
 
 /** One linha editorial awaiting approval: `periodo` is the month, 'YYYY-MM-DD'. */
@@ -35,28 +39,24 @@ export interface ClientEventLinha {
   titulo?: string | null;
 }
 
-const MESES_PT = [
-  "janeiro", "fevereiro", "março", "abril", "maio", "junho",
-  "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
-];
-
 /** "Linha editorial de {mês} aguardando sua aprovação", or "{titulo} aguardando
  * sua aprovação" for a renamed linha (spec §14.2). The month comes from the
  * 'YYYY-MM' prefix of `periodo` as text, never through a Date, so no timezone
  * can shift it; an unreadable value drops the month. The caller escapes. */
-export function linhaItemText(periodo: string, titulo?: string | null): string {
+export function linhaItemText(periodo: string, titulo: string | null | undefined, lang: Lang): string {
+  const t = clientEventText(lang);
   const custom = titulo?.trim();
-  if (custom) return `${custom} aguardando sua aprovação`;
+  if (custom) return t.linhaCustom(custom);
   const m = /^\d{4}-(\d{2})/.exec(periodo);
-  const mes = m ? MESES_PT[Number(m[1]) - 1] : undefined;
-  return mes ? `Linha editorial de ${mes} aguardando sua aprovação` : "Linha editorial aguardando sua aprovação";
+  const mes = m ? t.months[Number(m[1]) - 1] : undefined;
+  return mes ? t.linhaMonth(mes) : t.linhaNoMonth;
 }
 
 /** Bordered list of linha items, each linking to the Hub's linha tab. */
-function linhaList(linhas: ClientEventLinha[], href: string): string {
+function linhaList(linhas: ClientEventLinha[], href: string, lang: Lang): string {
   const trs = linhas.map((l, i) => {
     const bd = i === linhas.length - 1 ? "" : `border-bottom: 1px solid ${EMAIL.divider};`;
-    return `<tr><td style="padding: 12px 16px; ${bd} font-size: 14px; line-height: 20px; word-break: break-word; overflow-wrap: anywhere;">${link(href, linhaItemText(l.periodo, l.titulo))}</td></tr>`;
+    return `<tr><td style="padding: 12px 16px; ${bd} font-size: 14px; line-height: 20px; word-break: break-word; overflow-wrap: anywhere;">${link(href, linhaItemText(l.periodo, l.titulo, lang))}</td></tr>`;
   }).join("");
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border: 1px solid ${EMAIL.border}; border-radius: 12px; border-collapse: separate;">${trs}</table>`;
 }
@@ -72,7 +72,7 @@ export interface ClientEventReminder {
   titulo: string;
 }
 
-export const CLIENT_EVENT_REMINDERS_HEADING = "Eventos aguardando sua confirmação";
+export const CLIENT_EVENT_REMINDERS_HEADING = clientEventText("pt").remindersHeading;
 
 /** Max pending-post titles rendered as a list before folding the rest into "e mais N...". */
 const RENDERED_POSTS_CAP = 20;
@@ -85,8 +85,8 @@ const RENDERED_POSTS_CAP = 20;
  * already carries the specific counts, and changing the subject line is a
  * separate decision this spec doesn't make.
  */
-export function clientEventSubject(workspaceName: string): string {
-  return `Você tem pendências com ${sanitizeSubjectValue(workspaceName)}`;
+export function clientEventSubject(workspaceName: string, lang: Lang = "pt"): string {
+  return clientEventText(lang).subject(sanitizeSubjectValue(workspaceName));
 }
 
 /** Adaptive <h1> (spec §11): posts, when present, always win the count --
@@ -94,22 +94,19 @@ export function clientEventSubject(workspaceName: string): string {
  * messages. All zero is unreachable in production (the cron releases the
  * lease without sending in that case), but the builder still needs a sane,
  * non-crashing fallback for a direct/manual call. */
-function buildPendingTitle(postsCount: number, messagesCount: number, eventsCount = 0, linhasCount = 0): string {
-  if (postsCount > 0) {
-    return postsCount === 1 ? "1 post espera sua aprovação" : `${postsCount} posts esperam sua aprovação`;
-  }
-  if (linhasCount > 0) {
-    return linhasCount === 1
-      ? "1 linha editorial espera sua aprovação"
-      : `${linhasCount} linhas editoriais esperam sua aprovação`;
-  }
-  if (eventsCount > 0) {
-    return eventsCount === 1 ? "1 evento aguarda sua confirmação" : `${eventsCount} eventos aguardam sua confirmação`;
-  }
-  if (messagesCount > 0) {
-    return messagesCount === 1 ? "1 mensagem espera você" : `${messagesCount} mensagens esperam você`;
-  }
-  return "Você tem novidades";
+function buildPendingTitle(
+  postsCount: number,
+  messagesCount: number,
+  eventsCount: number,
+  linhasCount: number,
+  lang: Lang,
+): string {
+  const t = clientEventText(lang);
+  if (postsCount > 0) return t.titlePosts(postsCount);
+  if (linhasCount > 0) return t.titleLinhas(linhasCount);
+  if (eventsCount > 0) return t.titleEvents(eventsCount);
+  if (messagesCount > 0) return t.titleMessages(messagesCount);
+  return t.titleNone;
 }
 
 /** Dynamic preheader text (spec §8/§11): "{N} posts aguardando sua aprovação
@@ -118,48 +115,38 @@ function buildPendingTitle(postsCount: number, messagesCount: number, eventsCoun
 function buildPendingPreheaderText(
   postsCount: number,
   messagesCount: number,
-  eventsCount = 0,
-  linhasCount = 0,
+  eventsCount: number,
+  linhasCount: number,
+  lang: Lang,
 ): string {
+  const t = clientEventText(lang);
   const parts: string[] = [];
-  if (postsCount > 0) {
-    parts.push(postsCount === 1 ? "1 post aguardando sua aprovação" : `${postsCount} posts aguardando sua aprovação`);
-  }
-  if (linhasCount > 0) {
-    parts.push(
-      linhasCount === 1
-        ? "1 linha editorial aguardando sua aprovação"
-        : `${linhasCount} linhas editoriais aguardando sua aprovação`,
-    );
-  }
-  if (eventsCount > 0) {
-    parts.push(
-      eventsCount === 1 ? "1 evento aguardando sua confirmação" : `${eventsCount} eventos aguardando sua confirmação`,
-    );
-  }
-  if (messagesCount > 0) {
-    parts.push(messagesCount === 1 ? "1 mensagem" : `${messagesCount} mensagens`);
-  }
-  if (parts.length === 0) return "Você tem novidades.";
-  return `${parts.join(" e ")}.`;
+  if (postsCount > 0) parts.push(t.preheaderPosts(postsCount));
+  if (linhasCount > 0) parts.push(t.preheaderLinhas(linhasCount));
+  if (eventsCount > 0) parts.push(t.preheaderEvents(eventsCount));
+  if (messagesCount > 0) parts.push(t.preheaderMessages(messagesCount));
+  if (parts.length === 0) return t.preheaderNone;
+  return `${parts.join(t.preheaderJoin)}.`;
 }
 
 export function buildClientEventEmail(p: ClientEventEmailParams): string {
   const { clienteNome, workspaceName, logoUrl, pendingPosts, unreadMessages, hubUrl, unsubUrl } = p;
   const brandColor = corSegura(p.brandColor);
+  const lang = p.lang;
+  const t = clientEventText(lang);
   const pendingEvents = p.pendingEvents ?? [];
   const linhas = p.linhas ?? [];
   const firstName = clienteNome.split(" ")[0];
   const hubBase = hubUrl.replace(/\/+$/, "");
 
   const greeting = pendingPosts.length > 0 || linhas.length > 0
-    ? `Olá, ${firstName}! Quando puder, dá uma olhada no que a equipe preparou:`
+    ? t.greetingPosts(firstName)
     : pendingEvents.length > 0
-    ? `Olá, ${firstName}! Confirme sua presença nos próximos eventos:`
-    : `Olá, ${firstName}!`;
+    ? t.greetingEvents(firstName)
+    : t.greetingPlain(firstName);
 
   const sections: string[] = [
-    heading(buildPendingTitle(pendingPosts.length, unreadMessages, pendingEvents.length, linhas.length)) +
+    heading(buildPendingTitle(pendingPosts.length, unreadMessages, pendingEvents.length, linhas.length, lang)) +
       paragraph(greeting, "body", "0"),
   ];
 
@@ -167,26 +154,27 @@ export function buildClientEventEmail(p: ClientEventEmailParams): string {
     const visible = pendingPosts.slice(0, RENDERED_POSTS_CAP);
     const hidden = Math.max(0, pendingPosts.length - RENDERED_POSTS_CAP);
     sections.push(
-      postList(visible) +
-        (hidden > 0 ? paragraph(`e mais ${hidden} posts aguardando aprovação.`, "small", "8px 0 0") : ""),
+      postList(visible, lang) +
+        (hidden > 0 ? paragraph(t.morePosts(hidden), "small", "8px 0 0") : ""),
     );
   }
 
   const linhaHref = hubBase ? `${hubBase}/aprovacoes?aba=linha` : null;
   if (linhas.length > 0) {
-    sections.push(linhaList(linhas, linhaHref ?? ""));
+    sections.push(linhaList(linhas, linhaHref ?? "", lang));
   }
 
   if (pendingEvents.length > 0) {
     sections.push(
-      sectionTitle(CLIENT_EVENT_REMINDERS_HEADING) +
+      sectionTitle(t.remindersHeading) +
         pendingEvents.map((ev, i) => {
-          const { mes, dia } = mesDiaAgenda(ev);
+          const { mes, dia } = mesDiaAgenda(ev, lang);
           return spacer(i === 0 ? 8 : 10) + (
             eventCard({
               mes, dia, tileColor: brandColor, titulo: ev.titulo,
               titleHref: hubBase ? `${hubBase}/agenda?ocorrencia=${ev.ocorrencia_id}` : null,
-              lines: [formatarQuandoAgenda(ev)],
+              lines: [formatarQuandoAgenda(ev, lang)],
+              lang,
             })
           );
         }).join(""),
@@ -194,9 +182,7 @@ export function buildClientEventEmail(p: ClientEventEmailParams): string {
   }
 
   if (unreadMessages > 0) {
-    const label = unreadMessages === 1
-      ? "<strong>1 mensagem não lida</strong> da equipe esperando você."
-      : `<strong>${unreadMessages} mensagens não lidas</strong> da equipe esperando você.`;
+    const label = unreadMessages === 1 ? t.unreadOne : t.unreadMany(unreadMessages);
     sections.push(callout(label));
   }
 
@@ -205,24 +191,25 @@ export function buildClientEventEmail(p: ClientEventEmailParams): string {
   const linhaCta = pendingPosts.length === 0 && linhas.length > 0;
   const eventsCta = pendingPosts.length === 0 && !linhaCta && pendingEvents.length > 0;
   const ctaLabel = pendingPosts.length > 0 || linhaCta
-    ? "Revisar e aprovar"
+    ? t.ctaReview
     : eventsCta
-    ? "Confirmar presença"
-    : "Ver mensagens";
+    ? t.ctaConfirm
+    : t.ctaMessages;
   const ctaHref = linhaCta ? `${hubBase}/aprovacoes?aba=linha` : eventsCta ? `${hubBase}/agenda` : hubUrl;
   const cta = hubUrl ? button(ctaHref, ctaLabel, { brandColor }) : "";
   if (cta) sections.push(cta);
 
   return brandedEmail({
-    preheader: buildPendingPreheaderText(pendingPosts.length, unreadMessages, pendingEvents.length, linhas.length),
+    preheader: buildPendingPreheaderText(pendingPosts.length, unreadMessages, pendingEvents.length, linhas.length, lang),
     workspaceName,
     brandColor,
     logoUrl,
     sections,
     footerHtml: [
-      `Enviado por ${escapeHtml(workspaceName)} via Mesaas`,
-      link(unsubUrl, "Não quero mais receber esses avisos", EMAIL.muted),
+      t.sentBy(escapeHtml(workspaceName)),
+      link(unsubUrl, t.unsub, EMAIL.muted),
     ],
+    lang,
   });
 }
 

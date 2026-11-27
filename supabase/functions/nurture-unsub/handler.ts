@@ -14,6 +14,8 @@
  */
 
 import { verifyNurtureUnsubToken } from "../_shared/nurture-unsub-token.ts";
+import { nurtureUnsubText } from "../_shared/i18n/catalogs/nurture-unsub.ts";
+import type { Lang } from "../_shared/i18n/lang.ts";
 
 export interface NurtureUnsubDb {
   from(table: "profiles"): {
@@ -29,12 +31,18 @@ export interface NurtureUnsubDeps {
   db: NurtureUnsubDb;
   tokenSecret: string;
   now: () => Date;
+  /**
+   * Owner language of the token's profile (workspaces.language of the oldest
+   * workspace they own). Optional: absent reads as pt. A lookup failure must
+   * resolve to pt inside it; a rejection is caught here and also reads as pt.
+   */
+  ownerLang?: (userId: string) => Promise<Lang>;
   buildCorsHeaders: (req: Request) => Record<string, string>;
 }
 
-function page(title: string, heading: string, body: string): string {
+function page(lang: Lang, title: string, heading: string, body: string): string {
   return `<!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="${nurtureUnsubText(lang).htmlLang}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -56,29 +64,31 @@ ${body}
 </html>`;
 }
 
-const confirmPage = () =>
-  page(
-    "Parar de receber",
-    "Parar de receber as dicas do Mesaas?",
-    `<p>Você vai parar de receber os e-mails de dicas. E-mails da sua conta (convites, cobrança, avisos do teste) continuam chegando.</p>
-<form method="post"><button type="submit">Parar de receber</button></form>`,
+const confirmPage = (lang: Lang) => {
+  const t = nurtureUnsubText(lang);
+  return page(
+    lang,
+    t.confirmTitle,
+    t.confirmHeading,
+    `<p>${t.confirmBody}</p>
+<form method="post"><button type="submit">${t.confirmButton}</button></form>`,
   );
+};
 
-const donePage = () =>
-  page(
-    "Pronto",
-    "Pronto.",
-    `<p>Você não vai mais receber as dicas por e-mail. Dá pra religar em Configurações &gt; Notificações.</p>`,
-  );
+const donePage = (lang: Lang) => {
+  const t = nurtureUnsubText(lang);
+  return page(lang, t.doneTitle, t.doneHeading, `<p>${t.doneBody}</p>`);
+};
 
-const invalidPage = () => page("Link inválido", "Link inválido", `<p>Este link não é válido.</p>`);
+const invalidPage = (lang: Lang) => {
+  const t = nurtureUnsubText(lang);
+  return page(lang, t.invalidTitle, t.invalidHeading, `<p>${t.invalidBody}</p>`);
+};
 
-const errorPage = () =>
-  page(
-    "Algo deu errado",
-    "Algo deu errado",
-    `<p>Não foi possível processar seu pedido agora. Tente novamente mais tarde.</p>`,
-  );
+const errorPage = (lang: Lang) => {
+  const t = nurtureUnsubText(lang);
+  return page(lang, t.errorTitle, t.errorHeading, `<p>${t.errorBody}</p>`);
+};
 
 function html(body: string, status: number, cors: Record<string, string>): Response {
   return new Response(body, { status, headers: { ...cors, "Content-Type": "text/html; charset=utf-8" } });
@@ -101,9 +111,17 @@ export function createNurtureUnsubHandler(deps: NurtureUnsubDeps) {
     const token = parts[parts.length - 1] ?? "";
 
     const userId = await verifyNurtureUnsubToken(token, deps.tokenSecret);
-    if (userId === null) return html(invalidPage(), 404, cors);
+    // An invalid token has no owner to ask: pt, the legacy default.
+    if (userId === null) return html(invalidPage("pt"), 404, cors);
 
-    if (req.method === "GET") return html(confirmPage(), 200, cors);
+    let lang: Lang = "pt";
+    try {
+      if (deps.ownerLang) lang = await deps.ownerLang(userId);
+    } catch {
+      lang = "pt";
+    }
+
+    if (req.method === "GET") return html(confirmPage(lang), 200, cors);
 
     try {
       const { error } = await deps.db.from("profiles")
@@ -112,12 +130,12 @@ export function createNurtureUnsubHandler(deps: NurtureUnsubDeps) {
         .is("nurture_opt_out_at", null);
       if (error) {
         console.error("[nurture-unsub] update failed:", error.message);
-        return html(errorPage(), 500, cors);
+        return html(errorPage(lang), 500, cors);
       }
     } catch (e) {
       console.error("[nurture-unsub] update threw:", e instanceof Error ? e.message : String(e));
-      return html(errorPage(), 500, cors);
+      return html(errorPage(lang), 500, cors);
     }
-    return html(donePage(), 200, cors);
+    return html(donePage(lang), 200, cors);
   };
 }

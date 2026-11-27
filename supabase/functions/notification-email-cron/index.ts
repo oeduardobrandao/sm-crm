@@ -3,6 +3,7 @@ import { timingSafeEqual } from "../_shared/crypto.ts";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { createJsonResponder } from "../_shared/http.ts";
 import { sendNotificationDigestEmail } from "../_shared/notification-email.ts";
+import { workspaceLang } from "../_shared/i18n/workspace-lang.ts";
 import { reportCronFailure } from "../_shared/triage.ts";
 import {
   createNotificationEmailCronHandler,
@@ -48,6 +49,14 @@ Deno.serve(createNotificationEmailCronHandler({
         now: () => new Date(),
         resendEnabled: !!Deno.env.get("RESEND_API_KEY"),
         sendDigest: sendNotificationDigestEmail,
+        lang: {
+          workspace: (contaId) => workspaceLang(svc, contaId),
+          rowWorkspaces: async (ids) => {
+            const { data, error } = await svc.from("notifications").select("id, workspace_id").in("id", ids);
+            if (error) throw new Error(error.message);
+            return new Map((data ?? []).map((r: { id: string; workspace_id: string }) => [r.id, r.workspace_id]));
+          },
+        },
         report: (detail) => reportCronFailure(svc, CRON_NAME, detail),
       };
       const result = await runNotificationEmailCron(deps);

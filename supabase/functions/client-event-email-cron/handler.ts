@@ -91,6 +91,8 @@ import {
   signUnsubToken,
 } from "../_shared/client-event-email.ts";
 import { sanitizeFromName } from "../_shared/email-headers.ts";
+import type { Lang } from "../_shared/i18n/lang.ts";
+import { workspaceLang } from "../_shared/i18n/workspace-lang.ts";
 
 interface DbError {
   message: string;
@@ -390,6 +392,8 @@ export async function runClientEventEmailCron(
   const clockNow = deps.nowMs ?? Date.now;
   const startedAt = clockNow();
   const now = deps.now();
+  // One language lookup per workspace per run.
+  const langs = new Map<string, Lang>();
 
   const { data, error } = await deps.db.rpc("claim_client_event_emails", {
     p_now: now.toISOString(),
@@ -635,6 +639,13 @@ export async function runClientEventEmailCron(
       const workspaceName = branding?.name ?? "Mesaas";
       const brandColor = branding?.brand_color ?? "#eab308";
       const logoUrl = branding?.logo_url ?? null;
+      // The digest follows the client's workspace language; a missing row or value is pt.
+      // workspaceLang never throws (failure logs and answers pt), so it cannot fail a digest.
+      let lang = langs.get(row.conta_id);
+      if (!lang) {
+        lang = await workspaceLang(deps.db as never, row.conta_id);
+        langs.set(row.conta_id, lang);
+      }
 
       const unsubToken = await signUnsubToken(row.id, deps.tokenSecret);
       const unsubUrl = clientUnsubFunctionUrl(deps.unsubBaseUrl, unsubToken);
@@ -651,6 +662,7 @@ export async function runClientEventEmailCron(
         unsubUrl: unsubFooterUrl,
         pendingEvents: reminders,
         linhas: linhas.map((l): ClientEventLinha => ({ periodo: l.periodo, titulo: l.titulo })),
+        lang,
       });
       const idempotencyKey = await buildClientEventIdempotencyKey(row.id, [
         ...approvalIds,
@@ -661,7 +673,7 @@ export async function runClientEventEmailCron(
 
       await deps.sendEmail({
         to: row.email,
-        subject: clientEventSubject(workspaceName),
+        subject: clientEventSubject(workspaceName, lang),
         html,
         idempotencyKey,
         from: `${sanitizeFromName(workspaceName)} <notificacoes@mesaas.com.br>`,

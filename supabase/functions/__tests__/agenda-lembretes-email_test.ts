@@ -143,3 +143,28 @@ Deno.test("handler: 401 without the cron secret, delegates with it", async () =>
   assertEquals((await handler(new Request("https://x.test/", { headers: { "x-cron-secret": "s" } }))).status, 200);
   assertEquals(called, true);
 });
+
+
+Deno.test("run: the reminder follows the occurrence's workspace language (en, then pt on failure)", async () => {
+  const rows = [row(), row({ ocorrencia_id: 12, user_id: "u2", minutos: 60 }), row({ ocorrencia_id: 13, user_id: "u1" })];
+  const { db } = makeDb(rows, { u1: "a@x.test", u2: "b@x.test" });
+  const sent: Array<unknown[]> = [];
+  const lookups: number[] = [];
+  await runAgendaLembretesEmail({
+    db,
+    sendEmail: (...a: unknown[]) => { sent.push(a); return Promise.resolve(); },
+    appBaseUrl: "https://app.example.test",
+    occurrenceLang: (id) => {
+      lookups.push(id);
+      if (id === 13) return Promise.reject(new Error("db down"));
+      return Promise.resolve(id === 11 ? "en" : "pt");
+    },
+    now: () => 0,
+  });
+  assertEquals(lookups, [11, 12, 13]);
+  assertEquals(sent[0][1], "In 10 minutes: Gravação");
+  assert((sent[0][2] as string).includes('<html lang="en"'));
+  assertEquals(sent[1][1], "Em 1 hora: Gravação");
+  assert((sent[1][2] as string).includes('<html lang="pt-BR"'));
+  assertEquals(sent[2][1], "Em 10 minutos: Gravação");
+});

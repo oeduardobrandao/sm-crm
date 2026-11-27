@@ -1,6 +1,8 @@
 import type { DunningStage } from "./dunning-logic.ts";
 import { mesaasEmail } from "./email/shell.ts";
 import { alert, button, detailRows, heading, paragraph, spacer } from "./email/blocks.ts";
+import type { Lang } from "./i18n/lang.ts";
+import { dunningText } from "./i18n/catalogs/dunning.ts";
 
 export interface DunningCopy {
   subject: string;
@@ -11,7 +13,7 @@ export interface DunningCopy {
 }
 
 /**
- * PT-BR copy per stage.
+ * Copy per stage and language (catalog `i18n/catalogs/dunning.ts`).
  *
  * `first` deliberately does not threaten: the overwhelmingly common cause of a failed charge is
  * an expired or re-issued card, and treating a healthy customer like a delinquent one costs more
@@ -21,32 +23,31 @@ export function buildDunningCopy(
   stage: DunningStage,
   workspaceName: string,
   _nextAttemptLabel: string | null,
+  lang: Lang,
 ): DunningCopy {
+  const t = dunningText(lang);
   switch (stage) {
     case "first":
       return {
-        subject: `Não conseguimos processar seu pagamento: ${workspaceName}`,
-        heading: "Não conseguimos processar seu pagamento",
-        body: `A cobrança da assinatura do ${workspaceName} não foi aprovada. ` +
-          `Isso normalmente acontece quando o cartão expirou ou foi substituído.`,
-        cta: "Atualizar forma de pagamento",
+        subject: t.first.subject(workspaceName),
+        heading: t.first.heading,
+        body: t.first.body(workspaceName),
+        cta: t.first.cta,
       };
     case "retry":
       return {
-        subject: `Ainda não conseguimos processar seu pagamento: ${workspaceName}`,
-        heading: "Ainda não conseguimos processar seu pagamento",
-        body: `Continuamos sem conseguir cobrar a assinatura do ${workspaceName}. ` +
-          `Atualize sua forma de pagamento para manter o acesso.`,
-        cta: "Atualizar forma de pagamento",
+        subject: t.retry.subject(workspaceName),
+        heading: t.retry.heading,
+        body: t.retry.body(workspaceName),
+        cta: t.retry.cta,
       };
     case "final":
       return {
-        subject: `Último aviso: o acesso ao ${workspaceName} será reduzido`,
-        heading: "Último aviso",
-        body: `Não conseguimos processar o pagamento da assinatura do ${workspaceName} após várias tentativas.`,
-        alerta: `Sem uma forma de pagamento válida, o workspace será movido para o plano ` +
-          `Free e os recursos do seu plano atual deixarão de funcionar.`,
-        cta: "Regularizar agora",
+        subject: t.final.subject(workspaceName),
+        heading: t.final.heading,
+        body: t.final.body(workspaceName),
+        alerta: t.final.alerta,
+        cta: t.final.cta,
       };
   }
 }
@@ -56,27 +57,25 @@ export function buildDunningEmail(params: {
   workspaceName: string;
   nextAttemptLabel: string | null;
   billingUrl: string;
+  lang: Lang;
 }): string {
   // Raw values: every block escapes its own text.
-  const copy = buildDunningCopy(params.stage, params.workspaceName, params.nextAttemptLabel);
+  const t = dunningText(params.lang);
+  const copy = buildDunningCopy(params.stage, params.workspaceName, params.nextAttemptLabel, params.lang);
   const final = params.stage === "final";
   const next = final ? null : params.nextAttemptLabel;
-  const rows = [{ label: "Workspace", value: params.workspaceName }];
-  if (next) rows.push({ label: "Próxima tentativa", value: next });
-  const preheader = final
-    ? "Sem um pagamento válido, o workspace vai para o plano Free."
-    : next
-    ? `Vamos tentar novamente em ${next}.`
-    : "Atualize sua forma de pagamento para manter o acesso.";
+  const rows = [{ label: t.rowWorkspace, value: params.workspaceName }];
+  if (next) rows.push({ label: t.rowNextAttempt, value: next });
+  const preheader = final ? t.preheaderFinal : next ? t.preheaderNext(next) : t.preheaderDefault;
   return mesaasEmail({
+    lang: params.lang,
     preheader,
-    eyebrow: "Assinatura",
+    eyebrow: t.eyebrow,
     eyebrowTone: final ? "danger" : "brand",
     sections: [
       heading(copy.heading) + paragraph(copy.body, "body", "0"),
       detailRows(rows) + (copy.alerta ? spacer(12) + alert(copy.alerta) : ""),
-      button(params.billingUrl, copy.cta) +
-        paragraph("Se você já atualizou seu pagamento, pode ignorar este e-mail.", "small", "16px 0 0"),
+      button(params.billingUrl, copy.cta) + paragraph(t.ignore, "small", "16px 0 0"),
     ],
     footerLines: [],
   });
@@ -97,11 +96,12 @@ export async function sendDunningEmail(params: {
   workspaceName: string;
   nextAttemptLabel: string | null;
   billingUrl: string;
+  lang: Lang;
 }): Promise<void> {
   const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
   if (!RESEND_API_KEY) return;
 
-  const copy = buildDunningCopy(params.stage, params.workspaceName, params.nextAttemptLabel);
+  const copy = buildDunningCopy(params.stage, params.workspaceName, params.nextAttemptLabel, params.lang);
 
   try {
     const res = await fetch("https://api.resend.com/emails", {
@@ -119,6 +119,7 @@ export async function sendDunningEmail(params: {
           workspaceName: params.workspaceName,
           nextAttemptLabel: params.nextAttemptLabel,
           billingUrl: params.billingUrl,
+          lang: params.lang,
         }),
       }),
       signal: AbortSignal.timeout(RESEND_TIMEOUT_MS),

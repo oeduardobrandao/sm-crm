@@ -21,6 +21,7 @@ import {
   type ReverseTrialEmailType,
 } from "../_shared/lifecycle-emails.ts";
 import { buildNurtureEmail, NURTURE_SAMPLE, type NurtureStep, nurtureTagType } from "../_shared/nurture-emails.ts";
+import type { Lang } from "../_shared/i18n/lang.ts";
 
 interface DbResult<T> {
   data: T | null;
@@ -68,12 +69,22 @@ export interface LifecycleCronDeps {
   db: LifecycleDb;
   appBaseUrl: string;
   now: () => Date;
+  /**
+   * Language lookups (workspaces.language). A failure resolves to "pt" inside
+   * the lookup itself, never throws. Optional: absent reads as pt everywhere.
+   * The handler caches each answer for the run.
+   */
+  lang?: {
+    owner(userId: string): Promise<Lang>;
+    workspace(contaId: string): Promise<Lang>;
+  };
   sendWelcome: (p: {
     to: string;
     firstName: string | null;
     appBaseUrl: string;
     idempotencyKey: string;
     reverseTrialOffer?: boolean;
+    lang: Lang;
   }) => Promise<void>;
   sendThanks: (p: {
     to: string;
@@ -81,6 +92,7 @@ export interface LifecycleCronDeps {
     workspaceName: string;
     appBaseUrl: string;
     idempotencyKey: string;
+    lang: Lang;
   }) => Promise<void>;
   // Internal founder notices, sent AFTER the user-facing email and BEFORE
   // markDelivered: a notice failure leaves the claim undelivered, so the stale
@@ -129,6 +141,8 @@ export interface LifecycleCronDeps {
    */
   nurtureUnsubLinks: (userId: string) => Promise<{ page: string; oneClick: string }>;
   whatsappUrl: string | null;
+  /** WhatsApp link with the prefilled message in the given language; absent falls back to `whatsappUrl`. */
+  whatsappUrlFor?: (lang: Lang) => string | null;
   sendNurture: (p: {
     to: string;
     subject: string;
@@ -241,6 +255,30 @@ function unsubHeaders(url: string): Record<string, string> {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/** Per-run language lookups: one query per owner / workspace, whatever the sweep. */
+function langResolver(deps: LifecycleCronDeps) {
+  const owners = new Map<string, Promise<Lang>>();
+  const workspaces = new Map<string, Promise<Lang>>();
+  const cached = (m: Map<string, Promise<Lang>>, key: string, load: () => Promise<Lang>) => {
+    let hit = m.get(key);
+    if (!hit) {
+      // A rejecting lookup must still mean pt: it never fails a send.
+      hit = load().catch(() => "pt" as Lang);
+      m.set(key, hit);
+    }
+    return hit;
+  };
+  return {
+    owner: (userId: string) => deps.lang ? cached(owners, userId, () => deps.lang!.owner(userId)) : Promise.resolve("pt" as Lang),
+    workspace: (contaId: string) =>
+      deps.lang ? cached(workspaces, contaId, () => deps.lang!.workspace(contaId)) : Promise.resolve("pt" as Lang),
+  };
+}
+
+function whatsappFor(deps: LifecycleCronDeps, lang: Lang): string | null {
+  return deps.whatsappUrlFor ? deps.whatsappUrlFor(lang) : deps.whatsappUrl;
+}
+
 /**
  * The amount and interval the reminder tells the owner they will be charged
  * (the ledger audit of what was announced). Pagar.me stores the annual total
@@ -340,6 +378,7 @@ async function recipientHash(to: string): Promise<string> {
 export async function runNurturePreview(
   deps: LifecycleCronDeps,
   to: string,
+  lang: Lang = "pt",
 ): Promise<{ previewSent: number }> {
   const day = deps.now().toISOString().slice(0, 10);
   const who = await recipientHash(to);
@@ -351,13 +390,15 @@ export async function runNurturePreview(
       step,
       appBaseUrl: deps.appBaseUrl,
       unsubUrl: unsub.page,
-      whatsappUrl: deps.whatsappUrl,
+      whatsappUrl: whatsappFor(deps, lang),
+      lang,
     });
     await deps.sendNurture({
       to,
       subject,
       html,
-      idempotencyKey: `nurture_preview/${step}/${day}/${who}`,
+      // The key stays language-free for pt so a repeat preview dedupes as before.
+      idempotencyKey: `nurture_preview/${step}/${day}/${who}${lang === "pt" ? "" : `/${lang}`}`,
       headers: unsubHeaders(unsub.oneClick),
       tags: { type: `nurture_${step}` },
     });
@@ -384,6 +425,7 @@ export async function runLifecycleEmailCron(
   let reverseTrialSent = 0;
   let nurtureSent = 0;
   const errors: Array<{ accountId?: string; error?: string }> = [];
+  const langOf = langResolver(deps);
 
   // --- Welcome sweep -------------------------------------------------------
   const welcome = await deps.db.rpc("get_welcome_email_candidates");
@@ -403,6 +445,7 @@ export async function runLifecycleEmailCron(
           appBaseUrl: deps.appBaseUrl,
           idempotencyKey: `welcome/${c.user_id}`,
           reverseTrialOffer: c.reverse_trial_offer === true,
+          lang: await langOf.owner(c.user_id),
         });
         await deps.sendFounderSignup({
           userEmail: c.email,
@@ -442,6 +485,7 @@ export async function runLifecycleEmailCron(
           workspaceName: c.workspace_name,
           appBaseUrl: deps.appBaseUrl,
           idempotencyKey: `subscription_thanks/${c.workspace_id}`,
+          lang: await langOf.workspace(c.workspace_id),
         });
         await deps.sendFounderSubscription({
           workspaceName: c.workspace_name,
@@ -491,7 +535,10 @@ export async function runLifecycleEmailCron(
             );
           }
         }
-        const firstCharge = formatFirstCharge({ ...c, currency: c.currency ?? "brl" });
+        // Deliberate deviation: the reminder candidate carries no user_id, so it
+        // follows the workspace language instead of ownerLang.
+        const lang = await langOf.workspace(c.workspace_id);
+        const firstCharge = formatFirstCharge({ ...c, currency: c.currency ?? "brl" }, lang);
         if (firstCharge === null) {
           console.warn(
             `[lifecycle-email-cron] trial-reminder:no-amount workspace ${c.workspace_id}`,
@@ -502,9 +549,10 @@ export async function runLifecycleEmailCron(
           workspaceName: c.workspace_name,
           planName: c.plan_name,
           firstCharge,
-          firstChargeDate: formatChargeDate(c.first_charge_at),
+          firstChargeDate: formatChargeDate(c.first_charge_at, lang),
           daysLeft,
           appBaseUrl: deps.appBaseUrl,
+          lang,
         });
         await claim(
           deps,
@@ -570,6 +618,7 @@ export async function runLifecycleEmailCron(
           endedAt: c.ended_at,
           hubPauseAt: c.hub_pause_at,
           appBaseUrl: deps.appBaseUrl,
+          lang: await langOf.owner(c.user_id),
         });
         await claim(
           deps,
@@ -642,6 +691,8 @@ export async function runLifecycleEmailCron(
           // spent): not an error, just not ours to send.
           if (claimed.data == null) continue;
 
+          // Owner language, the same source as the nurture-unsub page.
+          const lang = await langOf.owner(c.user_id);
           const { subject, html } = buildNurtureEmail({
             step,
             firstName: firstNameFrom(c.nome),
@@ -652,8 +703,9 @@ export async function runLifecycleEmailCron(
             hasInstagram: c.has_instagram,
             appBaseUrl: deps.appBaseUrl,
             unsubUrl: unsub.page,
-            whatsappUrl: deps.whatsappUrl,
+            whatsappUrl: whatsappFor(deps, lang),
             exReverseTrial: c.ex_reverse_trial === true,
+            lang,
           });
           await deps.sendNurture({
             to,

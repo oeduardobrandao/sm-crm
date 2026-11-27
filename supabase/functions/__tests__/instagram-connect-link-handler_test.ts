@@ -14,6 +14,8 @@ function makeDb(fixture: {
   profiles?: unknown;
   clientes?: unknown;
   links?: unknown;
+  /** workspaces row ({ name, language }); null when absent. */
+  workspaces?: unknown;
   /**
    * workspace_members row for the caller. Defaults to a live membership in the
    * profile's active_workspace_id (matching most tests, which are not about this
@@ -32,6 +34,7 @@ function makeDb(fixture: {
     profiles: fixture.profiles ?? null,
     clientes: fixture.clientes ?? null,
     instagram_connect_links: fixture.links ?? null,
+    workspaces: fixture.workspaces ?? null,
     workspace_members: fixture.membership !== undefined
       ? fixture.membership
       : (activeWorkspaceId ? { workspace_id: activeWorkspaceId } : null),
@@ -482,6 +485,28 @@ Deno.test("agency POST /email: passes the resolved auth.users email as replyTo",
   const res = await h(req("POST", "/email", { cliente_id: 42, email: "c@x.com" }));
   assertEquals(res.status, 200);
   assertEquals(seenReplyTo, "dono@agencia.com");
+});
+
+Deno.test("agency POST /email: sends in the agency workspace language, pt when it cannot be read", async () => {
+  const seen: Array<{ lang: string; agencyName: string; clienteName: string }> = [];
+  for (const workspaces of [{ name: "Lume", language: "en" }, { name: "Lume", language: "pt" }, null]) {
+    const h = createConnectLinkHandler(makeDeps({
+      createDb: () => makeDb({
+        profiles: { active_workspace_id: CONTA },
+        clientes: { conta_id: CONTA, nome: "Clinica X" },
+        links: { token: "tok-9", expires_at: FUTURE, revoked_at: null, created_by: USER },
+        workspaces,
+      }),
+      sendClientEmail: (p: { lang: string; agencyName: string; clienteName: string }) => {
+        seen.push(p);
+        return Promise.resolve();
+      },
+    }));
+    const res = await h(req("POST", "/email", { cliente_id: 42, email: "c@x.com" }));
+    assertEquals(res.status, 200);
+  }
+  assertEquals(seen.map((p) => p.lang), ["en", "pt", "pt"]);
+  assertEquals(seen[0].agencyName, "Lume");
 });
 
 Deno.test("agency POST /email: still sends with replyTo null when getUserEmail resolves null", async () => {

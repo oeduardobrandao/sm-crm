@@ -2,6 +2,9 @@ import { sanitizeSubjectValue } from "./lifecycle-emails.ts";
 import { mesaasEmail } from "./email/shell.ts";
 import { button, eventCard, heading } from "./email/blocks.ts";
 import { EMAIL } from "./email/tokens.ts";
+import type { Lang } from "./i18n/lang.ts";
+import { agendaText } from "./i18n/catalogs/agenda.ts";
+import { mesDiaTile, relogio, rotuloDia, ymd as ymdIn } from "./agenda-cliente-email.ts";
 
 export interface LembreteEmailParams {
   titulo: string;
@@ -14,102 +17,80 @@ export interface LembreteEmailParams {
   minutos: number;
   abrirUrl: string;
   appBaseUrl: string;
+  /** Language the reminder is written in (the event's workspace language). */
+  lang: Lang;
 }
 
 const DAY_MIN = 1440;
 
-function plural(n: number, one: string, many: string): string {
-  return `${n} ${n === 1 ? one : many}`;
-}
-
 /** Lead time as a phrase: "Em 10 minutos", "Em 1 hora", "Amanhã", "Hoje", "Começando agora". */
-function leadLabel(minutos: number, diaInteiro: boolean): string {
+function leadLabel(minutos: number, diaInteiro: boolean, lang: Lang): string {
+  const t = agendaText(lang);
   if (diaInteiro) {
-    if (minutos <= 0) return "Hoje";
-    if (minutos <= DAY_MIN) return "Amanhã";
-    return `Em ${plural(Math.round(minutos / DAY_MIN), "dia", "dias")}`;
+    if (minutos <= 0) return t.leadToday;
+    if (minutos <= DAY_MIN) return t.leadTomorrow;
+    return t.leadDays(Math.round(minutos / DAY_MIN));
   }
-  if (minutos <= 0) return "Começando agora";
-  if (minutos === DAY_MIN) return "Amanhã";
-  if (minutos % DAY_MIN === 0) return `Em ${plural(minutos / DAY_MIN, "dia", "dias")}`;
-  if (minutos >= 60 && minutos % 60 === 0) return `Em ${plural(minutos / 60, "hora", "horas")}`;
-  return `Em ${plural(minutos, "minuto", "minutos")}`;
+  if (minutos <= 0) return t.leadNow;
+  if (minutos === DAY_MIN) return t.leadTomorrow;
+  if (minutos % DAY_MIN === 0) return t.leadDays(minutos / DAY_MIN);
+  if (minutos >= 60 && minutos % 60 === 0) return t.leadHours(minutos / 60);
+  return t.leadMinutes(minutos);
 }
 
-function timeParts(iso: string, tz: string, opts: Intl.DateTimeFormatOptions): Record<string, string> {
-  const parts = new Intl.DateTimeFormat("pt-BR", { timeZone: tz, hourCycle: "h23", ...opts }).formatToParts(new Date(iso));
-  const out: Record<string, string> = {};
-  for (const p of parts) out[p.type] = p.value;
-  return out;
-}
-
-function dayLabel(iso: string, tz: string): string {
-  const p = timeParts(iso, tz, { weekday: "long", day: "numeric", month: "long" });
-  const weekday = (p.weekday ?? "").replace(/-feira$/, "");
-  const cap = weekday.charAt(0).toUpperCase() + weekday.slice(1);
-  return `${cap}, ${p.day} de ${p.month}`;
-}
-
-function clock(iso: string, tz: string): string {
-  const p = timeParts(iso, tz, { hour: "2-digit", minute: "2-digit" });
-  return `${p.hour}:${p.minute}`;
-}
-
-function ymd(iso: string, tz: string): string {
-  const p = timeParts(iso, tz, { year: "numeric", month: "2-digit", day: "2-digit" });
-  return `${p.year}-${p.month}-${p.day}`;
-}
-
-/** "OUT" / "12" for the date tile, in the event's zone (same basis as whenLine). */
-function tileParts(iso: string, tz: string): { mes: string; dia: string } {
-  const p = timeParts(iso, tz, { day: "numeric", month: "short" });
-  return { mes: (p.month ?? "").replace(".", "").toUpperCase(), dia: p.day ?? "" };
-}
+const ymd = (iso: string, tz: string) => ymdIn(new Date(iso), tz);
 
 /** "Segunda, 5 de outubro · 14:00 a 16:00" in the event's own timezone. */
 function whenLine(p: LembreteEmailParams): string {
+  const t = agendaText(p.lang);
+  const dayLabel = (iso: string) => rotuloDia(new Date(iso), p.tz, p.lang);
+  const clock = (iso: string) => relogio(new Date(iso), p.tz, p.lang);
   if (p.diaInteiro) {
     // fim is exclusive (midnight after the last day).
     const lastDay = new Date(new Date(p.fim).getTime() - 1).toISOString();
-    const first = dayLabel(p.inicio, p.tz);
-    if (ymd(p.inicio, p.tz) === ymd(lastDay, p.tz)) return `${first} · dia inteiro`;
-    return `${first} a ${dayLabel(lastDay, p.tz)} · dia inteiro`;
+    const first = dayLabel(p.inicio);
+    if (ymd(p.inicio, p.tz) === ymd(lastDay, p.tz)) return `${first} · ${t.allDay}`;
+    return `${first}${t.rangeTo}${dayLabel(lastDay)} · ${t.allDay}`;
   }
-  const start = `${dayLabel(p.inicio, p.tz)} · ${clock(p.inicio, p.tz)}`;
-  if (ymd(p.inicio, p.tz) === ymd(p.fim, p.tz)) return `${start} a ${clock(p.fim, p.tz)}`;
-  return `${start} a ${dayLabel(p.fim, p.tz)} · ${clock(p.fim, p.tz)}`;
+  const start = `${dayLabel(p.inicio)} · ${clock(p.inicio)}`;
+  if (ymd(p.inicio, p.tz) === ymd(p.fim, p.tz)) return `${start}${t.rangeTo}${clock(p.fim)}`;
+  return `${start}${t.rangeTo}${dayLabel(p.fim)} · ${clock(p.fim)}`;
 }
 
 function headingText(p: LembreteEmailParams): string {
-  const t = p.titulo;
+  const t = agendaText(p.lang);
+  const title = p.titulo;
   if (p.diaInteiro) {
-    if (p.minutos <= 0) return `Lembrete: ${t} é hoje`;
-    if (p.minutos <= DAY_MIN) return `Lembrete: ${t} é amanhã`;
-    return `Lembrete: ${t} é em ${plural(Math.round(p.minutos / DAY_MIN), "dia", "dias")}`;
+    if (p.minutos <= 0) return t.headingTodayAllDay(title);
+    if (p.minutos <= DAY_MIN) return t.headingTomorrowAllDay(title);
+    return t.headingDaysAllDay(title, Math.round(p.minutos / DAY_MIN));
   }
-  if (p.minutos <= 0) return "Seu evento está começando agora";
-  if (p.minutos === DAY_MIN) return "Seu evento começa amanhã";
-  return `Seu evento começa em ${leadLabel(p.minutos, false).replace(/^Em /, "")}`;
+  if (p.minutos <= 0) return t.headingNow;
+  if (p.minutos === DAY_MIN) return t.headingTomorrow;
+  return t.headingStartsIn(leadLabel(p.minutos, false, p.lang).replace(/^(Em|In) /, ""));
 }
 
 export function buildLembreteEmail(p: LembreteEmailParams): { subject: string; html: string } {
-  const subject = sanitizeSubjectValue(`${leadLabel(p.minutos, p.diaInteiro)}: ${p.titulo}`);
+  const t = agendaText(p.lang);
+  const subject = sanitizeSubjectValue(`${leadLabel(p.minutos, p.diaInteiro, p.lang)}: ${p.titulo}`);
   const quando = whenLine(p);
   const local = p.local?.trim() || null;
-  const { mes, dia } = tileParts(p.inicio, p.tz);
+  const { mes, dia } = mesDiaTile(new Date(p.inicio), p.tz, p.lang);
   const html = mesaasEmail({
     preheader: local ? `${quando} · ${local}` : quando,
-    eyebrow: "Agenda",
+    eyebrow: t.reminderEyebrow,
     sections: [
       heading(headingText(p)),
       eventCard({
         mes, dia, tileColor: EMAIL.ink, titulo: p.titulo,
         lines: local ? [quando, local] : [quando],
         meetingUrl: p.linkReuniao,
+        lang: p.lang,
       }),
-      button(p.abrirUrl, "Abrir na Agenda"),
+      button(p.abrirUrl, t.reminderCta),
     ],
-    footerLines: ["Você recebe este lembrete porque participa deste evento. Para desligar, vá em Configurações, Notificações."],
+    footerLines: [t.reminderFooter],
+    lang: p.lang,
   });
   return { subject, html };
 }

@@ -10,6 +10,7 @@ import { escapeHtml } from "../report-template/escape.ts";
 import { pickHeaderTextColor } from "../report-template/brand-header.ts";
 import { BADGE_TONES, type BadgeTone, EMAIL, EMAIL_FOUNDER_PHOTO_URL, type EmailImage, FONT_STACK, POST_TIPO_FALLBACK, POST_TIPOS } from "./tokens.ts";
 import { corSegura, linkSeguro } from "./safe.ts";
+import type { Lang } from "../i18n/lang.ts";
 
 const WRAP = "word-break: break-word; overflow-wrap: anywhere;";
 
@@ -74,10 +75,13 @@ export function link(href: string | null | undefined, text: string, color: strin
     : t;
 }
 
-export function fallbackLink(href: string | null | undefined): string {
+export function fallbackLink(href: string | null | undefined, lang: Lang): string {
   const url = linkSeguro(href);
   if (!url) return "";
-  return paragraph("Se o botão não funcionar, copie e cole este endereço no navegador:", "small", "16px 0 4px") +
+  const text = lang === "en"
+    ? "If the button does not work, copy and paste this address into your browser:"
+    : "Se o botão não funcionar, copie e cole este endereço no navegador:";
+  return paragraph(text, "small", "16px 0 4px") +
     `<p style="margin: 0; font-size: 13px; line-height: 20px; color: ${EMAIL.ink}; word-break: break-all;">${escapeHtml(url)}</p>`;
 }
 
@@ -142,15 +146,16 @@ export function badge(tone: BadgeTone, label: string): string {
   return `<span style="display: inline-block; padding: 2px 10px; border-radius: 999px; background: ${t.bg}; color: ${t.fg}; border: 1px solid ${t.border}; font-size: 12px; line-height: 18px; font-weight: 600;">${escapeHtml(label)}</span>`;
 }
 
-function formatPill(tipo: string): string {
+function formatPill(tipo: string, lang: Lang): string {
   const f = Object.hasOwn(POST_TIPOS, tipo) ? POST_TIPOS[tipo] : POST_TIPO_FALLBACK;
-  return `<span style="display: inline-block; padding: 2px 9px; border-radius: 999px; border: 1px solid ${EMAIL.border}; font-size: 12px; line-height: 18px; font-weight: 600; color: ${EMAIL.text}; white-space: nowrap;"><span style="display: inline-block; width: 7px; height: 7px; border-radius: 4px; background: ${f.color}; margin-right: 6px;"></span>${f.label}</span>`;
+  const label = lang === "en" && tipo === "carrossel" ? "Carousel" : f.label;
+  return `<span style="display: inline-block; padding: 2px 9px; border-radius: 999px; border: 1px solid ${EMAIL.border}; font-size: 12px; line-height: 18px; font-weight: 600; color: ${EMAIL.text}; white-space: nowrap;"><span style="display: inline-block; width: 7px; height: 7px; border-radius: 4px; background: ${f.color}; margin-right: 6px;"></span>${label}</span>`;
 }
 
-export function postList(posts: Array<{ titulo: string; tipo: string }>): string {
+export function postList(posts: Array<{ titulo: string; tipo: string }>, lang: Lang = "pt"): string {
   const trs = posts.map((p, i) => {
     const bd = i === posts.length - 1 ? "" : `border-bottom: 1px solid ${EMAIL.divider};`;
-    return `<tr><td style="padding: 12px 16px; ${bd}">${formatPill(p.tipo)}<p style="margin: 6px 0 0; font-size: 14px; line-height: 20px; color: ${EMAIL.ink}; ${WRAP}">${escapeHtml(p.titulo)}</p></td></tr>`;
+    return `<tr><td style="padding: 12px 16px; ${bd}">${formatPill(p.tipo, lang)}<p style="margin: 6px 0 0; font-size: 14px; line-height: 20px; color: ${EMAIL.ink}; ${WRAP}">${escapeHtml(p.titulo)}</p></td></tr>`;
   }).join("");
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border: 1px solid ${EMAIL.border}; border-radius: 12px; border-collapse: separate;">${trs}</table>`;
 }
@@ -170,6 +175,8 @@ export interface EventCardInput {
   /** Raw text lines under the title; the first is the "quando". */
   lines: string[];
   meetingUrl?: string | null;
+  /** Rendered language (required: no silent Portuguese default). */
+  lang: Lang;
 }
 
 export function eventCard(e: EventCardInput): string {
@@ -182,20 +189,20 @@ export function eventCard(e: EventCardInput): string {
     `<p style="margin: ${i === 0 ? "4px" : "2px"} 0 0; font-size: 14px; line-height: 20px; color: ${i === 0 ? EMAIL.text : EMAIL.muted}; ${WRAP}">${escapeHtml(l)}</p>`
   ).join("");
   const meeting = linkSeguro(e.meetingUrl)
-    ? `<p style="margin: 10px 0 0; font-size: 14px;">${link(e.meetingUrl, "Entrar na reunião")}</p>`
+    ? `<p style="margin: 10px 0 0; font-size: 14px;">${link(e.meetingUrl, e.lang === "en" ? "Join the meeting" : "Entrar na reunião")}</p>`
     : "";
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border: 1px solid ${EMAIL.border}; border-radius: 12px; border-collapse: separate;"><tr><td width="74" valign="top" style="width: 74px; padding: 16px 0 16px 18px;">${dateTile({ mes: e.mes, dia: e.dia, color: e.tileColor })}</td><td valign="top" style="padding: 16px 18px 16px 0; ${WRAP}"><p style="margin: 0; font-size: 16px; line-height: 22px; font-weight: 700; color: ${EMAIL.ink};">${title}</p>${lines}${meeting}</td></tr></table>`;
 }
 
-export function dateList(items: string[], restantes: number, riscado = false): string {
+export function dateList(items: string[], restantes: number, riscado = false, lang: Lang = "pt"): string {
   const deco = riscado ? "text-decoration: line-through;" : "";
   const lis = items.map((t) => `<li style="margin: 0 0 4px; ${deco}">${escapeHtml(t)}</li>`).join("");
   const mais = restantes > 0
-    ? `<p style="margin: 4px 0 0; font-size: 13px; line-height: 20px; color: ${EMAIL.muted};">e mais ${restantes} ${restantes === 1 ? "data" : "datas"}</p>`
+    ? `<p style="margin: 4px 0 0; font-size: 13px; line-height: 20px; color: ${EMAIL.muted};">${lang === "en" ? `and ${restantes} more ${restantes === 1 ? "date" : "dates"}` : `e mais ${restantes} ${restantes === 1 ? "data" : "datas"}`}</p>`
     : "";
   return `<ul style="margin: 0; padding: 0 0 0 18px; font-size: 14px; line-height: 22px; color: ${EMAIL.text};">${lis}</ul>${mais}`;
 }
 
-export function signature(): string {
-  return `<table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse: separate;"><tr><td valign="middle" style="padding-right: 12px;"><table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse: separate;"><tr><td width="40" height="40" valign="middle" style="width: 40px; height: 40px;"><img src="${EMAIL_FOUNDER_PHOTO_URL}" width="40" height="40" alt="Eduardo" style="display: block; width: 40px; height: 40px; border: 0; border-radius: 20px; background: ${EMAIL.brandMark};"></td></tr></table></td><td valign="middle" style="font-size: 14px; line-height: 20px; color: ${EMAIL.ink};"><strong>Eduardo</strong><br><span style="color: ${EMAIL.muted};">Fundador do Mesaas</span></td></tr></table>`;
+export function signature(lang: Lang = "pt"): string {
+  return `<table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse: separate;"><tr><td valign="middle" style="padding-right: 12px;"><table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse: separate;"><tr><td width="40" height="40" valign="middle" style="width: 40px; height: 40px;"><img src="${EMAIL_FOUNDER_PHOTO_URL}" width="40" height="40" alt="Eduardo" style="display: block; width: 40px; height: 40px; border: 0; border-radius: 20px; background: ${EMAIL.brandMark};"></td></tr></table></td><td valign="middle" style="font-size: 14px; line-height: 20px; color: ${EMAIL.ink};"><strong>Eduardo</strong><br><span style="color: ${EMAIL.muted};">${lang === "en" ? "Founder of Mesaas" : "Fundador do Mesaas"}</span></td></tr></table>`;
 }

@@ -46,6 +46,8 @@ import {
   type DigestItem,
   resolveDigestItem,
 } from "../_shared/notification-email.ts";
+import { majorityLang } from "../_shared/notification-render.ts";
+import type { Lang } from "../_shared/i18n/lang.ts";
 
 interface DbError { message: string }
 
@@ -56,6 +58,8 @@ export interface ClaimedNotificationRow {
   metadata: Record<string, unknown> | null;
   link: string | null;
   created_at: string;
+  /** Not returned by `claim_notification_emails` today; read when present, else looked up via `lang.rowWorkspaces`. */
+  workspace_id?: string | null;
 }
 
 export interface NotificationEmailDb {
@@ -83,7 +87,16 @@ export interface NotificationEmailCronDeps {
   now: () => Date;
   nowMs?: () => number;
   resendEnabled: boolean;
-  sendDigest: (p: { to: string; items: DigestItem[]; idempotencyKey: string }) => Promise<{ skipped: boolean }>;
+  sendDigest: (p: { to: string; items: DigestItem[]; idempotencyKey: string; lang: Lang }) => Promise<{ skipped: boolean }>;
+  /**
+   * Language lookups (workspaces.language). Absent or failing resolves to "pt".
+   * `rowWorkspaces` maps notification id to workspace id for claimed rows that
+   * do not carry `workspace_id`.
+   */
+  lang?: {
+    workspace(contaId: string): Promise<Lang>;
+    rowWorkspaces?(notificationIds: string[]): Promise<Map<string, string>>;
+  };
   report?: (detail: { failed: number; errors: Array<{ accountId?: string; error: string }> }) => Promise<void>;
 }
 
@@ -99,6 +112,20 @@ const SEND_DEADLINE_MS = 60_000;
 async function releaseClaims(db: NotificationEmailDb, ids: string[]): Promise<void> {
   const { error } = await db.from("notifications").update({ emailed_at: null }).in("id", ids);
   if (error) console.error(`[notification-email-cron] release failed for ${ids.length} ids:`, error.message);
+}
+
+/** Per-run cache: one language lookup per workspace, whatever the batch. */
+function workspaceLangCache(deps: NotificationEmailCronDeps) {
+  const cache = new Map<string, Promise<Lang>>();
+  return (contaId: string): Promise<Lang> => {
+    if (!deps.lang) return Promise.resolve("pt" as Lang);
+    let hit = cache.get(contaId);
+    if (!hit) {
+      hit = deps.lang.workspace(contaId).catch(() => "pt" as Lang);
+      cache.set(contaId, hit);
+    }
+    return hit;
+  };
 }
 
 export async function runNotificationEmailCron(
@@ -126,6 +153,19 @@ export async function runNotificationEmailCron(
   }
   const userEntries = Array.from(byUser.entries());
 
+  // A digest follows the language of the workspaces its rows belong to; a
+  // lookup failure leaves a row without a workspace and counts as pt.
+  const langOf = workspaceLangCache(deps);
+  const workspaceOfRow = new Map<string, string>();
+  const missing = rows.filter((r) => !r.workspace_id).map((r) => r.id);
+  if (deps.lang?.rowWorkspaces && missing.length > 0) {
+    try {
+      for (const [id, ws] of await deps.lang.rowWorkspaces(missing)) workspaceOfRow.set(id, ws);
+    } catch (e) {
+      console.error("[notification-email-cron] workspace lookup failed:", e instanceof Error ? e.message : String(e));
+    }
+  }
+
   let emailed = 0, failed = 0, released = 0;
   const errors: Array<{ accountId?: string; error: string }> = [];
 
@@ -143,9 +183,14 @@ export async function runNotificationEmailCron(
       const email = userData?.user?.email;
       if (!email) throw new Error("user has no email on file");
 
-      const items = userRows.map((r) => resolveDigestItem(r)).sort((a, b) => a.priority - b.priority);
+      const langs = await Promise.all(userRows.map((r) => {
+        const ws = r.workspace_id ?? workspaceOfRow.get(r.id);
+        return ws ? langOf(ws) : Promise.resolve("pt" as Lang);
+      }));
+      const lang = majorityLang(langs);
+      const items = userRows.map((r) => resolveDigestItem(r, lang)).sort((a, b) => a.priority - b.priority);
       const idempotencyKey = await buildDigestIdempotencyKey(userId, userRows.map((r) => r.id));
-      await deps.sendDigest({ to: email, items, idempotencyKey });
+      await deps.sendDigest({ to: email, items, idempotencyKey, lang });
       emailed++;
     } catch (e) {
       failed++;

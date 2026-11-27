@@ -30,7 +30,7 @@ const serie = Array.from({ length: 12 }, (_, i) => oc(i + 1, new Date(Date.UTC(2
 const cancelada = { ...oc(9, "2026-10-20T13:00:00Z"), estado: "cancelada" };
 const ev = { ocorrencia_id: 7, inicio: "2026-10-15T13:00:00Z", fim: "2026-10-15T14:00:00Z", dia_inteiro: false, data_inicio_local: null, tz, titulo: "Sessão" };
 const ce = { clienteNome: "Mariana Costa", workspaceName: "Agência Lume", brandColor: "#7c3aed", logoUrl: null, pendingPosts: [{ titulo: "Carrossel", tipo: "carrossel" }], unreadMessages: 2, hubUrl: HUB, unsubUrl: `${APP}/unsub/x`, pendingEvents: [ev] };
-const rep = { clientName: "Ana Lima", month: "2026-09", workspaceName: "Agência Lume", brandColor: "#7c3aed", logoUrl: null, aiSummary: "Mês forte.", pdfUrl: `${APP}/r.pdf`, hubUrl: HUB };
+const rep = { clientName: "Ana Lima", month: "2026-09", workspaceName: "Agência Lume", brandColor: "#7c3aed", logoUrl: null, aiSummary: "Mês forte.", pdfUrl: `${APP}/r.pdf`, hubUrl: HUB, lang: "pt" as const };
 
 const FIXTURES: Record<string, string> = {
   "welcome com nome": buildWelcomeEmail({ firstName: "Ana", appBaseUrl: APP }),
@@ -42,14 +42,14 @@ const FIXTURES: Record<string, string> = {
     { priority: 2, heading: "B", body: "Pode trocar a capa?", link: "/b", badge: { tone: "warning", label: "Correção" } },
     { priority: 4, heading: "C", link: "/c" },
   ], APP),
-  "dunning first": buildDunningEmail({ stage: "first", workspaceName: "Agência Lume", nextAttemptLabel: "14 de outubro", billingUrl: `${APP}/c` }),
-  "dunning retry": buildDunningEmail({ stage: "retry", workspaceName: "Agência Lume", nextAttemptLabel: null, billingUrl: `${APP}/c` }),
-  "dunning final": buildDunningEmail({ stage: "final", workspaceName: "Agência Lume", nextAttemptLabel: null, billingUrl: `${APP}/c` }),
-  "invite": buildInviteEmail({ actionLink: `${APP}/verify?t=1`, workspaceName: "Agência Lume" }),
+  "dunning first": buildDunningEmail({ lang: "pt", stage: "first", workspaceName: "Agência Lume", nextAttemptLabel: "14 de outubro", billingUrl: `${APP}/c` }),
+  "dunning retry": buildDunningEmail({ lang: "pt", stage: "retry", workspaceName: "Agência Lume", nextAttemptLabel: null, billingUrl: `${APP}/c` }),
+  "dunning final": buildDunningEmail({ lang: "pt", stage: "final", workspaceName: "Agência Lume", nextAttemptLabel: null, billingUrl: `${APP}/c` }),
+  "invite": buildInviteEmail({ lang: "pt", actionLink: `${APP}/verify?t=1`, workspaceName: "Agência Lume" }),
   "lembrete hora": buildLembreteEmail({ titulo: "Pauta", inicio: "2026-10-12T17:00:00Z", fim: "2026-10-12T18:00:00Z", diaInteiro: false, local: "Rua Augusta", linkReuniao: "https://meet.test/x", tz, minutos: 60, abrirUrl: `${APP}/agenda`, appBaseUrl: APP }).html,
   "lembrete dia inteiro": buildLembreteEmail({ titulo: "Feriado", inicio: "2026-11-02T03:00:00Z", fim: "2026-11-03T03:00:00Z", diaInteiro: true, local: null, linkReuniao: null, tz, minutos: 1440, abrirUrl: `${APP}/agenda`, appBaseUrl: APP }).html,
-  "ig connect": buildConnectLinkEmail({ agencyName: "Agência Lume", clienteName: "Clínica Sorriso", connectUrl: `${APP}/c/abc`, appBaseUrl: APP }),
-  "ig connected": buildConnectedNoticeEmail({ clienteName: "Clínica Sorriso", igUsername: "clinica", clienteUrl: `${APP}/clientes/1`, appBaseUrl: APP }),
+  "ig connect": buildConnectLinkEmail({ lang: "pt", agencyName: "Agência Lume", clienteName: "Clínica Sorriso", connectUrl: `${APP}/c/abc`, appBaseUrl: APP }),
+  "ig connected": buildConnectedNoticeEmail({ lang: "pt", clienteName: "Clínica Sorriso", igUsername: "clinica", clienteUrl: `${APP}/clientes/1`, appBaseUrl: APP }),
   "affiliate": buildAffiliateLinkEmail({ nome: "Ana Souza", link: `${APP}/afiliados/painel` }),
   "pendencias tudo": buildClientEventEmail(ce),
   "pendencias so eventos": buildClientEventEmail({ ...ce, pendingPosts: [], unreadMessages: 0 }),

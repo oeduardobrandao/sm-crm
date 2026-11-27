@@ -6,6 +6,9 @@ import {
   hasClientAccess,
   loadClientScope as realLoadClientScope,
 } from "../_shared/client-scope.ts";
+import type { Lang } from "../_shared/i18n/lang.ts";
+import { workspaceLang } from "../_shared/i18n/workspace-lang.ts";
+import { instagramConnectText } from "../_shared/i18n/catalogs/instagram-connect.ts";
 
 // deno-lint-ignore no-explicit-any
 type DbClient = { from: (table: string) => any; rpc: (fn: string, params: Record<string, unknown>) => PromiseLike<{ data: unknown; error: unknown }> };
@@ -34,6 +37,8 @@ export interface ConnectLinkHandlerDeps {
     connectUrl: string;
     appBaseUrl: string;
     idempotencyKey: string;
+    /** Language of the agency's workspace (the client sees the agency's language). */
+    lang: Lang;
   }) => Promise<void>;
   createSignedState: (
     clientId: string, userId: string, contaId: string, db: DbClient, linkToken: string,
@@ -363,11 +368,15 @@ export function createConnectLinkHandler(deps: ConnectLinkHandlerDeps) {
         // the client send must go through even if the address can't be resolved.
         const replyTo = await deps.getUserEmail(auth.userId);
 
+        // The agency's language: a failed lookup logs and falls back to pt, never blocks the send.
+        const lang = await workspaceLang(db, auth.contaId);
+        const t = instagramConnectText(lang);
         await deps.sendClientEmail({
           to,
           replyTo,
-          agencyName: (workspace?.name as string | undefined) ?? "Sua agência",
-          clienteName: (cliente?.nome as string | undefined) ?? "seu perfil",
+          agencyName: (workspace?.name as string | undefined) ?? t.agencyFallback,
+          clienteName: (cliente?.nome as string | undefined) ?? t.clienteFallback,
+          lang,
           connectUrl: buildConnectUrl(deps.appBaseUrl(), link.token),
           appBaseUrl: deps.appBaseUrl(),
           // Chave por envio, não determinística: ao contrário do e-mail de boas-vindas

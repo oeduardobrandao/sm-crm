@@ -96,6 +96,10 @@ function makeSelectChain(rows: Row[]) {
       limitCount = count;
       return chain;
     },
+    maybeSingle() {
+      const [first] = rows.filter((r) => matchesRow(r, filters));
+      return Promise.resolve({ data: first ?? null, error: null });
+    },
     then(onFulfilled: (v: { data: Row[] | null; error: { message: string } | null }) => unknown) {
       let result = rows.filter((r) => matchesRow(r, filters));
       if (orders.length > 0) {
@@ -1666,4 +1670,49 @@ Deno.test("unsub footer falls back to the function URL without unsubPageBaseUrl"
   await runClientEventEmailCron(deps);
   const token = await signUnsubToken(7, "test-secret");
   assert(sent[0].html.includes(`https://x.supabase.co/functions/v1/client-email-unsub/${token}`));
+});
+
+
+// --- language -------------------------------------------------------------------
+
+Deno.test("language: the digest follows the workspace language (en), unknown value stays pt", async () => {
+  const mk = (language: unknown) =>
+    makeFakeDb(
+      [claimedRow({ id: 1, conta_id: "ws1", event_cursor_at: "2026-08-13T11:00:00.000Z" })],
+      {
+        postStatusEvents: [{
+          id: 10,
+          post_id: 100,
+          conta_id: "ws1",
+          to_status: "enviado_cliente",
+          created_at: "2026-08-13T11:30:00.000Z",
+          workflow_posts: { cliente_id: 1, status: "enviado_cliente", tipo: "carrossel", titulo: "Post A" },
+        }],
+        workspaces: [{ id: "ws1", name: "Agencia X", brand_color: "#ffbf30", logo_url: null, language }],
+      },
+    );
+  const en = makeDeps(mk("en"));
+  await runClientEventEmailCron(en.deps);
+  assertEquals(en.sent[0].subject, "You have pending items with Agencia X");
+  assert(en.sent[0].html.includes('<html lang="en"'));
+  assert(en.sent[0].html.includes("1 post is waiting for your approval"));
+  assertEquals(en.sent[0].tags, { type: "client_event" });
+  // Language lookup failing (db error) must not stop or change the digest: pt.
+  const failing = mk("en");
+  const origFrom = failing.from.bind(failing);
+  let wsCalls = 0;
+  failing.from = ((table: string) => {
+    if (table === "workspaces" && ++wsCalls === 2) throw new Error("db down");
+    return origFrom(table);
+  }) as never;
+  const f = makeDeps(failing);
+  const fr = await runClientEventEmailCron(f.deps);
+  assertEquals(fr.emailed, 1);
+  assertEquals(f.sent[0].subject, "Você tem pendências com Agencia X");
+  for (const v of ["fr", undefined, null]) {
+    const pt = makeDeps(mk(v));
+    await runClientEventEmailCron(pt.deps);
+    assertEquals(pt.sent[0].subject, "Você tem pendências com Agencia X");
+    assert(pt.sent[0].html.includes("1 post espera sua aprovação"));
+  }
 });
