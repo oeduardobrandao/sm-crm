@@ -24,6 +24,8 @@ export interface HubAuthDeps {
     workspaceName: string;
     brandColor: string | null;
     logoUrl: string | null;
+    /** Workspace language; the sender may ignore it until the email copy is translated. */
+    language?: "pt" | "en";
   }) => Promise<void>;
   /** EdgeRuntime.waitUntil in index.ts; awaits nothing. */
   defer: (work: Promise<unknown>) => void;
@@ -42,7 +44,10 @@ function errorCode(error: unknown): string {
   return typeof code === "string" ? code : "unknown";
 }
 
-type Workspace = { id: string; name: string; logo_url: string | null; brand_color: string | null };
+type Workspace = {
+  id: string; name: string; logo_url: string | null; brand_color: string | null;
+  language?: string | null;
+};
 
 type LinkResult =
   | { ok: true; workspace: Workspace; clienteId: number }
@@ -55,7 +60,7 @@ async function resolveLink(
 ): Promise<LinkResult> {
   const { data: conta } = await db
     .from("workspaces")
-    .select("id, name, logo_url, brand_color, hub_enabled")
+    .select("id, name, logo_url, brand_color, hub_enabled, language")
     .eq("slug", workspaceSlug)
     .maybeSingle();
   if (!conta) return { ok: false, response: json({ error: "Workspace não encontrado." }, 404) };
@@ -162,6 +167,7 @@ export function createHubAuthHandler(deps: HubAuthDeps) {
               workspaceName: workspace.name,
               brandColor: workspace.brand_color ?? null,
               logoUrl: workspace.logo_url ?? null,
+              language: workspace.language === "en" ? "en" : "pt",
             });
           } catch {
             console.error("[hub-auth] login code email failed");

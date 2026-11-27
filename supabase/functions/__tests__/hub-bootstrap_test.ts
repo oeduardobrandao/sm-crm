@@ -47,6 +47,7 @@ function makeDb(
   clienteRow: { nome: string; foto_url?: string | null } = { nome: "Vanessa" },
   igRow: { profile_picture_url?: string | null } | null = null,
   access?: unknown,
+  workspaceRow: Record<string, unknown> = WORKSPACE_ROW,
 ) {
   const tables: string[] = [];
   return {
@@ -57,7 +58,7 @@ function makeDb(
           eq: () => ({ maybeSingle: async () => ({ data: tokenRow }) }),
           maybeSingle: async () => ({
             data:
-              table === "workspaces" ? WORKSPACE_ROW
+              table === "workspaces" ? workspaceRow
               : table === "instagram_accounts" ? igRow
               : tokenRow,
           }),
@@ -610,7 +611,7 @@ Deno.test("gated link without session -> 401 login_required carrying nothing abo
   const body = await res.json();
   assertEquals(body.code, "login_required");
   assertEquals(body.error, "Login necessário.");
-  assertEquals(body.login.workspace, { name: "WS", logo_url: null, brand_color: "#111" });
+  assertEquals(body.login.workspace, { name: "WS", logo_url: null, brand_color: "#111", language: "pt" });
   assertEquals(body.login.hub_theme, GATED_THEME);
   const text = JSON.stringify(body);
   assert(!text.includes("Vanessa"));
@@ -878,5 +879,46 @@ Deno.test("makeTouchToken never throws AND logs when the RPC resolves with a pos
     assert(!loggedText.includes("super-secret-token-value"), "the bearer token value must NEVER be logged");
   } finally {
     console.error = originalConsoleError;
+  }
+});
+
+Deno.test("bootstrap returns language for an en workspace", async () => {
+  const handler = createHubBootstrapHandler({
+    buildCorsHeaders: cors,
+    createDb: () =>
+      makeDb({ cliente_id: 15, conta_id: "ws-1", is_active: true }, undefined, null, undefined,
+        { ...WORKSPACE_ROW, language: "en" }) as any,
+    now: () => NOW,
+    touchToken: async () => {},
+    touchSession: async () => {},
+    rateLimit: async () => true,
+  });
+  const body = await (await handler(req())).json();
+  assertEquals(body.language, "en");
+});
+
+Deno.test("login_required payload carries language", async () => {
+  const db = makeDb(GATED_TOKEN_ROW, undefined, null, { require_login: true, person: null },
+    { ...WORKSPACE_ROW, language: "en" });
+  const res = await loginHandler(db, { token: [], session: [] })(req());
+  assertEquals(res.status, 401);
+  const body = await res.json();
+  assertEquals(body.login.workspace.language, "en");
+});
+
+Deno.test("missing or unknown language value -> 'pt'", async () => {
+  for (const language of [undefined, null, "fr"]) {
+    const handler = createHubBootstrapHandler({
+      buildCorsHeaders: cors,
+      createDb: () =>
+        makeDb({ cliente_id: 15, conta_id: "ws-1", is_active: true }, undefined, null, undefined,
+          { ...WORKSPACE_ROW, language }) as any,
+      now: () => NOW,
+      touchToken: async () => {},
+      touchSession: async () => {},
+      rateLimit: async () => true,
+    });
+    const body = await (await handler(req())).json();
+    assertEquals(body.language, "pt");
   }
 });

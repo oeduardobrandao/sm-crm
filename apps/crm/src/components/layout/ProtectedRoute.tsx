@@ -3,6 +3,7 @@
 import '@/styles/app-shell';
 import { Navigate, useLocation } from 'react-router-dom';
 import { ReactNode } from 'react';
+import { WorkspaceLanguageSync } from '../../boot/WorkspaceLanguageSync';
 import { useAuth } from '../../context/AuthContext';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { PageSkeleton } from '@/components/ui/skeletons';
@@ -171,6 +172,9 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
     <ReverseTrialHoldContext.Provider
       value={reverseTrial.pending || reverseTrial.welcomeEndsAt !== null}
     >
+      {/* Only here: an authenticated user. It mounts on /workspace-setup too (which is a protected
+          page), and covers the protected pages outside AppLayout (/comecar, /oauth/consent). */}
+      <WorkspaceLanguageSync />
       {children}
       <ReverseTrialWelcomeDialog
         endsAt={reverseTrial.welcomeEndsAt}
