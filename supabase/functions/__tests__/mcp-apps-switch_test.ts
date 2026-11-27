@@ -30,18 +30,18 @@ function depsWith(apps?: { enabled: boolean; oauth: boolean; r2Origin: string | 
   return apps ? { ...deps, apps } : deps;
 }
 
-// Today's 49 tool names, sorted. Cards off must not change this list.
+// Today's 54 tool names, sorted. Cards off must not change this list.
 const BASELINE = [
-  "confirmar_agendamento", "create_client", "create_lancamento", "create_media_upload", "create_member",
+  "confirmar_agendamento", "create_agenda_event", "create_client", "create_lancamento", "create_media_upload", "create_member",
   "create_post", "create_recorrente", "create_task", "create_workflow", "create_workflow_template",
-  "delete_funcao", "delete_lancamento", "encerrar_recorrente", "fechar_periodo", "get_acordo_versoes",
-  "get_brand_profile", "get_client", "get_cliente_versoes", "get_cobrancas", "get_financeiro_v2",
-  "get_performance_baseline", "get_post", "get_rentabilidade", "list_clients", "list_ideas",
+  "delete_agenda_event", "delete_funcao", "delete_lancamento", "encerrar_recorrente", "fechar_periodo", "get_acordo_versoes",
+  "get_agenda_event", "get_brand_profile", "get_client", "get_cliente_versoes", "get_cobrancas", "get_financeiro_v2",
+  "get_performance_baseline", "get_post", "get_rentabilidade", "list_agenda_events", "list_clients", "list_ideas",
   "list_lancamentos", "list_members", "list_pages", "list_post_feedback", "list_posts",
   "list_recorrentes", "list_tasks", "list_workflow_templates", "list_workflows", "reabrir_periodo",
   "save_acordo", "save_atribuicoes", "save_entregas", "save_financeiro_config", "save_funcao",
   "seed_financeiro_v2", "set_cobranca_cliente", "set_custo_membro", "set_post_media", "set_post_property",
-  "update_lancamento", "update_post", "update_recorrente", "update_task",
+  "update_agenda_event", "update_lancamento", "update_post", "update_recorrente", "update_task",
 ];
 
 Deno.test("appsEnabledFor: off by default and for anything but on / pilot + list", () => {
@@ -86,7 +86,7 @@ Deno.test("cardResult: summary text, structuredContent, optional _meta", () => {
 });
 
 Deno.test("off: tool list identical to baseline", () => {
-  assertEquals(BASELINE.length, 49);
+  assertEquals(BASELINE.length, 54);
   const server = recordingServer();
   registerTools(server, depsWith({ enabled: false, oauth: true, r2Origin: R2 }));
   assertEquals(Object.keys(server.tools).sort(), BASELINE);

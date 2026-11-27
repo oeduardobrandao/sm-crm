@@ -108,7 +108,7 @@
     "keyActions": "Actions for key {{name}}",
     "keyGroup": "Key",
     "presetGroup": "Permission preset",
-    "presetSubtitle": "Read only: clients, posts, workflows, ideas, tasks and team",
+    "presetSubtitle": "Read only: clients, posts, workflows, ideas, tasks, calendar and team",
     "connectDescription": "For security, we don't store the key. Paste the key you copied when you created it, or use the template below replacing <c>YOUR_KEY_HERE</c>."
   },
   "scopes": {
@@ -118,11 +118,13 @@
     "ideias_read": "Ideas (read)",
     "tarefas_read": "Tasks (read)",
     "membros_read": "Team (read)",
+    "agenda_read": "Calendar (read)",
     "posts_write": "Posts (write)",
     "templates_write": "Templates (write)",
     "tarefas_write": "Tasks (write)",
     "clientes_write": "Clients (write)",
     "membros_write": "Team (write)",
+    "agenda_write": "Calendar (write)",
     "financeiro_read": "Financial (read, owners only)",
     "financeiro_write": "Financial (write, owners only)",
     "ownerOnlyHelp": "Workspace owner only",

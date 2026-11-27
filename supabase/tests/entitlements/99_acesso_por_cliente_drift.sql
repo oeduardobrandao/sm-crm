@@ -47,7 +47,9 @@
 --   context_fn_covers_own_tables    toda tabela "raiz de contexto" (v_context_roots,
 --                                   mais qualquer tabela de cliente cuja policy
 --                                   use my_membro_ids()) aparece no corpo de
---                                   can_see_cliente_context(bigint).
+--                                   _can_see_cliente_context_core(uuid, uuid, bigint), o corpo
+--                                   único da regra (can_see_cliente_context(bigint) é wrapper
+--                                   dele desde 20261212000001).
 -- oauth_states_pinned: fixa RLS off + ACL padrão (sem grant explícito) da isenção de oauth_states.
 -- Sanidade: todo nome dos arrays existe; toda entrada de v_exempt_no_policy
 -- continua com RLS ligada e sem policy fora de service_role.
@@ -277,7 +279,12 @@ begin
 
   -- ---------------------------------------------------------------------------
   -- context_fn_covers_own_tables
-  v_ctx_src := pg_get_functiondef('public.can_see_cliente_context(bigint)'::regprocedure);
+  -- o corpo da regra vive no núcleo; can_see_cliente_context(bigint) só delega (20261212000001)
+  -- a chamada em si (prosrc), não só o nome em qualquer lugar do texto
+  assert (select p.prosrc from pg_proc p where p.oid = 'public.can_see_cliente_context(bigint)'::regprocedure)
+           ~ 'public\._can_see_cliente_context_core\(',
+    'context_fn_delegates_to_core';
+  v_ctx_src := pg_get_functiondef('public._can_see_cliente_context_core(uuid, uuid, bigint)'::regprocedure);
   select coalesce(array_agg(t order by t), '{}') into v_fail_ctx
     from (select unnest(v_context_roots) t
           union

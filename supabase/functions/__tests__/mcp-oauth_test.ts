@@ -147,6 +147,7 @@ Deno.test("permittedMcpScopes: default agent role (equipe none, no financeiro) l
   const { db } = permDb([
     "clientes:ver", "clientes:editar", "entregas:ver", "entregas:editar",
     "ideias:ver", "ideias:editar", "tarefas:ver", "tarefas:editar",
+    "calendario:ver", "calendario:editar",
   ]);
   const got = await permittedMcpScopes(db, "u1", "ws-a");
   assertEquals(

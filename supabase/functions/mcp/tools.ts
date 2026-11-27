@@ -29,6 +29,7 @@ import {
 } from "./queries.ts";
 import { createMediaUpload, setPostMedia } from "./media.ts";
 import { DATE_ONLY, registerFinanceiroTools } from "./financeiro-tools.ts";
+import { registerAgendaTools } from "./agenda-tools.ts";
 import { register } from "./register.ts";
 import { registerCardsResource } from "./apps.ts";
 import { registerCardsTools } from "./cards.ts";
@@ -343,6 +344,7 @@ export function registerTools(server: any, deps: Deps): void {
     }));
 
   registerFinanceiroTools(server, deps);
+  registerAgendaTools(server, deps);
 
   if (deps.apps?.enabled) {
     registerCardsResource(server, deps.apps.r2Origin);

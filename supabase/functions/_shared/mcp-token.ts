@@ -9,8 +9,8 @@ export const MCP_TOKEN_PREFIX = "mesaas_sk_";
 // keys/grants may still carry those strings, and dropping them here is what makes them inert —
 // validateScopes rejects them on creation and the OAuth resolver filters them out of a grant.
 export const MCP_ALLOWED_SCOPES = [
-  "clientes:read", "posts:read", "workflows:read", "ideias:read", "tarefas:read", "membros:read",
-  "posts:write", "templates:write", "tarefas:write", "clientes:write", "membros:write",
+  "clientes:read", "posts:read", "workflows:read", "ideias:read", "tarefas:read", "membros:read", "agenda:read",
+  "posts:write", "templates:write", "tarefas:write", "clientes:write", "membros:write", "agenda:write",
   // Owner-only (OWNER_ONLY_SCOPES): never in MCP_AGENT_PRESET.
   "financeiro:read", "financeiro:write",
 ] as const;
@@ -35,6 +35,8 @@ export const MCP_SCOPE_PERMISSION: Record<McpScope, { module: string; action: "v
   "tarefas:write": { module: "tarefas", action: "editar" },
   "membros:read": { module: "equipe", action: "ver" },
   "membros:write": { module: "equipe", action: "editar" },
+  "agenda:read": { module: "calendario", action: "ver" },
+  "agenda:write": { module: "calendario", action: "editar" },
   // Also owner-only (OWNER_ONLY_SCOPES): the role check runs on top of this permission.
   "financeiro:read": { module: "financeiro", action: "ver" },
   "financeiro:write": { module: "financeiro", action: "editar" },
@@ -42,7 +44,7 @@ export const MCP_SCOPE_PERMISSION: Record<McpScope, { module: string; action: "v
 
 /** Least-privilege preset for a content-writing agent (read-only). */
 export const MCP_AGENT_PRESET: McpScope[] = [
-  "clientes:read", "posts:read", "workflows:read", "ideias:read", "tarefas:read", "membros:read",
+  "clientes:read", "posts:read", "workflows:read", "ideias:read", "tarefas:read", "membros:read", "agenda:read",
 ];
 
 /** True if `scopes` is a non-empty array of allowlisted scope strings. */

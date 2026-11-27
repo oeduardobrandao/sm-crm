@@ -5,6 +5,8 @@ import {
   hasScope,
   MCP_AGENT_PRESET,
   MCP_ALLOWED_SCOPES,
+  MCP_SCOPE_PERMISSION,
+  OWNER_ONLY_SCOPES,
   MCP_TOKEN_PREFIX,
   McpScopeError,
   mcpKeyActive,
@@ -71,4 +73,15 @@ Deno.test("mcp-token: membros:read joins the agent preset, writes stay out", () 
   assert((MCP_AGENT_PRESET as readonly string[]).includes("membros:read"), "membros:read in preset");
   assert(!(MCP_AGENT_PRESET as readonly string[]).includes("clientes:write"), "clientes:write NOT in preset");
   assert(!(MCP_AGENT_PRESET as readonly string[]).includes("membros:write"), "membros:write NOT in preset");
+});
+
+Deno.test("mcp-token: agenda scopes map to calendario, read in preset, not owner-only", () => {
+  assertEquals(MCP_SCOPE_PERMISSION["agenda:read" as keyof typeof MCP_SCOPE_PERMISSION], { module: "calendario", action: "ver" });
+  assertEquals(MCP_SCOPE_PERMISSION["agenda:write" as keyof typeof MCP_SCOPE_PERMISSION], { module: "calendario", action: "editar" });
+  assert(validateScopes(["agenda:read"]), "agenda:read validates");
+  assert(validateScopes(["agenda:write"]), "agenda:write validates");
+  assert((MCP_AGENT_PRESET as readonly string[]).includes("agenda:read"), "agenda:read in preset");
+  assert(!(MCP_AGENT_PRESET as readonly string[]).includes("agenda:write"), "agenda:write NOT in preset");
+  assert(!(OWNER_ONLY_SCOPES as readonly string[]).includes("agenda:read"), "agenda:read not owner-only");
+  assert(!(OWNER_ONLY_SCOPES as readonly string[]).includes("agenda:write"), "agenda:write not owner-only");
 });

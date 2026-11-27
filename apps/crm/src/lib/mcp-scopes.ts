@@ -12,11 +12,13 @@ export const SCOPE_OPTIONS = [
   { value: 'ideias:read', label: 'Ideias/Pautas (leitura)', ownerOnly: false },
   { value: 'tarefas:read', label: 'Tarefas (leitura)', ownerOnly: false },
   { value: 'membros:read', label: 'Equipe (leitura)', ownerOnly: false },
+  { value: 'agenda:read', label: 'Agenda (leitura)', ownerOnly: false },
   { value: 'posts:write', label: 'Posts (escrita)', ownerOnly: false },
   { value: 'templates:write', label: 'Modelos (escrita)', ownerOnly: false },
   { value: 'tarefas:write', label: 'Tarefas (escrita)', ownerOnly: false },
   { value: 'clientes:write', label: 'Clientes (escrita)', ownerOnly: false },
   { value: 'membros:write', label: 'Equipe (escrita)', ownerOnly: false },
+  { value: 'agenda:write', label: 'Agenda (escrita)', ownerOnly: false },
   { value: 'financeiro:read', label: 'Financeiro (leitura, só donos)', ownerOnly: true },
   { value: 'financeiro:write', label: 'Financeiro (escrita, só donos)', ownerOnly: true },
 ] as const;
@@ -41,6 +43,7 @@ export const AGENT_PRESET: string[] = [
   'ideias:read',
   'tarefas:read',
   'membros:read',
+  'agenda:read',
 ];
 
 // Escopos do MCP do Admin da plataforma. Espelho de ADMIN_MCP_ALLOWED_SCOPES em
