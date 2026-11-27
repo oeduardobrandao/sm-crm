@@ -509,10 +509,12 @@ begin
     values (v_ws, 'Só ver agenda', '{"calendario":"ver"}') returning id into v_role;
   insert into workspace_members (user_id, workspace_id, role) values
     (v_owner, v_ws, 'owner'), (v_adm, v_ws, 'admin'), (v_todos, v_ws, 'agent'), (v_restr, v_ws, 'agent'),
-    (v_fora, v_w1, 'owner');
+    (v_fora, v_w1, 'owner'), (v_restr, v_w1, 'agent');
   insert into workspace_members (user_id, workspace_id, role, role_id) values (v_semed, v_ws, 'agent', v_role);
-  update profiles set conta_id = v_ws, active_workspace_id = v_ws where id in (v_owner, v_adm, v_todos, v_restr, v_semed);
-  update profiles set conta_id = v_w1, active_workspace_id = v_w1 where id = v_fora;
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws where id in (v_owner, v_adm, v_todos, v_semed);
+  -- write_as_uses_p_conta_not_active_workspace: the restricted agent's ACTIVE workspace is W1,
+  -- where he sees every client; every restricted *_as assert below is judged in W
+  update profiles set conta_id = v_w1, active_workspace_id = v_w1 where id in (v_fora, v_restr);
 
   perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
   insert into clientes (user_id, conta_id, nome, sigla, cor, status) values (v_owner, v_ws, 'A', 'A', '#111', 'ativo') returning id into v_ca;
