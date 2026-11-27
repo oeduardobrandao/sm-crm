@@ -163,9 +163,12 @@ body,
   --shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.075);
   --radius: 12px;
   --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  /* Native controls (select popups, date pickers, scrollbars) follow the theme. */
+  color-scheme: light;
 }
 
 [data-theme='dark'] {
+  color-scheme: dark;
   --bg-color: #0a0c0f;
   --sidebar-bg: #12151a;
   --card-bg: #12151a;
@@ -194,6 +197,13 @@ body,
   --surface-1: #1a1e26;
   --surface-2: #1e2430;
   --surface-3: #252b38;
+}
+
+/* Native <select> option lists: an opaque surface in both themes. --card-bg, not
+   --surface-main, because Vidro remaps --surface-main to a translucent fill. */
+select option {
+  background-color: var(--card-bg);
+  color: var(--text-main);
 }
 
 * {

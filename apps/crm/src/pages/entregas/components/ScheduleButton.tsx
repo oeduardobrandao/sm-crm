@@ -591,15 +591,17 @@ export function PublishNowConfirmDialog({ actions }: { actions: ScheduleActions 
           </AlertDialogHeader>
           {publishing && (
             <div className="px-1">
-              <div className="flex items-center justify-between text-xs text-stone-500 mb-1.5">
+              <div className="flex items-center justify-between text-xs text-stone-500 dark:text-[color:var(--text-muted)] mb-1.5">
                 <span>
                   {publishPct < 100
                     ? t(`scheduleButton.progress.${platformCopyKey(platform)}`)
                     : t('scheduleButton.done')}
                 </span>
-                <span className="tabular-nums font-medium text-stone-900">{publishPct}%</span>
+                <span className="tabular-nums font-medium text-stone-900 dark:text-[color:var(--text-main)]">
+                  {publishPct}%
+                </span>
               </div>
-              <div className="h-2 rounded-full bg-stone-200 overflow-hidden">
+              <div className="h-2 rounded-full bg-stone-200 dark:bg-[var(--surface-3)] overflow-hidden">
                 <div
                   className="h-full rounded-full transition-all duration-300 ease-out"
                   style={{

@@ -124,11 +124,11 @@ export function ThumbnailPickerDialog({
             <button
               type="button"
               onClick={handleCapture}
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-stone-900 text-white text-[11px] font-semibold hover:bg-stone-700"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-stone-900 text-white text-[11px] font-semibold hover:bg-stone-700 dark:bg-[var(--cta-bg)] dark:text-[color:var(--cta-fg)] dark:hover:bg-[var(--cta-hover)]"
             >
               {t('thumbnailEditor.useFrame')}
             </button>
-            <label className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-stone-100 text-stone-700 text-[11px] font-semibold cursor-pointer hover:bg-stone-200">
+            <label className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-stone-100 text-stone-700 text-[11px] font-semibold cursor-pointer hover:bg-stone-200 dark:bg-[var(--surface-2)] dark:text-[color:var(--text-main)] dark:hover:bg-[var(--surface-3)]">
               {t('thumbnailEditor.uploadImage')}
               <input
                 type="file"
@@ -156,7 +156,7 @@ export function ThumbnailPickerDialog({
                   style={{ aspectRatio: previewAspect }}
                   className={`${previewSize} object-cover rounded-lg ring-1 ring-stone-200/80`}
                 />
-                <figcaption className="mt-1 text-[11px] text-stone-500">
+                <figcaption className="mt-1 text-[11px] text-stone-500 dark:text-[color:var(--text-muted)]">
                   {t('thumbnailEditor.current')}
                 </figcaption>
               </figure>
@@ -169,7 +169,7 @@ export function ThumbnailPickerDialog({
                   style={{ aspectRatio: previewAspect }}
                   className={`${previewSize} object-cover rounded-lg ring-2 ring-[#eab308]`}
                 />
-                <figcaption className="mt-1 text-[11px] font-semibold text-stone-700">
+                <figcaption className="mt-1 text-[11px] font-semibold text-stone-700 dark:text-[color:var(--text-main)]">
                   {t('thumbnailEditor.preview')}
                 </figcaption>
               </figure>
@@ -260,7 +260,7 @@ export function ThumbnailPickerDialog({
           <button
             type="button"
             onClick={onClose}
-            className="px-3 py-1.5 rounded-lg text-[12px] font-medium text-stone-600 hover:bg-stone-100"
+            className="px-3 py-1.5 rounded-lg text-[12px] font-medium text-stone-600 hover:bg-stone-100 dark:text-[color:var(--text-muted)] dark:hover:bg-[var(--surface-2)]"
           >
             {tc('actions.cancel')}
           </button>
@@ -268,7 +268,7 @@ export function ThumbnailPickerDialog({
             type="button"
             disabled={!pending || saving}
             onClick={handleSave}
-            className="px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-stone-900 text-white hover:bg-stone-700 disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-stone-900 text-white hover:bg-stone-700 dark:bg-[var(--cta-bg)] dark:text-[color:var(--cta-fg)] dark:hover:bg-[var(--cta-hover)] disabled:opacity-50"
           >
             {saving ? t('thumbnailEditor.saving') : t('thumbnailEditor.save')}
           </button>
