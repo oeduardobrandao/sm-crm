@@ -84,9 +84,11 @@ Inside each core, every identity-dependent call becomes explicit:
 - `agenda_pode_ver_evento(id, privado, org)` → a new 4-arg overload with `p_user`
   (the 3-arg one stays for the RLS policies and delegates with `auth.uid()`).
 - `can_see_cliente_context(cli)` (client name on a row of a client the actor does not access)
-  → the existing explicit helper `can_see_cliente_context_for(p_user, p_conta, cli)`
-  (migration `20261117000011`), on both paths, so CRM and MCP output stay identical. `cliente_id`
-  is returned as the CRM returns it today. *(my call)*
+  → `_can_see_cliente_context_core(p_user, p_conta, cli)`, on both paths, so CRM and MCP output
+  stay identical. The explicit helper `can_see_cliente_context_for` (migration `20261117000011`)
+  was dropped in `20261117000012`, so the implementation adds the core and makes
+  `can_see_cliente_context(bigint)` a thin wrapper over it (one body for both paths).
+  `cliente_id` is returned as the CRM returns it today. *(my call)*
 - `agenda_definir_convidados` reads `auth.uid()`; the core passes `p_user` explicitly (new
   argument or overload). Only called when `p_evento ? 'convidados'`, which the MCP never sends,
   so this is for core consistency.
@@ -95,7 +97,8 @@ Inside each core, every identity-dependent call becomes explicit:
   `p_user` argument so MCP edits record the actor, not NULL. *(my call)*
 - Private masking in `agenda_listar` is inline (`privado AND organizador <> user AND NOT
   participant`), not `agenda_pode_ver_evento`; `p_privados = false` adds its own branch there.
-  The 4-arg `agenda_pode_ver_evento` overload serves editar/excluir's visibility checks.
+  The 4-arg `agenda_pode_ver_evento` overload serves editar/excluir's visibility checks; it is
+  `service_role` only (open to `authenticated` it would let anyone probe event participation).
 
 **Triggers: actor from a transaction-local setting.** `guard_agenda_evento_scope` /
 `guard_agenda_participante_scope` return early when `auth.uid()` is NULL, the MCP's case.
@@ -104,7 +107,9 @@ strict, including client-less events for a restricted member; a restricted organ
 content of their own event of an unassigned client; relocation between clients is strict; the
 `seguintes` series-split copy inherits the source; the participant rule has its own series
 exception; `author_immutable`). So the triggers resolve the actor as
-`coalesce(auth.uid(), nullif(current_setting('mesaas.agenda_actor', true), '')::uuid)`, and the
+`coalesce(auth.uid(), nullif(current_setting('mesaas.agenda_actor', true), '')::uuid)`, exposed as
+the helper `_agenda_actor()` (also used by `agenda_cliente_substituir_pedidos` and
+`agenda_definir_convidados`, instead of new arguments), and the
 `_as` wrappers `set_config('mesaas.agenda_actor', p_user::text, true)` before calling the core.
 This can only tighten: an authenticated caller always has `auth.uid()`, which wins, and a
 service-role caller without the setting behaves as today. The workspace in the triggers comes
@@ -164,14 +169,15 @@ Ids only, English argument names like the rest (`client_id`). Actor = `ctx.creat
 **Time contract (adapter in `agenda.ts`).** The RPC takes timezone-less wall-clock
 `inicio_local`/`fim_local` in the event's timezone, start and end together, and ignores `tz` on
 edit.
-- Timed: `start`/`end` are local wall clock `YYYY-MM-DDTHH:MM` in the event's timezone. If the
+- Timed: `start`/`end` are local wall clock `YYYY-MM-DDTHH:MM` in the event's timezone (seconds
+  without an offset are accepted and truncated). In the output, `start`/`end` are UTC instants. If the
   agent sends an offset or `Z`, the adapter converts the instant to wall clock in that timezone
   (create: `timezone` arg or `America/Sao_Paulo`; update: the event's stored `tz`, read first).
   DST gaps and overlaps are resolved by Postgres `AT TIME ZONE`, as in the CRM. The tool
   description states the convention.
-- All-day: `start_date` and `end_date` are **inclusive** in the MCP (an agent says "the 3rd to
-  the 5th"); the adapter sends `fim_local = end_date + 1 day` (the RPC's end is exclusive) and
-  the output converts back.
+- `end_date` is **inclusive** for both timed and all-day events (an agent says "the 3rd to the
+  5th"); the DB's `data_fim_local` is exclusive in both, so the adapter sends `end_date + 1 day`
+  and the output converts back. `monthly_mode` also accepts `monthly_ordinal`.
 - Update: `start` and `end` (or `start_date` and `end_date`) only together; switching `all_day`
   requires the new pair (the RPC refuses otherwise). Update has **no** `timezone` argument (a
   series' timezone is fixed at creation). Edits are patches: `agenda_validar_payload` merges
@@ -192,8 +198,8 @@ are **not** returned. *(field list: my call)*
 
 Each tool gets a `TOOL_META` entry (structural test) and an `auditArgs` with ids, scope,
 `client_id` and the names of the changed fields; never title, description, location or link.
-Flag off: writes surface "A Agenda não está ativa neste workspace."; list returns an empty
-list with the same note. RPC errors (already pt-BR `agenda: …`) pass through without the
+Flag off: list returns an empty list with the note; get, update and delete also report the
+"A Agenda não está ativa neste workspace." copy, as do writes. RPC errors (already pt-BR `agenda: …`) pass through without the
 prefix; anything else is the generic MCP error.
 
 ### Tests
