@@ -417,4 +417,283 @@ begin
   assert v_v = '0', 'listar_as_flag_off_returns_zero: ' || v_v;
 end $$;
 
+-- =============================================================
+-- Section 3: agenda_evento_criar / _editar / _excluir = wrappers over
+-- _agenda_evento_*_core(conta, user, privados, ...); the *_as variants (service
+-- role only) check membership in p_conta, set mesaas.agenda_actor for the
+-- triggers and agenda_cliente_substituir_pedidos, call the core and clear the
+-- actor. p_privados = false (API-key connection) refuses any private event,
+-- the caller's own included, with 'agenda: evento privado indisponível nesta conexão'.
+-- =============================================================
+do $$
+declare
+  v_f text;
+begin
+  foreach v_f in array array['public._agenda_evento_criar_core(uuid, uuid, boolean, jsonb, uuid[])',
+      'public._agenda_evento_editar_core(uuid, uuid, boolean, bigint, text, jsonb, uuid[])',
+      'public._agenda_evento_excluir_core(uuid, uuid, boolean, bigint, text)'] loop
+    assert not has_function_privilege('anon', v_f, 'EXECUTE')
+       and not has_function_privilege('authenticated', v_f, 'EXECUTE')
+       and not has_function_privilege('service_role', v_f, 'EXECUTE'),
+      'write_core_not_executable_by_api_roles: ' || v_f;
+    assert (select p.prosrc !~ '(auth\.uid|get_my_conta_id|my_client_scope_all|has_permission\(|can_access_cliente\(v_e\.|can_see_cliente_context\(|my_membro_ids|agenda_pode_ver_evento\([^()]*organizador_id\))'
+              from pg_proc p where p.oid = v_f::regprocedure),
+      'write_core_has_no_session_identity: ' || v_f;
+  end loop;
+  foreach v_f in array array['public.agenda_evento_criar_as(uuid, uuid, boolean, jsonb, uuid[])',
+      'public.agenda_evento_editar_as(uuid, uuid, boolean, bigint, text, jsonb, uuid[])',
+      'public.agenda_evento_excluir_as(uuid, uuid, boolean, bigint, text)'] loop
+    assert not has_function_privilege('anon', v_f, 'EXECUTE')
+       and not has_function_privilege('authenticated', v_f, 'EXECUTE')
+       and has_function_privilege('service_role', v_f, 'EXECUTE'),
+      'write_as_service_role_only: ' || v_f;
+  end loop;
+  foreach v_f in array array['public.agenda_evento_criar(jsonb, uuid[])',
+      'public.agenda_evento_editar(bigint, text, jsonb, uuid[])',
+      'public.agenda_evento_excluir(bigint, text)'] loop
+    assert not has_function_privilege('anon', v_f, 'EXECUTE')
+       and has_function_privilege('authenticated', v_f, 'EXECUTE')
+       and has_function_privilege('service_role', v_f, 'EXECUTE'),
+      'crm_write_rpc_keeps_acl: ' || v_f;
+  end loop;
+  -- the CRM editar keeps its optional participants argument
+  assert (select p.pronargdefaults from pg_proc p
+           where p.oid = 'public.agenda_evento_editar(bigint, text, jsonb, uuid[])'::regprocedure) = 1,
+    'crm_editar_keeps_default';
+  assert (select p.pronargdefaults from pg_proc p
+           where p.oid = 'public.agenda_evento_editar_as(uuid, uuid, boolean, bigint, text, jsonb, uuid[])'::regprocedure) = 1,
+    'editar_as_participants_default';
+end $$;
+
+-- full create payload (every key, as the form sends it) merged with overrides
+create or replace function pg_temp.pl(p jsonb default '{}') returns jsonb language sql as $f$
+  select jsonb_build_object(
+    'titulo', 'Evento', 'descricao', null, 'local', null, 'link_reuniao', null,
+    'tipo', 'gravacao', 'cor', null, 'cliente_id', null, 'privado', false, 'dia_inteiro', false,
+    'tz', 'America/Sao_Paulo', 'inicio_local', '2026-11-10T14:00:00', 'fim_local', '2026-11-10T15:00:00',
+    'lembretes', jsonb_build_array(10), 'regra', null) || p;
+$f$;
+create or replace function pg_temp.oc(p_ev bigint, p_d date) returns bigint language sql as $f$
+  select o.id from public.agenda_ocorrencias o where o.evento_id = p_ev and o.data_original = p_d;
+$f$;
+create or replace function pg_temp.oc1(p_ev bigint) returns bigint language sql as $f$
+  select o.id from public.agenda_ocorrencias o where o.evento_id = p_ev order by o.data_original limit 1;
+$f$;
+grant execute on all functions in schema pg_temp to authenticated, service_role;
+
+do $$
+declare
+  v_ws uuid := et_make_workspace('max');
+  v_w1 uuid := et_make_workspace('max');
+  v_owner uuid := gen_random_uuid();
+  v_adm uuid := gen_random_uuid();
+  v_todos uuid := gen_random_uuid();
+  v_restr uuid := gen_random_uuid();
+  v_semed uuid := gen_random_uuid();
+  v_fora uuid := gen_random_uuid();
+  v_role uuid;
+  v_ca bigint; v_cb bigint;
+  e_a bigint; e_b bigint; e_borg bigint; e_bser bigint; e_tail bigint; e_privr bigint;
+  e_no bigint; e_noown bigint; e_semed bigint; e_shared bigint;
+  v_id bigint; v_oc bigint; v_rm bigint;
+  v_err text; v_v text;
+  v_win text := '''2026-11-02'', ''2026-12-31''';
+  v_semanal jsonb := jsonb_build_object('freq','weekly','intervalo',1,'dias_semana',jsonb_build_array(1),
+                       'mensal_modo',null,'mensal_ordinal',null,'ate',null,'contagem',null);
+begin
+  perform set_config('app.agenda_hoje', '2026-11-02', true);
+  insert into auth.users (id, email) values
+    (v_owner, 'owner3@amcp.test'), (v_adm, 'adm3@amcp.test'), (v_todos, 'todos3@amcp.test'),
+    (v_restr, 'restr3@amcp.test'), (v_semed, 'semed3@amcp.test'), (v_fora, 'fora3@amcp.test');
+  insert into workspace_roles (conta_id, nome, permissions)
+    values (v_ws, 'Só ver agenda', '{"calendario":"ver"}') returning id into v_role;
+  insert into workspace_members (user_id, workspace_id, role) values
+    (v_owner, v_ws, 'owner'), (v_adm, v_ws, 'admin'), (v_todos, v_ws, 'agent'), (v_restr, v_ws, 'agent'),
+    (v_fora, v_w1, 'owner');
+  insert into workspace_members (user_id, workspace_id, role, role_id) values (v_semed, v_ws, 'agent', v_role);
+  update profiles set conta_id = v_ws, active_workspace_id = v_ws where id in (v_owner, v_adm, v_todos, v_restr, v_semed);
+  update profiles set conta_id = v_w1, active_workspace_id = v_w1 where id = v_fora;
+
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  insert into clientes (user_id, conta_id, nome, sigla, cor, status) values (v_owner, v_ws, 'A', 'A', '#111', 'ativo') returning id into v_ca;
+  insert into clientes (user_id, conta_id, nome, sigla, cor, status) values (v_owner, v_ws, 'B', 'B', '#222', 'ativo') returning id into v_cb;
+  update workspace_members set client_scope = 'atribuidos' where workspace_id = v_ws and user_id = v_restr;
+  insert into workspace_member_clientes (workspace_id, user_id, cliente_id) values (v_ws, v_restr, v_ca);
+  perform set_config('request.jwt.claims', '', true);
+
+  e_a := pg_temp.criar(v_owner, jsonb_build_object('titulo', 'eA', 'cliente_id', v_ca));
+  e_b := pg_temp.criar(v_owner, jsonb_build_object('titulo', 'eB', 'cliente_id', v_cb));
+  e_borg := pg_temp.criar(v_owner, jsonb_build_object('titulo', 'eBorg', 'cliente_id', v_cb));
+  e_bser := pg_temp.criar(v_owner, jsonb_build_object('titulo', 'eBser', 'cliente_id', v_cb,
+              'inicio_local', '2026-11-09T09:00:00', 'fim_local', '2026-11-09T10:00:00', 'regra', v_semanal));
+  e_privr := pg_temp.criar(v_owner, jsonb_build_object('titulo', 'ePrivR', 'privado', true));
+  e_no := pg_temp.criar(v_owner, jsonb_build_object('titulo', 'eNo'));
+  e_noown := pg_temp.criar(v_owner, jsonb_build_object('titulo', 'eNoOwn'));
+  e_semed := pg_temp.criar(v_owner, jsonb_build_object('titulo', 'eSemEd'));
+  e_shared := pg_temp.criar(v_owner, jsonb_build_object('titulo', 'eShared', 'cliente_id', v_ca,
+              'compartilhado_cliente', true,
+              'inicio_local', '2026-11-09T09:00:00', 'fim_local', '2026-11-09T10:00:00', 'regra', v_semanal));
+  -- the restricted agent organizes eBorg / eBser / ePrivR / eNoOwn; semed organizes eSemEd (superuser, no claims)
+  update agenda_eventos set organizador_id = v_restr where id in (e_borg, e_bser, e_privr, e_noown);
+  update agenda_participantes set user_id = v_restr where evento_id in (e_borg, e_bser, e_privr, e_noown) and user_id = v_owner;
+  update agenda_eventos set organizador_id = v_semed where id = e_semed;
+  update agenda_participantes set user_id = v_semed where evento_id = e_semed and user_id = v_owner;
+
+  -- ---- write_as_denied_to_authenticated
+  v_err := pg_temp.err_as(v_owner, format('select * from public.agenda_evento_criar_as(%L, %L, true, %L::jsonb, ''{}''::uuid[])', v_ws, v_owner, pg_temp.pl()));
+  assert v_err = '42501', 'criar_as_denied_to_authenticated: ' || coalesce(v_err, 'allowed');
+  v_err := pg_temp.err_as(v_owner, format('select public.agenda_evento_editar_as(%L, %L, true, %s, ''todas'', ''{"titulo":"x"}''::jsonb)', v_ws, v_owner, pg_temp.oc1(e_a)));
+  assert v_err = '42501', 'editar_as_denied_to_authenticated: ' || coalesce(v_err, 'allowed');
+  v_err := pg_temp.err_as(v_owner, format('select public.agenda_evento_excluir_as(%L, %L, true, %s, ''todas'')', v_ws, v_owner, pg_temp.oc1(e_a)));
+  assert v_err = '42501', 'excluir_as_denied_to_authenticated: ' || coalesce(v_err, 'allowed');
+
+  -- ---- write_as_non_member_refused (member of W1 only), and null identities
+  v_err := pg_temp.svc(null, format('select * from public.agenda_evento_criar_as(%L, %L, true, %L::jsonb, ''{}''::uuid[])', v_ws, v_fora, pg_temp.pl()));
+  assert v_err = 'agenda: sessão sem workspace ativo', 'criar_as_non_member_refused: ' || coalesce(v_err, 'allowed');
+  v_err := pg_temp.svc(null, format('select * from public.agenda_evento_criar_as(%L, null, true, %L::jsonb, ''{}''::uuid[])', v_ws, pg_temp.pl()));
+  assert v_err = 'agenda: sessão sem workspace ativo', 'criar_as_null_user_refused: ' || coalesce(v_err, 'allowed');
+  v_err := pg_temp.svc(null, format('select * from public.agenda_evento_criar_as(null, %L, true, %L::jsonb, ''{}''::uuid[])', v_owner, pg_temp.pl()));
+  assert v_err = 'agenda: sessão sem workspace ativo', 'criar_as_null_conta_refused: ' || coalesce(v_err, 'allowed');
+  v_err := pg_temp.svc(null, format('select public.agenda_evento_editar_as(%L, %L, true, %s, ''todas'', ''{"titulo":"x"}''::jsonb)', v_ws, v_fora, pg_temp.oc1(e_a)));
+  assert v_err = 'agenda: sessão sem workspace ativo', 'editar_as_non_member_refused: ' || coalesce(v_err, 'allowed');
+  v_err := pg_temp.svc(null, format('select public.agenda_evento_editar_as(null, %L, true, %s, ''todas'', ''{"titulo":"x"}''::jsonb)', v_owner, pg_temp.oc1(e_a)));
+  assert v_err = 'agenda: sessão sem workspace ativo', 'editar_as_null_conta_refused: ' || coalesce(v_err, 'allowed');
+  v_err := pg_temp.svc(null, format('select public.agenda_evento_excluir_as(%L, %L, true, %s, ''todas'')', v_ws, v_fora, pg_temp.oc1(e_a)));
+  assert v_err = 'agenda: sessão sem workspace ativo', 'excluir_as_non_member_refused: ' || coalesce(v_err, 'allowed');
+  v_err := pg_temp.svc(null, format('select public.agenda_evento_excluir_as(%L, null, true, %s, ''todas'')', v_ws, pg_temp.oc1(e_a)));
+  assert v_err = 'agenda: sessão sem workspace ativo', 'excluir_as_null_user_refused: ' || coalesce(v_err, 'allowed');
+
+  -- ---- create: strict for the restricted agent (the trigger sees the actor)
+  v_err := pg_temp.svc(null, format('select * from public.agenda_evento_criar_as(%L, %L, true, %L::jsonb, ''{}''::uuid[])',
+             v_ws, v_restr, pg_temp.pl(jsonb_build_object('cliente_id', v_cb))));
+  assert v_err = 'client_scope_restricted', 'criar_as_restricted_unassigned_client_denied: ' || coalesce(v_err, 'ok');
+  v_err := pg_temp.svc(null, format('select * from public.agenda_evento_criar_as(%L, %L, true, %L::jsonb, ''{}''::uuid[])',
+             v_ws, v_restr, pg_temp.pl()));
+  assert v_err = 'client_scope_restricted', 'criar_as_restricted_no_client_denied: ' || coalesce(v_err, 'ok');
+  v_v := pg_temp.svc_val(null, format('select c.evento_id::text from public.agenda_evento_criar_as(%L, %L, true, %L::jsonb, ''{}''::uuid[]) c',
+             v_ws, v_restr, pg_temp.pl(jsonb_build_object('titulo', 'eNovoA', 'cliente_id', v_ca))));
+  assert v_v is not null, 'criar_as_restricted_assigned_ok';
+  assert (select organizador_id from agenda_eventos where id = v_v::bigint) = v_restr, 'criar_as_organizer_is_p_user';
+  assert (select conta_id from agenda_eventos where id = v_v::bigint) = v_ws, 'criar_as_conta_is_p_conta';
+  -- the todos agent creates without a client
+  v_err := pg_temp.svc(null, format('select * from public.agenda_evento_criar_as(%L, %L, true, %L::jsonb, ''{}''::uuid[])',
+             v_ws, v_todos, pg_temp.pl()));
+  assert v_err is null, 'criar_as_todos_without_client_ok: ' || coalesce(v_err, '');
+  -- without calendario editar
+  v_err := pg_temp.svc(null, format('select * from public.agenda_evento_criar_as(%L, %L, true, %L::jsonb, ''{}''::uuid[])',
+             v_ws, v_semed, pg_temp.pl()));
+  assert v_err = 'agenda: você não pode criar eventos', 'criar_as_without_calendario_editar_denied: ' || coalesce(v_err, 'ok');
+
+  -- ---- edit
+  v_err := pg_temp.svc(null, format('select public.agenda_evento_editar_as(%L, %L, true, %s, ''todas'', ''{"titulo":"meu"}''::jsonb)', v_ws, v_restr, pg_temp.oc1(e_borg)));
+  assert v_err is null, 'editar_as_own_unassigned_event_content_ok: ' || coalesce(v_err, '');
+  assert (select titulo from agenda_eventos where id = e_borg) = 'meu', 'editar_as_own_unassigned_event_content_saved';
+  v_err := pg_temp.svc(null, format('select public.agenda_evento_editar_as(%L, %L, true, %s, ''todas'', %L::jsonb)', v_ws, v_restr, pg_temp.oc1(e_borg), jsonb_build_object('cliente_id', v_ca)));
+  assert v_err = 'client_scope_restricted', 'editar_as_move_to_other_client_denied: ' || coalesce(v_err, 'ok');
+  -- a hidden client's event: same error as a missing one
+  v_err := pg_temp.svc(null, format('select public.agenda_evento_editar_as(%L, %L, true, %s, ''todas'', ''{"titulo":"x"}''::jsonb)', v_ws, v_restr, pg_temp.oc1(e_b)));
+  assert v_err = 'agenda: este evento não existe mais', 'editar_as_hidden_event_denied: ' || coalesce(v_err, 'ok');
+  -- the 'seguintes' split of his own series in B inherits the source's client
+  v_err := pg_temp.svc(null, format('select public.agenda_evento_editar_as(%L, %L, true, %s, ''seguintes'', ''{"titulo":"tail"}''::jsonb)', v_ws, v_restr, pg_temp.oc(e_bser, '2026-11-16')));
+  assert v_err is null, 'editar_as_seguintes_split_inherits_source: ' || coalesce(v_err, '');
+  select id into e_tail from agenda_eventos where serie_origem_id = e_bser;
+  assert e_tail is not null and (select cliente_id from agenda_eventos where id = e_tail) = v_cb
+     and (select organizador_id from agenda_eventos where id = e_tail) = v_restr, 'editar_as_split_tail_stays_in_b';
+  v_err := pg_temp.svc(null, format('select public.agenda_evento_editar_as(%L, %L, true, %s, ''todas'', ''{"titulo":"x"}''::jsonb)', v_ws, v_semed, pg_temp.oc1(e_semed)));
+  assert v_err = 'agenda: você não pode editar este evento', 'editar_as_without_calendario_editar_denied: ' || coalesce(v_err, 'ok');
+  v_err := pg_temp.svc(null, format('select public.agenda_evento_editar_as(%L, %L, true, %s, ''todas'', ''{"titulo":"x"}''::jsonb)', v_ws, v_todos, pg_temp.oc1(e_a)));
+  assert v_err = 'agenda: você não pode editar este evento', 'editar_as_non_organizer_agent_denied: ' || coalesce(v_err, 'ok');
+  -- an admin edits the owner's event: the organizer stays (author_immutable now fires for the actor)
+  v_err := pg_temp.svc(null, format('select public.agenda_evento_editar_as(%L, %L, false, %s, ''todas'', ''{"titulo":"eA2"}''::jsonb)', v_ws, v_adm, pg_temp.oc1(e_a)));
+  assert v_err is null, 'editar_as_admin_public_event_ok: ' || coalesce(v_err, '');
+  assert (select organizador_id from agenda_eventos where id = e_a) = v_owner
+     and (select titulo from agenda_eventos where id = e_a) = 'eA2', 'editar_as_keeps_organizer';
+
+  -- ---- delete
+  v_err := pg_temp.svc(null, format('select public.agenda_evento_excluir_as(%L, %L, true, %s, ''todas'')', v_ws, v_restr, pg_temp.oc1(e_b)));
+  assert v_err = 'agenda: este evento não existe mais', 'excluir_as_hidden_event_denied: ' || coalesce(v_err, 'ok');
+  v_err := pg_temp.svc(null, format('select public.agenda_evento_excluir_as(%L, %L, true, %s, ''todas'')', v_ws, v_restr, pg_temp.oc1(e_borg)));
+  assert v_err = 'client_scope_restricted', 'excluir_as_own_unassigned_client_event_denied: ' || coalesce(v_err, 'ok');
+  v_err := pg_temp.svc(null, format('select public.agenda_evento_excluir_as(%L, %L, true, %s, ''todas'')', v_ws, v_restr, pg_temp.oc1(e_noown)));
+  assert v_err is null, 'excluir_as_own_ok: ' || coalesce(v_err, '');
+  assert not exists (select 1 from agenda_ocorrencias where evento_id = e_noown and not cancelada), 'excluir_as_own_removed';
+
+  -- ---- privados_false: an API-key connection never touches a private event
+  v_err := pg_temp.svc(null, format('select * from public.agenda_evento_criar_as(%L, %L, false, %L::jsonb, ''{}''::uuid[])',
+             v_ws, v_owner, pg_temp.pl(jsonb_build_object('privado', true))));
+  assert v_err = 'agenda: evento privado indisponível nesta conexão', 'privados_false_criar_privado_refused: ' || coalesce(v_err, 'ok');
+  v_err := pg_temp.svc(null, format('select * from public.agenda_evento_criar_as(%L, %L, null, %L::jsonb, ''{}''::uuid[])',
+             v_ws, v_owner, pg_temp.pl(jsonb_build_object('privado', true))));
+  assert v_err = 'agenda: evento privado indisponível nesta conexão', 'privados_null_criar_privado_refused: ' || coalesce(v_err, 'ok');
+  v_err := pg_temp.svc(null, format('select * from public.agenda_evento_criar_as(%L, %L, false, %L::jsonb, ''{}''::uuid[])',
+             v_ws, v_owner, pg_temp.pl()));
+  assert v_err is null, 'privados_false_criar_publico_ok: ' || coalesce(v_err, '');
+  v_err := pg_temp.svc(null, format('select public.agenda_evento_editar_as(%L, %L, false, %s, ''todas'', ''{"titulo":"x"}''::jsonb)', v_ws, v_restr, pg_temp.oc1(e_privr)));
+  assert v_err = 'agenda: evento privado indisponível nesta conexão', 'privados_false_editar_own_private_refused: ' || coalesce(v_err, 'ok');
+  v_err := pg_temp.svc(null, format('select public.agenda_evento_excluir_as(%L, %L, false, %s, ''todas'')', v_ws, v_restr, pg_temp.oc1(e_privr)));
+  assert v_err = 'agenda: evento privado indisponível nesta conexão', 'privados_false_excluir_own_private_refused: ' || coalesce(v_err, 'ok');
+  v_err := pg_temp.svc(null, format('select public.agenda_evento_editar_as(%L, %L, false, %s, ''todas'', ''{"privado":true}''::jsonb)', v_ws, v_owner, pg_temp.oc1(e_no)));
+  assert v_err = 'agenda: evento privado indisponível nesta conexão', 'privados_false_editar_set_privado_refused: ' || coalesce(v_err, 'ok');
+  assert (select not privado from agenda_eventos where id = e_no), 'privados_false_editar_set_privado_not_saved';
+  -- with privados the organizer edits his own private event
+  v_err := pg_temp.svc(null, format('select public.agenda_evento_editar_as(%L, %L, true, %s, ''todas'', ''{"titulo":"meu priv"}''::jsonb)', v_ws, v_restr, pg_temp.oc1(e_privr)));
+  assert v_err is null, 'privados_true_editar_own_private_ok: ' || coalesce(v_err, '');
+  -- listar core with a NULL p_privados fails closed (masks his own private event)
+  execute format('select l.mascarado::text from public._agenda_listar_core(%L, %L, null, %s, null) l where l.evento_id = %s',
+                 v_ws, v_restr, v_win, e_privr) into v_v;
+  assert v_v = 'true', 'listar_core_null_privados_masks: ' || coalesce(v_v, 'null');
+
+  -- ---- substituir_records_actor: moving one occurrence of a shared series
+  -- supersedes its pending reschedule request, resolved by the MCP user
+  v_oc := pg_temp.oc(e_shared, '2026-11-16');
+  insert into agenda_remarcacoes (conta_id, cliente_id, ocorrencia_id, inicio_sugerido, fim_sugerido)
+    values (v_ws, v_ca, v_oc, '2026-11-17 14:00+00', '2026-11-17 15:00+00') returning id into v_rm;
+  v_err := pg_temp.svc(null, format('select public.agenda_evento_editar_as(%L, %L, true, %s, ''esta'', ''{"inicio_local":"2026-11-16T16:00:00","fim_local":"2026-11-16T17:00:00"}''::jsonb)', v_ws, v_owner, v_oc));
+  assert v_err is null, 'substituir_edit_ok: ' || coalesce(v_err, '');
+  assert (select status from agenda_remarcacoes where id = v_rm) = 'substituida', 'substituir_status';
+  assert (select resolvido_por from agenda_remarcacoes where id = v_rm) = v_owner,
+    'substituir_records_actor: ' || coalesce((select resolvido_por::text from agenda_remarcacoes where id = v_rm), 'null');
+
+  -- ---- actor_setting_cleared_after_as (inline: the svc helpers clear it themselves)
+  perform set_config('request.jwt.claims', '', true);
+  perform set_config('mesaas.agenda_actor', '', true);
+  execute 'set local role service_role';
+  perform public.agenda_evento_editar_as(v_ws, v_owner, true, pg_temp.oc1(e_no), 'todas', '{"titulo":"eNo2"}'::jsonb);
+  v_v := current_setting('mesaas.agenda_actor', true);
+  execute 'reset role';
+  assert v_v = '', 'actor_setting_cleared_after_editar_as: ' || coalesce(v_v, 'null');
+  execute 'set local role service_role';
+  perform * from public.agenda_evento_criar_as(v_ws, v_owner, true, pg_temp.pl(), '{}'::uuid[]);
+  v_v := current_setting('mesaas.agenda_actor', true);
+  execute 'reset role';
+  assert v_v = '', 'actor_setting_cleared_after_criar_as: ' || coalesce(v_v, 'null');
+  select o.id into v_oc from agenda_ocorrencias o join agenda_eventos e on e.id = o.evento_id
+   where e.conta_id = v_ws and e.titulo = 'eNo2' limit 1;
+  execute 'set local role service_role';
+  perform public.agenda_evento_excluir_as(v_ws, v_owner, true, v_oc, 'todas');
+  v_v := current_setting('mesaas.agenda_actor', true);
+  execute 'reset role';
+  assert v_v = '', 'actor_setting_cleared_after_excluir_as: ' || coalesce(v_v, 'null');
+
+  -- ---- the CRM errors with no session stay
+  v_err := pg_temp.svc(null, format('select * from public.agenda_evento_criar(%L::jsonb, ''{}''::uuid[])', pg_temp.pl()));
+  assert v_err = 'agenda: sessão sem workspace ativo', 'crm_criar_without_session_raises: ' || coalesce(v_err, 'allowed');
+  v_err := pg_temp.svc(null, format('select public.agenda_evento_editar(%s, ''todas'', ''{"titulo":"x"}''::jsonb)', pg_temp.oc1(e_a)));
+  assert v_err = 'agenda: sessão sem workspace ativo', 'crm_editar_without_session_raises: ' || coalesce(v_err, 'allowed');
+  v_err := pg_temp.svc(null, format('select public.agenda_evento_excluir(%s, ''todas'')', pg_temp.oc1(e_a)));
+  assert v_err = 'agenda: sessão sem workspace ativo', 'crm_excluir_without_session_raises: ' || coalesce(v_err, 'allowed');
+
+  -- ---- write_as_flag_off (override on W, plan stays on)
+  insert into workspace_plan_overrides (workspace_id, feature_overrides)
+    values (v_ws, '{"feature_agenda": false}')
+    on conflict (workspace_id) do update
+      set feature_overrides = coalesce(workspace_plan_overrides.feature_overrides, '{}'::jsonb) || excluded.feature_overrides;
+  v_err := pg_temp.svc(null, format('select * from public.agenda_evento_criar_as(%L, %L, true, %L::jsonb, ''{}''::uuid[])', v_ws, v_owner, pg_temp.pl()));
+  assert v_err = 'feature_disabled:feature_agenda', 'criar_as_flag_off: ' || coalesce(v_err, 'ok');
+  v_err := pg_temp.svc(null, format('select public.agenda_evento_editar_as(%L, %L, true, %s, ''todas'', ''{"titulo":"x"}''::jsonb)', v_ws, v_owner, pg_temp.oc1(e_a)));
+  assert v_err = 'feature_disabled:feature_agenda', 'editar_as_flag_off: ' || coalesce(v_err, 'ok');
+  v_err := pg_temp.svc(null, format('select public.agenda_evento_excluir_as(%L, %L, true, %s, ''todas'')', v_ws, v_owner, pg_temp.oc1(e_a)));
+  assert v_err = 'feature_disabled:feature_agenda', 'excluir_as_flag_off: ' || coalesce(v_err, 'ok');
+end $$;
+
 rollback;

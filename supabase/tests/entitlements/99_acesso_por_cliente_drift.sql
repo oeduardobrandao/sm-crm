@@ -280,7 +280,9 @@ begin
   -- ---------------------------------------------------------------------------
   -- context_fn_covers_own_tables
   -- o corpo da regra vive no núcleo; can_see_cliente_context(bigint) só delega (20261212000001)
-  assert pg_get_functiondef('public.can_see_cliente_context(bigint)'::regprocedure) ~ '\m_can_see_cliente_context_core\M',
+  -- a chamada em si (prosrc), não só o nome em qualquer lugar do texto
+  assert (select p.prosrc from pg_proc p where p.oid = 'public.can_see_cliente_context(bigint)'::regprocedure)
+           ~ 'public\._can_see_cliente_context_core\(',
     'context_fn_delegates_to_core';
   v_ctx_src := pg_get_functiondef('public._can_see_cliente_context_core(uuid, uuid, bigint)'::regprocedure);
   select coalesce(array_agg(t order by t), '{}') into v_fail_ctx
