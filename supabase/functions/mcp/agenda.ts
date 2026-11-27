@@ -15,6 +15,14 @@ export const AGENDA_MASKED_TITLE = "Ocupado";
 
 const NOT_FOUND = "Evento não encontrado.";
 const NOT_EDITABLE = "Você não pode editar este evento.";
+/** Mesma cópia que `agendaFail` produz para o erro do banco `agenda: evento privado indisponível nesta conexão`. */
+const PRIVATE_UNAVAILABLE = "evento privado indisponível nesta conexão";
+const WINDOW_COPY = "Use um período de no máximo 100 dias entre from e to.";
+const MAX_WINDOW_MS = 100 * 24 * 60 * 60 * 1000;
+export const AGENDA_LIST_CAP = 500;
+const TRUNCATED_NOTE = `Mostrando os primeiros ${AGENDA_LIST_CAP} eventos; use um período menor.`;
+const UNREGISTERED_PARTICIPANT =
+  "Este evento tem participante sem cadastro na equipe; edite os participantes pelo CRM.";
 const WALL_CLOCK_COPY = "Use data e hora no formato YYYY-MM-DDTHH:MM";
 const DATE_COPY = "Use datas no formato YYYY-MM-DD";
 
@@ -405,22 +413,44 @@ async function readOccurrence(d: Deps, occurrenceId: number): Promise<any> {
 export async function listAgendaEvents(
   d: Deps,
   a: { from: string; to: string; client_id?: number },
-): Promise<{ events: AgendaOccurrence[]; note?: string }> {
+): Promise<{ events: AgendaOccurrence[]; note?: string; truncated?: true }> {
   const de = windowBound(a.from, false);
   const ate = windowBound(a.to, true);
+  // Mesma regra do RPC ('agenda: período inválido'), com uma mensagem que diz o que fazer.
+  const span = Date.parse(ate) - Date.parse(de);
+  if (!(span > 0) || span > MAX_WINDOW_MS) throw new McpInputError(WINDOW_COPY);
   const data = await rpcAs(d, "agenda_listar_as", { p_de: de, p_ate: ate, p_ocorrencia_id: null });
   let rows = (data ?? []) as any[];
   if (rows.length === 0 && !(await agendaEnabled(d))) return { events: [], note: AGENDA_FLAG_OFF };
   // Linha mascarada sai de propósito no filtro por cliente: o cliente dela é oculto para o ator.
   if (a.client_id != null) rows = rows.filter((r) => !r.mascarado && Number(r.cliente_id) === Number(a.client_id));
+  const truncated = rows.length > AGENDA_LIST_CAP;
+  if (truncated) rows = rows.slice(0, AGENDA_LIST_CAP);
   const people = await loadPeople(d, rows);
-  return { events: rows.map((r) => formatOcorrencia(r, people)) };
+  const events = rows.map((r) => formatOcorrencia(r, people));
+  return truncated ? { events, truncated: true, note: TRUNCATED_NOTE } : { events };
 }
 
 export async function getAgendaEvent(d: Deps, a: { occurrence_id: number }): Promise<{ event: AgendaOccurrence }> {
   const row = await readOccurrence(d, a.occurrence_id);
   const people = await loadPeople(d, [row]);
   return { event: formatOcorrencia(row, people) };
+}
+
+/** Só na criação: mensal sem modo vira `dia_mes`; semanal sem dias usa o dia da semana do início
+ * (no fuso do evento, já que `inicio_local` é hora local), na codificação do banco (`extract(dow)`,
+ * 0 = domingo). Na edição nada é preenchido: o erro do banco segue. */
+function applyCreateRecurrenceDefaults(evento: Record<string, unknown>): void {
+  const regra = evento.regra as Record<string, unknown> | null | undefined;
+  if (!regra) return;
+  if (regra.freq === "monthly" && regra.mensal_modo == null) regra.mensal_modo = "dia_mes";
+  if (regra.freq === "weekly" && (regra.dias_semana == null || (regra.dias_semana as unknown[]).length === 0)) {
+    const ini = typeof evento.inicio_local === "string" ? evento.inicio_local.slice(0, 10) : null;
+    if (ini && DATE_RE.test(ini)) {
+      const [y, m, dd] = ini.split("-").map(Number);
+      regra.dias_semana = [new Date(Date.UTC(y, m - 1, dd)).getUTCDay()];
+    }
+  }
 }
 
 export async function createAgendaEvent(
@@ -433,6 +463,7 @@ export async function createAgendaEvent(
     tz: a.timezone ?? AGENDA_DEFAULT_TZ,
     isUpdate: false,
   });
+  applyCreateRecurrenceDefaults(evento);
   const participantes = participantesMemberIds ? await resolveParticipants(d, participantesMemberIds) : [];
   const data = await rpcAs(d, "agenda_evento_criar_as", { p_evento: evento, p_participantes: participantes });
   const row = (Array.isArray(data) ? data[0] : data) as any;
@@ -448,6 +479,7 @@ export async function updateAgendaEvent(
   const escopo = AGENDA_SCOPE[a.scope];
   if (!escopo) throw new McpInputError("Escopo inválido. Use this, this_and_following ou all.");
   const current = await readOccurrence(d, a.occurrence_id);
+  if (current.mascarado && current.privado && !agendaPrivados(d.ctx)) throw new McpInputError(PRIVATE_UNAVAILABLE);
   if (current.mascarado || current.pode_editar !== true) throw new McpInputError(NOT_EDITABLE);
   const { occurrence_id: _o, scope: _s, timezone: _tz, ...rest } = a;
   // Trocar o par (start/end <-> start_date/end_date) troca o modo; o RPC só aceita a troca com dia_inteiro.
@@ -460,6 +492,19 @@ export async function updateAgendaEvent(
     isUpdate: true,
   });
   const participantes = participantesMemberIds ? await resolveParticipants(d, participantesMemberIds) : null;
+  if (participantes) {
+    // A lista enviada SUBSTITUI a atual (agenda_definir_participantes remove quem ficou de fora, com
+    // a resposta). Quem não tem cadastro em `membros` não pode ser reenviado por member_id, então
+    // recusamos em vez de removê-lo em silêncio. O organizador é sempre mantido pelo banco.
+    const people = await loadPeople(d, [current]);
+    const keep = new Set(participantes);
+    const orphan = ((current.participantes ?? []) as any[]).some((p) => {
+      const uid = p?.user_id ? String(p.user_id) : null;
+      if (!uid || uid === String(current.organizador_id ?? "")) return false;
+      return (people.get(uid)?.member_id ?? null) === null && !keep.has(uid);
+    });
+    if (orphan) throw new McpInputError(UNREGISTERED_PARTICIPANT);
+  }
   const data = await rpcAs(d, "agenda_evento_editar_as", {
     p_ocorrencia_id: a.occurrence_id,
     p_escopo: escopo,

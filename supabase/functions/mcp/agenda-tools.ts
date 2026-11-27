@@ -21,13 +21,8 @@ const RECURRENCE = z.object({
   count: z.number().int().positive().nullable().optional(),
 });
 
-/** Campos de texto livre: nunca vão para o audit_log. */
-const FREE_TEXT = new Set(["title", "description", "location", "meeting_link"]);
 const NOT_AUDITED_FIELDS = new Set(["occurrence_id", "scope"]);
 
-function changedFields(a: Record<string, unknown>): string[] {
-  return Object.keys(a).filter((k) => a[k] !== undefined && !NOT_AUDITED_FIELDS.has(k) && !FREE_TEXT.has(k));
-}
 /** Nomes de todos os campos alterados, inclusive os de texto livre (o nome não é o conteúdo). */
 function allChangedNames(a: Record<string, unknown>): string[] {
   return Object.keys(a).filter((k) => a[k] !== undefined && !NOT_AUDITED_FIELDS.has(k));
@@ -35,14 +30,14 @@ function allChangedNames(a: Record<string, unknown>): string[] {
 
 const WRITE_SHAPE = {
   description: z.string().max(5000).nullable().optional(),
-  location: z.string().max(500).nullable().optional(),
+  location: z.string().max(300).nullable().optional(),
   meeting_link: z.string().max(500).nullable().optional(),
   type: EVENT_TYPE.optional(),
   color: EVENT_COLOR.nullable().optional(),
   client_id: z.number().int().positive().nullable().optional(),
   share_with_client: z.boolean().optional(),
   private: z.boolean().optional(),
-  reminders: z.array(z.number().int().min(0)).max(5).nullable().optional(),
+  reminders: z.array(z.number().int().min(-1440).max(40320)).max(5).nullable().optional(),
   all_day: z.boolean().optional(),
   start: z.string().optional(),
   end: z.string().optional(),
@@ -54,7 +49,7 @@ const WRITE_SHAPE = {
 
 export function registerAgendaTools(server: any, deps: Deps): void {
   register(server, deps, "list_agenda_events", "agenda:read",
-    "Lista os eventos da Agenda do workspace entre from e to (YYYY-MM-DD ou data e hora; as duas pontas são inclusivas). Filtro opcional por client_id (ids vêm de list_clients). Cada item traz occurrence_id (use em get, update e delete), horário no fuso do evento e participantes. Eventos privados de uma chave de API aparecem como \"Ocupado\" e eventos recorrentes aparecem uma vez por ocorrência.",
+    "Lista os eventos da Agenda do workspace entre from e to (YYYY-MM-DD ou data e hora; as duas pontas são inclusivas). Filtro opcional por client_id (ids vêm de list_clients). O período tem no máximo 100 dias e a resposta traz até 500 ocorrências (acima disso vem truncated: true). Cada item traz occurrence_id (use em get, update e delete), start e end em UTC (ISO), start_date e end_date como datas locais no fuso do evento (end_date inclusivo) e participantes. Eventos privados de uma chave de API aparecem como \"Ocupado\" e eventos recorrentes aparecem uma vez por ocorrência.",
     {
       from: z.string(),
       to: z.string(),
@@ -64,13 +59,13 @@ export function registerAgendaTools(server: any, deps: Deps): void {
     (a, r) => ({ from: a.from, to: a.to, client_id: a.client_id, count: r?.events?.length ?? 0 }));
 
   register(server, deps, "get_agenda_event", "agenda:read",
-    "Devolve uma ocorrência da Agenda pelo occurrence_id (vem de list_agenda_events), com horário no fuso do evento, recorrência e participantes. Evento privado de uma chave de API volta como \"Ocupado\".",
+    "Devolve uma ocorrência da Agenda pelo occurrence_id (vem de list_agenda_events), com start e end em UTC (ISO), start_date e end_date como datas locais no fuso do evento, recorrência e participantes (member_id de cada um). Evento privado de uma chave de API volta como \"Ocupado\".",
     { occurrence_id: OCCURRENCE_ID },
     (a) => getAgendaEvent(deps, a),
     (a) => ({ occurrence_id: a.occurrence_id }));
 
   register(server, deps, "create_agenda_event", "agenda:write",
-    "Cria um evento na Agenda. Com horário, start e end são a hora local YYYY-MM-DDTHH:MM no fuso do evento (segundos são aceitos; um instante ISO com Z ou offset é convertido para esse fuso), e timezone é o nome IANA (padrão America/Sao_Paulo). Dia inteiro usa start_date e end_date YYYY-MM-DD, os dois inclusivos. client_id vem de list_clients e participant_member_ids de list_members; recurrence cria uma série. Devolve event_id e occurrence_id.",
+    "Cria um evento na Agenda. Com horário, start e end são a hora local YYYY-MM-DDTHH:MM no fuso do evento (segundos são aceitos; um instante ISO com Z ou offset é convertido para esse fuso), e timezone é o nome IANA (padrão America/Sao_Paulo). Dia inteiro usa start_date e end_date YYYY-MM-DD, os dois inclusivos. client_id vem de list_clients e participant_member_ids de list_members; recurrence cria uma série (weekly sem weekdays usa o dia da semana do início; monthly sem monthly_mode usa dia_mes; weekdays 0 = domingo). reminders são minutos antes do início (até 5); em evento de dia inteiro contam a partir de 00:00 do primeiro dia, e negativo é durante esse dia (-540 = no dia às 9h). Devolve event_id e occurrence_id.",
     {
       title: z.string().min(1).max(200),
       timezone: z.string().max(64).optional(),
@@ -85,7 +80,7 @@ export function registerAgendaTools(server: any, deps: Deps): void {
     }));
 
   register(server, deps, "update_agenda_event", "agenda:write",
-    "Edita um evento da Agenda a partir do occurrence_id (de list_agenda_events); só os campos enviados mudam. scope diz o que editar: this (só esta ocorrência), this_and_following ou all (a série toda). Para mudar o horário envie start e end juntos (hora local YYYY-MM-DDTHH:MM no fuso do evento) ou start_date e end_date juntos (dia inteiro, inclusivos). Não há timezone na edição: o fuso da série é fixo desde a criação.",
+    "Edita um evento da Agenda a partir do occurrence_id (de list_agenda_events); só os campos enviados mudam. scope diz o que editar: this (só esta ocorrência), this_and_following ou all (a série toda). Para mudar o horário envie start e end juntos (hora local YYYY-MM-DDTHH:MM no fuso do evento) ou start_date e end_date juntos (dia inteiro, inclusivos). Não há timezone na edição: o fuso da série é fixo desde a criação. reminders são minutos antes do início (até 5); em evento de dia inteiro contam a partir de 00:00 do primeiro dia, e negativo é durante esse dia (-540 = no dia às 9h). participant_member_ids SUBSTITUI a lista inteira de participantes (quem ficar de fora é removido, com a resposta): envie a lista completa, com os member_id atuais vindos de get_agenda_event.",
     {
       occurrence_id: OCCURRENCE_ID,
       scope: SCOPE,

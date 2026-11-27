@@ -512,7 +512,10 @@ Deno.test("updateAgendaEvent: switching to all-day sends dia_inteiro", async () 
 
 Deno.test("updateAgendaEvent: participants replaced when given", async () => {
   const { db, calls } = makeFakeDb({
-    membros: [{ data: [{ id: 4, nome: "Ana", crm_user_id: "u4" }], error: null }],
+    membros: [
+      { data: [{ id: 4, nome: "Ana", crm_user_id: "u4" }], error: null },
+      { data: [{ id: 1, nome: "Org", crm_user_id: "user-1" }, { id: 2, nome: "Beto", crm_user_id: "user-2" }], error: null },
+    ],
   }, {
     agenda_listar_as: [{ data: [row()], error: null }],
     agenda_evento_editar_as: [{ data: 10, error: null }],
@@ -564,4 +567,117 @@ Deno.test("agendaFail: anything else rethrown as is (generic)", () => {
     return;
   }
   throw new Error("did not throw");
+});
+
+// ---- final-review wave -------------------------------------------------------------------------
+
+Deno.test("listAgendaEvents: window over 100 days or inverted is refused before the RPC", async () => {
+  for (const [from, to] of [["2026-01-01", "2026-06-01"], ["2026-12-10", "2026-12-01"]]) {
+    const { db, calls } = makeFakeDb({});
+    await assertRejects(
+      () => listAgendaEvents(makeDeps(db), { from, to }),
+      McpInputError,
+      "Use um período de no máximo 100 dias entre from e to.",
+    );
+    assert(!calls.some((c) => c.table === "rpc:agenda_listar_as"));
+  }
+});
+
+Deno.test("listAgendaEvents: 100 days exactly is accepted", async () => {
+  const { db, calls } = makeFakeDb({}, { agenda_listar_as: [{ data: [row()], error: null }] });
+  await listAgendaEvents(makeDeps(db), { from: "2026-01-01", to: "2026-04-10" });
+  assert(calls.some((c) => c.table === "rpc:agenda_listar_as"));
+});
+
+Deno.test("listAgendaEvents: caps at 500 with truncated and a note", async () => {
+  const many = Array.from({ length: 501 }, (_, i) => row({ ocorrencia_id: i + 1 }));
+  const { db } = makeFakeDb({}, { agenda_listar_as: [{ data: many, error: null }] });
+  const out = await listAgendaEvents(makeDeps(db), { from: "2026-12-01", to: "2026-12-10" });
+  assertEquals(out.events.length, 500);
+  assertEquals(out.truncated, true);
+  assertEquals(out.note, "Mostrando os primeiros 500 eventos; use um período menor.");
+  const { db: db2 } = makeFakeDb({}, { agenda_listar_as: [{ data: many.slice(0, 500), error: null }] });
+  const out2 = await listAgendaEvents(makeDeps(db2), { from: "2026-12-01", to: "2026-12-10" });
+  assertEquals(out2.truncated, undefined);
+});
+
+Deno.test("createAgendaEvent: weekly without weekdays uses the start weekday (0 = domingo)", async () => {
+  const { db, calls } = makeFakeDb({}, {
+    agenda_evento_criar_as: [{ data: [{ evento_id: 1, ocorrencia_id: 2 }], error: null }],
+  });
+  // 2026-12-03 is a Thursday (dow 4); the Z instant is 2026-12-03T23:30 local, still Thursday in SP
+  await createAgendaEvent(makeDeps(db), {
+    title: "R", start: "2026-12-04T02:30:00Z", end: "2026-12-04T03:30:00Z", recurrence: { freq: "weekly" },
+  });
+  assertEquals((rpcArgs(calls, "agenda_evento_criar_as")!.p_evento as Record<string, unknown>).regra, { freq: "weekly", dias_semana: [4] });
+});
+
+Deno.test("createAgendaEvent: monthly without mode defaults to dia_mes", async () => {
+  const { db, calls } = makeFakeDb({}, {
+    agenda_evento_criar_as: [{ data: [{ evento_id: 1, ocorrencia_id: 2 }], error: null }],
+  });
+  await createAgendaEvent(makeDeps(db), {
+    title: "R", all_day: true, start_date: "2026-12-06", end_date: "2026-12-06", recurrence: { freq: "monthly" },
+  });
+  assertEquals((rpcArgs(calls, "agenda_evento_criar_as")!.p_evento as Record<string, unknown>).regra, { freq: "monthly", mensal_modo: "dia_mes" });
+});
+
+Deno.test("updateAgendaEvent: recurrence is not defaulted on update", async () => {
+  const { db, calls } = makeFakeDb({}, {
+    agenda_listar_as: [{ data: [row()], error: null }],
+    agenda_evento_editar_as: [{ data: 10, error: null }],
+  });
+  await updateAgendaEvent(makeDeps(db), { occurrence_id: 10, scope: "all", recurrence: { freq: "weekly" } });
+  assertEquals((rpcArgs(calls, "agenda_evento_editar_as")!.p_evento as Record<string, unknown>).regra, { freq: "weekly" });
+});
+
+Deno.test("updateAgendaEvent: participant without membros row not in the new list is refused", async () => {
+  const { db, calls } = makeFakeDb({
+    membros: [
+      { data: [{ id: 4, nome: "Ana", crm_user_id: "u4" }], error: null }, // resolveParticipants
+      { data: [{ id: 1, nome: "Org", crm_user_id: "user-1" }], error: null }, // loadPeople
+    ],
+    profiles: [{ data: [{ id: "user-9", nome: "Sem cadastro" }], error: null }],
+  }, {
+    agenda_listar_as: [{
+      data: [row({ participantes: [{ user_id: "user-1", resposta: "sim" }, { user_id: "user-9", resposta: "sim" }] })],
+      error: null,
+    }],
+  });
+  await assertRejects(
+    () => updateAgendaEvent(makeDeps(db), { occurrence_id: 10, scope: "all", participant_member_ids: [4] }),
+    McpInputError,
+    "Este evento tem participante sem cadastro na equipe; edite os participantes pelo CRM.",
+  );
+  assert(!calls.some((c) => c.table === "rpc:agenda_evento_editar_as"));
+});
+
+Deno.test("updateAgendaEvent: participants with membros rows can be replaced; organizer ignored", async () => {
+  const { db, calls } = makeFakeDb({
+    membros: [
+      { data: [{ id: 4, nome: "Ana", crm_user_id: "u4" }], error: null },
+      { data: [{ id: 5, nome: "Beto", crm_user_id: "user-2" }], error: null },
+    ],
+    profiles: [{ data: [{ id: "user-1", nome: "Org sem cadastro" }], error: null }],
+  }, {
+    agenda_listar_as: [{
+      data: [row({ participantes: [{ user_id: "user-1", resposta: "sim" }, { user_id: "user-2", resposta: "sim" }] })],
+      error: null,
+    }],
+    agenda_evento_editar_as: [{ data: 10, error: null }],
+  });
+  await updateAgendaEvent(makeDeps(db), { occurrence_id: 10, scope: "all", participant_member_ids: [4] });
+  assertEquals(rpcArgs(calls, "agenda_evento_editar_as")!.p_participantes, ["u4"]);
+});
+
+Deno.test("updateAgendaEvent: masked private event over an API key gives the private copy", async () => {
+  const { db } = makeFakeDb({}, {
+    agenda_listar_as: [{ data: [row({ mascarado: true, privado: true })], error: null }],
+  });
+  const e = await assertRejects(
+    () => updateAgendaEvent(makeDeps(db, { key_id: "mesaas_sk_1" }), { occurrence_id: 10, scope: "this", title: "x" }),
+    McpInputError,
+  );
+  const mapped = assertThrows(() => agendaFail({ message: "agenda: evento privado indisponível nesta conexão" }));
+  assertEquals(e.message, mapped.message);
 });
