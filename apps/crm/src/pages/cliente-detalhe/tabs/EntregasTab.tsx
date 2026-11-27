@@ -71,6 +71,7 @@ import { PhoneEmptyCard } from '../phone/PhoneRows';
 import { useClientePhoneHeader } from '../phone/ClientePhoneChrome';
 import type { ClienteDetalheOutletContext } from '../clienteTabs.model';
 import { compactHubToken } from '@/lib/hubLinks';
+import { useIntlLocale } from '@mesaas/i18n';
 
 interface WorkflowWithEtapas {
   workflow: Workflow;
@@ -186,9 +187,9 @@ const EMPTY_COUNTS: Map<number, number> = new Map();
 export default function EntregasTab() {
   const { clienteId, cliente } = useOutletContext<ClienteDetalheOutletContext>();
   const queryClient = useQueryClient();
-  const { t, i18n } = useTranslation('clients');
+  const { t } = useTranslation('clients');
   const { t: tc } = useTranslation();
-  const dateLocale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
+  const dateLocale = useIntlLocale();
 
   const isPhone = !useIsDesktop(768);
   const fluxosRailRef = useRef<HTMLDivElement>(null);

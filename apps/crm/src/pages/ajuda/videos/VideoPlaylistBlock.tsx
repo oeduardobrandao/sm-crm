@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { PlayCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { KbVideo, KbVideoSeries } from '@/store/kbVideos';
@@ -36,6 +37,7 @@ export function VideoPlaylistBlock({
   onVideoChange,
   onFirstPlay,
 }: VideoPlaylistBlockProps) {
+  const { t } = useTranslation('help');
   const [selection, setSelection] = useState<PlaylistSelection | null>(() =>
     pickInitial(series, progress, requestedSlug),
   );
@@ -94,22 +96,20 @@ export function VideoPlaylistBlock({
   if (collapsed) {
     return (
       <section
-        aria-label="Tutoriais em vídeo"
+        aria-label={t('video.tutorials')}
         className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)] px-5 py-3.5"
       >
         <div className="flex items-center gap-3">
           <PlayCircle aria-hidden className="h-5 w-5 text-[var(--text-light)]" />
           <div>
             <p className="text-[0.9rem] font-semibold text-[var(--text-main)]">
-              Tutoriais em vídeo
+              {t('video.tutorials')}
             </p>
-            <p className="text-[0.78rem] text-[var(--text-light)]">
-              Você já assistiu todos os vídeos.
-            </p>
+            <p className="text-[0.78rem] text-[var(--text-light)]">{t('video.allWatched')}</p>
           </div>
         </div>
         <Button variant="outline" size="sm" onClick={() => setCollapsed(false)}>
-          Rever
+          {t('video.review')}
         </Button>
       </section>
     );
@@ -117,7 +117,7 @@ export function VideoPlaylistBlock({
 
   return (
     <section
-      aria-label="Tutoriais em vídeo"
+      aria-label={t('video.tutorials')}
       className="grid gap-5 min-[901px]:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]"
     >
       <VideoStage

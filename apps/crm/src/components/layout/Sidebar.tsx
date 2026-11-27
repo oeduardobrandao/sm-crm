@@ -71,7 +71,7 @@ export default function Sidebar({
   const { user, profile, signOut, workspaceRole, can } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const { t, i18n } = useTranslation();
+  const { t, i18n } = useTranslation(['common', 'shell']);
   const { features: rawFeatures, planName } = useWorkspaceLimits();
   const features = useEffectiveNavFeatures(rawFeatures as Record<string, boolean> | null);
   const mensagensUnread = useMensagensUnread();
@@ -330,8 +330,8 @@ export default function Sidebar({
       className="sidebar-pin-btn"
       onClick={() => setRailOpen((v) => !v)}
       aria-expanded={railOpen}
-      aria-label={railOpen ? 'Fechar menu lateral' : 'Abrir menu lateral'}
-      title={railOpen ? 'Fechar menu lateral' : 'Abrir menu lateral'}
+      aria-label={railOpen ? t('shell:sidebar.close') : t('shell:sidebar.open')}
+      title={railOpen ? t('shell:sidebar.close') : t('shell:sidebar.open')}
     >
       <i className="ph ph-sidebar-simple" />
     </button>
@@ -341,8 +341,8 @@ export default function Sidebar({
       className="sidebar-pin-btn"
       onClick={onTogglePinned}
       aria-pressed={pinned}
-      aria-label={pinned ? 'Recolher menu lateral' : 'Fixar menu lateral aberto'}
-      title={pinned ? 'Recolher menu lateral' : 'Fixar menu lateral aberto'}
+      aria-label={pinned ? t('shell:sidebar.collapse') : t('shell:sidebar.pinOpen')}
+      title={pinned ? t('shell:sidebar.collapse') : t('shell:sidebar.pinOpen')}
     >
       <i className="ph ph-sidebar-simple" />
     </button>
@@ -366,7 +366,7 @@ export default function Sidebar({
               <Link
                 to="/dashboard"
                 className="vidro-sidebar-logo"
-                aria-label="Mesaas, ir para o início"
+                aria-label={t('shell:sidebar.home')}
               >
                 <img
                   className="vidro-sidebar-wordmark"

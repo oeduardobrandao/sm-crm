@@ -1,6 +1,7 @@
 import { useRef, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { useTranslation } from 'react-i18next';
 import remarkGfm from 'remark-gfm';
 import { useBanners } from '../../hooks/useBanners';
 import { sanitizeUrl } from '../../utils/security';
@@ -49,6 +50,7 @@ interface GlobalBannerContainerProps {
 }
 
 export default function GlobalBannerContainer({ children }: GlobalBannerContainerProps) {
+  const { t } = useTranslation('shell');
   const { banners: allBanners, dismiss } = useBanners();
   const banners = isNativeApp() ? allBanners.filter((b) => !sellsInNativeApp(b)) : allBanners;
   const containerRef = useRef<HTMLDivElement>(null);
@@ -124,7 +126,7 @@ export default function GlobalBannerContainer({ children }: GlobalBannerContaine
                   e.stopPropagation();
                   dismiss(b.id);
                 }}
-                aria-label="Dispensar aviso"
+                aria-label={t('banner.dismiss')}
               >
                 ×
               </button>

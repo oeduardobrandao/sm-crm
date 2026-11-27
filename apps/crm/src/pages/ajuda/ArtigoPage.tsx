@@ -1,5 +1,7 @@
 import { useEffect, useMemo, type ReactNode } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { getIntlLocale } from '@mesaas/i18n';
 import { useQuery } from '@tanstack/react-query';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -24,7 +26,7 @@ import { GroupedList } from '@/components/mobile/GroupedList';
 import { ArticleCell } from './phone/AjudaPhone';
 import { ArticleTocButton } from './phone/ArticleTocButton';
 import './phone/ajudaPhone.css';
-import { CATEGORY_LABELS, ALL_CATEGORIES } from './categoryConfig';
+import { ALL_CATEGORIES, categoryLabel } from './categoryConfig';
 import { ArticleCard } from './components/ArticleCard';
 import { useRecordArticleView } from './useRecordKbView';
 import { ArticleVideos } from './videos/ArticleVideos';
@@ -36,6 +38,7 @@ function readingTime(plainText: string): number {
 const dummyUpload = async () => ({ r2Key: '', src: '', width: 0, height: 0 });
 
 export default function ArtigoPage() {
+  const { t } = useTranslation('help');
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
   const isPhone = !useIsDesktop(768);
@@ -133,7 +136,7 @@ export default function ArtigoPage() {
   const coverSrc = coverIsR2 ? resolvedCover || null : rawCover;
 
   const phoneNav = (trailing?: ReactNode) => (
-    <PhoneNavBar backLabel="Voltar para Central de Ajuda" fallbackTo="/ajuda" trailing={trailing} />
+    <PhoneNavBar backLabel={t('backToHelp')} fallbackTo="/ajuda" trailing={trailing} />
   );
 
   if (isLoading) {
@@ -153,16 +156,16 @@ export default function ArtigoPage() {
       return (
         <div className="phone-kit">
           {phoneNav()}
-          <p className="phone-ajuda-empty">Artigo não encontrado.</p>
+          <p className="phone-ajuda-empty">{t('article.notFound')}</p>
         </div>
       );
     }
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-4">
-        <p className="text-[var(--text-light)]">Artigo não encontrado.</p>
+        <p className="text-[var(--text-light)]">{t('article.notFound')}</p>
         <Link to="/ajuda">
           <Button variant="outline" size="sm">
-            Voltar
+            {t('back')}
           </Button>
         </Link>
       </div>
@@ -170,7 +173,7 @@ export default function ArtigoPage() {
   }
 
   const minutes = readingTime(article.content_plain);
-  const categoryLabel = CATEGORY_LABELS[article.category] ?? article.category;
+  const categoryText = categoryLabel(t, article.category);
 
   if (isPhone) {
     return (
@@ -180,18 +183,18 @@ export default function ArtigoPage() {
           <p className="phone-ajuda-meta">
             {ALL_CATEGORIES.includes(article.category) ? (
               <Link to={`/ajuda/secao/${encodeURIComponent(article.category)}`}>
-                {categoryLabel}
+                {categoryText}
               </Link>
             ) : (
-              <span>{categoryLabel}</span>
+              <span>{categoryText}</span>
             )}
             <span aria-hidden="true">·</span>
             <span className="inline-flex items-center gap-1">
               <Clock className="h-3 w-3" aria-hidden="true" />
-              {minutes} min de leitura
+              {t('article.readMinutes', { minutes })}
             </span>
             <span aria-hidden="true">·</span>
-            <span>{new Date(article.created_at).toLocaleDateString('pt-BR')}</span>
+            <span>{new Date(article.created_at).toLocaleDateString(getIntlLocale())}</span>
           </p>
           <h1 className="phone-ajuda-title">{article.title}</h1>
         </div>
@@ -204,7 +207,7 @@ export default function ArtigoPage() {
           />
         </article>
         {relatedArticles.length > 0 && (
-          <GroupedList header="Artigos relacionados">
+          <GroupedList header={t('article.related')}>
             {relatedArticles.map((a) => (
               <ArticleCell key={a.id} article={a} />
             ))}
@@ -222,7 +225,7 @@ export default function ArtigoPage() {
           className="inline-flex items-center gap-1.5 hover:text-[var(--text-main)] transition-colors"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
-          Central de Ajuda
+          {t('title')}
         </Link>
         {ALL_CATEGORIES.includes(article.category) && (
           <>
@@ -231,7 +234,7 @@ export default function ArtigoPage() {
               to={`/ajuda/secao/${encodeURIComponent(article.category)}`}
               className="hover:text-[var(--text-main)] transition-colors"
             >
-              {CATEGORY_LABELS[article.category] ?? article.category}
+              {categoryText}
             </Link>
           </>
         )}
@@ -246,14 +249,14 @@ export default function ArtigoPage() {
       <div className="mb-6">
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <span className="inline-block rounded-sm px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wider bg-[rgba(234,179,8,0.1)] text-[var(--primary-color)]">
-            {categoryLabel}
+            {categoryText}
           </span>
           <span className="flex items-center gap-1 text-[0.72rem] text-[var(--text-light)]">
             <Clock className="h-3 w-3" />
-            {minutes} min de leitura
+            {t('article.readMinutes', { minutes })}
           </span>
           <span className="text-[0.72rem] text-[var(--text-light)]">
-            {new Date(article.created_at).toLocaleDateString('pt-BR')}
+            {new Date(article.created_at).toLocaleDateString(getIntlLocale())}
           </span>
         </div>
         <h1 className="font-[var(--font-heading)] text-[clamp(1.8rem,3.5vw,2.6rem)] font-black tracking-tight text-[var(--text-main)]">
@@ -275,7 +278,7 @@ export default function ArtigoPage() {
       {relatedArticles.length > 0 && (
         <div className="mt-12 border-t border-[var(--border-color)] pt-8">
           <h2 className="mb-4 text-[1.1rem] font-bold text-[var(--text-main)]">
-            Artigos relacionados
+            {t('article.related')}
           </h2>
           <div
             className="grid gap-5"

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Bell, CheckCheck, Filter } from 'lucide-react';
 import { ListSkeleton } from '@/components/ui/skeletons';
 import type { Notification } from '../../store';
@@ -26,6 +27,7 @@ export default function NotificationPopover({
   onNavigate,
   onClose,
 }: NotificationPopoverProps) {
+  const { t } = useTranslation('shell');
   const [filter, setFilter] = useState<FilterMode>('all');
   const vidro = useVidroShell();
   const visible = filter === 'unread' ? notifications.filter((n) => !n.read_at) : notifications;
@@ -38,7 +40,7 @@ export default function NotificationPopover({
   return (
     <div
       role="dialog"
-      aria-label="Notificações"
+      aria-label={t('notifications.title')}
       // Under Vidro the bell's PopoverContent carries the menu glass (overlays.css); keeping this
       // card's own surface would draw a second frame inside it.
       style={{
@@ -68,13 +70,15 @@ export default function NotificationPopover({
         }}
       >
         <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-main)' }}>
-          Notificações
+          {t('notifications.title')}
         </span>
         <span style={{ display: 'flex', gap: '0.25rem' }}>
           <button
             type="button"
             onClick={() => setFilter(filter === 'all' ? 'unread' : 'all')}
-            aria-label={filter === 'all' ? 'Apenas não lidas' : 'Mostrar todas'}
+            aria-label={
+              filter === 'all' ? t('notifications.onlyUnread') : t('notifications.showAll')
+            }
             style={iconButtonStyle(filter === 'unread')}
           >
             <Filter size={16} />
@@ -82,7 +86,7 @@ export default function NotificationPopover({
           <button
             type="button"
             onClick={onMarkAllAsRead}
-            aria-label="Marcar todas como lidas"
+            aria-label={t('notifications.markAllRead')}
             style={iconButtonStyle(false)}
           >
             <CheckCheck size={16} />
@@ -122,7 +126,7 @@ export default function NotificationPopover({
             opacity: 0.6,
           }}
         >
-          Ver todas
+          {t('notifications.viewAll')}
         </button>
       </footer>
     </div>
@@ -145,6 +149,7 @@ function iconButtonStyle(active: boolean): React.CSSProperties {
 }
 
 function EmptyState() {
+  const { t } = useTranslation('shell');
   return (
     <div
       style={{
@@ -171,10 +176,10 @@ function EmptyState() {
         <Bell size={20} />
       </span>
       <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)' }}>
-        Nenhuma notificação
+        {t('notifications.empty')}
       </span>
       <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', maxWidth: 240 }}>
-        Notificações sobre sua conta e atividades aparecerão aqui
+        {t('notifications.emptyHint')}
       </span>
     </div>
   );

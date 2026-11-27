@@ -84,7 +84,10 @@
     "no": "No",
     "search": "Search",
     "importCsv": "Import CSV",
-    "back": "Back"
+    "back": "Back",
+    "closeSearch": "Close search",
+    "noResults": "No results",
+    "openInstagram": "Open on Instagram"
   },
   "status": {
     "ativo": "Active",
@@ -282,7 +285,8 @@
   },
   "plan": {
     "limitReached": "Plan limit reached.",
-    "csvLocked": "CSV import is not available on your plan."
+    "csvLocked": "CSV import is not available on your plan.",
+    "limitReachedTitle": "Plan limit reached"
   },
   "optional": "(optional)",
   "usage": {
@@ -290,7 +294,8 @@
     "ofLabel": "{{used}} of {{limit}} {{label}}",
     "notIncluded": "Not included in your plan",
     "unlimited": "Unlimited",
-    "upgrade": "Upgrade"
+    "upgrade": "Upgrade",
+    "planUsageAria": "Plan usage: {{label}}"
   },
   "paywall": {
     "notAvailable": "{{label}} is not available on your plan.",
@@ -327,5 +332,42 @@
     "pushOffTitle": "Notifications are off on this iPhone",
     "pushOffEnable": "Turn on",
     "pushOffSettings": "Open Settings"
+  },
+  "notFound": {
+    "documentTitle": "Page not found | Mesaas",
+    "title": "Page not found",
+    "body": "The address you visited doesn't exist or has moved.",
+    "home": "Go to the homepage",
+    "login": "Log in to Mesaas"
+  },
+  "gate": {
+    "reportsAnalytics": "Reports & Analytics",
+    "postScheduling": "Post Scheduling",
+    "csvImport": "CSV Import"
+  },
+  "incident": {
+    "lead": "Workspace access instability:",
+    "body": "some users saw the error \"We could not confirm your access\". The fix is live. If the error shows up, reload the page.",
+    "dismiss": "Dismiss notice"
+  },
+  "queryError": {
+    "title": "We couldn't load the data.",
+    "description": "Check your connection and try again.",
+    "retry": "Try again"
+  },
+  "mediaUnavailable": "Media unavailable",
+  "copyPostLink": {
+    "label": "Copy post link",
+    "copied": "Link copied!",
+    "failed": "We couldn't copy the link."
+  },
+  "platformChips": {
+    "soon": "coming soon",
+    "pickOne": "Pick at least one platform.",
+    "generalHint": "General is content to download, with no automatic publishing."
+  },
+  "entity": {
+    "moreActions": "More actions for {{title}}",
+    "more": "More"
   }
 }

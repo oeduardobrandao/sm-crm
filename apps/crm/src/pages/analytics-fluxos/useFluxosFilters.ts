@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import i18n from 'i18next';
 
 /**
  * Page state for Analytics de Fluxos, kept in the URL so a filtered view is
@@ -11,12 +12,15 @@ export type Periodo = '7d' | '30d' | '90d' | 'tudo';
 
 export const PERIODO_DEFAULT: Periodo = '30d';
 
-export const PERIODOS: { value: Periodo; label: string }[] = [
-  { value: '7d', label: '7d' },
-  { value: '30d', label: '30d' },
-  { value: '90d', label: '90d' },
-  { value: 'tudo', label: 'Tudo' },
-];
+const PERIODO_VALUES: Periodo[] = ['7d', '30d', '90d', 'tudo'];
+
+/** The period options with their labels in the current UI language. */
+export function getPeriodos(): { value: Periodo; label: string }[] {
+  return PERIODO_VALUES.map((value) => ({
+    value,
+    label: value === 'tudo' ? i18n.t('analyticsFlows:period.all') : value,
+  }));
+}
 
 const PERIODO_DIAS: Record<Exclude<Periodo, 'tudo'>, number> = {
   '7d': 7,
@@ -60,8 +64,8 @@ export interface FluxosFilters {
 }
 
 function parsePeriodo(raw: string | null): Periodo {
-  const match = PERIODOS.find((p) => p.value === raw);
-  return match ? match.value : PERIODO_DEFAULT;
+  const match = PERIODO_VALUES.find((value) => value === raw);
+  return match ?? PERIODO_DEFAULT;
 }
 
 function parseId(raw: string | null): number | null {

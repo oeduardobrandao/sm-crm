@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { CONTENT_FORMAT_LABELS } from '@mesaas/platforms';
 import { MonthGrid } from '@/components/ui/month-grid';
 import type { WorkflowPost } from '@/store';
+import { useIntlLocale } from '@mesaas/i18n';
 
 /** One scheduled post plotted on the client's delivery calendar. */
 export interface PostCalendarEvent {
@@ -111,9 +112,9 @@ export function ClientePostCalendar({
   onPostStatusUpdate,
   onOpenPost,
 }: ClientePostCalendarProps) {
-  const { t, i18n } = useTranslation('clients');
+  const { t } = useTranslation('clients');
   const { t: tc } = useTranslation();
-  const dateLocale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
+  const dateLocale = useIntlLocale();
 
   if (events.length === 0) return null;
 

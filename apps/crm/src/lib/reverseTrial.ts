@@ -6,6 +6,8 @@
  * only goes down as time passes and `last_day` is exactly "the end is today in São Paulo".
  */
 
+import { getIntlLocale } from '@mesaas/i18n';
+
 export type ReverseTrialOutcome = 'converted' | 'downgraded' | 'ended_by_admin';
 
 export interface ReverseTrialState {
@@ -65,15 +67,13 @@ export function daysLeftLabel(n: number): string {
   return n === 1 ? '1 dia' : `${n} dias`;
 }
 
-const longDateFormatter = new Intl.DateTimeFormat('pt-BR', {
-  timeZone: REVERSE_TRIAL_TIME_ZONE,
-  day: 'numeric',
-  month: 'long',
-});
-
-/** "8 de dezembro", in São Paulo. */
+/** "8 de dezembro" (pt) / "December 8" (en), in São Paulo. Built per call so it follows the UI language. */
 export function formatTrialDate(value: string | Date): string {
-  return longDateFormatter.format(typeof value === 'string' ? new Date(value) : value);
+  return new Intl.DateTimeFormat(getIntlLocale(), {
+    timeZone: REVERSE_TRIAL_TIME_ZONE,
+    day: 'numeric',
+    month: 'long',
+  }).format(typeof value === 'string' ? new Date(value) : value);
 }
 
 const hourFormatter = new Intl.DateTimeFormat('en-GB', {

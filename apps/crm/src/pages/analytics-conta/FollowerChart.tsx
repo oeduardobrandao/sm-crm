@@ -7,6 +7,8 @@ import {
   type KeyboardEvent,
   type PointerEvent,
 } from 'react';
+import { useTranslation } from 'react-i18next';
+import { getIntlLocale } from '@mesaas/i18n';
 import { Badge } from '@/components/ui/badge';
 
 // Follower history as a smooth area line: total + period delta on top, a hover
@@ -18,23 +20,7 @@ const PAD_TOP = 14;
 const PAD_BOTTOM = 10;
 const PAD_X = 10;
 const TIP_W = 184;
-const MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-const MONTHS_LONG = [
-  'janeiro',
-  'fevereiro',
-  'março',
-  'abril',
-  'maio',
-  'junho',
-  'julho',
-  'agosto',
-  'setembro',
-  'outubro',
-  'novembro',
-  'dezembro',
-];
-
-const fmt = (n: number) => n.toLocaleString('pt-BR');
+const fmt = (n: number) => n.toLocaleString(getIntlLocale());
 const signed = (n: number) => `${n >= 0 ? '+' : ''}${fmt(n)}`;
 
 // 'YYYY-MM-DD' read as a calendar day, never through Date (UTC midnight would
@@ -74,13 +60,15 @@ export function FollowerChart({
   history,
   postDates,
   color = '#E1306C',
-  emptyText = 'Dados insuficientes. O histórico é construído diariamente.',
+  emptyText: emptyTextProp,
 }: {
   history: any[];
   postDates: any[];
   color?: string;
   emptyText?: string;
 }) {
+  const { t } = useTranslation('analyticsAccount');
+  const emptyText = emptyTextProp ?? t('fc.empty');
   const gradientId = useId();
   const plotRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(800);
@@ -172,15 +160,17 @@ export function FollowerChart({
         <Badge variant={total >= 0 ? 'success' : 'danger'}>{signed(total)}</Badge>
         <span className="fc-pct">
           {pct >= 0 ? '+' : ''}
-          {pct.toFixed(1).replace('.', ',')}% no período
+          {t('fc.pctPeriod', {
+            pct: getIntlLocale() === 'en-US' ? pct.toFixed(1) : pct.toFixed(1).replace('.', ','),
+          })}
         </span>
       </div>
 
       <div className="fc-body">
         <div className="fc-yaxis" aria-hidden="true">
-          {ticks.map((t) => (
-            <span key={t} style={{ top: y(t) - 7 }}>
-              {fmt(t)}
+          {ticks.map((tick) => (
+            <span key={tick} style={{ top: y(tick) - 7 }}>
+              {fmt(tick)}
             </span>
           ))}
         </div>
@@ -190,7 +180,7 @@ export function FollowerChart({
             className="fc-plot"
             tabIndex={0}
             role="img"
-            aria-label={`Seguidores de ${fmt(first)} a ${fmt(last)} no período. Use as setas para ver cada dia.`}
+            aria-label={t('fc.ariaLabel', { first: fmt(first), last: fmt(last) })}
             onPointerMove={pickFromPointer}
             onPointerDown={pickFromPointer}
             onPointerLeave={() => setHover(null)}
@@ -244,18 +234,21 @@ export function FollowerChart({
                 }}
               >
                 <span className="fc-tip-date">
-                  {apDay.day} de {MONTHS_LONG[apDay.month]}
+                  {t('fc.tipDate', {
+                    day: apDay.day,
+                    month: t(`fc.monthLong.${apDay.month + 1}`),
+                  })}
                 </span>
-                <span className="fc-tip-value">{fmt(ap.value)} seguidores</span>
+                <span className="fc-tip-value">{t('fc.tipValue', { value: fmt(ap.value) })}</span>
                 {ap.delta != null && (
                   <span className={`fc-tip-delta ${ap.delta >= 0 ? 'is-up' : 'is-down'}`}>
-                    {signed(ap.delta)} no dia
+                    {t('fc.tipDelta', { delta: signed(ap.delta) })}
                   </span>
                 )}
                 {ap.posts > 0 && (
                   <span className="fc-tip-post">
                     <span className="fc-ring" style={{ borderColor: color }} />
-                    {ap.posts === 1 ? '1 post publicado' : `${ap.posts} posts publicados`}
+                    {t('fc.tipPost', { count: ap.posts })}
                   </span>
                 )}
               </div>
@@ -266,7 +259,7 @@ export function FollowerChart({
               const d = parseDay(points[i].day);
               return (
                 <span key={i} style={{ left: coords[i][0] - 30 }}>
-                  {d.day} {MONTHS[d.month]}
+                  {t('fc.axisDay', { day: d.day, month: t(`fc.monthShort.${d.month + 1}`) })}
                 </span>
               );
             })}
@@ -277,7 +270,7 @@ export function FollowerChart({
       {points.some((p) => p.posts > 0) && (
         <div className="fc-legend">
           <span className="fc-ring" style={{ borderColor: color }} />
-          Dia com post publicado
+          {t('fc.legend')}
         </div>
       )}
     </div>

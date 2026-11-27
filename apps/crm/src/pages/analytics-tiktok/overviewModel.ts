@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { enUS, ptBR } from 'date-fns/locale';
+import { getIntlLocale } from '@mesaas/i18n';
 import type { TFunction } from 'i18next';
 import type {
   TikTokPortfolio,
@@ -20,20 +21,22 @@ export interface SyncResult {
 }
 
 export function syncSummary(t: TFn, r: SyncResult): string {
-  const ok = t('overview.syncResult', { count: r.success });
+  const ok = t('analyticsTiktok:overview.syncResult', { count: r.success });
   return r.failed > 0
-    ? `${ok}, ${t('overview.syncFailedList', { count: r.failed, names: r.failedNames.join(', ') })}`
+    ? `${ok}, ${t('analyticsTiktok:overview.syncFailedList', { count: r.failed, names: r.failedNames.join(', ') })}`
     : ok;
 }
 
 const DAY_MS = 86_400_000;
 
 export const formatNumber = (n: number | null | undefined): string =>
-  (n ?? 0).toLocaleString('pt-BR');
+  (n ?? 0).toLocaleString(getIntlLocale());
 
 /** A rate in percent; null (no views) reads "—", never 0%. */
 export const formatPct = (v: number | null | undefined): string =>
-  v === null || v === undefined ? '—' : `${v.toFixed(2).replace('.', ',')}%`;
+  v === null || v === undefined
+    ? '—'
+    : `${getIntlLocale() === 'en-US' ? v.toFixed(2) : v.toFixed(2).replace('.', ',')}%`;
 
 export function formatDay(iso: string | null, language: string): string {
   if (!iso) return '—';

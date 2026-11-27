@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Instagram } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { sanitizeUrl } from '@/utils/security';
@@ -19,14 +20,15 @@ export function InstagramLinkButton({
   shape?: 'round' | 'square';
   className?: string;
 }) {
+  const { t } = useTranslation();
   if (!hasInstagramLink(permalink)) return null;
   return (
     <a
       href={sanitizeUrl(permalink as string)}
       target="_blank"
       rel="noopener noreferrer"
-      aria-label="Abrir no Instagram"
-      title="Abrir no Instagram"
+      aria-label={t('actions.openInstagram')}
+      title={t('actions.openInstagram')}
       onClick={(e) => e.stopPropagation()}
       className={cn(
         'inline-flex shrink-0 items-center justify-center border border-[var(--border-color)] bg-[var(--surface-1)] text-[var(--text-muted)] transition-colors hover:text-[var(--text-main)]',

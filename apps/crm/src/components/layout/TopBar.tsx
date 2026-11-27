@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import GlobalSearchTrigger from './GlobalSearchTrigger';
 import TopBarActions from './TopBarActions';
 import NavigationProgress from './NavigationProgress';
@@ -9,6 +10,7 @@ interface TopBarProps {
 }
 
 export default function TopBar({ onHamburgerClick, showHamburger, isDrawerOpen }: TopBarProps) {
+  const { t } = useTranslation('shell');
   return (
     <header className="topbar">
       <div className="topbar-left">
@@ -17,7 +19,7 @@ export default function TopBar({ onHamburgerClick, showHamburger, isDrawerOpen }
             type="button"
             className="topbar-action-btn"
             onClick={onHamburgerClick}
-            aria-label={isDrawerOpen ? 'Fechar menu' : 'Abrir menu'}
+            aria-label={isDrawerOpen ? t('mobileNav.closeMenu') : t('mobileNav.openMenu')}
           >
             <i className="ph ph-list" style={{ fontSize: '1.2rem' }} />
           </button>

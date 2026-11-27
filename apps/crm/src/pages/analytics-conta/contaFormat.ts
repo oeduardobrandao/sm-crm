@@ -1,3 +1,5 @@
+import i18n from 'i18next';
+import { getIntlLocale } from '@mesaas/i18n';
 import type { StatDelta } from '@/components/StatCard';
 import { makeDelta, type BestPostingTimes } from '../../services/analytics';
 import {
@@ -11,21 +13,7 @@ import {
 /** "2026-09" → "Set 2026" (legacy monthly reports). */
 export function formatReportMonth(month: string): string {
   const [y, m] = month.split('-');
-  const months = [
-    'Jan',
-    'Fev',
-    'Mar',
-    'Abr',
-    'Mai',
-    'Jun',
-    'Jul',
-    'Ago',
-    'Set',
-    'Out',
-    'Nov',
-    'Dez',
-  ];
-  return `${months[parseInt(m) - 1]} ${y}`;
+  return `${i18n.t(`analyticsAccount:format.month.${parseInt(m)}`)} ${y}`;
 }
 
 /** Cards that render via StatCard directly: the KpiDelta → StatDelta mapping KpiCard does. */
@@ -35,7 +23,11 @@ export function toStatDelta(
 ): StatDelta | undefined {
   if (current == null || previous == null) return undefined;
   const { direction, deltaPercent } = makeDelta(current, previous);
-  return { direction, percent: deltaPercent, caption: 'vs período anterior' };
+  return {
+    direction,
+    percent: deltaPercent,
+    caption: i18n.t('analyticsAccount:format.vsPrevious'),
+  };
 }
 
 export const BEST_TIME_BUCKET_STARTS = [0, 3, 6, 9, 12, 15, 18, 21];
@@ -74,16 +66,35 @@ export const GOOD_ENGAGEMENT_RATE = 3;
 export function formatMediaType(type: string): string {
   switch (type) {
     case 'VIDEO':
-      return 'Reel';
     case 'CAROUSEL_ALBUM':
-      return 'Carrossel';
     case 'IMAGE':
-      return 'Imagem';
     case 'STORY':
-      return 'Story';
+      return i18n.t(`analyticsAccount:mediaType.${type}`);
     default:
       return type;
   }
+}
+
+/** Weekday label from the API ("Seg", "Sáb"...): Portuguese stays as sent, English is translated. */
+export function dayShort(label: string): string {
+  if (getIntlLocale() !== 'en-US') return label;
+  return i18n.t(`analyticsAccount:days.short.${dayKey(label)}`, { defaultValue: label });
+}
+
+/** Full weekday name for an API weekday label ("Sab" or "Sáb" → "Sábado" / "Saturday"). */
+export function dayFull(label: string): string {
+  return i18n.t(`analyticsAccount:days.full.${dayKey(label)}`, { defaultValue: label });
+}
+
+function dayKey(label: string): string {
+  return label.replace('á', 'a');
+}
+
+/** Hour label from the API ("14h"): Portuguese stays as sent, English reads "14:00". */
+export function hourText(label: string): string {
+  if (getIntlLocale() !== 'en-US') return label;
+  const n = parseInt(label, 10);
+  return Number.isNaN(n) ? label : i18n.t('analyticsAccount:hm.hour', { h: n });
 }
 
 export function mediaAccentColor(type: string): string {
@@ -99,37 +110,49 @@ export function mediaAccentColor(type: string): string {
   }
 }
 
-const PUBLISHED_AT_FORMAT = new Intl.DateTimeFormat('pt-BR', {
-  timeZone: 'America/Sao_Paulo',
-  day: '2-digit',
-  month: 'short',
-  hour: '2-digit',
-  minute: '2-digit',
-  hourCycle: 'h23',
-});
+function publishedAtFormat(): Intl.DateTimeFormat {
+  const en = getIntlLocale() === 'en-US';
+  return new Intl.DateTimeFormat(getIntlLocale(), {
+    timeZone: 'America/Sao_Paulo',
+    day: en ? 'numeric' : '2-digit',
+    month: 'short',
+    hour: en ? 'numeric' : '2-digit',
+    minute: '2-digit',
+    ...(en ? { hour12: true } : { hourCycle: 'h23' as const }),
+  });
+}
 
 /** "21 de nov. às 18:02", always in São Paulo time. */
 export function formatPublishedDateTime(iso: string): string {
   const parts = Object.fromEntries(
-    PUBLISHED_AT_FORMAT.formatToParts(new Date(iso)).map((p) => [p.type, p.value]),
+    publishedAtFormat()
+      .formatToParts(new Date(iso))
+      .map((p) => [p.type, p.value]),
   );
-  return `${parts.day} de ${parts.month} às ${parts.hour}:${parts.minute}`;
+  const time = parts.dayPeriod
+    ? `${parts.hour}:${parts.minute} ${parts.dayPeriod}`
+    : `${parts.hour}:${parts.minute}`;
+  return i18n.t('analyticsAccount:format.publishedDateTime', {
+    day: parts.day,
+    month: parts.month,
+    time,
+  });
 }
 
 /** "Publicado em 21 de nov. às 18:02", always in São Paulo time. */
 export function formatPublishedAt(iso: string): string {
-  return `Publicado em ${formatPublishedDateTime(iso)}`;
+  return i18n.t('analyticsAccount:format.publishedAt', { when: formatPublishedDateTime(iso) });
 }
 
 /** "Atualizado há 2 h"; null when the post was never synced. */
 export function formatSyncedAgo(iso: string | null, now: Date = new Date()): string | null {
   if (!iso) return null;
   const minutes = Math.max(0, Math.floor((now.getTime() - new Date(iso).getTime()) / 60000));
-  if (minutes < 1) return 'Atualizado agora';
-  if (minutes < 60) return `Atualizado há ${minutes} min`;
+  if (minutes < 1) return i18n.t('analyticsAccount:format.syncedNow');
+  if (minutes < 60) return i18n.t('analyticsAccount:format.syncedMinutes', { count: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 48) return `Atualizado há ${hours} h`;
-  return `Atualizado há ${Math.floor(hours / 24)} dias`;
+  if (hours < 48) return i18n.t('analyticsAccount:format.syncedHours', { count: hours });
+  return i18n.t('analyticsAccount:format.syncedDays', { count: Math.floor(hours / 24) });
 }
 
 /**

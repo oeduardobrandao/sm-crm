@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { ArrowLeft } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SkeletonStatus } from '@/components/ui/skeletons';
@@ -13,14 +14,15 @@ import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
 import './phone/ajudaPhone.css';
 
 function BackToAjuda() {
+  const { t } = useTranslation('help');
   const isPhone = !useIsDesktop(768);
   if (isPhone) {
     return (
       <PhoneNavBar
         className="phone-ajuda-video-nav"
-        title="Tutoriais em vídeo"
+        title={t('video.tutorials')}
         titleAs="span"
-        backLabel="Voltar para Central de Ajuda"
+        backLabel={t('backToHelp')}
         fallbackTo="/ajuda"
       />
     );
@@ -31,12 +33,13 @@ function BackToAjuda() {
       className="inline-flex items-center gap-1.5 text-[0.82rem] text-[var(--text-light)] transition-colors hover:text-[var(--text-main)]"
     >
       <ArrowLeft className="h-3.5 w-3.5" />
-      Central de Ajuda
+      {t('title')}
     </Link>
   );
 }
 
 export default function VideoPage() {
+  const { t } = useTranslation('help');
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
   const isPhone = !useIsDesktop(768);
@@ -51,11 +54,11 @@ export default function VideoPage() {
   // Same capture+restore as EntregasPage: nothing else sets the tab title for this route.
   useEffect(() => {
     const previousTitle = document.title;
-    document.title = `${video ? video.title : 'Vídeo'} | Mesaas`;
+    document.title = `${video ? video.title : t('video.titleFallback')} | Mesaas`;
     return () => {
       document.title = previousTitle;
     };
-  }, [video]);
+  }, [video, t]);
 
   // Keep the URL shareable as the user moves through the playlist.
   const handleVideoChange = (current: KbVideo) => {
@@ -99,10 +102,10 @@ export default function VideoPage() {
       <>
         {isPhone && <BackToAjuda />}
         <div className="flex flex-col items-center justify-center gap-4 py-20">
-          <p className="text-[var(--text-light)]">Vídeo não encontrado.</p>
+          <p className="text-[var(--text-light)]">{t('video.notFound')}</p>
           <Link to="/ajuda">
             <Button variant="outline" size="sm">
-              Voltar à Central de Ajuda
+              {t('backToHelpShort')}
             </Button>
           </Link>
         </div>

@@ -30,7 +30,8 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { format, isValid, parseISO } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import i18n from 'i18next';
+import { getDateFnsLocale } from '@mesaas/i18n';
 import type { NotificationType } from '../store';
 import { STATUS_LABELS } from '../pages/entregas/postLabels';
 import { formatStorageBytes } from '../components/usage/usage-meter-state';
@@ -55,6 +56,11 @@ export const NOTIFICATION_TONE_COLOR: Record<Tone, string> = {
 
 export const NOTIFICATION_FALLBACK_ICON: LucideIcon = Bell;
 
+/** Texts live in the `notifications` namespace and are resolved at call time, so a language
+ * switch shows up the next time the list renders. */
+const tr = (key: string, opts?: Record<string, unknown>): string =>
+  i18n.t(`notifications:${key}`, opts) as string;
+
 const s = (v: unknown, fallback: string): string =>
   typeof v === 'string' && v.length > 0 ? v : fallback;
 
@@ -70,7 +76,7 @@ function shortQuote(raw: string): string {
  * grouping rules live in the spec, section "Notificações"
  * (docs/superpowers/specs/2026-10-22-discussao-do-post-design.md). */
 function postDiscussionDisplay(m: Record<string, unknown>): NotificationDisplay {
-  const author = s(m.author_name, 'Alguém');
+  const author = s(m.author_name, tr('fallback.someone'));
   // Distinct names other than the latest author, so the count is right whether or not the
   // trigger keeps the latest author inside `authors`.
   const others = Array.isArray(m.authors)
@@ -82,17 +88,19 @@ function postDiscussionDisplay(m: Record<string, unknown>): NotificationDisplay 
   const quoted = typeof m.quoted_text === 'string' ? shortQuote(m.quoted_text) : '';
   const anchored = s(m.thread_field, 'geral') !== 'geral' && quoted.length > 0;
 
-  const who =
-    others > 0 ? `${author} e mais ${others} ${others === 1 ? 'pessoa' : 'pessoas'}` : author;
+  const who = others > 0 ? tr('discussion.andOthers', { author, count: others }) : author;
   const title = anchored
-    ? `${who} ${others > 0 ? 'responderam' : 'respondeu'} no trecho “${quoted}”`
-    : `${who} ${others > 0 ? 'escreveram' : 'escreveu'} na discussão de ${s(m.post_titulo, 'um post')}`;
+    ? tr(others > 0 ? 'discussion.anchoredMany' : 'discussion.anchoredOne', { who, quote: quoted })
+    : tr(others > 0 ? 'discussion.generalMany' : 'discussion.generalOne', {
+        who,
+        post: s(m.post_titulo, tr('fallback.aPost')),
+      });
 
   // An anchored title names the passage, not the post, so the body carries the post title.
   const postTitle = anchored ? s(m.post_titulo, '') : '';
   const rawPreview = stripMentionTokens(s(m.preview, ''));
   const preview = postTitle ? (rawPreview ? `${postTitle}: ${rawPreview}` : postTitle) : rawPreview;
-  const countLabel = count > 1 ? `${count} mensagens` : '';
+  const countLabel = count > 1 ? tr('discussion.messages', { count }) : '';
   return {
     icon: MessagesSquare,
     tone: 'teal',
@@ -105,75 +113,63 @@ function postDiscussionDisplay(m: Record<string, unknown>): NotificationDisplay 
  * `count` (docs/superpowers/specs/2026-10-28-tarefas-kpis-comentarios-historico-design.md). */
 function taskCommentDisplay(m: Record<string, unknown>): NotificationDisplay {
   const count = typeof m.count === 'number' && Number.isFinite(m.count) ? m.count : 1;
-  const task = s(m.task_title, 'uma tarefa');
+  const task = s(m.task_title, tr('fallback.aTask'));
   // The title names the task, so the body names who wrote (the RPC keeps the latest author).
   const author = s(m.author_name, '');
   const preview = stripMentionTokens(s(m.preview, ''));
   return {
     icon: MessageCircle,
     tone: 'teal',
-    title: count > 1 ? `${count} novos comentários em ${task}` : `Novo comentário em ${task}`,
+    title:
+      count > 1
+        ? tr('titles.taskCommentMany', { count, task })
+        : tr('titles.taskCommentOne', { task }),
     body: author && preview ? `${author}: ${preview}` : author || preview,
   };
 }
 
-/** "seg., 5 de out., 14:00" (all-day: no time). Shown in the viewer's timezone. */
+/** pt "seg., 5 de out., 14:00" / en "Mon, Oct 5, 2:00 PM" (all-day: no time). Shown in the
+ * viewer's timezone. The pattern per language lives in `notifications:eventWhen`. */
 function formatEventWhen(m: Record<string, unknown>): string {
   const allDay = m.dia_inteiro === true;
   const raw = allDay ? m.data_local : m.inicio;
   const d = typeof raw === 'string' ? parseISO(raw) : null;
   if (!d || !isValid(d)) return '';
-  // EEEEEE is the short weekday ("seg"); EEE would give "segunda" in the ptBR locale.
-  return format(d, allDay ? "EEEEEE'.,' d 'de' MMM'.'" : "EEEEEE'.,' d 'de' MMM'.,' HH:mm", {
-    locale: ptBR,
+  return format(d, tr(allDay ? 'eventWhen.allDay' : 'eventWhen.timed'), {
+    locale: getDateFnsLocale(),
   });
 }
 
 /** Reminder lead prefix. `minutos` = minutes before start (negative = after). */
 function reminderPrefix(m: Record<string, unknown>): string {
   const min = typeof m.minutos === 'number' ? m.minutos : null;
-  if (min === null) return 'Lembrete';
+  if (min === null) return tr('reminder.plain');
   const days = Math.ceil(min / 1440);
   if (m.dia_inteiro === true) {
-    if (min <= 0) return 'Hoje';
-    return days === 1 ? 'Amanhã' : `Em ${days} dias`;
+    if (min <= 0) return tr('reminder.today');
+    return days === 1 ? tr('reminder.tomorrow') : tr('reminder.inDays', { count: days });
   }
-  if (min <= 0) return 'Agora';
-  if (min >= 1440) return days === 1 ? 'Amanhã' : `Em ${days} dias`;
-  if (min >= 60 && min % 60 === 0) {
-    const h = min / 60;
-    return `Em ${h} ${h === 1 ? 'hora' : 'horas'}`;
-  }
-  return `Em ${min} ${min === 1 ? 'minuto' : 'minutos'}`;
+  if (min <= 0) return tr('reminder.now');
+  if (min >= 1440)
+    return days === 1 ? tr('reminder.tomorrow') : tr('reminder.inDays', { count: days });
+  if (min >= 60 && min % 60 === 0) return tr('reminder.inHours', { count: min / 60 });
+  return tr('reminder.inMinutes', { count: min });
 }
 
 /** "{titulo} · {data}" (date omitted when unknown). */
 function eventBody(m: Record<string, unknown>): string {
   const when = formatEventWhen(m);
-  const title = s(m.titulo, 'Evento');
+  const title = s(m.titulo, tr('fallback.event'));
   return when ? `${title} · ${when}` : title;
 }
 
-const MESES = [
-  'janeiro',
-  'fevereiro',
-  'março',
-  'abril',
-  'maio',
-  'junho',
-  'julho',
-  'agosto',
-  'setembro',
-  'outubro',
-  'novembro',
-  'dezembro',
-];
-
-/** Lowercase pt-BR month of a 'YYYY-MM-DD' (or 'YYYY-MM') string, read from the text so a
- * local timezone can never shift it. Empty when the value is not a valid month. */
+/** Lowercase month name of a 'YYYY-MM-DD' (or 'YYYY-MM') string in the UI language, read from
+ * the text so a local timezone can never shift it. Empty when the value is not a valid month. */
 function monthName(periodo: unknown): string {
   const mm = typeof periodo === 'string' ? /^\d{4}-(\d{2})/.exec(periodo) : null;
-  return (mm && MESES[Number(mm[1]) - 1]) || '';
+  const n = mm ? Number(mm[1]) : 0;
+  if (n < 1 || n > 12) return '';
+  return format(new Date(2000, n - 1, 1), 'LLLL', { locale: getDateFnsLocale() });
 }
 
 /**
@@ -184,87 +180,100 @@ function linhaEditorialDisplay(
   type: 'linha_editorial_aprovada' | 'linha_editorial_ajustes',
   m: Record<string, unknown>,
 ): NotificationDisplay {
-  const quem = s(m.cliente_nome, 'Cliente');
+  const who = s(m.cliente_nome, tr('fallback.client'));
   const mes = monthName(m.periodo);
   // Reference form (spec §14.2): the custom title in curly quotes, else the month.
   const titulo = typeof m.titulo === 'string' ? m.titulo.trim() : '';
-  const ref = titulo ? `linha editorial “${titulo}”` : `linha editorial${mes ? ` de ${mes}` : ''}`;
+  const ref = titulo
+    ? tr('linha.refTitled', { titulo })
+    : mes
+      ? tr('linha.refMonth', { month: mes })
+      : tr('linha.ref');
   const n = typeof m.comentarios === 'number' && Number.isFinite(m.comentarios) ? m.comentarios : 0;
-  const comentarios = n > 0 ? `${n} ${n === 1 ? 'comentário' : 'comentários'}` : '';
+  const comentarios = n > 0 ? tr('linha.comments', { count: n }) : '';
   const ajustes =
     typeof m.itens_ajustes === 'number' && Number.isFinite(m.itens_ajustes) ? m.itens_ajustes : 0;
   const body =
     type === 'linha_editorial_ajustes' && ajustes > 0
-      ? `${ajustes} ${ajustes === 1 ? 'post' : 'posts'} com ajuste`
+      ? tr('linha.postsWithAdjust', { count: ajustes })
       : comentarios;
   return type === 'linha_editorial_aprovada'
     ? {
         icon: CheckCircle,
         tone: 'success',
-        title: `${quem} aprovou a ${ref}`,
+        title: tr('linha.approved', { who, ref }),
         body,
       }
     : {
         icon: AlertTriangle,
         tone: 'warning',
-        title: `${quem} pediu ajustes na ${ref}`,
+        title: tr('linha.adjustments', { who, ref }),
         body,
       };
 }
 
-const RSVP_LABELS: Record<string, string> = { sim: 'Sim', nao: 'Não', talvez: 'Talvez' };
+const RSVP_KEYS = ['sim', 'nao', 'talvez'];
+
+/** "{who} confirmou/recusou/respondeu a {title}" for the client and guest RSVP cards. */
+function rsvpTitle(resposta: unknown, who: string, title: string): string {
+  if (resposta === 'sim') return tr('titles.rsvpConfirmed', { who, title });
+  if (resposta === 'nao') return tr('titles.rsvpDeclined', { who, title });
+  return tr('titles.rsvpResponded', { who, title });
+}
 
 export function getNotificationDisplay(
   type: NotificationType,
   metadata: Record<string, unknown> | null | undefined,
 ): NotificationDisplay {
   const m = metadata ?? {};
-  const client = s(m.client_name, 'Cliente');
-  const post = s(m.post_title, 'Post');
-  const idea = s(m.idea_title, 'Ideia');
-  const wf = s(m.workflow_title, 'Workflow');
-  const step = s(m.step_name, 'Etapa');
-  const question = s(m.question_text, 'Briefing');
-  const userName = s(m.user_name, 'Usuário');
-  const oldRole = s(m.old_role, '—');
-  const newRole = s(m.new_role, '—');
+  const client = s(m.client_name, tr('fallback.client'));
+  const post = s(m.post_title, tr('fallback.post'));
+  const idea = s(m.idea_title, tr('fallback.idea'));
+  const wf = s(m.workflow_title, tr('fallback.workflow'));
+  const step = s(m.step_name, tr('fallback.step'));
+  const question = s(m.question_text, tr('fallback.briefing'));
+  const userName = s(m.user_name, tr('fallback.user'));
+  const oldRole = s(m.old_role, tr('fallback.role'));
+  const newRole = s(m.new_role, tr('fallback.role'));
+  const clientPost = tr('bodies.clientPost', { client, post });
+  const clientWf = tr('bodies.clientWorkflow', { client, workflow: wf });
+  const clientStep = tr('bodies.clientStep', { client, step });
 
   switch (type) {
     case 'post_approved':
       return {
         icon: CheckCircle,
         tone: 'success',
-        title: 'Post aprovado',
-        body: `${client} — ${post}`,
+        title: tr('titles.postApproved'),
+        body: clientPost,
       };
     case 'post_correction':
       return {
         icon: AlertTriangle,
         tone: 'warning',
-        title: 'Correção solicitada',
-        body: `${client} — ${post}`,
+        title: tr('titles.postCorrection'),
+        body: clientPost,
       };
     case 'post_message':
       return {
         icon: MessageSquare,
         tone: 'teal',
-        title: 'Nova mensagem do cliente',
-        body: `${client} — ${post}`,
+        title: tr('titles.clientMessage'),
+        body: clientPost,
       };
     case 'client_message':
       return {
         icon: MessageSquare,
         tone: 'teal',
-        title: 'Nova mensagem do cliente',
+        title: tr('titles.clientMessage'),
         body: `${client}: ${s(m.comentario, '')}`,
       };
     case 'post_edit_suggestion':
       return {
         icon: FilePen,
         tone: 'warning',
-        title:
-          m.updated === true ? 'Sugestão de edição atualizada' : 'Sugestão de edição do cliente',
-        body: `${client} — ${post}`,
+        title: tr(m.updated === true ? 'titles.editSuggestionUpdated' : 'titles.editSuggestion'),
+        body: clientPost,
       };
     case 'post_client_reference':
       // One sentence says it all; the RPC coalesces a burst of uploads into one row, so no
@@ -273,7 +282,7 @@ export function getNotificationDisplay(
       return {
         icon: Paperclip,
         tone: 'teal',
-        title: `${client} enviou referências em ${post}`,
+        title: tr('titles.clientReference', { client, post }),
         body: '',
       };
     case 'post_material_complete': {
@@ -285,8 +294,8 @@ export function getNotificationDisplay(
         tone: 'success',
         title:
           m.closed_by === 'client'
-            ? `${client} enviou o que tinha (${done} de ${total} itens) em ${post}`
-            : `${client} enviou todos os itens pedidos em ${post}`,
+            ? tr('titles.materialCompleteClosed', { client, done, total, post })
+            : tr('titles.materialComplete', { client, post }),
         body: '',
       };
     }
@@ -294,49 +303,50 @@ export function getNotificationDisplay(
       return {
         icon: Lightbulb,
         tone: 'primary',
-        title: m.tipo === 'solicitacao' ? 'Nova solicitação do cliente' : 'Nova ideia do cliente',
-        body: `${client} — ${idea}`,
+        title: tr(m.tipo === 'solicitacao' ? 'titles.ideaRequest' : 'titles.idea'),
+        body: tr('bodies.clientIdea', { client, idea }),
       };
     case 'briefing_answered':
       return {
         icon: ClipboardCheck,
         tone: 'success',
-        title: 'Briefing respondido',
-        body: `${client} — ${question}`,
+        title: tr('titles.briefingAnswered'),
+        body: tr('bodies.clientQuestion', { client, question }),
       };
     case 'step_activated':
       return {
         icon: Play,
         tone: 'teal',
-        title: 'Nova etapa ativada para você',
-        body: `${client} — Etapa "${step}"`,
+        title: tr('titles.stepActivated'),
+        body: clientStep,
       };
     case 'step_completed':
       return {
         icon: CheckSquare,
         tone: 'success',
-        title: 'Etapa concluída',
-        body: `${client} — ${wf}`,
+        title: tr('titles.stepCompleted'),
+        body: clientWf,
       };
     case 'post_assigned':
       return {
         icon: UserPlus,
         tone: 'teal',
-        title: 'Post atribuído a você',
-        body: `${client} — ${post}`,
+        title: tr('titles.postAssigned'),
+        body: clientPost,
       };
     case 'post_status_automation': {
       // status_label carries the custom status nome, or the raw canonical
-      // key when the rule targeted a built-in status — map the latter to
-      // its PT label before display.
+      // key when the rule targeted a built-in status: map the latter to
+      // its localized label before display.
       const rawLabel = s(m.status_label, '');
       const statusLabel =
-        (STATUS_LABELS as Record<string, string>)[rawLabel] ?? (rawLabel || 'novo status');
+        (STATUS_LABELS as Record<string, string>)[rawLabel] ??
+        (rawLabel || tr('fallback.newStatus'));
       return {
         icon: Bell,
         tone: 'teal',
-        title: `Post entrou em ${statusLabel}`,
-        body: m.client_name ? `${client} · ${post}` : post,
+        title: tr('titles.postStatusAutomation', { status: statusLabel }),
+        body: m.client_name ? tr('bodies.clientDot', { client, post }) : post,
       };
     }
     case 'instagram_connected_by_client': {
@@ -344,57 +354,62 @@ export function getNotificationDisplay(
       return {
         icon: Instagram,
         tone: 'success',
-        title: 'Instagram conectado pelo cliente',
+        title: tr('titles.instagramConnected'),
         body: igUser ? `${client} · @${igUser}` : client,
       };
     }
-    case 'task_assigned':
+    case 'task_assigned': {
+      const task = s(m.task_title, tr('fallback.task'));
       return {
         icon: CheckSquare,
         tone: 'teal',
-        title: 'Tarefa atribuída a você',
+        title: tr('titles.taskAssigned'),
         // Tasks may have no client; skip the prefix instead of a wrong fallback.
-        body: m.client_name
-          ? `${client} · ${s(m.task_title, 'Tarefa')}`
-          : s(m.task_title, 'Tarefa'),
+        body: m.client_name ? tr('bodies.clientDotTask', { client, task }) : task,
       };
+    }
     case 'task_comment':
       return taskCommentDisplay(m);
     case 'workflow_completed':
       return {
         icon: Trophy,
         tone: 'primary',
-        title: 'Workflow concluído',
-        body: `${client} — ${wf}`,
+        title: tr('titles.workflowCompleted'),
+        body: clientWf,
       };
     case 'deadline_approaching':
       return {
         icon: Clock,
         tone: 'danger',
-        title: 'Prazo amanhã',
-        body: `${client} — Etapa "${step}"`,
+        title: tr('titles.deadline'),
+        body: clientStep,
       };
     case 'invite_accepted':
       return {
         icon: UserCheck,
         tone: 'success',
-        title: 'Convite aceito',
-        body: `${userName} entrou no workspace`,
+        title: tr('titles.inviteAccepted'),
+        body: tr('bodies.inviteAccepted', { user: userName }),
       };
     case 'member_role_changed':
       return {
         icon: Shield,
         tone: 'warning',
-        title: 'Cargo alterado',
-        body: `${userName}: ${oldRole} → ${newRole}`,
+        title: tr('titles.roleChanged'),
+        body: tr('bodies.roleChange', { user: userName, from: oldRole, to: newRole }),
       };
     case 'member_removed':
-      return { icon: UserMinus, tone: 'danger', title: 'Membro removido', body: userName };
+      return {
+        icon: UserMinus,
+        tone: 'danger',
+        title: tr('titles.memberRemoved'),
+        body: userName,
+      };
     case 'mention':
       return {
         icon: AtSign,
         tone: 'primary',
-        title: `${s(m.actor_name, 'Alguém')} mencionou você`,
+        title: tr('titles.mention', { actor: s(m.actor_name, tr('fallback.someone')) }),
         body: s(m.excerpt, s(m.context_title, '')),
       };
     case 'team_message': {
@@ -403,7 +418,7 @@ export function getNotificationDisplay(
       // quando o title NAO ja o mostra (grupo) -- numa DM o title JA e o
       // autor, entao repeti-lo no body seria redundante.
       const conversaNome = s(m.conversa_nome, '');
-      const authorName = s(m.author_name, 'Equipe');
+      const authorName = s(m.author_name, tr('fallback.team'));
       const preview = stripMentionTokens(s(m.preview, ''));
       return {
         icon: MessageCircle,
@@ -418,8 +433,8 @@ export function getNotificationDisplay(
       return {
         icon: AlertCircle,
         tone: 'danger',
-        title: 'Falha na publicação',
-        body: m.client_name ? `${client} · ${post}` : post,
+        title: tr('titles.publishFailed'),
+        body: m.client_name ? tr('bodies.clientDot', { client, post }) : post,
       };
     case 'instagram_automation_failed': {
       const nome = typeof m.automation_name === 'string' ? m.automation_name : null;
@@ -427,15 +442,15 @@ export function getNotificationDisplay(
         return {
           icon: Instagram,
           tone: 'danger',
-          title: 'Automação do Instagram com problema',
-          body: `${nome ? `${nome}. ` : ''}O post alvo foi marcado como postado sem passar pelo app, então não existe mídia para monitorar. Escolha o post publicado.`,
+          title: tr('titles.instagramAutomation'),
+          body: `${nome ? `${nome}. ` : ''}${tr('instagramAutomation.targetNeverPublished')}`,
         };
       }
       return {
         icon: Instagram,
         tone: 'danger',
-        title: 'Automação do Instagram com problema',
-        body: 'Uma automação de comentários parou de enviar. Reconecte o Instagram do cliente para reativar.',
+        title: tr('titles.instagramAutomation'),
+        body: tr('instagramAutomation.stopped'),
       };
     }
     case 'storage_autoclean_report': {
@@ -444,8 +459,8 @@ export function getNotificationDisplay(
       return {
         icon: HardDrive,
         tone: 'primary',
-        title: 'Limpeza de armazenamento',
-        body: `${filesCount} ${filesCount === 1 ? 'arquivo removido' : 'arquivos removidos'} · ${formatStorageBytes(bytesFreed)} liberados`,
+        title: tr('titles.storageCleanup'),
+        body: tr('storage.body', { count: filesCount, size: formatStorageBytes(bytesFreed) }),
       };
     }
     case 'event_invited': {
@@ -453,7 +468,7 @@ export function getNotificationDisplay(
       return {
         icon: CalendarPlus,
         tone: 'teal',
-        title: actor ? `${actor} convidou você` : 'Novo convite',
+        title: actor ? tr('titles.eventInvitedBy', { actor }) : tr('titles.eventInvited'),
         body: eventBody(m),
       };
     }
@@ -461,53 +476,56 @@ export function getNotificationDisplay(
       return {
         icon: CalendarClock,
         tone: 'warning',
-        title: `Evento alterado: ${s(m.titulo, 'Evento')}`,
+        title: tr('titles.eventUpdated', { title: s(m.titulo, tr('fallback.event')) }),
         body: formatEventWhen(m),
       };
-    case 'event_cancelled':
+    case 'event_cancelled': {
+      const title = s(m.titulo, tr('fallback.event'));
       return {
         icon: CalendarX,
         tone: 'danger',
         title:
           m.motivo === 'removido'
-            ? `Você foi removido de ${s(m.titulo, 'Evento')}`
-            : `Evento cancelado: ${s(m.titulo, 'Evento')}`,
+            ? tr('titles.eventRemoved', { title })
+            : tr('titles.eventCancelled', { title }),
         body: formatEventWhen(m),
       };
+    }
     case 'event_rsvp': {
-      const resposta = RSVP_LABELS[s(m.resposta, '')];
-      const actor = s(m.ator_nome, 'Alguém');
+      const key = s(m.resposta, '');
+      const resposta = RSVP_KEYS.includes(key) ? tr(`rsvp.${key}`) : '';
+      const actor = s(m.ator_nome, tr('fallback.someone'));
       return {
         icon: CalendarCheck,
         tone: m.resposta === 'nao' ? 'warning' : 'success',
-        title: resposta ? `${actor} respondeu: ${resposta}` : `${actor} respondeu ao convite`,
+        title: resposta
+          ? tr('titles.rsvpAnswered', { actor, answer: resposta })
+          : tr('titles.rsvpAnsweredInvite', { actor }),
         body: eventBody(m),
       };
     }
     case 'event_client_rsvp': {
-      const cliente = s(m.cliente_nome, 'O cliente');
-      const titulo = s(m.titulo, 'Evento');
-      const verbo = m.resposta === 'sim' ? 'confirmou' : m.resposta === 'nao' ? 'recusou' : null;
+      const who = s(m.cliente_nome, tr('fallback.theClient'));
+      const title = s(m.titulo, tr('fallback.event'));
       return {
         icon: CalendarCheck,
         tone: m.resposta === 'nao' ? 'warning' : 'success',
-        title: verbo ? `${cliente} ${verbo} ${titulo}` : `${cliente} respondeu a ${titulo}`,
+        title: rsvpTitle(m.resposta, who, title),
         body: formatEventWhen(m),
       };
     }
     case 'event_guest_rsvp': {
-      const quem =
+      const who =
         typeof m.convidado_nome === 'string' && m.convidado_nome.trim()
           ? m.convidado_nome
           : typeof m.convidado_email === 'string' && m.convidado_email
             ? m.convidado_email
-            : 'Um convidado';
-      const titulo = s(m.titulo, 'Evento');
-      const verbo = m.resposta === 'sim' ? 'confirmou' : m.resposta === 'nao' ? 'recusou' : null;
+            : tr('fallback.guest');
+      const title = s(m.titulo, tr('fallback.event'));
       return {
         icon: CalendarCheck,
         tone: m.resposta === 'nao' ? 'warning' : 'success',
-        title: verbo ? `${quem} ${verbo} ${titulo}` : `${quem} respondeu a ${titulo}`,
+        title: rsvpTitle(m.resposta, who, title),
         body: formatEventWhen(m),
       };
     }
@@ -521,15 +539,21 @@ export function getNotificationDisplay(
       return {
         icon: CalendarClock,
         tone: 'warning',
-        title: `${s(m.cliente_nome, 'O cliente')} pediu para remarcar ${s(m.titulo, 'Evento')}`,
-        body: sugestao ? `Sugestão: ${sugestao}` : formatEventWhen(m),
+        title: tr('titles.reschedule', {
+          who: s(m.cliente_nome, tr('fallback.theClient')),
+          title: s(m.titulo, tr('fallback.event')),
+        }),
+        body: sugestao ? tr('bodies.suggestion', { when: sugestao }) : formatEventWhen(m),
       };
     }
     case 'event_reminder':
       return {
         icon: AlarmClock,
         tone: 'primary',
-        title: `${reminderPrefix(m)}: ${s(m.titulo, 'Evento')}`,
+        title: tr('titles.reminder', {
+          prefix: reminderPrefix(m),
+          title: s(m.titulo, tr('fallback.event')),
+        }),
         body: formatEventWhen(m),
       };
     case 'linha_editorial_aprovada':
@@ -538,6 +562,11 @@ export function getNotificationDisplay(
     default:
       // Resilience: a notification type the DB allows but the UI doesn't know yet
       // (e.g. added by a migration ahead of the frontend) must never crash the list.
-      return { icon: NOTIFICATION_FALLBACK_ICON, tone: 'primary', title: 'Notificação', body: '' };
+      return {
+        icon: NOTIFICATION_FALLBACK_ICON,
+        tone: 'primary',
+        title: tr('titles.unknown'),
+        body: '',
+      };
   }
 }

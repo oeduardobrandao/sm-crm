@@ -7,6 +7,7 @@ import { Sparkline } from './Sparkline';
 import { PipelineRow } from './PipelineRow';
 import { ClienteFoto } from '@/components/ClienteFoto';
 import { useCachedClienteFotoUrl } from '@/hooks/useClienteAvatars';
+import { useIntlLocale } from '@mesaas/i18n';
 
 // status → badge background/text tone (uses project CSS vars)
 export const HEALTH_TONE: Record<HealthStatus, { bg: string; fg: string }> = {
@@ -26,8 +27,8 @@ export const HEALTH_TONE: Record<HealthStatus, { bg: string; fg: string }> = {
 const nfmt = (n: number, locale: string) => n.toLocaleString(locale);
 
 export function ClientHealthCard({ client: c }: { client: ClientHealth }) {
-  const { t, i18n } = useTranslation('dashboard');
-  const locale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
+  const { t } = useTranslation('dashboard');
+  const locale = useIntlLocale();
   const { busy, handleConnect, handleSync } = useClientHealthActions(c);
   const tone = HEALTH_TONE[c.status];
 

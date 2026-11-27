@@ -106,6 +106,26 @@ import ptIdeaDrawer from '../packages/i18n/locales/pt/ideaDrawer.json';
 import enMember from '../packages/i18n/locales/en/member.json';
 import enIdeas from '../packages/i18n/locales/en/ideas.json';
 import enIdeaDrawer from '../packages/i18n/locales/en/ideaDrawer.json';
+import ptAnalyticsAccount from '../packages/i18n/locales/pt/analyticsAccount.json';
+import enAnalyticsAccount from '../packages/i18n/locales/en/analyticsAccount.json';
+import ptAnalyticsFlows from '../packages/i18n/locales/pt/analyticsFlows.json';
+import enAnalyticsFlows from '../packages/i18n/locales/en/analyticsFlows.json';
+import ptAnalyticsPhone from '../packages/i18n/locales/pt/analyticsPhone.json';
+import enAnalyticsPhone from '../packages/i18n/locales/en/analyticsPhone.json';
+import ptReportEditor from '../packages/i18n/locales/pt/reportEditor.json';
+import enReportEditor from '../packages/i18n/locales/en/reportEditor.json';
+import ptImportWizard from '../packages/i18n/locales/pt/importWizard.json';
+import enImportWizard from '../packages/i18n/locales/en/importWizard.json';
+import ptContracts from '../packages/i18n/locales/pt/contracts.json';
+import enContracts from '../packages/i18n/locales/en/contracts.json';
+import ptGuide from '../packages/i18n/locales/pt/guide.json';
+import enGuide from '../packages/i18n/locales/en/guide.json';
+import ptHelp from '../packages/i18n/locales/pt/help.json';
+import enHelp from '../packages/i18n/locales/en/help.json';
+import ptShell from '../packages/i18n/locales/pt/shell.json';
+import enShell from '../packages/i18n/locales/en/shell.json';
+import ptNotifications from '../packages/i18n/locales/pt/notifications.json';
+import enNotifications from '../packages/i18n/locales/en/notifications.json';
 
 initI18n({
   pt: {
@@ -156,6 +176,16 @@ initI18n({
     hubMessages: ptHubMessages,
     hubAgenda: ptHubAgenda,
     hubConvite: ptHubConvite,
+    analyticsAccount: ptAnalyticsAccount,
+    analyticsFlows: ptAnalyticsFlows,
+    analyticsPhone: ptAnalyticsPhone,
+    reportEditor: ptReportEditor,
+    importWizard: ptImportWizard,
+    contracts: ptContracts,
+    guide: ptGuide,
+    help: ptHelp,
+    shell: ptShell,
+    notifications: ptNotifications,
   },
   en: {
     common: enCommon,
@@ -205,6 +235,16 @@ initI18n({
     hubMessages: enHubMessages,
     hubAgenda: enHubAgenda,
     hubConvite: enHubConvite,
+    analyticsAccount: enAnalyticsAccount,
+    analyticsFlows: enAnalyticsFlows,
+    analyticsPhone: enAnalyticsPhone,
+    reportEditor: enReportEditor,
+    importWizard: enImportWizard,
+    contracts: enContracts,
+    guide: enGuide,
+    help: enHelp,
+    shell: enShell,
+    notifications: enNotifications,
   },
 });
 

@@ -1,3 +1,5 @@
+import i18n from 'i18next';
+import { getIntlLocale } from '@mesaas/i18n';
 import type { StatDelta } from '@/components/StatCard';
 
 /**
@@ -7,7 +9,9 @@ import type { StatDelta } from '@/components/StatCard';
 
 /** Value shown where a metric has no samples at all. Never a dash: a dash reads
  *  as "zero" to some people and as "loading" to others. */
-export const SEM_DADOS = 'Sem dados';
+export function semDados(): string {
+  return i18n.t('analyticsFlows:format.noData');
+}
 
 /**
  * Below this many rated etapas a pontualidade percentage is noise: one late
@@ -17,13 +21,17 @@ export const SEM_DADOS = 'Sem dados';
 export const MIN_AVALIADAS = 3;
 
 /** What both the table and the export print in place of that unsupported number. */
-export const POUCOS_DADOS = 'Poucos dados';
+export function poucosDados(): string {
+  return i18n.t('analyticsFlows:format.fewData');
+}
 
-export const POUCOS_DADOS_TOOLTIP = 'Menos de 3 etapas avaliadas no período';
+export function poucosDadosTooltip(): string {
+  return i18n.t('analyticsFlows:format.fewDataTooltip');
+}
 
-/** Pontualidade of one membro: a percentage, or POUCOS_DADOS under the floor. */
+/** Pontualidade of one membro: a percentage, or poucosDados() under the floor. */
 export function formatPontualidadeMembro(noPrazo: number, avaliadas: number): string {
-  if (avaliadas < MIN_AVALIADAS) return POUCOS_DADOS;
+  if (avaliadas < MIN_AVALIADAS) return poucosDados();
   return `${Math.round((noPrazo / avaliadas) * 100)}%`;
 }
 
@@ -69,22 +77,24 @@ export function formatHoras(horas: number): string {
   return h === 0 ? `${d}d` : `${d}d ${h}h`;
 }
 
-/** Same, but nullable metrics get SEM_DADOS instead of a fabricated "0min". */
+/** Same, but nullable metrics get semDados() instead of a fabricated "0min". */
 export function formatHorasOuSemDados(horas: number | null): string {
-  if (horas === null) return SEM_DADOS;
+  if (horas === null) return semDados();
   return formatHoras(horas);
 }
 
-/** Fractional days as a bare pt-BR decimal (`5.0` -> "5,0"), for columns whose
- *  header already carries the unit (the CSV export). */
+/** Fractional days as a bare decimal in the UI language (`5.0` -> "5,0" in
+ *  pt-BR, "5.0" in en-US), for columns whose header already carries the unit
+ *  (the CSV export). */
 export function formatDiasNumero(dias: number | null): string {
-  if (dias === null) return SEM_DADOS;
-  return clampDias(dias).toFixed(1).replace('.', ',');
+  if (dias === null) return semDados();
+  const fixed = clampDias(dias).toFixed(1);
+  return getIntlLocale() === 'pt-BR' ? fixed.replace('.', ',') : fixed;
 }
 
-/** Fractional days as pt-BR `X,Xd`, the density the tables need. */
+/** Fractional days as `X,Xd` (pt-BR) or `X.Xd` (en-US), the density the tables need. */
 export function formatDiasDecimal(dias: number | null): string {
-  if (dias === null) return SEM_DADOS;
+  if (dias === null) return semDados();
   return `${formatDiasNumero(dias)}d`;
 }
 
@@ -95,12 +105,14 @@ export function formatDiasDecimal(dias: number | null): string {
  * as a raw column value on screen or in an export.
  */
 export function origemLabel(origem: string): string {
-  return origem === 'agent' ? 'Agente' : 'Humano';
+  return origem === 'agent'
+    ? i18n.t('analyticsFlows:format.origin.agent')
+    : i18n.t('analyticsFlows:format.origin.human');
 }
 
-/** Rounded percentage with the sign, or SEM_DADOS when the metric is null. */
+/** Rounded percentage with the sign, or semDados() when the metric is null. */
 export function formatPct(pct: number | null): string {
-  if (pct === null) return SEM_DADOS;
+  if (pct === null) return semDados();
   return `${Math.round(pct)}%`;
 }
 
@@ -115,7 +127,7 @@ export function formatPct(pct: number | null): string {
 export function buildDelta(
   current: number | null,
   prev: number | null,
-  caption = 'vs período anterior',
+  caption = i18n.t('analyticsFlows:format.vsPrevious'),
 ): StatDelta | null {
   if (current === null || prev === null || prev === 0) return null;
   const percent = ((current - prev) / prev) * 100;
@@ -150,7 +162,7 @@ export function buildDeltaPp(
   prev: number | null,
   avaliadas?: number,
   avaliadasPrev?: number,
-  caption = 'vs período anterior',
+  caption = i18n.t('analyticsFlows:format.vsPrevious'),
 ): StatDelta | null {
   if (current === null || prev === null) return null;
   if (avaliadas !== undefined && avaliadas <= 0) return null;
@@ -161,7 +173,7 @@ export function buildDeltaPp(
 }
 
 /**
- * An ISO timestamp as pt-BR 'dd/MM/yyyy', or null when there is nothing to
+ * An ISO timestamp as 'dd/MM/yyyy' (pt-BR) or 'MM/dd/yyyy' (en-US), or null when there is nothing to
  * show. Unlike the week keys below this really is a full timestamptz, so it is
  * parsed by Date and rendered in the viewer's local time on purpose: the
  * horizon is "since when do we have data", and an off-by-one-day in the user's
@@ -173,27 +185,35 @@ export function formatDataCurta(iso: string | null): string | null {
   if (Number.isNaN(d.getTime())) return null;
   const dia = String(d.getDate()).padStart(2, '0');
   const mes = String(d.getMonth() + 1).padStart(2, '0');
-  return `${dia}/${mes}/${d.getFullYear()}`;
+  return getIntlLocale() === 'pt-BR'
+    ? `${dia}/${mes}/${d.getFullYear()}`
+    : `${mes}/${dia}/${d.getFullYear()}`;
 }
 
 /** 'Registrado desde dd/MM/yyyy', or null when that event source has no rows
  *  yet — in which case the caption is omitted rather than shown empty. */
 export function horizonteCaption(iso: string | null): string | null {
   const data = formatDataCurta(iso);
-  return data ? `Registrado desde ${data}` : null;
+  return data ? i18n.t('analyticsFlows:format.trackedSince', { date: data }) : null;
 }
 
-/** 'YYYY-MM-DD' (the RPC's week key) as pt-BR 'dd/MM'. Parsed by hand: `new
- *  Date('2026-08-04')` is UTC midnight and shifts a day west of Greenwich. */
+/** 'YYYY-MM-DD' (the RPC's week key) as 'dd/MM' (pt-BR) or 'MM/dd' (en-US).
+ *  Parsed by hand: `new Date('2026-08-04')` is UTC midnight and shifts a day
+ *  west of Greenwich. */
 export function formatSemanaCurta(semana: string): string {
   const [, mes, dia] = semana.split('-');
   if (!mes || !dia) return semana;
-  return `${dia}/${mes}`;
+  return getIntlLocale() === 'pt-BR' ? `${dia}/${mes}` : `${mes}/${dia}`;
 }
 
-/** Same key as full pt-BR 'dd/MM/yyyy', for the chart tooltip title. */
+/** Same key as the full date, for the chart tooltip title. */
 export function formatSemanaLonga(semana: string): string {
   const [ano, mes, dia] = semana.split('-');
   if (!ano || !mes || !dia) return semana;
-  return `${dia}/${mes}/${ano}`;
+  return getIntlLocale() === 'pt-BR' ? `${dia}/${mes}/${ano}` : `${mes}/${dia}/${ano}`;
+}
+
+/** 'Semana de dd/MM/yyyy', the chart tooltip title and the phone row label. */
+export function semanaDeLabel(semana: string): string {
+  return i18n.t('analyticsFlows:format.weekOf', { date: formatSemanaLonga(semana) });
 }

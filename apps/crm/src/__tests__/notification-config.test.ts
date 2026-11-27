@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import i18n from 'i18next';
 import { AlarmClock, CalendarCheck, CalendarClock, CalendarPlus, CalendarX } from 'lucide-react';
 import { getNotificationDisplay } from '../lib/notification-config';
 
@@ -326,5 +327,45 @@ describe('getNotificationDisplay', () => {
       expect(t(1).title).toBe('Em 1 minuto: Gravação: Clínica Sorriso');
       expect(t(undefined).title).toBe('Lembrete: Gravação: Clínica Sorriso');
     });
+  });
+});
+
+describe('getNotificationDisplay in English', () => {
+  afterEach(async () => {
+    await i18n.changeLanguage('pt');
+  });
+
+  it('composes titles, bodies, plurals and dates in English', async () => {
+    await i18n.changeLanguage('en');
+
+    const mention = getNotificationDisplay('mention', { actor_name: 'Ana' });
+    expect(mention.title).toBe('Ana mentioned you');
+
+    const approved = getNotificationDisplay('post_approved', {
+      client_name: 'Acme',
+      post_title: 'Launch',
+    });
+    expect(approved.title).toBe('Post approved');
+    expect(approved.body).toBe('Acme · Launch');
+
+    const reminder = getNotificationDisplay('event_reminder', {
+      titulo: 'Kickoff',
+      minutos: 120,
+      inicio: '2026-10-05T14:00:00',
+    });
+    expect(reminder.title).toBe('In 2 hours: Kickoff');
+    expect(reminder.body).toBe('Mon, Oct 5, 2:00 PM');
+
+    const linha = getNotificationDisplay('linha_editorial_aprovada', {
+      cliente_nome: 'Acme',
+      periodo: '2026-03-01',
+    });
+    expect(linha.title).toBe('Acme approved the March editorial plan');
+
+    const cleanup = getNotificationDisplay('storage_autoclean_report', {
+      files_count: 1,
+      bytes_freed: 100 * 1024 ** 2,
+    });
+    expect(cleanup.body).toBe('1 file removed · 100 MB freed');
   });
 });

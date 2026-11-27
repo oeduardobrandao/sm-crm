@@ -1,9 +1,10 @@
+import { useTranslation } from 'react-i18next';
 import { Activity, CheckCircle2, Clock, RotateCcw, Target } from 'lucide-react';
 
 import { StatCard } from '@/components/StatCard';
 import { StatCardGrid } from '@/components/StatCardGrid';
 import type { WorkflowAnalyticsKpis } from '@/services/workflowAnalytics';
-import { buildDelta, buildDeltaPp, formatDiasHoras, formatPct, SEM_DADOS } from '../format';
+import { buildDelta, buildDeltaPp, formatDiasHoras, formatPct, semDados } from '../format';
 
 interface KpiRowProps {
   kpis: WorkflowAnalyticsKpis;
@@ -12,10 +13,11 @@ interface KpiRowProps {
   emptyFiltered: boolean;
 }
 
-const SEM_BASE = 'sem base de comparação';
-const SEM_MATCH = 'nenhum fluxo no filtro';
-
 export function KpiRow({ kpis, emptyFiltered }: KpiRowProps) {
+  const { t } = useTranslation('analyticsFlows');
+  const SEM_BASE = t('kpi.noBase');
+  const SEM_MATCH = t('kpi.noMatch');
+  const SEM_DADOS = semDados();
   // A delta against an empty previous window is not a comparison, it is a
   // division by zero dressed up as insight. buildDelta returns null there and
   // StatCard falls back to the `sub` line.
@@ -47,7 +49,7 @@ export function KpiRow({ kpis, emptyFiltered }: KpiRowProps) {
   return (
     <StatCardGrid maxCols={5} className="animate-up" phoneLayout="scroll">
       <StatCard
-        label="Concluídos"
+        label={t('kpi.completed')}
         icon={CheckCircle2}
         tone="green"
         value={kpis.concluidos}
@@ -55,16 +57,16 @@ export function KpiRow({ kpis, emptyFiltered }: KpiRowProps) {
         sub={emptyFiltered ? SEM_MATCH : SEM_BASE}
       />
       <StatCard
-        label="Ativos agora"
+        label={t('kpi.active')}
         icon={Activity}
         tone="blue"
         value={kpis.ativos}
         // Deliberately period-blind: "ativos" is a snapshot of right now, so it
         // never gets a delta and the caption says which of the two it is.
-        sub="retrato atual"
+        sub={t('kpi.snapshot')}
       />
       <StatCard
-        label="Tempo médio"
+        label={t('kpi.avgTime')}
         icon={Clock}
         tone="violet"
         value={semTempo ? SEM_DADOS : formatDiasHoras(kpis.tempo_medio_dias as number)}
@@ -72,10 +74,10 @@ export function KpiRow({ kpis, emptyFiltered }: KpiRowProps) {
         delta={deltaTempo ?? undefined}
         // Falling time is the good direction here, so the arrow's colour flips.
         invertDelta
-        sub={emptyFiltered ? SEM_MATCH : semTempo ? 'nenhum fluxo concluído no período' : SEM_BASE}
+        sub={emptyFiltered ? SEM_MATCH : semTempo ? t('kpi.noneCompleted') : SEM_BASE}
       />
       <StatCard
-        label="Pontualidade"
+        label={t('kpi.onTime')}
         icon={Target}
         tone="amber"
         value={semPontualidade ? SEM_DADOS : formatPct(kpis.pontualidade_pct)}
@@ -84,10 +86,10 @@ export function KpiRow({ kpis, emptyFiltered }: KpiRowProps) {
         // Points, not percent: both figures are server-rounded integers, so the
         // difference is a whole number and "8.0%" would be twice wrong.
         unit="pts"
-        sub={emptyFiltered ? SEM_MATCH : semPontualidade ? 'nenhuma etapa avaliada' : SEM_BASE}
+        sub={emptyFiltered ? SEM_MATCH : semPontualidade ? t('kpi.noneRated') : SEM_BASE}
       />
       <StatCard
-        label="Retrabalho"
+        label={t('kpi.rework')}
         icon={RotateCcw}
         tone="pink"
         value={semRetrabalho ? SEM_DADOS : formatPct(kpis.retrabalho_pct)}
@@ -97,13 +99,7 @@ export function KpiRow({ kpis, emptyFiltered }: KpiRowProps) {
         // like it does for tempo médio.
         invertDelta
         unit="pts"
-        sub={
-          emptyFiltered
-            ? SEM_MATCH
-            : semRetrabalho
-              ? 'nenhum evento de fluxo no período'
-              : 'fluxos com etapa devolvida'
-        }
+        sub={emptyFiltered ? SEM_MATCH : semRetrabalho ? t('kpi.noEvents') : t('kpi.returnedStage')}
       />
     </StatCardGrid>
   );

@@ -18,6 +18,14 @@ export const CATEGORY_LABELS: Record<string, string> = {
   arquivos: 'Arquivos',
 };
 
+/** Translated section name; an unknown category falls back to its raw id. */
+export function categoryLabel(
+  t: (key: string, options?: Record<string, unknown>) => string,
+  category: string,
+): string {
+  return t(`categories.${category}`, { defaultValue: category });
+}
+
 /** Billing help is website-only: the iOS app never shows it (apps/mobile DECISIONS.md D33). */
 const WEB_ONLY_CATEGORIES = new Set(['cobranca']);
 

@@ -267,7 +267,7 @@ export function ClientesPhone(props: ClientesPhoneProps) {
               }
             />
             <PhoneIconButton
-              label={searchOpen ? 'Fechar busca' : tc('actions.search')}
+              label={searchOpen ? tc('actions.closeSearch') : tc('actions.search')}
               aria-expanded={searchOpen}
               onClick={() => {
                 if (searchOpen) {

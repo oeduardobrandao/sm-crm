@@ -3,6 +3,7 @@
 import '@/styles/app-shell';
 import { Navigate, useLocation } from 'react-router-dom';
 import { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { WorkspaceLanguageSync } from '../../boot/WorkspaceLanguageSync';
 import { useAuth } from '../../context/AuthContext';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
@@ -16,18 +17,19 @@ import { ReverseTrialWelcomeDialog } from '@/components/billing/ReverseTrialWelc
 import { ReverseTrialHoldContext } from './reverseTrialHold';
 import { useReadOnlyGrandfather } from '@/components/paywall/useReadOnlyGrandfather';
 
-const FEATURE_GATED: Record<string, { flag: string; label: string }> = {
-  '/analytics': { flag: 'feature_analytics_reports', label: 'Relatórios e Analytics' },
-  '/analytics-fluxos': { flag: 'feature_analytics_reports', label: 'Relatórios e Analytics' },
-  '/relatorios': { flag: 'feature_analytics_reports', label: 'Relatórios e Analytics' },
-  '/leads': { flag: 'feature_leads', label: 'Leads' },
-  '/financeiro': { flag: 'feature_financial', label: 'Financeiro' },
-  '/contratos': { flag: 'feature_contracts', label: 'Contratos' },
-  '/ideias': { flag: 'feature_ideas', label: 'Ideias' },
-  '/post-express': { flag: 'feature_post_scheduling', label: 'Agendamento de Posts' },
+const FEATURE_GATED: Record<string, { flag: string; labelKey: string }> = {
+  '/analytics': { flag: 'feature_analytics_reports', labelKey: 'gate.reportsAnalytics' },
+  '/analytics-fluxos': { flag: 'feature_analytics_reports', labelKey: 'gate.reportsAnalytics' },
+  '/relatorios': { flag: 'feature_analytics_reports', labelKey: 'gate.reportsAnalytics' },
+  '/leads': { flag: 'feature_leads', labelKey: 'nav.leads' },
+  '/financeiro': { flag: 'feature_financial', labelKey: 'nav.financeiro' },
+  '/contratos': { flag: 'feature_contracts', labelKey: 'nav.contratos' },
+  '/ideias': { flag: 'feature_ideas', labelKey: 'nav.ideias' },
+  '/post-express': { flag: 'feature_post_scheduling', labelKey: 'gate.postScheduling' },
 };
 
 export default function ProtectedRoute({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
   const { user, profile, role, can, loading } = useAuth();
   const location = useLocation();
   const { features, isLoading: limitsLoading, isUnlimited } = useWorkspaceLimits();
@@ -121,11 +123,11 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
     features.feature_mensagens === false &&
     features.feature_team_chat !== true
   ) {
-    return <UpgradeLockedScreen featureLabel="Mensagens" feature="feature_mensagens" />;
+    return <UpgradeLockedScreen featureLabel={t('nav.mensagens')} feature="feature_mensagens" />;
   }
 
   if (!isUnlimited && features) {
-    for (const [path, { flag, label }] of Object.entries(FEATURE_GATED)) {
+    for (const [path, { flag, labelKey }] of Object.entries(FEATURE_GATED)) {
       if (pathname.startsWith(path) && features[flag as keyof typeof features] === false) {
         const grandfather =
           flag === 'feature_financial'
@@ -144,7 +146,7 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
           );
         }
         if (grandfather?.readOnly) break;
-        return <UpgradeLockedScreen featureLabel={label} feature={flag} />;
+        return <UpgradeLockedScreen featureLabel={t(labelKey)} feature={flag} />;
       }
     }
   }

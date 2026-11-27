@@ -11,15 +11,18 @@ import {
   type ImportCollection,
   type SourceKind,
 } from '@mesaas/import-parsers';
+import { getIntlLocale, i18n } from '@mesaas/i18n';
 
 export const MAX_FILES = 5;
 export const MAX_FILE_BYTES = 20 * 1024 * 1024;
 export const MAX_ROWS = 2000;
 
-export const UNREADABLE_MESSAGE =
-  'Não conseguimos ler este arquivo. Confira o passo a passo de exportação acima.';
+const tw = (key: string, opts?: Record<string, unknown>) => i18n.t(`importWizard:${key}`, opts);
 
-/** Message is already user-facing pt-BR. `details` carries bullet-point context. */
+/** Resolved at call time so it follows the UI language. */
+export const unreadableMessage = () => tw('parse.unreadable');
+
+/** Message is already user-facing (translated at throw time). `details` carries bullet-point context. */
 export class ParseFilesError extends Error {
   constructor(
     message: string,
@@ -64,7 +67,7 @@ function sniffKind(raw: string): SniffedKind {
 }
 
 function unreadableFile(name: string): string {
-  return `Não conseguimos ler o arquivo "${name}". Confira o passo a passo de exportação acima.`;
+  return tw('parse.unreadableFile', { name });
 }
 
 function checkSourceMismatch(source: SourceKind, kind: SniffedKind, file: File): void {
@@ -73,39 +76,27 @@ function checkSourceMismatch(source: SourceKind, kind: SniffedKind, file: File):
 
   if (source === 'trello') {
     if (kind === 'zip') {
-      throw new ParseFilesError(
-        `O arquivo "${name}" é um .zip, não um JSON do Trello. Se ele é um export do Notion, volte e escolha a origem "Notion".`,
-      );
+      throw new ParseFilesError(tw('parse.zipNotTrello', { name }));
     }
     if (kind === 'text') {
-      throw new ParseFilesError(
-        `O arquivo "${name}" parece uma planilha (CSV), não um JSON do Trello. Se você exportou o Trello em CSV (plano Premium), volte e escolha a origem "Planilha (CSV)".`,
-      );
+      throw new ParseFilesError(tw('parse.csvNotTrello', { name }));
     }
   }
 
   if (source === 'clickup' || source === 'csv') {
     if (kind === 'zip' && isXlsx) {
-      throw new ParseFilesError(
-        `O arquivo "${name}" está no formato Excel (.xlsx), que não é aceito. Exporte de novo escolhendo o formato CSV.`,
-      );
+      throw new ParseFilesError(tw('parse.xlsx', { name }));
     }
     if (kind === 'zip') {
-      throw new ParseFilesError(
-        `O arquivo "${name}" é um .zip, não uma planilha CSV. Se ele é um export do Notion, volte e escolha a origem "Notion".`,
-      );
+      throw new ParseFilesError(tw('parse.zipNotCsv', { name }));
     }
     if (kind === 'json' && source === 'clickup') {
-      throw new ParseFilesError(
-        `O arquivo "${name}" é um JSON, não uma planilha CSV. Se ele é a exportação de um quadro do Trello, volte e escolha a origem "Trello".`,
-      );
+      throw new ParseFilesError(tw('parse.jsonNotCsv', { name }));
     }
   }
 
   if (source === 'notion' && kind === 'zip' && isXlsx) {
-    throw new ParseFilesError(
-      `O arquivo "${name}" está no formato Excel (.xlsx), que não é aceito. Exporte de novo escolhendo o formato CSV.`,
-    );
+    throw new ParseFilesError(tw('parse.xlsx', { name }));
   }
 }
 
@@ -115,9 +106,7 @@ function checkCsvSourceJsonContent(source: SourceKind, text: string, fileName: s
   if (kind !== 'json') return;
   try {
     JSON.parse(text);
-    throw new ParseFilesError(
-      `O arquivo "${fileName}" é um JSON, não uma planilha CSV. Se ele é a exportação de um quadro do Trello, volte e escolha a origem "Trello".`,
-    );
+    throw new ParseFilesError(tw('parse.jsonNotCsv', { name: fileName }));
   } catch (err) {
     if (err instanceof ParseFilesError) throw err;
   }
@@ -178,12 +167,12 @@ function dedupeCollectionIds(collections: ImportCollection[]): ImportCollection[
  * caps. Throws ParseFilesError with a message meant to be shown as-is.
  */
 export async function parseFiles(source: SourceKind, files: File[]): Promise<ImportBundle> {
-  if (files.length === 0) throw new ParseFilesError('Selecione pelo menos um arquivo.');
+  if (files.length === 0) throw new ParseFilesError(tw('parse.selectOne'));
   if (files.length > MAX_FILES) {
-    throw new ParseFilesError(`Envie no máximo ${MAX_FILES} arquivos por importação.`);
+    throw new ParseFilesError(tw('parse.tooMany', { max: MAX_FILES }));
   }
   if (files.some((f) => f.size > MAX_FILE_BYTES)) {
-    throw new ParseFilesError('Cada arquivo pode ter no máximo 20 MB.');
+    throw new ParseFilesError(tw('parse.tooBig'));
   }
 
   const collections: ImportCollection[] = [];
@@ -195,9 +184,7 @@ export async function parseFiles(source: SourceKind, files: File[]): Promise<Imp
         const text = new TextDecoder().decode(bytes.slice(0, 4));
         const kind = sniffKind(text);
         if (kind === 'zip' && /\.xlsx$/i.test(file.name)) {
-          throw new ParseFilesError(
-            `O arquivo "${file.name}" está no formato Excel (.xlsx), que não é aceito. Exporte de novo escolhendo o formato CSV.`,
-          );
+          throw new ParseFilesError(tw('parse.xlsx', { name: file.name }));
         }
         const result = parseNotionExport(file.name, bytes);
         collections.push(...result.collections);
@@ -218,9 +205,7 @@ export async function parseFiles(source: SourceKind, files: File[]): Promise<Imp
     } catch (err) {
       if (err instanceof ParseFilesError) throw err;
       if (err instanceof ImportParseError && err.issue === 'trello-not-a-board') {
-        throw new ParseFilesError(
-          `O arquivo "${file.name}" é um JSON, mas não é a exportação de um quadro do Trello. No Trello, a exportação é feita quadro a quadro: abra o quadro, depois Menu → Imprimir e exportar → "Exportar como JSON".`,
-        );
+        throw new ParseFilesError(tw('parse.notABoard', { name: file.name }));
       }
       throw new ParseFilesError(unreadableFile(file.name));
     }
@@ -230,13 +215,16 @@ export async function parseFiles(source: SourceKind, files: File[]): Promise<Imp
   const rows = totalRows(bundle);
   if (rows === 0) {
     if (warnings.length > 0) {
-      throw new ParseFilesError('Nenhuma tabela foi encontrada nos arquivos enviados.', warnings);
+      throw new ParseFilesError(tw('parse.noTables'), warnings);
     }
-    throw new ParseFilesError(UNREADABLE_MESSAGE);
+    throw new ParseFilesError(unreadableMessage());
   }
   if (rows > MAX_ROWS) {
     throw new ParseFilesError(
-      `Este envio tem ${rows.toLocaleString('pt-BR')} linhas e o limite por importação é ${MAX_ROWS.toLocaleString('pt-BR')}. Divida o arquivo e importe em partes.`,
+      tw('parse.tooManyRows', {
+        rows: rows.toLocaleString(getIntlLocale()),
+        max: MAX_ROWS.toLocaleString(getIntlLocale()),
+      }),
     );
   }
   return bundle;

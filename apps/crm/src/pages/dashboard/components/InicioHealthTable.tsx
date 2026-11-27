@@ -15,6 +15,7 @@ import { useClientHealthActions } from '../useClientHealthActions';
 import { pipelineText } from './PipelineRow';
 import { ClienteFoto } from '@/components/ClienteFoto';
 import { useCachedClienteFotoUrl } from '@/hooks/useClienteAvatars';
+import { useIntlLocale } from '@mesaas/i18n';
 
 const TABLE_ROWS = 8;
 const STALE_POST_DAYS = 7;
@@ -215,8 +216,8 @@ function HealthRow({ c, locale, nowMs }: { c: ClientHealth; locale: string; nowM
  * on the clients that need action. Same data and actions as ClientHealthMonitor.
  */
 export function InicioHealthTable() {
-  const { t, i18n } = useTranslation('dashboard');
-  const locale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
+  const { t } = useTranslation('dashboard');
+  const locale = useIntlLocale();
   const [picked, setPicked] = useState<HealthFilterKey | null>(null);
   const [search, setSearch] = useState('');
   const [showAll, setShowAll] = useState(false);

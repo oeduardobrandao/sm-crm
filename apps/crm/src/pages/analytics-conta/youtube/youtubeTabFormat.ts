@@ -2,6 +2,7 @@
 import type { AnalyticsRange, YtOverview, YtVideoRow } from '../../../services/youtubeAnalytics';
 import { sanitizeUrl } from '../../../utils/security';
 import { formatDuration as tiktokDuration } from '../tiktok/tiktokTabFormat';
+import { getIntlLocale, intlLocaleFor } from '@mesaas/i18n';
 
 export { dimmed } from '../tiktok/tiktokTabFormat';
 
@@ -25,18 +26,19 @@ export const LONG_COLOR = 'var(--an-male)';
 export const LONG_COLOR_HEX = '#4285f4';
 
 const DAY_MS = 86_400_000;
-const compact = new Intl.NumberFormat('pt-BR', { notation: 'compact', maximumFractionDigits: 1 });
+const compact = () =>
+  new Intl.NumberFormat(getIntlLocale(), { notation: 'compact', maximumFractionDigits: 1 });
 
 /** A count, pt-BR; a missing one reads as the placeholder, never 0. */
 export const formatCount = (n: number | null | undefined): string =>
-  n === null || n === undefined ? MISSING : n.toLocaleString('pt-BR');
+  n === null || n === undefined ? MISSING : n.toLocaleString(getIntlLocale());
 
 /** Large counts as "12,4 mil" (from 10 mil up), smaller ones in full: "9.112". */
 export const formatCompact = (n: number | null | undefined): string =>
   n === null || n === undefined
     ? MISSING
     : Math.abs(n) >= 10_000
-      ? compact.format(n)
+      ? compact().format(n)
       : formatCount(n);
 
 /** A net change with its sign: "+284", "-12", "0". */
@@ -92,7 +94,7 @@ function dayDate(day: string): Date {
   return new Date(Date.UTC(y, m - 1, d, 12));
 }
 
-const locale = (language: string) => (language.startsWith('en') ? 'en-US' : 'pt-BR');
+const locale = (language: string) => intlLocaleFor(language);
 
 /** "Dados até" dates: "25 de out." (pt) / "Oct 25" (en). */
 export function formatThrough(day: string, language: string): string {

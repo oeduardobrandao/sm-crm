@@ -1,3 +1,4 @@
+import i18n from 'i18next';
 import type { WorkflowAnalytics } from '@/services/workflowAnalytics';
 import {
   formatDataCurta,
@@ -7,7 +8,7 @@ import {
   formatPct,
   formatPontualidadeMembro,
   origemLabel,
-  SEM_DADOS,
+  semDados,
 } from './format';
 import type { Periodo } from './useFluxosFilters';
 import { CSV_BOM, CSV_EOL as EOL, csvRow as row } from '@/lib/csvExport';
@@ -16,7 +17,7 @@ export { CSV_BOM, downloadCsv } from '@/lib/csvExport';
 
 /**
  * CSV export of the page. Values are formatted exactly as the page shows them
- * (pt-BR decimals, "Sem dados" for missing metrics) so the spreadsheet and the
+ * (decimals in the UI language, "No data" for missing metrics) so the spreadsheet and the
  * screen never disagree about a number.
  */
 
@@ -29,47 +30,49 @@ export function buildAnalyticsCsv(
 ): string {
   const { kpis } = data;
   const lines: string[] = [];
+  const t = (key: string) => i18n.t(`analyticsFlows:csv.${key}`);
+  const SEM_DADOS = semDados();
 
-  lines.push('KPIs');
-  lines.push(row(['Métrica', 'Valor']));
-  lines.push(row(['Concluídos', kpis.concluidos]));
-  lines.push(row(['Concluídos no período anterior', kpis.concluidos_prev]));
-  lines.push(row(['Ativos agora', kpis.ativos]));
+  lines.push(t('kpis'));
+  lines.push(row([t('metric'), t('value')]));
+  lines.push(row([t('completed'), kpis.concluidos]));
+  lines.push(row([t('completedPrev'), kpis.concluidos_prev]));
+  lines.push(row([t('activeNow'), kpis.ativos]));
   lines.push(
     row([
-      'Tempo médio',
+      t('avgTime'),
       kpis.tempo_medio_dias === null ? SEM_DADOS : formatDiasHoras(kpis.tempo_medio_dias),
     ]),
   );
   lines.push(
     row([
-      'Tempo médio no período anterior',
+      t('avgTimePrev'),
       kpis.tempo_medio_prev === null ? SEM_DADOS : formatDiasHoras(kpis.tempo_medio_prev),
     ]),
   );
-  lines.push(row(['Pontualidade', formatPct(kpis.pontualidade_pct)]));
-  lines.push(row(['Pontualidade no período anterior', formatPct(kpis.pontualidade_prev)]));
-  lines.push(row(['Etapas avaliadas', kpis.etapas_avaliadas]));
-  lines.push(row(['Etapas avaliadas no período anterior', kpis.etapas_avaliadas_prev]));
-  lines.push(row(['Retrabalho', formatPct(kpis.retrabalho_pct)]));
-  lines.push(row(['Retrabalho no período anterior', formatPct(kpis.retrabalho_prev)]));
+  lines.push(row([t('onTime'), formatPct(kpis.pontualidade_pct)]));
+  lines.push(row([t('onTimePrev'), formatPct(kpis.pontualidade_prev)]));
+  lines.push(row([t('stagesRated'), kpis.etapas_avaliadas]));
+  lines.push(row([t('stagesRatedPrev'), kpis.etapas_avaliadas_prev]));
+  lines.push(row([t('rework'), formatPct(kpis.retrabalho_pct)]));
+  lines.push(row([t('reworkPrev'), formatPct(kpis.retrabalho_prev)]));
 
   // Where the event log starts. Without it a reader cannot tell a genuine zero
   // from a metric whose window predates the log, and the export is the copy
   // that outlives the page's tooltips.
   lines.push('');
-  lines.push('Cobertura do log de eventos');
-  lines.push(row(['Fonte', 'Registrado desde']));
+  lines.push(t('coverage'));
+  lines.push(row([t('source'), t('trackedSince')]));
   lines.push(
-    row(['Eventos de fluxo', formatDataCurta(data.horizonte.workflow_events_since) ?? SEM_DADOS]),
+    row([t('workflowEvents'), formatDataCurta(data.horizonte.workflow_events_since) ?? SEM_DADOS]),
   );
   lines.push(
-    row(['Eventos de post', formatDataCurta(data.horizonte.post_events_since) ?? SEM_DADOS]),
+    row([t('postEvents'), formatDataCurta(data.horizonte.post_events_since) ?? SEM_DADOS]),
   );
 
   lines.push('');
-  lines.push('Gargalos por etapa');
-  lines.push(row(['Etapa', 'Tempo médio (dias)', 'Atraso (%)', 'Retrabalho (%)', 'Amostras']));
+  lines.push(t('bottlenecks'));
+  lines.push(row([t('stage'), t('avgDays'), t('delayPct'), t('reworkPct'), t('samples')]));
   for (const etapa of data.etapas) {
     lines.push(
       row([
@@ -85,22 +88,22 @@ export function buildAnalyticsCsv(
   }
 
   lines.push('');
-  lines.push('Desempenho da equipe');
+  lines.push(t('team'));
   lines.push(
     row([
-      'Membro',
-      'Concluídas',
-      'Tempo médio (dias)',
-      'Pontualidade',
-      'Etapas avaliadas',
-      'Retrabalho (devoluções)',
-      'Atividade (eventos)',
+      t('member'),
+      t('doneCol'),
+      t('avgDays'),
+      t('onTime'),
+      t('stagesRated'),
+      t('reworkReturns'),
+      t('activityEvents'),
     ]),
   );
   for (const membro of data.equipe) {
     lines.push(
       row([
-        membrosById.get(membro.membro_id) ?? 'Membro removido',
+        membrosById.get(membro.membro_id) ?? t('removedMember'),
         membro.concluidas,
         formatDiasNumero(membro.media_dias),
         // Same floor the table applies: a 2-sample "100%" is not a fact, and an
@@ -115,34 +118,31 @@ export function buildAnalyticsCsv(
 
   const { aprovacao_cliente: aprovacao } = data;
   lines.push('');
-  lines.push('Aprovação do cliente');
-  lines.push(row(['Métrica', 'Valor']));
-  lines.push(row(['Mediana de resposta', formatHorasOuSemDados(aprovacao.mediana_horas)]));
-  lines.push(row(['Respostas', aprovacao.amostras]));
-  lines.push(row(['Aguardando', aprovacao.pendentes]));
-  lines.push(row(['Resolvidos internamente', aprovacao.resolvidos_internamente]));
-  lines.push(row(['Aprovações por etapa', aprovacao.etapas.amostras]));
+  lines.push(t('approval'));
+  lines.push(row([t('metric'), t('value')]));
+  lines.push(row([t('medianResponse'), formatHorasOuSemDados(aprovacao.mediana_horas)]));
+  lines.push(row([t('responses'), aprovacao.amostras]));
+  lines.push(row([t('waiting'), aprovacao.pendentes]));
+  lines.push(row([t('resolvedInternally'), aprovacao.resolvidos_internamente]));
+  lines.push(row([t('stageApprovals'), aprovacao.etapas.amostras]));
   lines.push(
-    row([
-      'Mediana das aprovações por etapa',
-      formatHorasOuSemDados(aprovacao.etapas.mediana_horas),
-    ]),
+    row([t('stageApprovalsMedian'), formatHorasOuSemDados(aprovacao.etapas.mediana_horas)]),
   );
 
   lines.push('');
-  lines.push('Aprovação do cliente por faixa');
-  lines.push(row(['Faixa', 'Quantidade']));
+  lines.push(t('byBracket'));
+  lines.push(row([t('bracket'), t('quantity')]));
   for (const bucket of aprovacao.buckets) {
     lines.push(row([bucket.faixa, bucket.quantidade]));
   }
 
   lines.push('');
-  lines.push('Aprovação do cliente por cliente');
-  lines.push(row(['Cliente', 'Mediana de resposta', 'Respostas', 'Aguardando']));
+  lines.push(t('byClient'));
+  lines.push(row([t('client'), t('medianResponse'), t('responses'), t('waiting')]));
   for (const linha of aprovacao.por_cliente) {
     lines.push(
       row([
-        clientesById.get(linha.cliente_id) ?? 'Cliente removido',
+        clientesById.get(linha.cliente_id) ?? t('removedClient'),
         formatHorasOuSemDados(linha.mediana_horas),
         linha.amostras,
         linha.pendentes,
@@ -151,8 +151,8 @@ export function buildAnalyticsCsv(
   }
 
   lines.push('');
-  lines.push('Origem dos fluxos');
-  lines.push(row(['Origem', 'Concluídos', 'Tempo médio (dias)']));
+  lines.push(t('origin'));
+  lines.push(row([t('originCol'), t('completed'), t('avgDays')]));
   for (const linha of data.origem) {
     lines.push(
       row([origemLabel(linha.origem), linha.concluidos, formatDiasNumero(linha.tempo_medio_dias)]),

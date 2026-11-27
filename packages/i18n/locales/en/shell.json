@@ -1,0 +1,64 @@
+{
+  "banner": {
+    "dismiss": "Dismiss notice"
+  },
+  "search": {
+    "filterByType": "Filter by type"
+  },
+  "mobileNav": {
+    "primary": "Main navigation",
+    "tabUnread": "{{label}}, {{count}} unread",
+    "locked": "Locked",
+    "shortcuts": "Shortcuts",
+    "quickActions": "Quick actions",
+    "search": "Search",
+    "guide": "Getting started guide",
+    "guideProgress": "{{done}} of {{total}}",
+    "preferences": "Preferences",
+    "account": "Account",
+    "closeMenu": "Close menu",
+    "openMenu": "Open menu"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "onlyUnread": "Unread only",
+    "showAll": "Show all",
+    "markAllRead": "Mark all as read",
+    "viewAll": "View all",
+    "empty": "No notifications",
+    "emptyHint": "Notifications about your account and activity will show up here",
+    "dismiss": "Dismiss",
+    "buttonUnread": "Notifications, {{count}} unread",
+    "close": "Close",
+    "readAll": "Read all",
+    "show": "Show",
+    "filterAll": "All",
+    "filterUnread": "Unread",
+    "emptyUnread": "No unread notifications",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "earlier": "Earlier"
+  },
+  "topbar": {
+    "chat": "Chat",
+    "notificationsAndSupport": "Notifications and support",
+    "logoAlt": "Logo"
+  },
+  "sidebar": {
+    "home": "Mesaas, go to home",
+    "close": "Close sidebar",
+    "open": "Open sidebar",
+    "collapse": "Collapse sidebar",
+    "pinOpen": "Keep sidebar open"
+  },
+  "restriction": {
+    "financeiro": {
+      "title": "Financial access restricted",
+      "body": "The workspace owner turned off your access to financial data. Talk to them if you need to see this area."
+    },
+    "contratos": {
+      "title": "Contracts access restricted",
+      "body": "The workspace owner hasn't given your role access to contracts. Talk to them if you need to see this area."
+    }
+  }
+}

@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { i18n } from '@mesaas/i18n';
 import { Edit2, MoreHorizontal, Plus, Trash2, Upload, UserRound } from 'lucide-react';
 import { PhonePageHeader } from '@/components/mobile/PhonePageHeader';
 import { PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
@@ -15,24 +17,15 @@ import { formatDate, type Contrato } from '../../../store';
 
 export type ContratosFilter = 'todos' | 'vigente' | 'a_assinar' | 'encerrado';
 
-/** Same copy as the desktop CSV tooltip. */
-export const CONTRATOS_CSV_HELP =
-  'Colunas: titulo*, cliente_nome, data_inicio* (AAAA-MM-DD), data_fim*, valor_total*, status';
+/** Same copy as the desktop CSV tooltip (resolved at call time, follows the UI language). */
+export const contratosCsvHelp = () => i18n.t('contracts:csvHelp');
 
-const FILTERS: { value: ContratosFilter; label: string }[] = [
-  { value: 'todos', label: 'Todos' },
-  { value: 'vigente', label: 'Vigente' },
-  { value: 'a_assinar', label: 'A Assinar' },
-  { value: 'encerrado', label: 'Encerrado' },
-];
+const FILTER_VALUES: ContratosFilter[] = ['todos', 'vigente', 'a_assinar', 'encerrado'];
 
-const STATUS: Record<
-  Contrato['status'],
-  { label: string; tone: 'success' | 'warning' | 'neutral' }
-> = {
-  vigente: { label: 'Vigente', tone: 'success' },
-  a_assinar: { label: 'A Assinar', tone: 'warning' },
-  encerrado: { label: 'Encerrado', tone: 'neutral' },
+const STATUS_TONE: Record<Contrato['status'], 'success' | 'warning' | 'neutral'> = {
+  vigente: 'success',
+  a_assinar: 'warning',
+  encerrado: 'neutral',
 };
 
 export interface ContratosPhoneProps {
@@ -72,6 +65,7 @@ export function ContratosPhone({
   onOpenCliente,
   readOnly = false,
 }: ContratosPhoneProps) {
+  const { t } = useTranslation('contracts');
   const [moreOpen, setMoreOpen] = useState(false);
   const searchToggle = usePhoneSearch(search, onSearchChange);
 
@@ -84,7 +78,7 @@ export function ContratosPhone({
           ? [
               [
                 {
-                  label: 'Abrir cliente',
+                  label: t('form.openClient'),
                   icon: <UserRound aria-hidden="true" />,
                   onSelect: () => onOpenCliente(clienteId),
                 },
@@ -94,15 +88,15 @@ export function ContratosPhone({
       };
     }
     const swipe: SwipeAction[] = [
-      { label: 'Editar', icon: <Edit2 aria-hidden="true" />, onAction: () => onEdit(c) },
+      { label: t('phone.edit'), icon: <Edit2 aria-hidden="true" />, onAction: () => onEdit(c) },
     ];
     const menu: ContextMenuAction[][] = [
-      [{ label: 'Editar', icon: <Edit2 aria-hidden="true" />, onSelect: () => onEdit(c) }],
+      [{ label: t('phone.edit'), icon: <Edit2 aria-hidden="true" />, onSelect: () => onEdit(c) }],
     ];
     if (c.cliente_id) {
       const clienteId = c.cliente_id;
       menu[0].push({
-        label: 'Abrir cliente',
+        label: t('form.openClient'),
         icon: <UserRound aria-hidden="true" />,
         onSelect: () => onOpenCliente(clienteId),
       });
@@ -110,14 +104,14 @@ export function ContratosPhone({
     if (c.id) {
       const id = c.id;
       swipe.push({
-        label: 'Remover',
+        label: t('phone.remove'),
         icon: <Trash2 aria-hidden="true" />,
         tone: 'destructive',
         onAction: () => onDelete(id),
       });
       menu.push([
         {
-          label: 'Remover',
+          label: t('phone.remove'),
           icon: <Trash2 aria-hidden="true" />,
           destructive: true,
           onSelect: () => onDelete(id),
@@ -130,21 +124,21 @@ export function ContratosPhone({
   return (
     <div className="phone-crud-page">
       <PhonePageHeader
-        title="Contratos"
-        subtitle="Gerencie os contratos dos seus clientes."
+        title={t('title')}
+        subtitle={t('info')}
         actions={
           <>
             {searchToggle.button}
             {!readOnly && (
               <>
                 <PhoneIconButton
-                  label="Mais ações: Importar CSV"
+                  label={t('phone.moreActionsImport')}
                   aria-haspopup="dialog"
                   onClick={() => setMoreOpen(true)}
                 >
                   <MoreHorizontal aria-hidden="true" />
                 </PhoneIconButton>
-                <PhoneIconButton label="Novo Contrato" variant="ink" onClick={onAdd}>
+                <PhoneIconButton label={t('actions.newContract')} variant="ink" onClick={onAdd}>
                   <Plus aria-hidden="true" />
                 </PhoneIconButton>
               </>
@@ -157,18 +151,18 @@ export function ContratosPhone({
             inputRef={searchToggle.inputRef}
             value={search}
             onChange={onSearchChange}
-            placeholder="Buscar por título ou cliente..."
+            placeholder={t('actions.search')}
           />
         )}
       </PhonePageHeader>
 
-      <ChipRow aria-label="Status" className="phone-crud-block">
-        {FILTERS.map((f) => (
+      <ChipRow aria-label={t('form.status')} className="phone-crud-block">
+        {FILTER_VALUES.map((f) => (
           <Chip
-            key={f.value}
-            label={f.label}
-            selected={filter === f.value}
-            onClick={() => onFilterChange(f.value)}
+            key={f}
+            label={f === 'todos' ? t('filter.all') : t(`status.${f}`)}
+            selected={filter === f}
+            onClick={() => onFilterChange(f)}
           />
         ))}
       </ChipRow>
@@ -176,12 +170,12 @@ export function ContratosPhone({
       {isLoading ? (
         <CardListSkeleton />
       ) : contratos.length === 0 ? (
-        <p className="phone-crud-empty">Nenhum contrato encontrado.</p>
+        <p className="phone-crud-empty">{t('phone.empty')}</p>
       ) : (
-        <GroupedList aria-label="Contratos">
+        <GroupedList aria-label={t('title')}>
           {contratos.map((c) => {
             const { swipe, menu } = actionsFor(c);
-            const status = STATUS[c.status];
+            const status = c.status in STATUS_TONE ? c.status : null;
             return (
               <PhoneCrudRow
                 key={c.id ?? c.titulo}
@@ -194,7 +188,11 @@ export function ContratosPhone({
                     <span className="phone-crud-amount">
                       {formatFinancialBRL(c.valor_total, canSeeValues)}
                     </span>
-                    {status && <PhoneStatusPill tone={status.tone}>{status.label}</PhoneStatusPill>}
+                    {status && (
+                      <PhoneStatusPill tone={STATUS_TONE[status]}>
+                        {t(`status.${status}`)}
+                      </PhoneStatusPill>
+                    )}
                   </>
                 }
                 chevron={!readOnly || Boolean(c.cliente_id)}
@@ -206,7 +204,7 @@ export function ContratosPhone({
                     : () => onEdit(c)
                 }
                 swipeActions={swipe}
-                menuLabel={`Ações de ${c.titulo}`}
+                menuLabel={t('phone.actionsOf', { title: c.titulo })}
                 menuSections={menu}
               />
             );
@@ -217,11 +215,11 @@ export function ContratosPhone({
       <ActionSheet
         open={moreOpen}
         onOpenChange={setMoreOpen}
-        title="Mais ações"
-        message={CONTRATOS_CSV_HELP}
+        title={t('phone.moreActions')}
+        message={contratosCsvHelp()}
         actions={[
           {
-            label: 'Importar CSV',
+            label: t('actions.importCsv'),
             icon: <Upload aria-hidden="true" />,
             // The file picker needs the tap itself (iOS Safari blocks a deferred click).
             immediate: true,

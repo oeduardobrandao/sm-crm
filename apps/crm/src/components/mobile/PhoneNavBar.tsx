@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -39,13 +40,15 @@ export function PhoneNavBar({
   title,
   titleAlign = 'center',
   titleAs: Title = 'h1',
-  backLabel = 'Voltar',
+  backLabel,
   onBack,
   fallbackTo = '/dashboard',
   trailing,
   className,
 }: PhoneNavBarProps) {
   usePhoneChrome({ pageHeader: true });
+  const { t } = useTranslation();
+  const resolvedBackLabel = backLabel ?? t('actions.back');
   const navigate = useNavigate();
 
   const goBack = () => {
@@ -63,7 +66,7 @@ export function PhoneNavBar({
       )}
     >
       <div className="phone-nav-bar__leading">
-        <PhoneIconButton label={backLabel} onClick={goBack}>
+        <PhoneIconButton label={resolvedBackLabel} onClick={goBack}>
           <ChevronLeft aria-hidden="true" />
         </PhoneIconButton>
         {title != null && <Title className="phone-nav-bar__title">{title}</Title>}

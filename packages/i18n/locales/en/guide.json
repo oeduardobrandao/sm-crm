@@ -1,0 +1,189 @@
+{
+  "sheetTitle": "Getting started guide",
+  "home": {
+    "eyebrow": "Getting started guide",
+    "title": "Welcome to Mesaas",
+    "intro": "Three short tracks, in quick pages to read. Close it whenever you like: the guide picks up where you left off.",
+    "progress": "{{done}} of {{total}} pages",
+    "trailMeta": "{{subtitle}} · {{done}} of {{total}} pages",
+    "continue": "Continue",
+    "review": "Review",
+    "start": "Start",
+    "closeForNow": "Close for now",
+    "progressSaved": "Your progress is saved"
+  },
+  "page": {
+    "pageOf": "Page {{current}} of {{total}}",
+    "back": "Back",
+    "concludeGuide": "Finish guide",
+    "continue": "Continue"
+  },
+  "pill": {
+    "label": "Guide",
+    "count": "{{done}} of {{total}}",
+    "navItem": "Getting started guide · {{done}} of {{total}}"
+  },
+  "action": {
+    "doNow": "Do it now"
+  },
+  "t1": {
+    "title": "Add your first client",
+    "subtitle": "Profile, Instagram and Hub link",
+    "p1": {
+      "title": "It all starts with a client",
+      "lead": "Each client brings together a profile, brief, deliveries and a portal of their own. Mesaas revolves around them.",
+      "tip": "Tip: add your own Instagram as your first client. You learn the whole path before bringing in a real client."
+    },
+    "p2": {
+      "title": "Create the profile",
+      "lead": "Only the name is required. Email, phone and fees can wait.",
+      "caption": "Opens your clients with the form ready to fill in. The guide picks up where you left off."
+    },
+    "p3": {
+      "title": "Connect the client's Instagram",
+      "lead": "With the account connected, you schedule, publish and track metrics right from Mesaas. Two ways:",
+      "optionNowTitle": "You connect now",
+      "optionNowText": "Sign in with the client's account through Meta login.",
+      "optionClientTitle": "The client connects on their own",
+      "optionClientText": "Send a secure link, valid for 30 days. They connect with no password and no Mesaas login.",
+      "caption": "Opens the Social accounts tab of the client you created."
+    },
+    "p4": {
+      "title": "Generate the Hub link",
+      "lead": "The Hub is your client's portal: approvals, posts and brief, with your branding. No login, no password.",
+      "fine": "The link's validity renews on every client visit. You can turn it off or replace it whenever you want.",
+      "caption": "Opens the client's Hub tab to generate and copy the link."
+    },
+    "p5": {
+      "title": "First client ready",
+      "lead": "This is the path for every new client. Now, who works with you?",
+      "recapCliente": "Profile created",
+      "recapInstagram": "Instagram connected",
+      "recapHub": "Hub link generated"
+    }
+  },
+  "t2": {
+    "title": "Build your team",
+    "subtitle": "Members, access roles and tasks",
+    "p1": {
+      "title": "A member is one thing, access is another",
+      "lead": "This split keeps control simple:",
+      "memberTitle": "Member",
+      "memberText": "The record of who works with you: job title, contract type, costs.",
+      "accessTitle": "Access",
+      "accessText": "An email invite so the person can sign in to Mesaas. Optional.",
+      "fine": "You can have a member without access: a freelancer you only manage, for example."
+    },
+    "p2": {
+      "title": "Three access roles",
+      "lead": "The role defines what a person sees and does.",
+      "ownerTitle": "Owner",
+      "ownerText": "Everything, including plans, billing and finance.",
+      "adminTitle": "Admin",
+      "adminText": "Manages clients, team and deliveries.",
+      "agentTitle": "Agent",
+      "agentText": "Works on deliveries and tasks. No finance.",
+      "fine": "You are the workspace owner. Invites go out as admin or agent."
+    },
+    "p3": {
+      "title": "Add someone to the team",
+      "lead": "The invite lives in the member profile: create it, turn on the invite and pick the role.",
+      "caption": "Opens Team with the member form open."
+    },
+    "p4": {
+      "title": "Day-to-day lives in Tasks",
+      "lead": "Hand out the work: each task has an owner and a due date, and each post has its own assignees."
+    }
+  },
+  "t3": {
+    "title": "Create your deliveries",
+    "subtitle": "Workflows, posts, statuses and scheduling",
+    "p1": {
+      "title": "Three words explain Deliveries",
+      "lead": "Workflow, stages and posts. The rest follows from them.",
+      "flowLabel": "Workflow",
+      "flowText": "a client's work cycle, the kanban card. E.g.: September posts",
+      "stagesLabel": "Stages",
+      "stagesText": "the phases of the workflow; only one is active at a time",
+      "postsLabel": "Posts",
+      "postsText": "the content itself; each with its own status",
+      "fine": "Template: the reusable recipe that creates identical workflows every month."
+    },
+    "p2": {
+      "title": "Create your first workflow",
+      "lead": "The wizard sets everything up: pick a ready-made template, choose the client and you're done.",
+      "monthlyTitle": "Monthly posts",
+      "monthlyText": "Recurring monthly cycle.",
+      "othersTitle": "Other templates",
+      "othersText": "Reels, campaigns, branding.",
+      "scratchTitle": "From scratch",
+      "scratchText": "Build your own stages.",
+      "caption": "Opens the new workflow wizard in Deliveries."
+    },
+    "p3": {
+      "title": "The post brings it all together",
+      "lead": "Inside the workflow, each post combines the media, who does the work and the caption.",
+      "box": "Attach images and videos, set assignees and write the caption right in the post. All in one place, ready for approval."
+    },
+    "p4": {
+      "title": "Statuses tell the story",
+      "lead": "A post moves through statuses until it is published. And you can create your own.",
+      "draft": "Draft",
+      "review": "In review",
+      "sent": "Sent to client",
+      "approved": "Approved by client",
+      "scheduled": "Scheduled",
+      "posted": "Posted",
+      "fine": "Create custom statuses with automations: for example, notify the team when a post is approved."
+    },
+    "p5": {
+      "title": "What a post needs to be scheduled",
+      "lead": "Mesaas checks all of this before sending to Instagram. If something is missing, the Schedule button shows what it is.",
+      "statusPrefix": "Status",
+      "checkDate": "Date and time at least 10 minutes in the future",
+      "checkCaption": "Instagram caption written (stories don't need one)",
+      "checkMedia": "At least one media file within the limits",
+      "checkAccount": "Client's Instagram account connected",
+      "limitsLabel": "Media limits",
+      "limitsText": "JPEG, PNG or WebP images up to 8 MB · MP4 or MOV videos from 3 to 90 s, up to 250 MB · carousels with up to 10 items"
+    },
+    "p6": {
+      "title": "Ready to roll",
+      "lead": "Client, team and deliveries: the essentials are in place. Next, explore the Calendar, Analytics and Reports."
+    }
+  },
+  "video": {
+    "minutes_one": "{{count}} minute",
+    "minutes_other": "{{count}} minutes",
+    "featuredEyebrow": "Start here",
+    "featuredEyebrowLength": "Start here · {{length}} video",
+    "inlineEyebrow": "Prefer to watch? Play the video",
+    "inlineEyebrowLength": "Prefer to watch? {{length}} video",
+    "watchedAria": "Watch the video {{title}} again",
+    "unwatchedAria": "Watch the video {{title}}",
+    "watched": "Watched",
+    "featuredBlurb": "A quick tour before the tracks. The other videos show up at each step.",
+    "watchAgain": "Watch again",
+    "watch": "Watch",
+    "loadFailed": "We couldn't load this video.",
+    "retry": "Try again",
+    "openInHelp": "View in Help Center",
+    "closeVideo": "Close video",
+    "seriesCount_one": "{{title}} series · {{count}} video",
+    "seriesCount_other": "{{title}} series · {{count}} videos",
+    "goFurther": "When you want to go further",
+    "seriesNote": "They live in the Help Center, along with the guide videos.",
+    "seeVideos": "View videos"
+  },
+  "whatsapp": {
+    "title": "Chat with us on WhatsApp",
+    "opened": "Chat opened.",
+    "openedHint": "If you didn't send a message, just open it again.",
+    "invite": "A person on the team helps you set up your account, no bot in between.",
+    "openAgain": "Open again",
+    "openShort": "Open",
+    "open": "Open WhatsApp",
+    "cardText": "Question, idea or problem? We answer there, with no bot in between.",
+    "dismiss": "Dismiss notice"
+  }
+}

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { MessageCircle, X } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { isWhatsAppSupportEnabled } from '@/lib/whatsapp';
@@ -21,6 +22,7 @@ function isDismissed(raw: string | null): boolean {
  * account age. Nothing here assumes a new account.
  */
 export function WhatsAppSupportCard() {
+  const { t } = useTranslation('guide');
   const { role, workspaceRole, profile } = useAuth();
   // Follow the ACTIVE workspace role, not the stale profile-level role: a user
   // can be owner in one workspace and agent in another. Mirrors TrialNudgeCard.
@@ -45,20 +47,18 @@ export function WhatsAppSupportCard() {
     <div className="card whatsapp-support">
       <MessageCircle size={22} aria-hidden="true" className="whatsapp-support__icon" />
       <div className="whatsapp-support__body">
-        <p className="whatsapp-support__title">Fale com a gente no WhatsApp</p>
-        <p className="whatsapp-support__text">
-          Dúvida, ideia ou problema? A gente responde por lá, sem robô no meio.
-        </p>
+        <p className="whatsapp-support__title">{t('whatsapp.title')}</p>
+        <p className="whatsapp-support__text">{t('whatsapp.cardText')}</p>
       </div>
       <WhatsAppSupportButton
         context="dashboard"
-        label="Abrir WhatsApp"
+        label={t('whatsapp.open')}
         className="btn-primary whatsapp-support__cta"
       />
       <button
         type="button"
         onClick={handleDismiss}
-        aria-label="Fechar aviso"
+        aria-label={t('whatsapp.dismiss')}
         className="whatsapp-support__close"
       >
         <X size={16} />

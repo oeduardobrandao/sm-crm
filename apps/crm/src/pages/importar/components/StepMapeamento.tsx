@@ -1,4 +1,5 @@
 import { AlertTriangle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import {
   POST_STATUS_TARGETS,
   type CollectionMapping,
@@ -20,6 +21,7 @@ import {
 } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { norm, type ExistingCliente } from '../buildCommitRows';
+import { lazyLabels } from '@/pages/entregas/postLabels';
 
 /**
  * Status of the existing-clientes lookup this step's "existing vs. created"
@@ -30,23 +32,16 @@ import { norm, type ExistingCliente } from '../buildCommitRows';
  */
 export type ClientesStatus = 'pending' | 'error' | 'ready';
 
-export const DESTINATION_LABELS: Record<Destination, string> = {
-  clientes: 'Clientes',
-  posts: 'Posts',
-  entregas: 'Entregas',
-  ideias: 'Ideias',
-  ignorar: 'Ignorar',
-};
+/** Resolved through i18n on every read, so it follows the UI language. */
+export const DESTINATION_LABELS: Record<Destination, string> = lazyLabels(
+  ['clientes', 'posts', 'entregas', 'ideias', 'ignorar'] as const,
+  (k) => `importWizard:destination.${k}`,
+);
 
-export const STATUS_LABELS: Record<PostStatusTarget, string> = {
-  rascunho: 'Rascunho',
-  revisao_interna: 'Revisão interna',
-  aprovado_interno: 'Aprovado internamente',
-  enviado_cliente: 'Enviado ao cliente',
-  aprovado_cliente: 'Aprovado pelo cliente',
-  correcao_cliente: 'Em correção',
-  postado: 'Postado (só para datas passadas)',
-};
+export const STATUS_LABELS: Record<PostStatusTarget, string> = lazyLabels(
+  POST_STATUS_TARGETS,
+  (k) => `importWizard:status.${k}`,
+);
 
 const FIXED = '__fixo__';
 
@@ -78,6 +73,7 @@ export default function StepMapeamento({
   onBack: () => void;
   onNext: () => void;
 }) {
+  const { t } = useTranslation('importWizard');
   const update = (collectionId: string, patch: Partial<CollectionMapping>) => {
     onChange({
       collections: proposal.collections.map((m) =>
@@ -88,15 +84,11 @@ export default function StepMapeamento({
 
   return (
     <div className="space-y-6">
-      <p className="text-sm text-muted-foreground">
-        Confira o que encontramos em cada parte do arquivo. Tudo é editável — nada é importado antes
-        da sua confirmação.
-      </p>
+      <p className="text-sm text-muted-foreground">{t('mapping.lead')}</p>
 
       {clientesStatus === 'pending' && (
         <div className="flex items-center gap-2 rounded-xl border border-border p-4 text-sm text-muted-foreground">
-          <Spinner size="sm" /> Carregando a lista de clientes existentes — precisamos dela para
-          saber quem já é seu cliente antes de continuar.
+          <Spinner size="sm" /> {t('mapping.loadingClients')}
         </div>
       )}
 
@@ -104,13 +96,10 @@ export default function StepMapeamento({
         <div className="flex flex-col gap-3 rounded-xl border border-danger/40 bg-danger/5 p-4 text-sm text-danger sm:flex-row sm:items-center sm:justify-between">
           <div className="flex gap-2">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-            <p>
-              Não foi possível carregar a lista de clientes existentes. Continuar sem ela pode
-              duplicar um cliente que já existe.
-            </p>
+            <p>{t('mapping.clientsError')}</p>
           </div>
           <Button variant="secondary" onClick={onRetryClientes}>
-            Tentar novamente
+            {t('mapping.retry')}
           </Button>
         </div>
       )}
@@ -132,22 +121,23 @@ export default function StepMapeamento({
               <div>
                 <h2 className="text-base font-semibold">{collection.name}</h2>
                 <p className="text-xs text-muted-foreground">
-                  {collection.rows.length} {collection.rows.length === 1 ? 'linha' : 'linhas'} ·{' '}
-                  {collection.columns.length}{' '}
-                  {collection.columns.length === 1 ? 'coluna' : 'colunas'}
+                  {t('count.row', { count: collection.rows.length })} ·{' '}
+                  {t('count.column', { count: collection.columns.length })}
                 </p>
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1">
                   <span className="text-xs font-semibold uppercase text-muted-foreground">
-                    Importar como
+                    {t('mapping.importAs')}
                   </span>
                   <Select
                     value={mapping.destination}
                     onValueChange={(v) => update(collection.id, { destination: v as Destination })}
                   >
-                    <SelectTrigger aria-label={`Destino de ${collection.name}`}>
+                    <SelectTrigger
+                      aria-label={t('mapping.destinationOf', { name: collection.name })}
+                    >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -163,7 +153,7 @@ export default function StepMapeamento({
                 {needsClient && (
                   <div className="space-y-1">
                     <span className="text-xs font-semibold uppercase text-muted-foreground">
-                      Cliente
+                      {t('mapping.client')}
                     </span>
                     <Select
                       value={assignment.mode === 'column' ? assignment.column : FIXED}
@@ -176,14 +166,14 @@ export default function StepMapeamento({
                         })
                       }
                     >
-                      <SelectTrigger aria-label={`Cliente de ${collection.name}`}>
+                      <SelectTrigger aria-label={t('mapping.clientOf', { name: collection.name })}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value={FIXED}>Um cliente para todas as linhas</SelectItem>
+                        <SelectItem value={FIXED}>{t('mapping.oneClientForAll')}</SelectItem>
                         {collection.columns.map((c) => (
                           <SelectItem key={c} value={c}>
-                            Coluna “{c}”
+                            {t('mapping.column', { name: c })}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -191,9 +181,9 @@ export default function StepMapeamento({
                     {assignment.mode === 'fixed' && (
                       <>
                         <Input
-                          aria-label={`Nome do cliente de ${collection.name}`}
+                          aria-label={t('mapping.clientNameOf', { name: collection.name })}
                           value={assignment.clienteNome}
-                          placeholder="Nome do cliente"
+                          placeholder={t('mapping.clientName')}
                           onChange={(e) =>
                             update(collection.id, {
                               clientAssignment: { mode: 'fixed', clienteNome: e.target.value },
@@ -201,9 +191,7 @@ export default function StepMapeamento({
                           }
                         />
                         <p className="text-xs text-muted-foreground">
-                          {fixedMatch
-                            ? 'Usaremos o cliente que já existe com esse nome.'
-                            : 'Se não existir um cliente com esse nome, ele será criado.'}
+                          {fixedMatch ? t('mapping.willUseExisting') : t('mapping.willCreate')}
                         </p>
                       </>
                     )}
@@ -214,7 +202,7 @@ export default function StepMapeamento({
               {keys.length > 0 && (
                 <div className="space-y-2">
                   <span className="text-xs font-semibold uppercase text-muted-foreground">
-                    Equivalência de status
+                    {t('mapping.statusMap')}
                   </span>
                   <div className="grid gap-2 sm:grid-cols-2">
                     {keys.map((key) => (
@@ -231,7 +219,7 @@ export default function StepMapeamento({
                           }
                         >
                           <SelectTrigger
-                            aria-label={`Status "${key}" de ${collection.name}`}
+                            aria-label={t('mapping.statusAria', { key, name: collection.name })}
                             className="w-1/2"
                           >
                             <SelectValue />
@@ -263,10 +251,10 @@ export default function StepMapeamento({
 
       <div className="flex justify-between">
         <Button variant="secondary" onClick={onBack}>
-          Voltar
+          {t('nav.back')}
         </Button>
         <Button disabled={clientesStatus !== 'ready'} onClick={onNext}>
-          Continuar
+          {t('nav.next')}
         </Button>
       </div>
     </div>

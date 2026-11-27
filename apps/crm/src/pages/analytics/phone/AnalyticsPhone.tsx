@@ -1,7 +1,9 @@
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import i18n from 'i18next';
+import { useTranslation } from 'react-i18next';
+import { useDateFnsLocale } from '@mesaas/i18n';
 import { AlertTriangle, ArrowUpDown, Check, RefreshCw } from 'lucide-react';
 import { PhonePageHeader } from '@/components/mobile/PhonePageHeader';
 import { PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
@@ -14,7 +16,15 @@ import {
   type PortfolioTopPost,
 } from '../../../services/analytics';
 import { formatRate } from '../../../lib/ig-rates';
-import { Avatar, PickerChip, SectionHead, fmtNumber, mediaTypeLabel } from './shared';
+import {
+  Avatar,
+  PickerChip,
+  SectionHead,
+  fmtFixed,
+  fmtNumber,
+  fmtPct as formatPct,
+  mediaTypeLabel,
+} from './shared';
 import { RankedPostStrip } from './RankedPostStrip';
 import { AllPostsSheet, type AllPostsRow } from './AllPostsSheet';
 import {
@@ -36,53 +46,52 @@ export type AccountSortCol =
   | 'website_clicks_28d'
   | 'last_post_at';
 
-const SORT_LABELS: Record<AccountSortCol, string> = {
-  client_name: 'Nome',
-  follower_count: 'Seguidores',
-  engagement_rate_avg: 'Engajamento',
-  impressions_28d: 'Visualizações (28d)',
-  reach_28d: 'Alcance (28d)',
-  alcance_seg: 'Alcance / Seg.',
-  posts_last_30d: 'Posts (30d)',
-  website_clicks_28d: 'Cliques no link',
-  last_post_at: 'Último post',
-};
-
-const ORDER_OPTIONS = [
-  { value: 'views', label: 'Visualizações' },
-  { value: 'reach', label: 'Alcance' },
-  { value: 'engagement', label: 'Engajamento' },
-  { value: 'likes', label: 'Curtidas' },
-  { value: 'comments', label: 'Comentários' },
-  { value: 'saved', label: 'Salvos' },
-  { value: 'share_rate', label: 'Compart./visualização' },
-  { value: 'like_rate', label: 'Curt./visualização' },
-  { value: 'save_rate', label: 'Salvos/visualização' },
-  { value: 'comment_rate', label: 'Coment./visualização' },
-  { value: 'date', label: 'Data' },
+const SORT_COLS: AccountSortCol[] = [
+  'client_name',
+  'follower_count',
+  'engagement_rate_avg',
+  'impressions_28d',
+  'reach_28d',
+  'alcance_seg',
+  'posts_last_30d',
+  'website_clicks_28d',
+  'last_post_at',
 ];
+
+const sortLabel = (col: AccountSortCol): string => i18n.t(`analyticsPhone:sort.${col}`);
+
+const ORDER_VALUES = [
+  'views',
+  'reach',
+  'engagement',
+  'likes',
+  'comments',
+  'saved',
+  'share_rate',
+  'like_rate',
+  'save_rate',
+  'comment_rate',
+  'date',
+] as const;
+const orderOptions = () =>
+  ORDER_VALUES.map((value) => ({
+    value,
+    label: i18n.t(`analyticsAccount:drawer.sort.${value}`),
+  }));
 const RATE_KEYS = ['share_rate', 'like_rate', 'save_rate', 'comment_rate'] as const;
 type RateOrder = (typeof RATE_KEYS)[number];
-const RATE_SHORT: Record<RateOrder, string> = {
-  share_rate: 'Compart.',
-  like_rate: 'Curt.',
-  save_rate: 'Salvos',
-  comment_rate: 'Coment.',
-};
 
-const FORMAT_OPTIONS = [
-  { value: 'IMAGE', label: 'Imagem' },
-  { value: 'VIDEO', label: 'Reels' },
-  { value: 'CAROUSEL_ALBUM', label: 'Carrossel' },
-];
+const formatOptions = () =>
+  (['IMAGE', 'VIDEO', 'CAROUSEL_ALBUM'] as const).map((value) => ({
+    value,
+    label: mediaTypeLabel(value),
+  }));
 
-const PERIOD_OPTIONS = [
-  { value: 7, label: '7 dias' },
-  { value: 28, label: '28 dias' },
-  { value: 90, label: '90 dias' },
-];
-
-const formatPct = (v: number) => (v === 0 ? '—' : `${v.toFixed(2).replace('.', ',')}%`);
+const periodOptions = () =>
+  [7, 28, 90].map((value) => ({
+    value,
+    label: i18n.t('analyticsAccount:filter.days', { count: value }),
+  }));
 
 function daysSince(iso: string | null): number | null {
   return iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 86400000) : null;
@@ -98,15 +107,17 @@ function sortValueLabel(a: PortfolioAccount, col: AccountSortCol): string {
       return fmtNumber(a.reach_28d);
     case 'alcance_seg':
       return a.follower_count > 0
-        ? `${((a.reach_28d / a.follower_count) * 100).toFixed(1).replace('.', ',')}%`
-        : '0,0%';
+        ? `${fmtFixed((a.reach_28d / a.follower_count) * 100, 1)}%`
+        : `${fmtFixed(0, 1)}%`;
     case 'posts_last_30d':
       return String(a.posts_last_30d);
     case 'website_clicks_28d':
       return fmtNumber(a.website_clicks_28d ?? 0);
     case 'last_post_at': {
       const d = daysSince(a.last_post_at);
-      return d === null ? 'Sem posts' : `${d}d atrás`;
+      return d === null
+        ? i18n.t('analyticsPhone:noPosts')
+        : i18n.t('analyticsPhone:daysAgo', { days: d });
     }
     default:
       return fmtNumber(a.follower_count);
@@ -191,26 +202,33 @@ export function AnalyticsPhone(props: AnalyticsPhoneProps) {
     specialtyStats,
     drawer,
   } = props;
+  const { t } = useTranslation(['analyticsPhone', 'analyticsAccount']);
+  const dateFnsLocale = useDateFnsLocale();
   const [sortOpen, setSortOpen] = useState(false);
   const sortButtonRef = useRef<HTMLButtonElement>(null);
 
   const clientLabel =
     clienteFilter === 'all'
-      ? 'Todos'
-      : (clientOptions.find((a) => String(a.client_id) === clienteFilter)?.client_name ?? 'Todos');
+      ? t('filter.all')
+      : (clientOptions.find((a) => String(a.client_id) === clienteFilter)?.client_name ??
+        t('filter.all'));
 
   const subtitle = (
     <>
-      {accounts.length === 1 ? '1 conta' : `${accounts.length} contas`} · {days} dias
-      {syncing && <span className="phone-an-subtitle-line">Sincronizando…</span>}
+      {t('accountsCount', { count: accounts.length })} ·{' '}
+      {t('analyticsAccount:filter.days', { count: days })}
+      {syncing && <span className="phone-an-subtitle-line">{t('sync.runningPhone')}</span>}
       {!syncing && syncResult && (
         <span
           role="status"
           className={`phone-an-subtitle-line ${syncResult.failed > 0 ? 'phone-an-tone--warn' : 'phone-an-tone--up'}`}
         >
-          {syncResult.success} sincronizada{syncResult.success !== 1 ? 's' : ''}
+          {t('sync.done', { count: syncResult.success })}
           {syncResult.failed > 0 &&
-            `, ${syncResult.failed} falhou: ${syncResult.failedNames.join(', ')}`}
+            t('sync.failed', {
+              count: syncResult.failed,
+              names: syncResult.failedNames.join(', '),
+            })}
         </span>
       )}
     </>
@@ -220,19 +238,18 @@ export function AnalyticsPhone(props: AnalyticsPhoneProps) {
     useCallback(async () => {
       const result = await getPortfolioAIAnalysis();
       if (!result || result.analysis.error) {
-        throw new Error('Não foi possível gerar a análise. Tente novamente.');
+        throw new Error(AI_UNAVAILABLE);
       }
       return { ...result.analysis, generatedAt: result.generatedAt };
     }, []),
     useCallback(
       (e: unknown) =>
-        e instanceof Error && e.message.startsWith('Não foi possível')
-          ? e.message
-          : 'Erro ao gerar análise. Tente novamente.',
-      [],
+        e instanceof Error && e.message === AI_UNAVAILABLE ? t('ai.failed') : t('ai.error'),
+      [t],
     ),
   );
-  const aiView = useMemo(() => portfolioAIView(ai.result), [ai.result]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const aiView = useMemo(() => portfolioAIView(ai.result), [ai.result, t]);
 
   const benchmarkAvg =
     accounts.length > 0
@@ -249,28 +266,29 @@ export function AnalyticsPhone(props: AnalyticsPhoneProps) {
       thumbnailUrl: post.thumbnail_url,
       mediaType: post.media_type,
       title: post.client_name,
-      meta: `${format(new Date(post.posted_at), "d 'de' MMM", { locale: ptBR })} · ${mediaTypeLabel(post.media_type)}`,
+      meta: `${format(new Date(post.posted_at), t('analyticsAccount:phone.dateShort'), { locale: dateFnsLocale })} · ${mediaTypeLabel(post.media_type)}`,
       metrics: (
         <>
           <span>
-            Visualizações <strong>{fmtNumber(post.views)}</strong>
+            {t('analyticsAccount:phone.rowViews')} <strong>{fmtNumber(post.views)}</strong>
           </span>
           <span>
-            Eng. <strong>{formatPct(post.engagement_rate)}</strong>
+            {t('analyticsAccount:phone.rowEng')} <strong>{formatPct(post.engagement_rate)}</strong>
           </span>
           {rateKey && (
             <span>
-              {RATE_SHORT[rateKey]}/visualização <strong>{formatRate(post.rates[rateKey])}</strong>
+              {t('rateSuffix', { rate: t(`rateShort.${rateKey}`) })}{' '}
+              <strong>{formatRate(post.rates[rateKey])}</strong>
             </span>
           )}
           <span>
-            Curtidas <strong>{fmtNumber(post.likes)}</strong>
+            {t('analyticsAccount:phone.rowLikes')} <strong>{fmtNumber(post.likes)}</strong>
           </span>
           <span>
-            Coment. <strong>{fmtNumber(post.comments)}</strong>
+            {t('analyticsAccount:phone.rowComments')} <strong>{fmtNumber(post.comments)}</strong>
           </span>
           <span>
-            Salvos <strong>{fmtNumber(post.saved)}</strong>
+            {t('analyticsAccount:phone.rowSaved')} <strong>{fmtNumber(post.saved)}</strong>
           </span>
         </>
       ),
@@ -280,11 +298,11 @@ export function AnalyticsPhone(props: AnalyticsPhoneProps) {
   return (
     <div className="phone-kit phone-an">
       <PhonePageHeader
-        title="Analytics"
+        title={t('title')}
         subtitle={subtitle}
         actions={
           <PhoneIconButton
-            label="Sincronizar todas as contas"
+            label={t('sync.all')}
             onClick={onSync}
             disabled={syncing || !canSync}
             aria-busy={syncing || undefined}
@@ -296,34 +314,32 @@ export function AnalyticsPhone(props: AnalyticsPhoneProps) {
 
       <div className="phone-an-chips">
         <PickerChip<string>
-          label="Cliente"
+          label={t('filter.client')}
           valueLabel={clientLabel}
-          sheetTitle="Cliente"
+          sheetTitle={t('filter.client')}
           options={clientOptions.map((a) => ({ value: String(a.client_id), label: a.client_name }))}
           value={clienteFilter === 'all' ? null : clienteFilter}
           onChange={(v) => onClienteFilter(v ?? 'all')}
-          emptyOption={{ label: 'Todos os clientes' }}
+          emptyOption={{ label: t('filter.allClients') }}
           searchable={clientOptions.length > 8}
         />
         <PickerChip<number>
-          label="Período"
-          valueLabel={`${days} dias`}
-          options={PERIOD_OPTIONS}
+          label={t('filter.period')}
+          valueLabel={t('analyticsAccount:filter.days', { count: days })}
+          options={periodOptions()}
           value={days}
           onChange={(v) => v !== null && onDays(v)}
         />
       </div>
 
       {silentAccounts.length > 0 && (
-        <section className="phone-an-callout" aria-label="Contas silenciosas" role="status">
+        <section className="phone-an-callout" aria-label={t('silent.title')} role="status">
           <div className="phone-an-callout__head">
             <AlertTriangle aria-hidden="true" />
-            <h2 className="phone-an-callout__title">Contas silenciosas</h2>
+            <h2 className="phone-an-callout__title">{t('silent.title')}</h2>
           </div>
           <p className="phone-an-callout__text">
-            {silentAccounts.length === 1
-              ? '1 conta sem postar no período'
-              : `${silentAccounts.length} contas sem postar no período`}
+            {t('silent.countText', { count: silentAccounts.length })}
           </p>
           <div className="phone-an-callout__chips">
             {silentAccounts.map((a) => {
@@ -337,7 +353,7 @@ export function AnalyticsPhone(props: AnalyticsPhoneProps) {
                   <Avatar initials={a.client_sigla} color={a.client_cor} />
                   {a.client_name}
                   <span className="phone-an-badge phone-an-badge--warn">
-                    {d !== null ? `${d}d sem postar` : 'Sem posts'}
+                    {d !== null ? t('daysSilent', { days: d }) : t('noPosts')}
                   </span>
                 </Link>
               );
@@ -349,16 +365,16 @@ export function AnalyticsPhone(props: AnalyticsPhoneProps) {
       {kpis}
 
       <RankedPostStrip
-        title="Melhores posts"
-        help="Top 5 posts com mais visualizações no período selecionado."
+        title={t('rank.bestPhone')}
+        help={t('rank.helpBest')}
         posts={bestPosts.slice(0, 5)}
         tone="best"
         titleOf={(p) => p.client_name}
         onSeeMore={bestPosts.length > 5 ? () => drawer.open('best') : undefined}
       />
       <RankedPostStrip
-        title="Precisam de atenção"
-        help="Posts com pelo menos 48h desde a publicação e menos visualizações no período."
+        title={t('rank.worstPhone')}
+        help={t('rank.helpWorst')}
         posts={worstPosts.slice(0, 5)}
         tone="worst"
         titleOf={(p) => p.client_name}
@@ -370,7 +386,7 @@ export function AnalyticsPhone(props: AnalyticsPhoneProps) {
         <div className="phone-an-half phone-an-stack">
           <SectionHead
             large
-            title="Todas as contas"
+            title={t('accounts.titlePhone')}
             trailing={
               accounts.length > 0 ? (
                 <button
@@ -378,21 +394,22 @@ export function AnalyticsPhone(props: AnalyticsPhoneProps) {
                   type="button"
                   className="phone-an-sort"
                   aria-haspopup="dialog"
-                  aria-label={`Ordenar contas: ${SORT_LABELS[sortColumn]}, ${sortDirection === 'asc' ? 'crescente' : 'decrescente'}`}
+                  aria-label={t('accounts.sortAria', {
+                    col: sortLabel(sortColumn),
+                    dir: sortDirection === 'asc' ? t('dir.asc') : t('dir.desc'),
+                  })}
                   onClick={() => setSortOpen(true)}
                 >
                   <ArrowUpDown aria-hidden="true" />
-                  {SORT_LABELS[sortColumn]}
+                  {sortLabel(sortColumn)}
                 </button>
               ) : undefined
             }
           />
           {accounts.length === 0 ? (
-            <p className="phone-an-empty">
-              Nenhuma conta Instagram conectada. Conecte contas na página de cada cliente.
-            </p>
+            <p className="phone-an-empty">{t('accounts.empty')}</p>
           ) : (
-            <GroupedList aria-label="Todas as contas">
+            <GroupedList aria-label={t('accounts.titlePhone')}>
               {sortedAccounts.map((a) => {
                 const d = daysSince(a.last_post_at);
                 const silent = d === null || d > 7;
@@ -423,9 +440,9 @@ export function AnalyticsPhone(props: AnalyticsPhoneProps) {
                             {' · '}
                           </>
                         )}
-                        {formatPct(a.engagement_rate_avg)} eng. ·{' '}
+                        {t('engLine', { pct: formatPct(a.engagement_rate_avg) })} ·{' '}
                         <span className={silent ? 'phone-an-tone--down' : undefined}>
-                          {d === null ? 'Sem posts' : `${d}d atrás`}
+                          {d === null ? t('noPosts') : t('daysAgo', { days: d })}
                         </span>
                       </>
                     }
@@ -441,8 +458,8 @@ export function AnalyticsPhone(props: AnalyticsPhoneProps) {
         {accounts.length >= 2 && (
           <div className="phone-an-half phone-an-stack">
             <BarList
-              header="Benchmarking de engajamento"
-              footer={`Média do portfólio: ${formatPct(benchmarkAvg)}. Verde está acima da média.`}
+              header={t('benchmark.titlePhone')}
+              footer={t('benchmark.footer', { avg: formatPct(benchmarkAvg) })}
               items={[...accounts]
                 .sort((a, b) => b.engagement_rate_avg - a.engagement_rate_avg)
                 .map((a) => ({
@@ -459,11 +476,14 @@ export function AnalyticsPhone(props: AnalyticsPhoneProps) {
 
             {specialtyStats.length >= 2 && (
               <BarList
-                header="Por especialidade"
+                header={t('benchmark.specialtyPhone')}
                 items={specialtyStats.map((s) => ({
                   key: s.specialty,
                   label: s.specialty,
-                  subtitle: `${s.count} conta${s.count > 1 ? 's' : ''} · ${fmtNumber(s.avgFollowers)} seg. médio`,
+                  subtitle: t('benchmark.specialtyRow', {
+                    count: s.count,
+                    followers: fmtNumber(s.avgFollowers),
+                  }),
                   value: s.avgEngagement,
                   valueLabel: formatPct(s.avgEngagement),
                 }))}
@@ -475,11 +495,11 @@ export function AnalyticsPhone(props: AnalyticsPhoneProps) {
 
       {accounts.length >= 1 && (
         <AIAnalysisPhone
-          title="Análise inteligente do portfólio"
+          title={t('ai.titlePhone')}
           view={aiView}
           loading={ai.loading}
           error={ai.error}
-          emptyText="Toque para obter uma análise estratégica do portfólio com IA."
+          emptyText={t('ai.promptPhone')}
           onGenerate={ai.generate}
         />
       )}
@@ -487,16 +507,16 @@ export function AnalyticsPhone(props: AnalyticsPhoneProps) {
       <ActionSheet
         open={sortOpen}
         onOpenChange={setSortOpen}
-        title="Ordenar contas por"
+        title={t('accounts.sortTitle')}
         returnFocusRef={sortButtonRef}
         actions={[
-          ...(Object.keys(SORT_LABELS) as AccountSortCol[]).map((col) => ({
-            label: SORT_LABELS[col],
+          ...SORT_COLS.map((col) => ({
+            label: sortLabel(col),
             icon: sortColumn === col ? <Check /> : <span />,
             onSelect: () => onSortColumn(col),
           })),
           {
-            label: sortDirection === 'asc' ? 'Ordem decrescente' : 'Ordem crescente',
+            label: sortDirection === 'asc' ? t('accounts.orderDesc') : t('accounts.orderAsc'),
             icon: <ArrowUpDown />,
             onSelect: onToggleDirection,
           },
@@ -508,22 +528,20 @@ export function AnalyticsPhone(props: AnalyticsPhoneProps) {
         onOpenChange={(open) => {
           if (!open) drawer.close();
         }}
-        title={drawer.mode === 'worst' ? 'Posts que precisam de atenção' : 'Todos os posts'}
-        countLabel={`${drawer.posts.length} de ${drawer.total} posts`}
+        title={drawer.mode === 'worst' ? t('drawer.worstPhone') : t('drawer.allPostsPhone')}
+        countLabel={t('drawer.count', { shown: drawer.posts.length, total: drawer.total })}
         note={
-          (RATE_KEYS as readonly string[]).includes(drawer.orderBy)
-            ? 'Top 200 por visualizações, reordenado por taxa'
-            : undefined
+          (RATE_KEYS as readonly string[]).includes(drawer.orderBy) ? t('drawer.note') : undefined
         }
         rows={drawerRows}
-        emptyText="Nenhum post encontrado com estes filtros."
+        emptyText={t('analyticsAccount:drawer.empty')}
         filters={{
-          orderOptions: ORDER_OPTIONS,
+          orderOptions: orderOptions(),
           orderBy: drawer.orderBy,
           onOrderBy: drawer.setOrderBy,
           asc: drawer.asc,
           onAsc: drawer.setAsc,
-          formatOptions: FORMAT_OPTIONS,
+          formatOptions: formatOptions(),
           format: drawer.format,
           onFormat: drawer.setFormat,
           clientOptions: drawer.clients.map((name) => ({ value: name, label: name })),
@@ -539,6 +557,11 @@ export function AnalyticsPhone(props: AnalyticsPhoneProps) {
   );
 }
 
+// Thrown by the generate callback so the error handler can tell "the analysis came back
+// with an error" from any other failure without comparing translated text.
+const AI_UNAVAILABLE = 'ai_unavailable';
+
+// Keys are the Portuguese status words the AI analysis returns (data, not UI copy).
 const STATUS_TONE: Record<string, AITone> = {
   destaque: 'up',
   estável: 'info',
@@ -552,13 +575,13 @@ export function portfolioAIView(a: any): AIAnalysisView | null {
     score: a.portfolioHealth
       ? {
           value: a.portfolioHealth.score,
-          label: 'Saúde do portfólio',
+          label: i18n.t('analyticsPhone:ai.healthPhone'),
           summary: a.portfolioHealth.summary,
         }
       : undefined,
     ranking: Array.isArray(a.accountRanking)
       ? {
-          title: 'Ranking de contas',
+          title: i18n.t('analyticsPhone:ai.rankingPhone'),
           items: a.accountRanking.map((acc: any) => ({
             badge: String(acc.status ?? ''),
             tone: STATUS_TONE[acc.status] ?? 'down',
@@ -568,13 +591,13 @@ export function portfolioAIView(a: any): AIAnalysisView | null {
         }
       : undefined,
     sections: [
-      { title: 'Insights cruzados', text: a.crossAccountInsights },
-      { title: 'Alocação de esforço', text: a.resourceAllocation },
-      { title: 'Resumo mensal', text: a.monthlyDigest },
+      { title: i18n.t('analyticsPhone:ai.crossPhone'), text: a.crossAccountInsights },
+      { title: i18n.t('analyticsPhone:ai.effortPhone'), text: a.resourceAllocation },
+      { title: i18n.t('analyticsPhone:ai.digestPhone'), text: a.monthlyDigest },
     ],
     actions: Array.isArray(a.priorityActions)
       ? {
-          title: 'Ações prioritárias',
+          title: i18n.t('analyticsPhone:ai.actionsPhone'),
           items: a.priorityActions.map((p: any) => ({
             badge: String(p.prioridade ?? ''),
             tone: priorityTone(p.prioridade),

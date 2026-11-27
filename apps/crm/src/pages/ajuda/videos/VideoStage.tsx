@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { FileText } from 'lucide-react';
 import { VideoPlayer } from '@mesaas/ui/VideoPlayer';
 import { Button } from '@/components/ui/button';
@@ -35,6 +36,7 @@ export function VideoStage({
   onStartSeries,
   onFirstPlay,
 }: VideoStageProps) {
+  const { t } = useTranslation('help');
   const [endState, setEndState] = useState<'playing' | 'next' | 'done'>('playing');
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -62,7 +64,7 @@ export function VideoStage({
             role="alert"
             className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center text-white"
           >
-            <p className="text-[0.9rem]">Não foi possível carregar este vídeo.</p>
+            <p className="text-[0.9rem]">{t('video.loadFailed')}</p>
             <Button
               size="sm"
               variant="outline"
@@ -76,7 +78,7 @@ export function VideoStage({
                 setAttempt((a) => a + 1);
               }}
             >
-              Tentar novamente
+              {t('video.retry')}
             </Button>
           </div>
         ) : (
@@ -104,14 +106,16 @@ export function VideoStage({
         )}
         {endState === 'done' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/75 p-6 text-center text-white">
-            <p className="text-[1.05rem] font-semibold">Série concluída</p>
+            <p className="text-[1.05rem] font-semibold">{t('video.seriesDone')}</p>
             {nextSeries && onStartSeries && (
-              <p className="text-[0.85rem] text-white/80">Próxima série: {nextSeries.title}</p>
+              <p className="text-[0.85rem] text-white/80">
+                {t('video.nextSeries', { title: nextSeries.title })}
+              </p>
             )}
             <div className="flex flex-wrap justify-center gap-2">
               {nextSeries && onStartSeries && (
                 <Button size="sm" onClick={() => onStartSeries(nextSeries.id)}>
-                  Começar
+                  {t('video.start')}
                 </Button>
               )}
               <Button
@@ -123,7 +127,7 @@ export function VideoStage({
                   setAttempt((a) => a + 1);
                 }}
               >
-                Assistir de novo
+                {t('video.watchAgain')}
               </Button>
             </div>
           </div>
@@ -142,7 +146,7 @@ export function VideoStage({
             className="inline-flex items-center gap-1.5 text-[0.82rem] font-medium text-[var(--text-main)] underline-offset-4 hover:underline"
           >
             <FileText className="h-3.5 w-3.5" />
-            Ler artigo
+            {t('video.readArticle')}
           </Link>
         )}
         {video.description && (

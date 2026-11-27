@@ -4,6 +4,7 @@
 // ferramentas do editor dependem de hover e de uma coluna de 880px.
 import { useRef, useState, type ReactNode } from 'react';
 import { Download, ExternalLink, Info, Monitor, MoreHorizontal } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { BlockRenderer } from '@mesaas/report-blocks/BlockRenderer';
 import type { ReportDocSnapshot, ReportLayout } from '@mesaas/report-blocks/types';
 import { ActionSheet, type ActionSheetAction } from '@/components/mobile/ActionSheet';
@@ -13,8 +14,6 @@ import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
 import { usePhoneChrome } from '@/components/layout/PhoneLayoutContext';
 import { pdfLinkClick } from '@/utils/openPdf';
 import './reportPhone.css';
-
-export const PHONE_EDIT_NOTE = 'Edite o layout no computador.';
 
 export interface ReportPhoneViewProps {
   title: string;
@@ -40,27 +39,30 @@ export function ReportPhoneView({
   title,
   subtitle,
   fallbackTo,
-  backLabel = 'Voltar',
+  backLabel,
   actions = [],
-  actionsLabel = 'Ações do relatório',
+  actionsLabel,
   sampleNote,
   layout,
   snapshot,
   bottomBar,
 }: ReportPhoneViewProps) {
+  const { t } = useTranslation('reportEditor');
+  const backText = backLabel ?? t('phone.back');
+  const actionsText = actionsLabel ?? t('page.actionsAria');
   usePhoneChrome({ tabBar: !bottomBar });
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   return (
     <div className="phone-report">
       <PhoneNavBar
-        backLabel={backLabel}
+        backLabel={backText}
         fallbackTo={fallbackTo}
         trailing={
           actions.length > 0 ? (
             <PhoneIconButton
               ref={menuButtonRef}
-              label={actionsLabel}
+              label={actionsText}
               aria-haspopup="dialog"
               onClick={() => setMenuOpen(true)}
             >
@@ -75,7 +77,7 @@ export function ReportPhoneView({
       </div>
       <p role="note" className="phone-report__note">
         <Monitor aria-hidden="true" />
-        {PHONE_EDIT_NOTE}
+        {t('phone.editNote')}
       </p>
       {sampleNote && (
         <p role="note" className="phone-report__note phone-report__note--muted">
@@ -91,7 +93,7 @@ export function ReportPhoneView({
         <ActionSheet
           open={menuOpen}
           onOpenChange={setMenuOpen}
-          title={actionsLabel}
+          title={actionsText}
           hideTitle
           actions={actions}
           returnFocusRef={menuButtonRef}
@@ -117,6 +119,7 @@ export interface ReportExportBarProps {
  * um link "Abrir PDF" de verdade, que a pessoa toca: um gesto novo.
  */
 export function ReportExportBar({ exporting, pdfUrl, pdfName, onExport }: ReportExportBarProps) {
+  const { t } = useTranslation('reportEditor');
   return (
     <BottomActionBar className="phone-report__bar">
       {pdfUrl ? (
@@ -127,7 +130,7 @@ export function ReportExportBar({ exporting, pdfUrl, pdfName, onExport }: Report
             disabled={exporting}
             onClick={onExport}
           >
-            Gerar novamente
+            {t('phone.generateAgain')}
           </button>
           <a
             className="phone-report__bar-primary"
@@ -137,7 +140,7 @@ export function ReportExportBar({ exporting, pdfUrl, pdfName, onExport }: Report
             onClick={pdfLinkClick(pdfUrl, pdfName)}
           >
             <ExternalLink aria-hidden="true" />
-            Abrir PDF
+            {t('page.openPdf')}
           </a>
         </>
       ) : (
@@ -149,7 +152,7 @@ export function ReportExportBar({ exporting, pdfUrl, pdfName, onExport }: Report
           onClick={onExport}
         >
           <Download aria-hidden="true" />
-          {exporting ? 'Gerando PDF…' : 'Exportar PDF'}
+          {exporting ? t('phone.exporting') : t('page.exportPdf')}
         </button>
       )}
     </BottomActionBar>

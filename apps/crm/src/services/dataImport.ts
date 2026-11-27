@@ -7,6 +7,7 @@
 // (`@mesaas/platforms`, imported below). That file is the source of truth:
 // any change there needs the same change here.
 import type { ContentFormat } from '@mesaas/platforms';
+import i18n from 'i18next';
 import { supabase } from '@/lib/supabase';
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/data-import`;
@@ -131,7 +132,7 @@ export interface UndoResult {
   skippedClientes: string[];
 }
 
-/** Carries the server's `error` string so callers can map it to pt-BR copy. */
+/** Carries the server's `error` string so callers can map it to localized copy. */
 export class ImportApiError extends Error {
   constructor(
     readonly code: string,
@@ -142,32 +143,36 @@ export class ImportApiError extends Error {
   }
 }
 
-const ERROR_MESSAGES: Record<string, string> = {
-  upgrade_required: 'A importação de dados não está disponível no seu plano.',
-  'Job not found': 'Não encontramos esta importação.',
-  'Already undone': 'Esta importação já foi desfeita.',
+// Server error string -> key under `importWizard:errors`.
+const ERROR_KEYS: Record<string, string> = {
+  upgrade_required: 'upgradeRequired',
+  'Job not found': 'jobNotFound',
+  'Already undone': 'alreadyUndone',
   // Covers BOTH server refusals for a job another undo owns: the up-front status
   // check, and the compare-and-set claim losing the race (handleUndo in
   // supabase/functions/data-import/handler.ts deliberately reuses this one string
   // for both, so this mapping does not have to grow a second key). Any new error
   // string added there needs a key added here, or it falls back to the generic
-  // "Falha na importação".
-  'Undo in progress': 'Já existe um "desfazer" em andamento para esta importação.',
-  'Undo window expired': 'O prazo de 7 dias para desfazer esta importação já passou.',
-  'Invalid source': 'Origem inválida.',
-  'Invalid payload': 'Não conseguimos montar os dados desta importação.',
-  'Preview batch too large': 'O arquivo tem linhas demais para a prévia.',
-  'Commit batch too large': 'O lote enviado é grande demais.',
-  Unauthorized: 'Sua sessão expirou. Entre novamente.',
+  // "Import failed" message.
+  'Undo in progress': 'undoInProgress',
+  'Undo window expired': 'undoWindowExpired',
+  'Invalid source': 'invalidSource',
+  'Invalid payload': 'invalidPayload',
+  'Preview batch too large': 'previewTooLarge',
+  'Commit batch too large': 'commitTooLarge',
+  Unauthorized: 'unauthorized',
 };
 
-/** User-facing pt-BR message for any error thrown by this module. */
+/** User-facing message, in the UI language, for any error thrown by this module. */
 export function friendlyImportError(err: unknown): string {
   if (err instanceof ImportApiError) {
-    return ERROR_MESSAGES[err.code] ?? 'Falha na importação. Tente novamente.';
+    return i18n.t(`importWizard:errors.${ERROR_KEYS[err.code] ?? 'generic'}`);
   }
-  if (err instanceof Error && err.message === 'Sessão expirada') return err.message;
-  return 'Falha na importação. Tente novamente.';
+  // `post` throws this literal when there is no session; it is matched here, not shown as is.
+  if (err instanceof Error && err.message === 'Sessão expirada') {
+    return i18n.t('importWizard:errors.sessionExpired');
+  }
+  return i18n.t('importWizard:errors.generic');
 }
 
 async function post<T>(action: string, body: unknown): Promise<T> {

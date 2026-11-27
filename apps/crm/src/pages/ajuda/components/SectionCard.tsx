@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   Rocket,
   Users,
@@ -31,6 +32,7 @@ interface SectionCardProps {
 }
 
 export function SectionCard({ category, label, articleCount }: SectionCardProps) {
+  const { t } = useTranslation('help');
   const Icon = SECTION_ICONS[category] ?? Rocket;
 
   return (
@@ -45,7 +47,7 @@ export function SectionCard({ category, label, articleCount }: SectionCardProps)
         {label}
       </h3>
       <p className="text-[0.78rem] text-[var(--text-light)]">
-        {articleCount} {articleCount === 1 ? 'artigo' : 'artigos'}
+        {t('article.count', { count: articleCount })}
       </p>
     </Link>
   );

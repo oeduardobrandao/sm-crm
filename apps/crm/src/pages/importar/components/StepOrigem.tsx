@@ -1,4 +1,5 @@
 import { Bot } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import type { SourceKind } from '@mesaas/import-parsers';
 import { Button } from '@/components/ui/button';
@@ -15,38 +16,32 @@ export default function StepOrigem({
   onSelect: (source: SourceKind) => void;
   onNext: () => void;
 }) {
+  const { t } = useTranslation('importWizard');
   const guide = source ? sourceGuide(source) : null;
   return (
     <div className="space-y-6">
       <Card className="border-primary/30 bg-primary/5">
         <CardContent className="pt-6">
           <h2 className="mb-2 flex items-center gap-2 text-base font-semibold">
-            <Bot aria-hidden className="h-5 w-5 text-primary" />O jeito mais completo de migrar:
-            peça para um agente de IA
+            <Bot aria-hidden className="h-5 w-5 text-primary" />
+            {t('origem.mcpTitle')}
           </h2>
-          <p className="text-sm text-muted-foreground">
-            Conecte o Claude ou o ChatGPT ao seu Mesaas via MCP e peça algo como "migre meus
-            clientes e o calendário do Notion para o Mesaas". O agente lê os dados direto na outra
-            ferramenta e cria clientes, posts e tarefas por aqui, sem você precisar exportar
-            arquivos.
-          </p>
+          <p className="text-sm text-muted-foreground">{t('origem.mcpBody')}</p>
           <div className="mt-3 flex flex-wrap gap-3 text-sm">
             <Link to="/configuracao/mcp" className="font-medium text-primary hover:underline">
-              Conectar um agente
+              {t('origem.connectAgent')}
             </Link>
             <Link
               to="/ajuda/como-conectar-o-claude-mcp"
               className="font-medium text-primary hover:underline"
             >
-              Como funciona
+              {t('origem.howItWorks')}
             </Link>
           </div>
         </CardContent>
       </Card>
 
-      <p className="text-sm text-muted-foreground">
-        Prefere fazer você mesmo? Escolha de onde vêm os dados:
-      </p>
+      <p className="text-sm text-muted-foreground">{t('origem.choose')}</p>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {SOURCE_GUIDES.map((s) => {
@@ -85,7 +80,7 @@ export default function StepOrigem({
 
       <div className="flex justify-end">
         <Button disabled={!source} onClick={onNext}>
-          Continuar
+          {t('nav.next')}
         </Button>
       </div>
     </div>

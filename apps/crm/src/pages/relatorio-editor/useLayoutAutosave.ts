@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { validateLayout, type ReportLayout } from '@mesaas/report-blocks/types';
 import { useUnsavedWork } from '@mesaas/app-lifecycle';
 import { updateReportDoc } from '../../services/reportDocs';
+import { tr } from './editorText';
 
 const LAYOUT_DEBOUNCE_MS = 1500;
 const TITLE_DEBOUNCE_MS = 400;
@@ -26,7 +27,7 @@ export interface AutosaveTarget {
   cacheKey(id: string): QueryKey;
   /** Campo do registro em cache que guarda o título. */
   titleField: 'title' | 'name';
-  errorMessage: string;
+  errorMessage: () => string;
   /** Chamado só após um save bem-sucedido (nunca em falha). Ex.: invalidar
    *  uma lista que espelha esse registro em outra tela (F2, revisão final). */
   onSaved?: (qc: QueryClient, id: string) => void | Promise<void>;
@@ -36,7 +37,7 @@ export const REPORT_DOC_TARGET: AutosaveTarget = {
   save: (id, patch) => updateReportDoc(id, patch),
   cacheKey: (id) => ['report-doc', id],
   titleField: 'title',
-  errorMessage: 'Erro ao salvar o relatório',
+  errorMessage: () => tr('toast.reportSaveError'),
 };
 
 // Cadeia de save POR DOCUMENTO, viva no módulo e não na instância do hook:
@@ -172,7 +173,7 @@ export function useLayoutAutosave(
         if (!check.ok) {
           // Bug de layoutOps se chegar aqui: nada de request com payload inválido.
           console.error('[relatorio-editor] layout inválido no autosave:', check);
-          toast.error(targetRef.current.errorMessage, SAVE_ERROR_TOAST);
+          toast.error(targetRef.current.errorMessage(), SAVE_ERROR_TOAST);
           if (pendingLayout.current === null) setSavingState(false);
           return;
         }
@@ -188,7 +189,7 @@ export function useLayoutAutosave(
           await targetRef.current.onSaved?.(qc, docIdRef.current);
         } catch (err) {
           console.error('[relatorio-editor] autosave falhou:', err);
-          toast.error(targetRef.current.errorMessage, SAVE_ERROR_TOAST);
+          toast.error(targetRef.current.errorMessage(), SAVE_ERROR_TOAST);
           // Retém o payload: navegação ainda flusha no unmount. Se ainda houver
           // delay no backoff, agenda o próximo retry; esgotado, retém SEM
           // agendar (para de bombardear o backend até uma edição nova ou o
@@ -232,7 +233,7 @@ export function useLayoutAutosave(
           if (!titleDirty.current) setTitleSaving(false);
         } catch (err) {
           console.error('[relatorio-editor] save de título falhou:', err);
-          toast.error(targetRef.current.errorMessage, SAVE_ERROR_TOAST);
+          toast.error(targetRef.current.errorMessage(), SAVE_ERROR_TOAST);
           // Mesmo tratamento do layout: retenta com backoff até esgotar
           // RETRY_DELAYS_MS, depois retém a dirty flag sem novo timer.
           setTitleDirty(true);

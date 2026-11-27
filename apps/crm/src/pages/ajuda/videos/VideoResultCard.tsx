@@ -1,8 +1,10 @@
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { PlayCircle } from 'lucide-react';
 import { formatDuration, type VideoSearchHit } from './playlist';
 
 export function VideoResultCard({ hit }: { hit: VideoSearchHit }) {
+  const { t } = useTranslation('help');
   const { video, seriesTitle } = hit;
   return (
     <Link
@@ -29,7 +31,7 @@ export function VideoResultCard({ hit }: { hit: VideoSearchHit }) {
       </div>
       <div className="p-5">
         <span className="mb-2 inline-block rounded-sm bg-[rgba(234,179,8,0.1)] px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wider text-[var(--primary-color)]">
-          Vídeo · {seriesTitle}
+          {t('video.videoSeries', { series: seriesTitle })}
         </span>
         <h3 className="line-clamp-2 text-[1.05rem] font-bold leading-snug text-[var(--text-main)] font-[var(--font-heading)]">
           {video.title}

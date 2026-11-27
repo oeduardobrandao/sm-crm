@@ -68,6 +68,7 @@ export default function AnalyticsClientShell() {
   const { id, tab } = useParams<{ id: string; tab?: string }>();
   const navigate = useNavigate();
   const { t } = useTranslation('analyticsTiktok');
+  const { t: tAccount } = useTranslation('analyticsAccount');
   const isPhone = !useIsDesktop(768);
   const clientId = parseInt(id ?? '', 10);
   const validId = !isNaN(clientId) && clientId > 0;
@@ -133,7 +134,7 @@ export default function AnalyticsClientShell() {
   const backLink = (
     <Button variant="outline" asChild>
       <Link to="/analytics">
-        <ArrowLeft className="h-4 w-4" /> Voltar
+        <ArrowLeft className="h-4 w-4" /> {tAccount('shell.back')}
       </Link>
     </Button>
   );
@@ -150,10 +151,10 @@ export default function AnalyticsClientShell() {
   );
 
   if (!validId) {
-    if (isPhone) return <ContaPhoneMessage title="ID de cliente inválido." />;
+    if (isPhone) return <ContaPhoneMessage title={tAccount('shell.invalidId')} />;
     return (
       <div className="card">
-        <p style={{ color: 'var(--danger)' }}>ID de cliente inválido.</p>
+        <p style={{ color: 'var(--danger)' }}>{tAccount('shell.invalidId')}</p>
       </div>
     );
   }
@@ -161,10 +162,10 @@ export default function AnalyticsClientShell() {
   if (loadingClientes) return <DetailSkeleton />;
 
   if (!cliente) {
-    if (isPhone) return <ContaPhoneMessage title="Cliente não encontrado." />;
+    if (isPhone) return <ContaPhoneMessage title={tAccount('shell.notFound')} />;
     return (
       <div className="card">
-        <p style={{ color: 'var(--danger)' }}>Cliente não encontrado.</p>
+        <p style={{ color: 'var(--danger)' }}>{tAccount('shell.notFound')}</p>
       </div>
     );
   }
@@ -246,7 +247,7 @@ export default function AnalyticsClientShell() {
     }
     return (
       <div className="phone-kit phone-an">
-        <PhoneNavBar fallbackTo="/analytics" backLabel="Voltar" />
+        <PhoneNavBar fallbackTo="/analytics" backLabel={tAccount('shell.back')} />
         <div className="phone-an-identity">
           <Avatar src={photoSrcs} initials={initials} color={cliente.cor} large />
           <div className="phone-an-identity__text">

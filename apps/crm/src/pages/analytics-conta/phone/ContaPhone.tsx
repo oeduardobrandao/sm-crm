@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
+import { getDateFnsLocale, getIntlLocale } from '@mesaas/i18n';
 import {
   ArrowUpDown,
   Bookmark,
@@ -45,12 +47,12 @@ import { AllPostsSheet, type AllPostsRow } from '../../analytics/phone/AllPostsS
 import { AccountCommentsCard } from '../comments/AccountCommentsCard';
 import { AIAnalysisPhone, useAIAnalysis } from '../../analytics/phone/AIAnalysisPhone';
 import { PeriodSegmented } from '../../analytics/phone/PeriodControl';
+import { dayFull, hourText } from '../contaFormat';
 import { NewTagSheet, PostDetailSheet } from './PostDetailSheet';
 import { AccountHealthCard } from '../health/AccountHealthCard';
 import {
   BaselineSection,
   BestTimesSection,
-  DAY_FULL,
   DemographicsSection,
   FollowerGrowthCard,
   SavesSection,
@@ -61,55 +63,49 @@ import {
 } from './ContaSections';
 
 /** The posts table's sortable columns (server-side sort, same keys as desktop). */
-const POST_SORT_LABELS: Record<string, string> = {
-  posted_at: 'Data',
-  impressions: 'Visualizações',
-  reach: 'Alcance',
-  engagement_rate: 'Engajamento',
-  ig_score: 'IG Score',
-  likes: 'Curtidas',
-  saved: 'Salvos',
-  comments: 'Comentários',
-  shares: 'Compartilhamentos',
-  follows: 'Novos seguidores',
-};
-
-const ORDER_OPTIONS = [
-  { value: 'views', label: 'Visualizações' },
-  { value: 'reach', label: 'Alcance' },
-  { value: 'engagement', label: 'Engajamento' },
-  { value: 'likes', label: 'Curtidas' },
-  { value: 'comments', label: 'Comentários' },
-  { value: 'saved', label: 'Salvos' },
-  { value: 'shares', label: 'Compart.' },
-  { value: 'profile_visits', label: 'Visitas ao perfil' },
-  { value: 'follows', label: 'Novos seguidores' },
-  { value: 'date', label: 'Data' },
-  { value: 'ig_score', label: 'IG Score' },
-  { value: 'share_rate', label: 'Compart./visualização' },
-  { value: 'like_rate', label: 'Curt./visualização' },
-  { value: 'save_rate', label: 'Salvos/visualização' },
-  { value: 'comment_rate', label: 'Coment./visualização' },
-  { value: 'follows_per_mil_reach', label: 'Seguidores/mil alcançados' },
+const POST_SORT_COLS = [
+  'posted_at',
+  'impressions',
+  'reach',
+  'engagement_rate',
+  'ig_score',
+  'likes',
+  'saved',
+  'comments',
+  'shares',
+  'follows',
 ];
 
-const PERIOD_PRESETS = [
-  { value: '7', label: '7d' },
-  { value: '30', label: '30d' },
-  { value: '90', label: '90d' },
-  { value: 'month', label: 'Último mês' },
+const ORDER_KEYS = [
+  'views',
+  'reach',
+  'engagement',
+  'likes',
+  'comments',
+  'saved',
+  'shares',
+  'profile_visits',
+  'follows',
+  'date',
+  'ig_score',
+  'share_rate',
+  'like_rate',
+  'save_rate',
+  'comment_rate',
+  'follows_per_mil_reach',
 ];
 
-const fmtEng = (v: number) => `${v.toFixed(1).replace('.', ',')}%`;
+const fmtEng = (v: number) =>
+  `${getIntlLocale() === 'en-US' ? v.toFixed(1) : v.toFixed(1).replace('.', ',')}%`;
 
-function postSortValue(p: PostAnalytics, col: string): string {
+function postSortValue(p: PostAnalytics, col: string, t: TFunction): string {
   switch (col) {
     case 'reach':
       return fmtNumber(p.reach);
     case 'engagement_rate':
       return fmtEng(p.engagement_rate);
     case 'ig_score':
-      return p.ig_score == null ? 'Sem score' : String(p.ig_score);
+      return p.ig_score == null ? t('phone.noScore') : String(p.ig_score);
     case 'likes':
       return fmtNumber(p.likes);
     case 'saved':
@@ -119,7 +115,7 @@ function postSortValue(p: PostAnalytics, col: string): string {
     case 'shares':
       return fmtNumber(p.shares);
     case 'follows':
-      return typeof p.follows === 'number' ? fmtNumber(p.follows) : 'Sem dado';
+      return typeof p.follows === 'number' ? fmtNumber(p.follows) : t('phone.noValue');
     default:
       return fmtNumber(p.views);
   }
@@ -145,15 +141,6 @@ export interface ContaDrawerState {
 }
 
 type SectionKey = 'demo' | 'times' | 'saves' | 'types' | 'stories' | 'baseline';
-
-const SECTION_TITLES: Record<SectionKey, string> = {
-  demo: 'Demografia da audiência',
-  times: 'Melhor horário para postar',
-  saves: 'Taxa de salvamentos',
-  types: 'Desempenho por tipo e tópico',
-  stories: 'Stories',
-  baseline: 'Baseline Instagram',
-};
 
 export interface ContaPhoneProps {
   clientId: number;
@@ -253,6 +240,10 @@ export function ContaPhone(props: ContaPhoneProps) {
     tabs,
   } = props;
 
+  const { t } = useTranslation('analyticsAccount');
+  const sectionTitle = (key: SectionKey) => t(`phone.section.${key}`);
+  const postSortLabel = (col: string) =>
+    POST_SORT_COLS.includes(col) ? t(`phone.sort.${col}`) : col;
   const [sortOpen, setSortOpen] = useState(false);
   const sortButtonRef = useRef<HTMLButtonElement>(null);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
@@ -293,13 +284,13 @@ export function ContaPhone(props: ContaPhoneProps) {
       const fetched = await getPostAnalyticsById(clientId, postId, dists);
       if (request !== openRequestRef.current) return;
       if (!fetched) {
-        toast.error('Não foi possível abrir o post.');
+        toast.error(t('toast.openPostFailed'));
         return;
       }
       setFetchedPost(fetched);
       setSelectedPostId(fetched.id);
     } catch {
-      if (request === openRequestRef.current) toast.error('Não foi possível abrir o post.');
+      if (request === openRequestRef.current) toast.error(t('toast.openPostFailed'));
     }
   };
 
@@ -324,10 +315,10 @@ export function ContaPhone(props: ContaPhoneProps) {
   const ai = useAIAnalysis(
     useCallback(async () => {
       const result = await getAccountAIAnalysis(clientId, days);
-      if (result.analysis.error) throw new Error('Não foi possível gerar a análise.');
+      if (result.analysis.error) throw new Error(t('ai.failed'));
       return { ...result.analysis, generatedAt: result.generatedAt };
-    }, [clientId, days]),
-    useCallback((e: unknown) => (e instanceof Error && e.message) || 'Erro na análise', []),
+    }, [clientId, days, t]),
+    useCallback((e: unknown) => (e instanceof Error && e.message) || t('ai.error'), [t]),
   );
   const aiView = useMemo(() => contaAIView(ai.result), [ai.result]);
 
@@ -346,29 +337,35 @@ export function ContaPhone(props: ContaPhoneProps) {
     href: post.permalink ?? '',
     thumbnailUrl: post.thumbnail_url,
     mediaType: post.media_type,
-    title: post.caption || 'Sem legenda',
-    meta: `${format(new Date(post.posted_at), "d 'de' MMM", { locale: ptBR })} · ${mediaTypeLabel(post.media_type)}`,
+    title: post.caption || t('page.noCaption'),
+    meta: `${format(new Date(post.posted_at), t('phone.dateShort'), { locale: getDateFnsLocale() })} · ${mediaTypeLabel(post.media_type)}`,
     onSelect: () => selectPost(post.id),
     metrics: (
       <>
         <span>
-          Visualizações <strong>{fmtNumber(post.views)}</strong>
+          {t('phone.rowViews')} <strong>{fmtNumber(post.views)}</strong>
         </span>
         <span>
-          Eng. <strong>{post.engagement_rate.toFixed(2).replace('.', ',')}%</strong>
+          {t('phone.rowEng')}{' '}
+          <strong>
+            {getIntlLocale() === 'en-US'
+              ? post.engagement_rate.toFixed(2)
+              : post.engagement_rate.toFixed(2).replace('.', ',')}
+            %
+          </strong>
         </span>
         <span>
-          Curtidas <strong>{fmtNumber(post.likes)}</strong>
+          {t('phone.rowLikes')} <strong>{fmtNumber(post.likes)}</strong>
         </span>
         <span>
-          Coment. <strong>{fmtNumber(post.comments)}</strong>
+          {t('phone.rowComments')} <strong>{fmtNumber(post.comments)}</strong>
         </span>
         <span>
-          Salvos <strong>{fmtNumber(post.saved)}</strong>
+          {t('phone.rowSaved')} <strong>{fmtNumber(post.saved)}</strong>
         </span>
         {typeof post.follows === 'number' && (
           <span>
-            Novos seguidores <strong>{fmtNumber(post.follows)}</strong>
+            {t('phone.rowFollows')} <strong>{fmtNumber(post.follows)}</strong>
           </span>
         )}
       </>
@@ -387,15 +384,18 @@ export function ContaPhone(props: ContaPhoneProps) {
       icon: <Clock />,
       subtitle:
         bestTimes && bestTimes.totalPosts >= 5 && bestSlot
-          ? `${DAY_FULL[bestTimes.labels_days[bestSlot.day]] ?? bestTimes.labels_days[bestSlot.day]} às ${bestTimes.labels_hours[bestSlot.hour]} · ${formatPct(bestSlot.value)}% eng.`
-          : 'Dados insuficientes',
+          ? t('phone.bestSub', {
+              day: dayFull(bestTimes.labels_days[bestSlot.day]),
+              hour: hourText(bestTimes.labels_hours[bestSlot.hour]),
+              pct: formatPct(bestSlot.value),
+            })
+          : t('phone.insufficient'),
       show: true,
     },
     {
       key: 'saves',
       icon: <Bookmark />,
-      subtitle:
-        topSaved.length === 1 ? '1 post em destaque' : `${topSaved.length} posts em destaque`,
+      subtitle: t('saves.featured', { count: topSaved.length }),
       show: topSaved.length > 0,
     },
     { key: 'types', icon: <PieChart />, subtitle: typeHeadline, show: true },
@@ -403,14 +403,17 @@ export function ContaPhone(props: ContaPhoneProps) {
       key: 'stories',
       icon: <Film />,
       subtitle: stories
-        ? `${stories.kpis.current.stories_count} stories · alcance ${fmtNumber(stories.kpis.current.total_reach)}`
+        ? t('phone.storiesSub', {
+            count: stories.kpis.current.stories_count,
+            reach: fmtNumber(stories.kpis.current.total_reach),
+          })
         : null,
       show: !!stories && stories.kpis.current.stories_count > 0,
     },
     {
       key: 'baseline',
       icon: <Gauge />,
-      subtitle: baseline ? `${baseline.sample_size} posts no histórico` : null,
+      subtitle: baseline ? t('phone.baselineSub', { count: baseline.sample_size }) : null,
       show: !!baseline && baseline.sample_size > 0,
     },
   ];
@@ -419,18 +422,18 @@ export function ContaPhone(props: ContaPhoneProps) {
     <div className="phone-kit phone-an">
       <PhoneNavBar
         fallbackTo="/analytics"
-        backLabel="Voltar"
+        backLabel={t('phone.back')}
         trailing={
           <>
             <PhoneIconButton
-              label="Sincronizar dados"
+              label={t('phone.sync')}
               onClick={onSync}
               disabled={syncing}
               aria-busy={syncing || undefined}
             >
               <RefreshCw aria-hidden="true" className={syncing ? 'phone-an-spin' : undefined} />
             </PhoneIconButton>
-            <PhoneIconButton label="Gerar relatório" variant="ink" onClick={onNewReport}>
+            <PhoneIconButton label={t('phone.report')} variant="ink" onClick={onNewReport}>
               <FileText aria-hidden="true" />
             </PhoneIconButton>
           </>
@@ -451,8 +454,8 @@ export function ContaPhone(props: ContaPhoneProps) {
             </a>
             {cachedAt && (
               <span className="phone-an-tone--muted">
-                {' · Dados de '}
-                {new Date(cachedAt).toLocaleString('pt-BR', {
+                {t('phone.dataFrom')}
+                {new Date(cachedAt).toLocaleString(getIntlLocale(), {
                   timeZone: 'America/Sao_Paulo',
                   day: '2-digit',
                   month: '2-digit',
@@ -468,7 +471,12 @@ export function ContaPhone(props: ContaPhoneProps) {
       {tabs}
 
       <PeriodSegmented
-        presets={PERIOD_PRESETS}
+        presets={[
+          { value: '7', label: '7d' },
+          { value: '30', label: '30d' },
+          { value: '90', label: '90d' },
+          { value: 'month', label: t('filter.lastMonth') },
+        ]}
         value={periodValue}
         onChange={(v) => (v === 'month' ? onLastMonth() : onDays(parseInt(v, 10)))}
         custom={{
@@ -478,7 +486,9 @@ export function ContaPhone(props: ContaPhoneProps) {
           onApply: onCustomDays,
         }}
       />
-      {periodStart && <p className="phone-an-period__custom">Último mês: {periodTag}</p>}
+      {periodStart && (
+        <p className="phone-an-period__custom">{t('phone.lastMonth', { period: periodTag })}</p>
+      )}
 
       <AccountHealthCard
         health={health}
@@ -496,20 +506,20 @@ export function ContaPhone(props: ContaPhoneProps) {
       </div>
 
       <RankedPostStrip
-        title="Melhores posts"
-        help={`Top posts por visualizações neste período (${periodTag}).`}
+        title={t('phone.bestTitle')}
+        help={t('ranked.bestDescription', { period: periodTag })}
         posts={rankedPosts.slice(0, 5)}
         tone="best"
-        titleOf={(p) => p.caption || 'Sem legenda'}
+        titleOf={(p) => p.caption || t('page.noCaption')}
         onSelect={(p) => selectPost(p.id)}
         onSeeMore={rankedPosts.length > 5 ? () => drawer.open('best') : undefined}
       />
       <RankedPostStrip
-        title="Precisam de atenção"
-        help="Posts com pelo menos 48h de publicação e menos visualizações no período."
+        title={t('phone.worstTitle')}
+        help={t('ranked.worstDescription')}
         posts={matureRankedPosts.slice(0, 5)}
         tone="worst"
-        titleOf={(p) => p.caption || 'Sem legenda'}
+        titleOf={(p) => p.caption || t('page.noCaption')}
         onSelect={(p) => selectPost(p.id)}
         onSeeMore={matureRankedPosts.length > 5 ? () => drawer.open('worst') : undefined}
       />
@@ -519,7 +529,7 @@ export function ContaPhone(props: ContaPhoneProps) {
         <div className="phone-an-half phone-an-stack">
           <SectionHead
             large
-            title="Performance de conteúdo"
+            title={t('phone.contentPerf')}
             trailing={
               posts.length > 0 ? (
                 <button
@@ -527,26 +537,37 @@ export function ContaPhone(props: ContaPhoneProps) {
                   type="button"
                   className="phone-an-sort"
                   aria-haspopup="dialog"
-                  aria-label={`Ordenar posts: ${POST_SORT_LABELS[sort.col] ?? sort.col}, ${sort.dir === 'asc' ? 'crescente' : 'decrescente'}`}
+                  aria-label={t('phone.sortPosts', {
+                    col: postSortLabel(sort.col),
+                    dir: sort.dir === 'asc' ? t('phone.ascending') : t('phone.descending'),
+                  })}
                   onClick={() => setSortOpen(true)}
                 >
                   <ArrowUpDown aria-hidden="true" />
-                  {POST_SORT_LABELS[sort.col] ?? sort.col}
+                  {postSortLabel(sort.col)}
                 </button>
               ) : undefined
             }
           />
           {posts.length === 0 ? (
-            <p className="phone-an-empty">Nenhuma publicação neste período.</p>
+            <p className="phone-an-empty">{t('table.empty')}</p>
           ) : (
-            <GroupedList aria-label="Performance de conteúdo">
+            <GroupedList aria-label={t('phone.contentPerf')}>
               {visiblePosts.map((p) => (
                 <Cell
                   key={p.id}
                   icon={<PostThumb url={p.thumbnail_url} mediaType={p.media_type} />}
-                  label={p.caption || 'Sem legenda'}
-                  subtitle={`${new Date(p.posted_at).toLocaleDateString('pt-BR')} · ${mediaTypeLabel(p.media_type)} · ${fmtEng(p.engagement_rate)} eng.${p.tags.length > 0 ? ` · ${p.tags.map((t) => t.tag_name).join(', ')}` : ''}`}
-                  value={<span className="phone-an-row-value">{postSortValue(p, sort.col)}</span>}
+                  label={p.caption || t('page.noCaption')}
+                  subtitle={t('phone.postSubtitle', {
+                    date: new Date(p.posted_at).toLocaleDateString(getIntlLocale()),
+                    type: mediaTypeLabel(p.media_type),
+                    eng: fmtEng(p.engagement_rate),
+                    tags:
+                      p.tags.length > 0 ? ` · ${p.tags.map((tag) => tag.tag_name).join(', ')}` : '',
+                  })}
+                  value={
+                    <span className="phone-an-row-value">{postSortValue(p, sort.col, t)}</span>
+                  }
                   chevron
                   aria-haspopup="dialog"
                   onClick={() => selectPost(p.id)}
@@ -554,7 +575,7 @@ export function ContaPhone(props: ContaPhoneProps) {
               ))}
               {posts.length > 5 && (
                 <Cell
-                  label={showAllPosts ? 'Ver menos' : 'Ver mais publicações'}
+                  label={showAllPosts ? t('phone.showLess') : t('phone.showMore')}
                   onClick={onToggleShowAll}
                   aria-expanded={showAllPosts}
                 />
@@ -563,14 +584,14 @@ export function ContaPhone(props: ContaPhoneProps) {
           )}
         </div>
         <div className="phone-an-half phone-an-stack">
-          <GroupedList header="Mais análises">
+          <GroupedList header={t('phone.moreAnalyses')}>
             {sectionRows
               .filter((r) => r.show)
               .map((r) => (
                 <Cell
                   key={r.key}
                   icon={r.icon}
-                  label={SECTION_TITLES[r.key]}
+                  label={sectionTitle(r.key)}
                   subtitle={r.subtitle ?? undefined}
                   chevron
                   aria-haspopup="dialog"
@@ -584,11 +605,11 @@ export function ContaPhone(props: ContaPhoneProps) {
       <AccountCommentsCard clientId={clientId} posts={posts} compact />
 
       <AIAnalysisPhone
-        title="Análise inteligente"
+        title={t('phone.aiTitle')}
         view={aiView}
         loading={ai.loading}
         error={ai.error}
-        emptyText="Toque para obter insights personalizados com IA."
+        emptyText={t('phone.aiEmpty')}
         onGenerate={ai.generate}
       />
 
@@ -597,16 +618,16 @@ export function ContaPhone(props: ContaPhoneProps) {
       <ActionSheet
         open={sortOpen}
         onOpenChange={setSortOpen}
-        title="Ordenar posts por"
+        title={t('phone.sortBy')}
         returnFocusRef={sortButtonRef}
         actions={[
-          ...Object.entries(POST_SORT_LABELS).map(([col, label]) => ({
-            label,
+          ...POST_SORT_COLS.map((col) => ({
+            label: t(`phone.sort.${col}`),
             icon: sort.col === col ? <Check /> : <span />,
             onSelect: () => onSort({ col, dir: sort.col === col ? sort.dir : 'desc' }),
           })),
           {
-            label: sort.dir === 'asc' ? 'Ordem decrescente' : 'Ordem crescente',
+            label: sort.dir === 'asc' ? t('phone.orderDesc') : t('phone.orderAsc'),
             icon: <ArrowUpDown />,
             onSelect: () => onSort({ col: sort.col, dir: sort.dir === 'asc' ? 'desc' : 'asc' }),
           },
@@ -618,7 +639,7 @@ export function ContaPhone(props: ContaPhoneProps) {
         onOpenChange={(open) => {
           if (!open) setSection(null);
         }}
-        title={shownSection ? SECTION_TITLES[shownSection] : ''}
+        title={shownSection ? sectionTitle(shownSection) : ''}
         detents={['large']}
         className="phone-an-sheet"
       >
@@ -643,11 +664,11 @@ export function ContaPhone(props: ContaPhoneProps) {
 
       <PhoneConfirmSheet
         open={tagToRemove !== null}
-        title="Remover esta tag?"
-        message={tagToRemove ? `"${tagToRemove.tag_name}" sai de todos os posts.` : undefined}
+        title={t('phone.removeTag')}
+        message={tagToRemove ? t('phone.removeTagMsg', { name: tagToRemove.tag_name }) : undefined}
         actions={[
           {
-            label: 'Remover',
+            label: t('phone.remove'),
             destructive: true,
             onSelect: () => {
               if (tagToRemove) onDeleteTag(tagToRemove.id);
@@ -663,12 +684,16 @@ export function ContaPhone(props: ContaPhoneProps) {
         onOpenChange={(open) => {
           if (!open) drawer.close();
         }}
-        title={drawer.mode === 'worst' ? 'Posts que precisam de atenção' : 'Melhores posts'}
-        countLabel={`${drawer.posts.length} de ${drawer.total} posts de @${account.username}`}
+        title={drawer.mode === 'worst' ? t('phone.drawerWorst') : t('phone.bestTitle')}
+        countLabel={t('drawer.subtitle', {
+          shown: drawer.posts.length,
+          total: drawer.total,
+          username: account.username,
+        })}
         rows={drawerRows}
-        emptyText="Nenhum post encontrado com estes filtros."
+        emptyText={t('drawer.empty')}
         filters={{
-          orderOptions: ORDER_OPTIONS,
+          orderOptions: ORDER_KEYS.map((value) => ({ value, label: t(`drawer.sort.${value}`) })),
           orderBy: drawer.orderBy,
           onOrderBy: drawer.setOrderBy,
           asc: drawer.asc,
@@ -714,9 +739,10 @@ export function ContaPhoneMessage({
   /** The client analytics shell's tab control, kept above the message. */
   tabs?: ReactNode;
 }) {
+  const { t } = useTranslation('analyticsAccount');
   return (
     <div className="phone-kit phone-an">
-      <PhoneNavBar fallbackTo="/analytics" backLabel="Voltar" />
+      <PhoneNavBar fallbackTo="/analytics" backLabel={t('phone.back')} />
       {tabs}
       <h1 className="phone-an-identity__name">{title}</h1>
       {message && <p className="phone-an-sheet__summary">{message}</p>}

@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import type { GbpKeywords } from '../../../services/gbpAnalytics';
 import { GbpCard, QueryBody, Segments, type GbpQuery } from './GbpCard';
 import { formatMonth } from './gbpTabFormat';
+import { getIntlLocale } from '@mesaas/i18n';
 
 /** More months than this become a select (18 months of backfill do not fit as segments). */
 const MAX_MONTH_SEGMENTS = 4;
@@ -79,7 +80,7 @@ export function GbpKeywordsCard({
                       <td style={{ overflowWrap: 'anywhere' }}>{row.keyword}</td>
                       {row.value !== null ? (
                         <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                          {row.value.toLocaleString('pt-BR')}
+                          {row.value.toLocaleString(getIntlLocale())}
                         </td>
                       ) : (
                         <td

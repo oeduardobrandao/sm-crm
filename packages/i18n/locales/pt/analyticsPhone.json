@@ -1,0 +1,219 @@
+{
+  "title": "Analytics",
+  "mediaType": {
+    "VIDEO": "Reels",
+    "CAROUSEL_ALBUM": "Carrossel",
+    "IMAGE": "Imagem",
+    "STORY": "Story"
+  },
+  "period": {
+    "default": "Período",
+    "custom": "Personalizado",
+    "last": "Últimos {{days}} dias",
+    "change": "Alterar",
+    "error": "Insira um valor entre {{min}} e {{max}} dias",
+    "sheetTitle": "Período personalizado",
+    "lastLabel": "Últimos",
+    "between": "Entre {{min}} e {{max}} dias",
+    "days": "dias",
+    "daysPlaceholder": "Dias",
+    "ariaDays": "Período personalizado em dias",
+    "apply": "Aplicar"
+  },
+  "ai": {
+    "generating": "Gerando análise…",
+    "generateNew": "Gerar nova análise IA",
+    "generate": "Gerar Análise IA",
+    "analysis": "Análise",
+    "generatedAt": "Gerado em {{when}}",
+    "titleDesk": "Análise Inteligente do Portfólio",
+    "titlePhone": "Análise inteligente do portfólio",
+    "failed": "Não foi possível gerar a análise. Tente novamente.",
+    "error": "Erro ao gerar análise. Tente novamente.",
+    "promptDesk": "Clique para obter uma análise estratégica do portfólio com IA.",
+    "promptPhone": "Toque para obter uma análise estratégica do portfólio com IA.",
+    "healthDesk": "Saúde do Portfólio",
+    "healthPhone": "Saúde do portfólio",
+    "rankingDesk": "Ranking de Contas",
+    "rankingPhone": "Ranking de contas",
+    "crossDesk": "Insights Cruzados",
+    "crossPhone": "Insights cruzados",
+    "effortDesk": "Alocação de Esforço",
+    "effortPhone": "Alocação de esforço",
+    "digestDesk": "Resumo Mensal",
+    "digestPhone": "Resumo mensal",
+    "actionsDesk": "Ações Prioritárias",
+    "actionsPhone": "Ações prioritárias"
+  },
+  "rank": {
+    "openInstagram": "abrir no Instagram",
+    "cardLabel": "{{type}} de {{title}}, {{views}} visualizações",
+    "bestPhone": "Melhores posts",
+    "worstPhone": "Precisam de atenção",
+    "helpBest": "Top 5 posts com mais visualizações no período selecionado.",
+    "helpWorst": "Posts com pelo menos 48h desde a publicação e menos visualizações no período."
+  },
+  "sort": {
+    "client_name": "Nome",
+    "follower_count": "Seguidores",
+    "engagement_rate_avg": "Engajamento",
+    "impressions_28d": "Visualizações (28d)",
+    "reach_28d": "Alcance (28d)",
+    "alcance_seg": "Alcance / Seg.",
+    "posts_last_30d": "Posts (30d)",
+    "website_clicks_28d": "Cliques no link",
+    "last_post_at": "Último post"
+  },
+  "rateShort": {
+    "share_rate": "Compart.",
+    "like_rate": "Curt.",
+    "save_rate": "Salvos",
+    "comment_rate": "Coment."
+  },
+  "rateSuffix": "{{rate}}/visualização",
+  "accounts": {
+    "titlePhone": "Todas as contas",
+    "titleDesk": "Todas as Contas",
+    "empty": "Nenhuma conta Instagram conectada. Conecte contas na página de cada cliente.",
+    "emptyShort": "Nenhuma conta conectada.",
+    "sortAria": "Ordenar contas: {{col}}, {{dir}}",
+    "sortTitle": "Ordenar contas por",
+    "orderDesc": "Ordem decrescente",
+    "orderAsc": "Ordem crescente"
+  },
+  "dir": {
+    "asc": "crescente",
+    "desc": "decrescente"
+  },
+  "noPosts": "Sem posts",
+  "daysAgo": "{{days}}d atrás",
+  "daysSilent": "{{days}}d sem postar",
+  "accountsCount_one": "{{count}} conta",
+  "accountsCount_zero": "{{count}} contas",
+  "accountsCount_other": "{{count}} contas",
+  "engLine": "{{pct}} eng.",
+  "silent": {
+    "title": "Contas silenciosas",
+    "countText_one": "{{count}} conta sem postar no período",
+    "countText_zero": "{{count}} contas sem postar no período",
+    "countText_other": "{{count}} contas sem postar no período",
+    "lineTitle_one": "{{count}} conta silenciosa",
+    "lineTitle_zero": "{{count}} contas silenciosas",
+    "lineTitle_other": "{{count}} contas silenciosas",
+    "suffix": "sem postar no período",
+    "hide": "Ocultar",
+    "show": "Ver contas",
+    "listAnd": "{{rest}} e {{last}}",
+    "listMore": "{{rest}} e mais {{n}}"
+  },
+  "filter": {
+    "client": "Cliente",
+    "all": "Todos",
+    "allClients": "Todos os clientes",
+    "period": "Período"
+  },
+  "sync": {
+    "button": "Sincronizar",
+    "running": "Sincronizando...",
+    "runningPhone": "Sincronizando…",
+    "all": "Sincronizar todas as contas",
+    "done_one": "{{count}} sincronizada",
+    "done_zero": "{{count}} sincronizadas",
+    "done_other": "{{count}} sincronizadas",
+    "failed": ", {{count}} falhou: {{names}}"
+  },
+  "error": {
+    "load": "Erro ao carregar analytics: {{message}}",
+    "unknown": "Erro desconhecido"
+  },
+  "benchmark": {
+    "titlePhone": "Benchmarking de engajamento",
+    "titleDesk": "Benchmarking de Engajamento",
+    "footer": "Média do portfólio: {{avg}}. Verde está acima da média.",
+    "specialtyPhone": "Por especialidade",
+    "specialtyDesk": "Por Especialidade",
+    "noSpecialty": "Sem especialidade",
+    "specialtyRow_one": "{{count}} conta · {{followers}} seg. médio",
+    "specialtyRow_zero": "{{count}} contas · {{followers}} seg. médio",
+    "specialtyRow_other": "{{count}} contas · {{followers}} seg. médio",
+    "avgFollowers": "{{followers}} seg. médio"
+  },
+  "hl": {
+    "title": "Destaques",
+    "engagement": "Melhor engajamento",
+    "growth": "Maior crescimento",
+    "views": "Mais visualizações",
+    "followers": "Mais seguidores",
+    "posts": "Mais ativo",
+    "growthSub": "+{{n}} seguidores",
+    "viewsSub": "{{n}} visualizações 28d",
+    "followersSub": "{{n}} seguidores",
+    "postsSub": "{{n}} posts em 30d",
+    "postsShort": "{{n}} posts"
+  },
+  "kpi": {
+    "connected": "Contas conectadas",
+    "growing": "{{n}} crescendo",
+    "followers": "Seguidores totais",
+    "declining": "{{n}} em declínio",
+    "views": "Visualizações totais (28d)",
+    "sumAll": "Soma de todas as contas",
+    "engagement": "Engajamento médio",
+    "avgAll": "Média de todas as contas",
+    "clicks": "Cliques no link (28d)",
+    "perAccount": "Média por conta"
+  },
+  "head": {
+    "client": "Cliente",
+    "followers": "Seguidores",
+    "engagement": "Engajamento",
+    "views": "Visualizações (28d)",
+    "reach": "Alcance (28d)",
+    "reachPerFollower": "Alcance / Seg.",
+    "posts": "Posts (30d)",
+    "clicks": "Cliques no link",
+    "clicks28": "Cliques no link (28d)",
+    "lastPost": "Último Post"
+  },
+  "menu": {
+    "name": "Nome",
+    "views": "Visualizações",
+    "reach": "Alcance"
+  },
+  "card": {
+    "followers": "{{n}} seg.",
+    "views": "{{n}} visualizações"
+  },
+  "drawer": {
+    "allPostsDesk": "Todos os Posts",
+    "allPostsPhone": "Todos os posts",
+    "worstPhone": "Posts que precisam de atenção",
+    "count": "{{shown}} de {{total}} posts",
+    "note": "Top 200 por visualizações, reordenado por taxa",
+    "sortBy": "Ordenar por",
+    "format": "Formato",
+    "client": "Cliente"
+  },
+  "sheet": {
+    "filters": "Filtros",
+    "filtersCount": "Filtros ({{n}})",
+    "order": "Ordem",
+    "direction": "Direção",
+    "all": "Todos",
+    "publishedBetween": "Publicados entre",
+    "from": "De",
+    "to": "Até",
+    "clear": "Limpar",
+    "show": "Ver {{n}}",
+    "sortBy": "Ordenar por",
+    "format": "Formato",
+    "client": "Cliente",
+    "allFormats": "Todos os formatos",
+    "allClients": "Todos os clientes",
+    "clearDates": "Limpar datas",
+    "asc": "crescente",
+    "desc": "decrescente",
+    "ascCap": "Crescente",
+    "descCap": "Decrescente"
+  }
+}

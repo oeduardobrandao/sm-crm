@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { User, FileText, Building2, CheckSquare } from 'lucide-react';
 import { PessoaAvatar } from '@/components/PessoaAvatar';
 import type { MentionSection, MentionSuggestionItem } from './useMentionSearch';
@@ -61,6 +62,7 @@ export const MentionList = forwardRef<MentionListHandle, MentionListProps>(funct
   { sections, onSelect, referenceRect },
   ref,
 ) {
+  const { t } = useTranslation();
   const visibleSections = useMemo(() => sections.filter((s) => s.items.length > 0), [sections]);
   const flatItems = useMemo(() => visibleSections.flatMap((s) => s.items), [visibleSections]);
   const flatKey = flatItems.map((i) => `${i.entityType}:${i.id}`).join('|');
@@ -141,7 +143,7 @@ export const MentionList = forwardRef<MentionListHandle, MentionListProps>(funct
       }}
     >
       {flatItems.length === 0 ? (
-        <div className="mention-suggestion-empty">Nenhum resultado</div>
+        <div className="mention-suggestion-empty">{t('actions.noResults')}</div>
       ) : (
         visibleSections.map((section) => (
           <div key={section.key} className="mention-suggestion-section">

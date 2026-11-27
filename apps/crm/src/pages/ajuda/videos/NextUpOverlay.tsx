@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 
 const NEXT_UP_SECONDS = 5;
@@ -10,6 +11,7 @@ interface NextUpOverlayProps {
 }
 
 export function NextUpOverlay({ title, onGo, onCancel }: NextUpOverlayProps) {
+  const { t } = useTranslation('help');
   const [remaining, setRemaining] = useState(NEXT_UP_SECONDS);
   const onGoRef = useRef(onGo);
   useEffect(() => {
@@ -39,15 +41,15 @@ export function NextUpOverlay({ title, onGo, onCancel }: NextUpOverlayProps) {
       className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/75 p-6 text-center text-white"
     >
       <p className="text-[0.75rem] uppercase tracking-wider text-white/70">
-        Em {Math.max(remaining, 0)}s
+        {t('video.inSeconds', { seconds: Math.max(remaining, 0) })}
       </p>
-      <p className="text-[1.05rem] font-semibold">Próximo: {title}</p>
+      <p className="text-[1.05rem] font-semibold">{t('video.nextUp', { title })}</p>
       <div className="flex gap-2">
         <Button size="sm" onClick={onGo}>
-          Assistir agora
+          {t('video.watchNow')}
         </Button>
         <Button size="sm" variant="outline" className="text-foreground" onClick={onCancel}>
-          Cancelar
+          {t('video.cancel')}
         </Button>
       </div>
     </div>

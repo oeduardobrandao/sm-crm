@@ -105,6 +105,7 @@ import {
   LEAD_STATUS_KEYS,
 } from './leadOptions';
 import { ConvertFormPhoneFields, LeadFormPhoneFields } from './phone/LeadFormPhoneFields';
+import { useIntlLocale } from '@mesaas/i18n';
 
 function createLeadSchema(t: (key: string) => string) {
   return z.object({
@@ -165,9 +166,9 @@ export default function LeadsPage() {
   // Acesso por cliente: a member restricted to assigned clients never creates a client,
   // so converting a lead (which inserts one) is off for them.
   const canConvertLeads = canEditLeads && !isClientScoped(membership);
-  const { t, i18n } = useTranslation('leads');
+  const { t } = useTranslation('leads');
   const { t: tc } = useTranslation();
-  const locale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
+  const locale = useIntlLocale();
   const [filterStatus, setFilterStatus] = useState<StatusFilter>('todos');
   const [search, setSearch] = useState('');
   const [sortCol, setSortCol] = useState<string>('created_at');
@@ -442,7 +443,7 @@ export default function LeadsPage() {
         <HelpCircle className="h-4 w-4" style={{ color: 'var(--text-muted)', cursor: 'pointer' }} />
       </span>
       {canEditLeads && (
-        <FeatureGate flag="feature_csv_import" label="Importação CSV">
+        <FeatureGate flag="feature_csv_import" label={t('common:gate.csvImport')}>
           <Button variant="outline" onClick={handleCSVImport}>
             <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} />{' '}
             {tc('actions.importCsv')}
@@ -455,7 +456,7 @@ export default function LeadsPage() {
     <Button
       onClick={openAdd}
       disabled={leadsAtLimit}
-      title={leadsAtLimit ? 'Limite do plano atingido' : undefined}
+      title={leadsAtLimit ? tc('plan.limitReachedTitle') : undefined}
     >
       <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('newLead')}
     </Button>

@@ -11,7 +11,7 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 export default function TopBarActions({ variant = 'topbar' }: { variant?: 'topbar' | 'capsule' }) {
-  const { t } = useTranslation();
+  const { t } = useTranslation(['common', 'shell']);
   const crispUnread = useSupportChatUnread();
   const buttonClassName = variant === 'capsule' ? 'vidro-capsule-btn' : 'topbar-action-btn';
 
@@ -31,7 +31,12 @@ export default function TopBarActions({ variant = 'topbar' }: { variant?: 'topba
 
       <Tooltip>
         <TooltipTrigger asChild>
-          <button type="button" className={buttonClassName} aria-label="Chat" onClick={openCrisp}>
+          <button
+            type="button"
+            className={buttonClassName}
+            aria-label={t('shell:topbar.chat')}
+            onClick={openCrisp}
+          >
             <MessageCircle size={18} />
             {crispUnread && <span className="unread-dot unread-dot--primary" />}
           </button>
@@ -43,7 +48,11 @@ export default function TopBarActions({ variant = 'topbar' }: { variant?: 'topba
 
   if (variant === 'capsule') {
     return (
-      <div className="vidro-capsule" role="group" aria-label="Notificações e suporte">
+      <div
+        className="vidro-capsule"
+        role="group"
+        aria-label={t('shell:topbar.notificationsAndSupport')}
+      >
         {buttons}
       </div>
     );

@@ -1,5 +1,7 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { ChevronDown } from 'lucide-react';
+import i18n from 'i18next';
+import { getIntlLocale } from '@mesaas/i18n';
 import { cn } from '@/lib/utils';
 import { PickerSheet } from '@/components/mobile/PickerSheet';
 import type { CheckListOption, CheckListValue } from '@/components/mobile/CheckList';
@@ -7,22 +9,30 @@ import { sanitizeUrl } from '../../../utils/security';
 import './analyticsPhone.css';
 import { useFotoFallback } from '@/components/ClienteFoto';
 
-/** pt-BR thousands ("15.320"). */
+/** Thousands in the UI language ("15.320" in pt-BR, "15,320" in en-US). */
 export function fmtNumber(n: number | null | undefined): string {
-  return (n || 0).toLocaleString('pt-BR');
+  return (n || 0).toLocaleString(getIntlLocale());
+}
+
+/** `toFixed` with the UI language's decimal separator (pt-BR comma, en-US point). */
+export function fmtFixed(n: number, digits: number): string {
+  const fixed = n.toFixed(digits);
+  return getIntlLocale() === 'pt-BR' ? fixed.replace('.', ',') : fixed;
+}
+
+/** A percentage with two decimals, "—" for zero (the portfolio engagement figures). */
+export function fmtPct(v: number): string {
+  return v === 0 ? '—' : `${fmtFixed(v, 2)}%`;
 }
 
 /** Label of an Instagram media type, as the analytics pages write it. */
 export function mediaTypeLabel(type: string): string {
   switch (type) {
     case 'VIDEO':
-      return 'Reels';
     case 'CAROUSEL_ALBUM':
-      return 'Carrossel';
     case 'IMAGE':
-      return 'Imagem';
     case 'STORY':
-      return 'Story';
+      return i18n.t(`analyticsPhone:mediaType.${type}`);
     default:
       return type;
   }

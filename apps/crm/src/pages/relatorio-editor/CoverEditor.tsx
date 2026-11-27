@@ -4,6 +4,7 @@
 // real porque cor e contraste são o próprio ponto do recurso (spec 2026-08-25).
 import type { CSSProperties } from 'react';
 import { Minus, Plus } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { ColorPicker } from '@/components/shared/ColorPicker';
 import { CoverAvatar, type CoverConfig } from '@mesaas/report-blocks/blocks/CoverBlock';
 import { pickAccentFg } from '@mesaas/report-blocks/theme';
@@ -28,6 +29,7 @@ export function CoverEditor({
   onConfigChange,
   layoutPlatforms,
 }: CoverEditorProps) {
+  const { t } = useTranslation('reportEditor');
   const b = snapshot.branding;
   const config = (block.config ?? {}) as CoverConfig;
   const defaults = coverDefaults(snapshot, layoutPlatforms);
@@ -73,7 +75,7 @@ export function CoverEditor({
           <button
             type="button"
             className="rb-edit-btn"
-            aria-label="Diminuir logo"
+            aria-label={t('cover.shrinkLogo')}
             onClick={() =>
               onConfigChange(block.id, { logoSize: stepCoverLogoSize(config.logoSize, -1) })
             }
@@ -83,7 +85,7 @@ export function CoverEditor({
           <button
             type="button"
             className="rb-edit-btn"
-            aria-label="Aumentar logo"
+            aria-label={t('cover.growLogo')}
             onClick={() =>
               onConfigChange(block.id, { logoSize: stepCoverLogoSize(config.logoSize, 1) })
             }
@@ -93,7 +95,7 @@ export function CoverEditor({
         </div>
       </div>
       <input
-        aria-label="Texto de destaque da capa"
+        aria-label={t('cover.kickerAria')}
         value={kicker}
         onChange={(e) => onConfigChange(block.id, { kicker: e.target.value || undefined })}
         className="rb-section-input"
@@ -107,7 +109,7 @@ export function CoverEditor({
         }}
       />
       <input
-        aria-label="Título da capa"
+        aria-label={t('cover.titleAria')}
         value={title}
         onChange={(e) => onConfigChange(block.id, { title: e.target.value || undefined })}
         className="rb-section-input"
@@ -119,7 +121,7 @@ export function CoverEditor({
         }}
       />
       <input
-        aria-label="Subtítulo da capa"
+        aria-label={t('cover.subtitleAria')}
         value={subtitle}
         onChange={(e) => onConfigChange(block.id, { subtitle: e.target.value || undefined })}
         className="rb-section-input"
@@ -145,7 +147,7 @@ export function CoverEditor({
           onChange={emitColor}
           brandColors={[accentColor]}
           allowAlpha={false}
-          label="Cor da capa"
+          label={t('cover.colorLabel')}
         />
         {config.color && (
           <button
@@ -154,7 +156,7 @@ export function CoverEditor({
             style={{ color: 'inherit' }}
             onClick={() => onConfigChange(block.id, { color: undefined })}
           >
-            usar cor de destaque
+            {t('cover.resetColor')}
           </button>
         )}
       </div>

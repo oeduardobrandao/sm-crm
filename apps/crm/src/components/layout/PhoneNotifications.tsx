@@ -2,6 +2,8 @@ import { useCallback, useMemo, useRef, useState, type RefObject } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { isToday, isYesterday } from 'date-fns';
+import { useTranslation } from 'react-i18next';
+import i18n from 'i18next';
 import { Bell, X } from 'lucide-react';
 import type { Notification } from '../../store';
 import { useNotifications } from '../../hooks/useNotifications';
@@ -21,7 +23,11 @@ export function groupNotificationsByDay(
   const groups: { label: string; items: Notification[] }[] = [];
   for (const n of notifications) {
     const date = new Date(n.created_at);
-    const label = isToday(date) ? 'Hoje' : isYesterday(date) ? 'Ontem' : 'Anteriores';
+    const label = isToday(date)
+      ? i18n.t('shell:notifications.today')
+      : isYesterday(date)
+        ? i18n.t('shell:notifications.yesterday')
+        : i18n.t('shell:notifications.earlier');
     const last = groups[groups.length - 1];
     if (last && last.label === label) last.items.push(n);
     else groups.push({ label, items: [n] });
@@ -34,6 +40,7 @@ export function groupNotificationsByDay(
  * full-screen list on the same data and actions as the desktop popover.
  */
 export function PhoneNotificationsButton() {
+  const { t } = useTranslation('shell');
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const { notifications, unreadCount, isLoading, markAsRead, markAllAsRead, dismiss } =
@@ -44,7 +51,11 @@ export function PhoneNotificationsButton() {
     <>
       <PhoneIconButton
         ref={buttonRef}
-        label={unreadCount > 0 ? `Notificações, ${countLabel} não lidas` : 'Notificações'}
+        label={
+          unreadCount > 0
+            ? t('notifications.buttonUnread', { count: countLabel })
+            : t('notifications.title')
+        }
         badge={unreadCount}
         aria-haspopup="dialog"
         aria-expanded={open}
@@ -92,6 +103,7 @@ export function PhoneNotificationsScreen({
   onDismiss,
   returnFocusRef,
 }: PhoneNotificationsScreenProps) {
+  const { t } = useTranslation('shell');
   const navigate = useNavigate();
   const close = useCallback(() => onOpenChange(false), [onOpenChange]);
   const { closeThen } = useSheetHistory(open, close);
@@ -102,7 +114,7 @@ export function PhoneNotificationsScreen({
     () => (filter === 'unread' ? notifications.filter((n) => !n.read_at) : notifications),
     [filter, notifications],
   );
-  const groups = useMemo(() => groupNotificationsByDay(visible), [visible]);
+  const groups = useMemo(() => groupNotificationsByDay(visible), [visible, t]);
   // Close first so the link replaces this screen in history instead of stacking on it.
   const handleNavigate = (link: string) => closeThen(() => navigate(link));
 
@@ -119,7 +131,7 @@ export function PhoneNotificationsScreen({
               <div className="phone-large-title__bar">
                 <div className="phone-large-title__leading">
                   <DialogPrimitive.Close asChild>
-                    <PhoneIconButton label="Fechar">
+                    <PhoneIconButton label={t('notifications.close')}>
                       <X aria-hidden="true" />
                     </PhoneIconButton>
                   </DialogPrimitive.Close>
@@ -131,20 +143,20 @@ export function PhoneNotificationsScreen({
                     disabled={unreadCount === 0}
                     onClick={onMarkAllAsRead}
                   >
-                    Ler tudo
+                    {t('notifications.readAll')}
                   </button>
                 </div>
               </div>
               <DialogPrimitive.Title className="phone-large-title__title">
-                Notificações
+                {t('notifications.title')}
               </DialogPrimitive.Title>
               <SegmentedControl
-                aria-label="Mostrar"
+                aria-label={t('notifications.show')}
                 value={filter}
                 onChange={setFilter}
                 options={[
-                  { value: 'all', label: 'Todas' },
-                  { value: 'unread', label: 'Não lidas' },
+                  { value: 'all', label: t('notifications.filterAll') },
+                  { value: 'unread', label: t('notifications.filterUnread') },
                 ]}
               />
             </header>
@@ -155,7 +167,7 @@ export function PhoneNotificationsScreen({
               </div>
             ) : groups.length === 0 ? (
               <p className="phone-notifications__empty">
-                {filter === 'unread' ? 'Nenhuma notificação não lida' : 'Nenhuma notificação'}
+                {filter === 'unread' ? t('notifications.emptyUnread') : t('notifications.empty')}
               </p>
             ) : (
               groups.map((group) => (

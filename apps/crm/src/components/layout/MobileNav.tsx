@@ -70,7 +70,7 @@ export default function MobileNav() {
   const mensagensUnread = useMensagensUnread();
   const equipeUnread = useEquipeChatUnread();
   const mensagensBadge = mensagensUnread + equipeUnread;
-  const { t } = useTranslation();
+  const { t } = useTranslation(['common', 'shell']);
   const [moreOpen, setMoreOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const moreButtonRef = useRef<HTMLButtonElement>(null);
@@ -146,7 +146,7 @@ export default function MobileNav() {
 
   return (
     <>
-      <nav className="mobile-nav-glass" id="mobile-nav" aria-label="Navegação principal">
+      <nav className="mobile-nav-glass" id="mobile-nav" aria-label={t('shell:mobileNav.primary')}>
         <div
           className="mobile-nav-items"
           style={
@@ -173,7 +173,11 @@ export default function MobileNav() {
                 onClick={() => navigate(tab.route)}
                 type="button"
                 aria-current={active ? 'page' : undefined}
-                aria-label={unread > 0 ? `${label}, ${formatCount(unread)} não lidas` : label}
+                aria-label={
+                  unread > 0
+                    ? t('shell:mobileNav.tabUnread', { label, count: formatCount(unread) })
+                    : label
+                }
                 data-tab={tab.navId}
               >
                 <span className="mobile-nav-item__icon" aria-hidden="true">
@@ -244,7 +248,7 @@ interface MoreSheetContentProps {
 function MoreSheetContent({ shortcuts, moreGroups, onSearch }: MoreSheetContentProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { t } = useTranslation();
+  const { t } = useTranslation(['common', 'shell']);
   const { profile, signOut } = useAuth();
   const { planName } = useWorkspaceLimits();
   const guide = useGuide();
@@ -297,7 +301,9 @@ function MoreSheetContent({ shortcuts, moreGroups, onSearch }: MoreSheetContentP
           className="mobile-more-item--locked"
           data-testid={`mobile-nav-locked-${item.id}`}
           title={t('sidebar.upgradeToUnlock', 'Disponível nos planos Pro e Max')}
-          accessory={<Lock className="phone-cell__chevron" aria-label="Bloqueado" />}
+          accessory={
+            <Lock className="phone-cell__chevron" aria-label={t('shell:mobileNav.locked')} />
+          }
           onClick={() => go(item.route)}
         />
       );
@@ -369,12 +375,14 @@ function MoreSheetContent({ shortcuts, moreGroups, onSearch }: MoreSheetContentP
       )}
 
       {shortcuts.length > 0 && (
-        <GroupedList aria-label="Atalhos">{shortcuts.map(navCell)}</GroupedList>
+        <GroupedList aria-label={t('shell:mobileNav.shortcuts')}>
+          {shortcuts.map(navCell)}
+        </GroupedList>
       )}
 
-      <GroupedList aria-label="Ações rápidas">
+      <GroupedList aria-label={t('shell:mobileNav.quickActions')}>
         <Cell
-          label="Buscar"
+          label={t('shell:mobileNav.search')}
           icon={<Search />}
           // The search and the guide carry their own history entry on phones: open them
           // only after the sheet's entry is gone, or the in-flight pop would close them.
@@ -382,14 +390,17 @@ function MoreSheetContent({ shortcuts, moreGroups, onSearch }: MoreSheetContentP
         />
         {guide?.showEntryPoint && (
           <Cell
-            label="Guia de primeiros passos"
+            label={t('shell:mobileNav.guide')}
             icon={<Compass />}
-            value={`${guide.totals.done} de ${guide.totals.total}`}
+            value={t('shell:mobileNav.guideProgress', {
+              done: guide.totals.done,
+              total: guide.totals.total,
+            })}
             onClick={() => closeThen(() => guide.open('mobile_nav'))}
           />
         )}
         <Cell
-          label="Chat de suporte"
+          label={t('topbar.supportChat')}
           icon={<MessageCircle />}
           onClick={() => {
             close();
@@ -404,7 +415,7 @@ function MoreSheetContent({ shortcuts, moreGroups, onSearch }: MoreSheetContentP
         </GroupedList>
       ))}
 
-      <GroupedList aria-label="Preferências">
+      <GroupedList aria-label={t('shell:mobileNav.preferences')}>
         <Cell
           id="mobile-theme-toggle"
           label={t('sidebar.darkMode', 'Modo Escuro')}
@@ -413,7 +424,7 @@ function MoreSheetContent({ shortcuts, moreGroups, onSearch }: MoreSheetContentP
         />
       </GroupedList>
 
-      <GroupedList aria-label="Conta">
+      <GroupedList aria-label={t('shell:mobileNav.account')}>
         <Cell
           id="mobile-logout-btn"
           label={t('sidebar.logout', 'Sair')}

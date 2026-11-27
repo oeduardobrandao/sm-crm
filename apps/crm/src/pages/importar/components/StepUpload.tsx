@@ -1,4 +1,6 @@
 import { AlertTriangle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { useIntlLocale } from '@mesaas/i18n';
 import type { ImportBundle } from '@mesaas/import-parsers';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -29,6 +31,8 @@ export default function StepUpload({
   onBack: () => void;
   onNext: () => void;
 }) {
+  const { t } = useTranslation('importWizard');
+  const intlLocale = useIntlLocale();
   const rows = bundle ? totalRows(bundle) : 0;
   const collections = bundle?.collections.length ?? 0;
 
@@ -39,7 +43,7 @@ export default function StepUpload({
       <Card>
         <CardContent className="space-y-3 pt-6">
           <label htmlFor="import-files" className="block text-sm font-semibold">
-            Arquivos de exportação
+            {t('upload.filesLabel')}
           </label>
           {/* file inputs cannot be styled directly — the browser paints the
               "Choose Files" control itself. ::file-selector-button is the one
@@ -51,7 +55,7 @@ export default function StepUpload({
             type="file"
             multiple
             accept={guide.accept}
-            aria-label="Arquivos de exportação"
+            aria-label={t('upload.filesLabel')}
             className="block w-full cursor-pointer text-sm text-muted-foreground
               file:mr-3 file:cursor-pointer file:rounded-md file:border-0
               file:bg-secondary file:px-4 file:py-2 file:text-sm file:font-medium
@@ -66,16 +70,14 @@ export default function StepUpload({
             }}
           />
           <p className="text-xs text-muted-foreground">
-            Até {MAX_FILES} arquivos, 20 MB cada e {MAX_ROWS.toLocaleString('pt-BR')} linhas por
-            importação. Os arquivos são lidos no seu navegador — nenhum arquivo é enviado para
-            nossos servidores.
+            {t('upload.limits', { files: MAX_FILES, rows: MAX_ROWS.toLocaleString(intlLocale) })}
           </p>
         </CardContent>
       </Card>
 
       {busy && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Spinner size="sm" /> Lendo os arquivos…
+          <Spinner size="sm" /> {t('upload.reading')}
         </div>
       )}
 
@@ -98,13 +100,15 @@ export default function StepUpload({
       {bundle && !error && (
         <div className="space-y-2 rounded-xl border border-border p-4 text-sm">
           <p className="font-semibold">
-            {collections} {collections === 1 ? 'coleção' : 'coleções'} · {rows}{' '}
-            {rows === 1 ? 'linha' : 'linhas'}
+            {t('count.collection', { count: collections })} · {t('count.row', { count: rows })}
           </p>
           <ul className="text-muted-foreground">
             {bundle.collections.map((c) => (
               <li key={c.id}>
-                {c.name} — {c.rows.length} {c.rows.length === 1 ? 'linha' : 'linhas'}
+                {t('upload.collectionLine', {
+                  name: c.name,
+                  rows: t('count.row', { count: c.rows.length }),
+                })}
               </li>
             ))}
           </ul>
@@ -120,10 +124,10 @@ export default function StepUpload({
 
       <div className="flex justify-between">
         <Button variant="secondary" onClick={onBack}>
-          Voltar
+          {t('nav.back')}
         </Button>
         <Button disabled={!bundle || busy} onClick={onNext}>
-          Continuar
+          {t('nav.next')}
         </Button>
       </div>
     </div>

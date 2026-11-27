@@ -1,0 +1,75 @@
+{
+  "title": "Contracts",
+  "info": "Manage your clients' contracts.",
+  "status": {
+    "vigente": "Active",
+    "a_assinar": "To sign",
+    "encerrado": "Closed"
+  },
+  "filter": {
+    "all": "All",
+    "status": "Status"
+  },
+  "csvHelp": "Columns: titulo*, cliente_nome, data_inicio* (YYYY-MM-DD), data_fim*, valor_total*, status",
+  "validation": {
+    "titleRequired": "Title is required",
+    "startRequired": "Start date is required",
+    "endRequired": "End date is required",
+    "valueRequired": "Value is required",
+    "valuePositive": "Value must be positive"
+  },
+  "toast": {
+    "updated": "Contract updated",
+    "created": "Contract created",
+    "saveError": "Could not save",
+    "removed": "Contract removed",
+    "removeError": "Could not delete",
+    "csvImported_one": "{{count}} contract imported successfully!",
+    "csvImported_other": "{{count}} contracts imported successfully!",
+    "csvImported_zero": "{{count}} contracts imported successfully!"
+  },
+  "form": {
+    "group": "Contract",
+    "titleField": "Title",
+    "startPhone": "Start date",
+    "endPhone": "End date",
+    "startDesktop": "Start date",
+    "endDesktop": "End date",
+    "totalValue": "Total value (R$)",
+    "valuePlaceholder": "0.00",
+    "clientOptional": "Client (optional)",
+    "clientSheet": "Client",
+    "none": "None",
+    "select": "Select...",
+    "status": "Status",
+    "openClient": "Open client",
+    "dialogEdit": "Edit contract",
+    "dialogNew": "New contract",
+    "cancel": "Cancel",
+    "save": "Save",
+    "deleteTitle": "Remove this contract?",
+    "no": "No",
+    "yes": "Yes"
+  },
+  "actions": {
+    "importCsv": "Import CSV",
+    "newContract": "New contract",
+    "search": "Search by title or client..."
+  },
+  "table": {
+    "contract": "Contract",
+    "client": "Client",
+    "period": "Period",
+    "value": "Value",
+    "status": "Status",
+    "actions": "Actions"
+  },
+  "phone": {
+    "moreActionsImport": "More actions: Import CSV",
+    "moreActions": "More actions",
+    "edit": "Edit",
+    "remove": "Remove",
+    "empty": "No contracts found.",
+    "actionsOf": "Actions for {{title}}"
+  }
+}

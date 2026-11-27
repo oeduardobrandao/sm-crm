@@ -698,7 +698,9 @@ export default function LoginPage() {
           </div>
 
           <p className="auth-cookie">
-            <CookiePreferencesLink className="auth-cookie-link" />
+            <CookiePreferencesLink className="auth-cookie-link">
+              {t('cookies.link')}
+            </CookiePreferencesLink>
           </p>
         </div>
 

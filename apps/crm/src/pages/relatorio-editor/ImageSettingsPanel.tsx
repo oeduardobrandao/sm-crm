@@ -2,6 +2,7 @@
 // Tudo vai por onConfigChange (desfazer/refazer); a largura vai por
 // onSizeChange (block.size não é config).
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { RectangleHorizontal, RectangleVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,17 +13,17 @@ import { orientationOf, readImageConfig } from '@mesaas/report-blocks/image';
 
 const H_RATIOS: ImageRatio[] = ['original', '16:9', '3:2', '4:3', '1:1'];
 const V_RATIOS: ImageRatio[] = ['original', '4:5', '3:4', '2:3', '9:16'];
-const FOCAL_LABELS = [
-  'Topo à esquerda',
-  'Topo',
-  'Topo à direita',
-  'Esquerda',
-  'Centro',
-  'Direita',
-  'Base à esquerda',
-  'Base',
-  'Base à direita',
-];
+const FOCAL_KEYS = [
+  'topLeft',
+  'top',
+  'topRight',
+  'left',
+  'center',
+  'right',
+  'bottomLeft',
+  'bottom',
+  'bottomRight',
+] as const;
 
 export interface ImageSettingsPanelProps {
   block: ReportBlock;
@@ -69,6 +70,7 @@ export function ImageSettingsPanel({
   onSizeChange,
   onReplace,
 }: ImageSettingsPanelProps) {
+  const { t } = useTranslation('reportEditor');
   const cfg = readImageConfig(block.config);
   const orientation = orientationOf(cfg);
   const ratios = orientation === 'vertical' ? V_RATIOS : H_RATIOS;
@@ -77,27 +79,27 @@ export function ImageSettingsPanel({
 
   return (
     <div className="rb-img-panel">
-      <p className="rb-img-label">Orientação</p>
+      <p className="rb-img-label">{t('imageSettings.orientation')}</p>
       <Seg
-        label="Orientação"
+        label={t('imageSettings.orientation')}
         value={orientation}
         options={[
           {
             value: 'horizontal',
-            label: 'Horizontal',
+            label: t('imageSettings.horizontal'),
             icon: <RectangleHorizontal className="h-4 w-4" aria-hidden />,
           },
           {
             value: 'vertical',
-            label: 'Vertical',
+            label: t('imageSettings.vertical'),
             icon: <RectangleVertical className="h-4 w-4" aria-hidden />,
           },
         ]}
         onPick={(o) => patch({ ratio: o === 'vertical' ? '4:5' : '16:9' })}
       />
 
-      <p className="rb-img-label">Proporção</p>
-      <div role="radiogroup" aria-label="Proporção" className="rb-img-chips">
+      <p className="rb-img-label">{t('imageSettings.ratio')}</p>
+      <div role="radiogroup" aria-label={t('imageSettings.ratio')} className="rb-img-chips">
         {ratios.map((r) => (
           <button
             key={r}
@@ -107,43 +109,44 @@ export function ImageSettingsPanel({
             className={`rb-img-chip${cfg.ratio === r ? ' is-on' : ''}`}
             onClick={() => cfg.ratio !== r && patch({ ratio: r })}
           >
-            {r === 'original' ? 'Original' : r}
+            {r === 'original' ? t('imageSettings.original') : r}
           </button>
         ))}
       </div>
       {isOriginal && (
         <p className="rb-img-help">
           {mode === 'template'
-            ? 'Usa o formato da imagem que for enviada em cada relatório.'
-            : 'Mostra a imagem inteira, no formato em que foi enviada.'}
+            ? t('imageSettings.originalHintTemplate')
+            : t('imageSettings.originalHintReport')}
         </p>
       )}
 
       {!isOriginal && (
         <>
-          <p className="rb-img-label">Quando não couber</p>
+          <p className="rb-img-label">{t('imageSettings.fit')}</p>
           <Seg
-            label="Quando não couber"
+            label={t('imageSettings.fit')}
             value={cfg.fit}
             options={[
-              { value: 'cover', label: 'Preencher' },
-              { value: 'contain', label: 'Mostrar inteira' },
+              { value: 'cover', label: t('imageSettings.fitCover') },
+              { value: 'contain', label: t('imageSettings.fitContain') },
             ]}
             onPick={(fit) => patch({ fit })}
           />
           <p className="rb-img-help">
             {cfg.fit === 'cover'
-              ? 'Corta as bordas para preencher o formato.'
-              : 'Mostra tudo, com faixas nas sobras.'}
+              ? t('imageSettings.fitCoverHint')
+              : t('imageSettings.fitContainHint')}
           </p>
         </>
       )}
 
       {!isOriginal && cfg.fit === 'cover' && (
         <>
-          <p className="rb-img-label">Enquadramento</p>
-          <div role="radiogroup" aria-label="Enquadramento" className="rb-img-focal">
-            {FOCAL_LABELS.map((label, i) => {
+          <p className="rb-img-label">{t('imageSettings.framing')}</p>
+          <div role="radiogroup" aria-label={t('imageSettings.framing')} className="rb-img-focal">
+            {FOCAL_KEYS.map((focalKey, i) => {
+              const label = t(`imageSettings.focal.${focalKey}`);
               const x = (i % 3) / 2;
               const y = Math.floor(i / 3) / 2;
               const on = cfg.focal.x === x && cfg.focal.y === y;
@@ -160,17 +163,15 @@ export function ImageSettingsPanel({
               );
             })}
           </div>
-          <p className="rb-img-help">
-            Escolhe qual parte da imagem fica visível quando ela é cortada.
-          </p>
+          <p className="rb-img-help">{t('imageSettings.framingHint')}</p>
         </>
       )}
 
       {orientation === 'vertical' && block.size === 'full' && (
         <div className="rb-img-hint">
-          Em largura total, imagens verticais ficam com até 560 px de altura, centralizadas.{' '}
+          {t('imageSettings.verticalFullHint')}{' '}
           <button type="button" className="rb-img-link" onClick={() => onSizeChange('half')}>
-            Usar meia largura
+            {t('imageSettings.useHalfWidth')}
           </button>
         </div>
       )}
@@ -178,17 +179,17 @@ export function ImageSettingsPanel({
       {mode === 'report' && (
         <>
           <Label htmlFor={`img-caption-${block.id}`} className="rb-img-label">
-            Legenda (opcional)
+            {t('imageSettings.caption')}
           </Label>
           <Input
             id={`img-caption-${block.id}`}
             value={cfg.caption}
             maxLength={IMAGE_CAPTION_MAX}
-            placeholder="Escreva uma legenda"
+            placeholder={t('imageSettings.captionPlaceholder')}
             onChange={(e) => patch({ caption: e.target.value || undefined })}
           />
           <Label htmlFor={`img-alt-${block.id}`} className="rb-img-label">
-            Descrição da imagem
+            {t('imageSettings.alt')}
           </Label>
           <Input
             id={`img-alt-${block.id}`}
@@ -196,14 +197,14 @@ export function ImageSettingsPanel({
             maxLength={IMAGE_ALT_MAX}
             onChange={(e) => patch({ alt: e.target.value || undefined })}
           />
-          <p className="rb-img-help">Lida por leitores de tela. Não aparece no relatório.</p>
+          <p className="rb-img-help">{t('imageSettings.altHint')}</p>
         </>
       )}
 
       {onReplace && (
         <div className="rb-img-footer">
           <Button size="sm" variant="outline" onClick={onReplace}>
-            Trocar imagem
+            {t('image.replace')}
           </Button>
         </div>
       )}

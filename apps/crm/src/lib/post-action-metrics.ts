@@ -1,3 +1,5 @@
+import i18n from 'i18next';
+
 // Per-post "ações" metrics from Instagram media insights: profile visits, new
 // followers (follows) and bio link taps. `null` means no data (never fetched,
 // or Instagram didn't return it) and renders as "—", never 0. Reposts are not
@@ -42,7 +44,9 @@ export function compareNullableNumber(
 }
 
 /** Why a metric reads "—": the last sync asked Instagram and got nothing back. */
-export const NOT_RETURNED_TITLE = 'O Instagram não retornou este dado na última sincronização';
+export function notReturnedTitle(): string {
+  return i18n.t('analyticsAccount:pm.notReturned');
+}
 
 /**
  * Tooltip for a "—": a Reel (Instagram never provides these), did the last sync
@@ -54,6 +58,6 @@ export function missingActionMetricTitle(
   unavailable: readonly string[] | null | undefined,
   mediaType?: string | null,
 ): string {
-  if (mediaType === 'VIDEO') return 'O Instagram não fornece este dado para Reels';
-  return unavailable?.includes(metric) ? NOT_RETURNED_TITLE : 'Sem dado para este post';
+  if (mediaType === 'VIDEO') return i18n.t('analyticsAccount:pm.noReels');
+  return unavailable?.includes(metric) ? notReturnedTitle() : i18n.t('analyticsAccount:pm.noData');
 }

@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { ListVideo } from 'lucide-react';
 import { VideoPlayer } from '@mesaas/ui/VideoPlayer';
 import { Button } from '@/components/ui/button';
@@ -45,6 +46,7 @@ function ArticleVideo({
   progress: ProgressMap;
   onSave: SaveProgress;
 }) {
+  const { t } = useTranslation('help');
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const { handlers, positionRef, resumeRef } = usePlaybackProgress(video.id, progress, onSave);
@@ -59,14 +61,14 @@ function ArticleVideo({
   };
 
   return (
-    <section aria-label={`Vídeo: ${video.title}`} className="space-y-2.5">
+    <section aria-label={t('video.videoLabel', { title: video.title })} className="space-y-2.5">
       <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black">
         {failed ? (
           <div
             role="alert"
             className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center text-white"
           >
-            <p className="text-[0.9rem]">Não foi possível carregar este vídeo.</p>
+            <p className="text-[0.9rem]">{t('video.loadFailed')}</p>
             <Button
               size="sm"
               variant="outline"
@@ -78,7 +80,7 @@ function ArticleVideo({
                 setAttempt((a) => a + 1);
               }}
             >
-              Tentar novamente
+              {t('video.retry')}
             </Button>
           </div>
         ) : (
@@ -109,7 +111,7 @@ function ArticleVideo({
             className="inline-flex items-center gap-1.5 font-medium text-[var(--text-main)] underline-offset-4 hover:underline"
           >
             <ListVideo className="h-3.5 w-3.5" />
-            Ver a série {series.title}
+            {t('video.viewSeries', { title: series.title })}
           </Link>
         )}
       </div>

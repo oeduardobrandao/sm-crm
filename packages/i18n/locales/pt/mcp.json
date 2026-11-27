@@ -126,6 +126,43 @@
     "financeiro_read": "Financeiro (leitura, só donos)",
     "financeiro_write": "Financeiro (escrita, só donos)",
     "ownerOnlyHelp": "Somente o dono do workspace",
-    "ownerOnlyError": "As permissões do Financeiro são somente do dono do workspace."
+    "ownerOnlyError": "As permissões do Financeiro são somente do dono do workspace.",
+    "admin": {
+      "banners_read": "Banners (leitura)",
+      "banners_write": "Banners (escrita)",
+      "popups_read": "Popups (leitura)",
+      "popups_write": "Popups (escrita)",
+      "kb_read": "Artigos de suporte (leitura)",
+      "kb_write": "Artigos de suporte (escrita)",
+      "platform_read": "Plataforma: workspaces, planos e dashboard (leitura)",
+      "blog_read": "Blog (leitura)",
+      "blog_write": "Blog (escrita)"
+    }
+  },
+  "consent": {
+    "invalidRequest": "Pedido de autorização inválido ou expirado.",
+    "loadFailed": "Não foi possível carregar o pedido de autorização. Tente reconectar pelo Claude.",
+    "featureDisabled": "O plano deste workspace não inclui a integração MCP.",
+    "insufficientRole": "Uma das permissões escolhidas não faz parte do seu papel neste workspace.",
+    "recordFailed": "Não foi possível registrar a autorização.",
+    "approveFailed": "Falha ao concluir a autorização.",
+    "denyFailed": "Não foi possível recusar o pedido.",
+    "errorTitle": "Algo deu errado",
+    "connectTitle": "Conectar {{name}}",
+    "defaultAppLower": "aplicativo",
+    "defaultAppUpper": "O aplicativo",
+    "redirectsTo": "Redireciona para {{host}}",
+    "requestPlatform": "está solicitando acesso à administração da plataforma Mesaas. Escolha as permissões abaixo.",
+    "requestWorkspace": "está solicitando acesso aos dados de um workspace no Mesaas. Escolha o workspace e as permissões abaixo.",
+    "noEligible": "Seu papel não dá acesso a nenhum dado que o Claude possa usar. Peça ao dono do workspace para ajustar suas permissões.",
+    "workspace": "Workspace",
+    "platformName": "Administração da plataforma",
+    "platformHelp": "Banners, popups, artigos de suporte e leitura de workspaces",
+    "planWithoutMcp": "Plano sem MCP",
+    "noMcpWorkspace": "Nenhum dos seus workspaces inclui a integração MCP no plano atual.",
+    "permissions": "Permissões",
+    "disabledScopesNote": "As permissões desabilitadas não fazem parte do seu papel neste workspace.",
+    "deny": "Negar",
+    "approve": "Autorizar"
   }
 }

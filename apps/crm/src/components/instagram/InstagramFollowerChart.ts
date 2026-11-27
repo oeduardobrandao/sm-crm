@@ -3,7 +3,7 @@
 // =============================================
 import { formatDate } from '../../store';
 import { Chart, registerables } from 'chart.js';
-import { i18n } from '@mesaas/i18n';
+import { i18n, getIntlLocale } from '@mesaas/i18n';
 
 function t(key: string, opts?: Record<string, unknown>) {
   return i18n.t(key, { ns: 'clients', ...opts });
@@ -77,7 +77,7 @@ export function renderInstagramFollowerChart(container: HTMLElement, history: an
           displayColors: false,
           callbacks: {
             label: function (context: any) {
-              const locale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
+              const locale = getIntlLocale();
               return t('instagram.followerTooltip', {
                 count: context.parsed.y.toLocaleString(locale),
               });

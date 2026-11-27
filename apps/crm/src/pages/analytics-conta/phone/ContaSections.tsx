@@ -1,4 +1,7 @@
 import { Fragment, useState } from 'react';
+import i18n from 'i18next';
+import { useTranslation } from 'react-i18next';
+import { getIntlLocale } from '@mesaas/i18n';
 import { ChevronRight, Eye, Film, MessageCircle, Plus, Trash2 } from 'lucide-react';
 import { Cell, GroupedList } from '@/components/mobile/GroupedList';
 import { BarList } from '@/components/mobile/BarList';
@@ -13,26 +16,25 @@ import type {
   StoriesAnalyticsResponse,
 } from '../../../services/analytics';
 import { formatRate, IG_RATE_WEIGHTS, type Baseline, type RateKey } from '../../../lib/ig-rates';
-import { BEST_TIME_BUCKET_STARTS, bucketBestTimes, toStatDelta } from '../contaFormat';
+import {
+  BEST_TIME_BUCKET_STARTS,
+  bucketBestTimes,
+  dayFull,
+  dayShort,
+  hourText,
+  toStatDelta,
+} from '../contaFormat';
 import { fmtNumber } from '../../analytics/phone/shared';
 import { priorityTone, type AIAnalysisView } from '../../analytics/phone/AIAnalysisPhone';
 
-export const formatPct = (v: number) => v.toFixed(1).replace('.', ',');
+const tr = (key: string, opts?: Record<string, unknown>) => i18n.t(`analyticsAccount:${key}`, opts);
+
+export const formatPct = (v: number) =>
+  getIntlLocale() === 'en-US' ? v.toFixed(1) : v.toFixed(1).replace('.', ',');
 
 const fmtDay = (iso: string) => {
   const [y, m, d] = iso.slice(0, 10).split('-');
-  return `${d}/${m}/${y}`;
-};
-
-export const DAY_FULL: Record<string, string> = {
-  Seg: 'Segunda',
-  Ter: 'Terça',
-  Qua: 'Quarta',
-  Qui: 'Quinta',
-  Sex: 'Sexta',
-  Sab: 'Sábado',
-  Sáb: 'Sábado',
-  Dom: 'Domingo',
+  return getIntlLocale() === 'en-US' ? `${m}/${d}/${y}` : `${d}/${m}/${y}`;
 };
 
 /* ---------------- Follower growth ---------------- */
@@ -44,8 +46,8 @@ export const DAY_FULL: Record<string, string> = {
 export function FollowerGrowthCard({
   history,
   onManual,
-  title = 'Crescimento de seguidores',
-  emptyText = 'Dados insuficientes. O histórico é construído diariamente.',
+  title: titleProp,
+  emptyText: emptyTextProp,
 }: {
   history: { date: string; follower_count: number; source: string }[];
   /** Omit where the platform takes no manual count (TikTok). */
@@ -53,10 +55,13 @@ export function FollowerGrowthCard({
   title?: string;
   emptyText?: string;
 }) {
+  const { t } = useTranslation('analyticsAccount');
+  const title = titleProp ?? t('ps.followersTitle');
+  const emptyText = emptyTextProp ?? t('fc.empty');
   const [picked, setPicked] = useState<number | null>(null);
   const manualButton = onManual ? (
     <button type="button" className="phone-text-button" onClick={onManual}>
-      Inserir manualmente
+      {t('ps.manual')}
     </button>
   ) : (
     <span />
@@ -109,11 +114,10 @@ export function FollowerGrowthCard({
                 : 'phone-an-tone--muted',
           )}
         >
-          {delta > 0 ? '+' : ''}
-          {fmtNumber(delta)} no período
+          {t('ps.deltaPeriod', { delta: `${delta > 0 ? '+' : ''}${fmtNumber(delta)}` })}
         </span>
       </div>
-      <div className="phone-an-spark" role="group" aria-label="Seguidores por dia">
+      <div className="phone-an-spark" role="group" aria-label={t('ps.perDay')}>
         {points.map((p, i) => (
           <button
             key={p.date}
@@ -124,20 +128,24 @@ export function FollowerGrowthCard({
             )}
             style={{ height: `${15 + ((p.follower_count - min) / span) * 85}%` }}
             aria-pressed={picked === i}
-            aria-label={`${fmtDay(p.date)}: ${fmtNumber(p.follower_count)} seguidores`}
+            aria-label={t('ps.dayAria', {
+              day: fmtDay(p.date),
+              value: fmtNumber(p.follower_count),
+            })}
             onClick={() => setPicked(picked === i ? null : i)}
           />
         ))}
       </div>
       <p className="phone-an-card__readout" aria-live="polite">
         {pickedPoint
-          ? `${fmtDay(pickedPoint.date)}: ${fmtNumber(pickedPoint.follower_count)} seguidores${pickedPoint.source === 'manual' ? ' (manual)' : ''}`
-          : 'Toque numa barra para ver o dia.'}
+          ? t(pickedPoint.source === 'manual' ? 'ps.readoutManual' : 'ps.readout', {
+              day: fmtDay(pickedPoint.date),
+              value: fmtNumber(pickedPoint.follower_count),
+            })
+          : t('ps.tapBar')}
       </p>
       <div className="phone-an-card__bottom">
-        <span>
-          {fmtDay(points[0].date)} a {fmtDay(last.date)}
-        </span>
+        <span>{t('ps.range', { from: fmtDay(points[0].date), to: fmtDay(last.date) })}</span>
         {manualButton}
       </div>
     </section>
@@ -147,26 +155,22 @@ export function FollowerGrowthCard({
 /* ---------------- Demographics ---------------- */
 
 export function DemographicsSection({ data }: { data: AudienceDemographics | null }) {
+  const { t } = useTranslation('analyticsAccount');
   if (!data) {
-    return (
-      <p className="phone-an-empty">
-        Dados demográficos indisponíveis. A conta pode não ter seguidores suficientes ou a permissão
-        instagram_manage_insights pode estar ausente.
-      </p>
-    );
+    return <p className="phone-an-empty">{t('demo.unavailable')}</p>;
   }
   const groups = data.age_gender;
   const total = groups.reduce((s, a) => s + a.male + a.female, 0);
   const cities = data.cities.slice(0, 5);
   return (
     <>
-      <GroupedList header="Gênero">
-        <Cell label="Feminino" value={`${data.gender_split.female}%`} />
-        <Cell label="Masculino" value={`${data.gender_split.male}%`} />
+      <GroupedList header={t('ps.gender')}>
+        <Cell label={t('demo.femaleLabel')} value={`${data.gender_split.female}%`} />
+        <Cell label={t('demo.maleLabel')} value={`${data.gender_split.male}%`} />
       </GroupedList>
       {groups.length > 0 && (
         <BarList
-          header="Faixa etária"
+          header={t('demo.ageRange')}
           color="var(--an-female)"
           secondaryColor="var(--an-male)"
           items={groups.map((a) => ({
@@ -175,17 +179,17 @@ export function DemographicsSection({ data }: { data: AudienceDemographics | nul
             value: a.female,
             valueLabel:
               total > 0
-                ? `${Math.round(((a.male + a.female) / total) * 100)}% do público`
+                ? t('age.peak', { share: Math.round(((a.male + a.female) / total) * 100) })
                 : fmtNumber(a.male + a.female),
             secondary: a.male,
-            subtitle: `Mulheres ${fmtNumber(a.female)} · Homens ${fmtNumber(a.male)}`,
+            subtitle: t('ps.ageSub', { female: fmtNumber(a.female), male: fmtNumber(a.male) }),
           }))}
-          footer="Barra rosa: mulheres. Barra azul: homens."
+          footer={t('ps.ageFooter')}
         />
       )}
       {cities.length > 0 && (
         <BarList
-          header="Principais cidades"
+          header={t('demo.topCities')}
           items={cities.map((c) => {
             const [name, region] = c.name.split(/,\s*/, 2);
             return {
@@ -222,33 +226,46 @@ export interface BestTimesLabels {
   slotValue: (value: number, count: number) => string;
 }
 
-const posts = (n: number) => `${n} post${n !== 1 ? 's' : ''}`;
+const posts = (n: number) => tr('count.posts', { count: n });
+const hourLabel = (h: number) => tr('hm.hour', { h });
 
-const INSTAGRAM_BEST_TIMES: BestTimesLabels = {
-  empty:
-    'Dados insuficientes. São necessários pelo menos 5 posts nos últimos 90 dias para análise.',
-  tapHint: 'Toque num horário para ver o engajamento.',
-  header: 'Engajamento por dia e horário',
-  footer: (h) =>
-    `Média de engajamento por faixa de ${h}h, horário de Brasília. Mais escuro, mais engajamento.`,
-  heatmapAria: 'Mapa de calor de horários',
-  emptySlot: (day, hour) => `${day} ${hour}h: sem posts`,
+// Built at call time so the wording follows the language.
+const instagramBestTimes = (): BestTimesLabels => ({
+  empty: tr('best.insufficient'),
+  tapHint: tr('ps.tapSlot'),
+  header: tr('ps.hmHeader'),
+  footer: (h) => tr('ps.hmFooter', { h }),
+  heatmapAria: tr('ps.hmAria'),
+  emptySlot: (day, hour) => tr('hm.empty', { day, hour: hourLabel(hour) }),
   cellAria: (day, hour, value, count) =>
-    `${day} ${hour}h: ${formatPct(value)}% de engajamento, ${posts(count)}`,
+    tr('ps.cellAria', {
+      day,
+      hour: hourLabel(hour),
+      pct: formatPct(value),
+      count: posts(count),
+    }),
   readout: (day, from, to, value, count) =>
-    `${day} ${from}h a ${to}h: ${formatPct(value)}% eng. (${posts(count)})`,
-  recommended: 'Horários recomendados',
-  slotLabel: (day, hour) => `${day} às ${hour}`,
-  slotValue: (value, count) => `${formatPct(value)}% eng. · ${count} post${count > 1 ? 's' : ''}`,
-};
+    tr('ps.hmReadout', {
+      day,
+      from: hourLabel(from),
+      to: hourLabel(to),
+      pct: formatPct(value),
+      count: posts(count),
+    }),
+  recommended: tr('best.recommended'),
+  slotLabel: (day, hour) => tr('best.when', { day, hour: hourText(hour) }),
+  slotValue: (value, count) => tr('best.meta', { pct: formatPct(value), count }),
+});
 
 export function BestTimesSection({
   data,
-  labels = INSTAGRAM_BEST_TIMES,
+  labels: labelsProp,
 }: {
   data: BestPostingTimes | null;
   labels?: BestTimesLabels;
 }) {
+  useTranslation('analyticsAccount');
+  const labels = labelsProp ?? instagramBestTimes();
   const [picked, setPicked] = useState<{ d: number; b: number } | null>(null);
   if (!data || data.totalPosts < 5) {
     return <p className="phone-an-empty">{labels.empty}</p>;
@@ -260,8 +277,8 @@ export function BestTimesSection({
     const c = buckets[cell.d]?.[cell.b];
     const day = data.labels_days[cell.d];
     const start = BEST_TIME_BUCKET_STARTS[cell.b];
-    if (!c || c.count === 0) return labels.emptySlot(DAY_FULL[day] ?? day, start);
-    return labels.readout(DAY_FULL[day] ?? day, start, start + bucketSize - 1, c.value, c.count);
+    if (!c || c.count === 0) return labels.emptySlot(dayFull(day), start);
+    return labels.readout(dayFull(day), start, start + bucketSize - 1, c.value, c.count);
   })();
 
   return (
@@ -272,12 +289,12 @@ export function BestTimesSection({
             <span />
             {BEST_TIME_BUCKET_STARTS.map((h) => (
               <span key={h} className="phone-an-hm__label">
-                {h}h
+                {hourLabel(h)}
               </span>
             ))}
             {data.labels_days.map((day, d) => (
               <Fragment key={day}>
-                <span className="phone-an-hm__label">{day}</span>
+                <span className="phone-an-hm__label">{dayShort(day)}</span>
                 {buckets[d].map((cell, b) => {
                   const step = cell.value > 0 ? 1 + Math.round((cell.value / max) * 7) : 0;
                   const isTop = topCell !== null && topCell.day === d && topCell.bucket === b;
@@ -294,8 +311,13 @@ export function BestTimesSection({
                       aria-pressed={isPicked}
                       aria-label={
                         cell.count > 0
-                          ? labels.cellAria(day, BEST_TIME_BUCKET_STARTS[b], cell.value, cell.count)
-                          : labels.emptySlot(day, BEST_TIME_BUCKET_STARTS[b])
+                          ? labels.cellAria(
+                              dayShort(day),
+                              BEST_TIME_BUCKET_STARTS[b],
+                              cell.value,
+                              cell.count,
+                            )
+                          : labels.emptySlot(dayShort(day), BEST_TIME_BUCKET_STARTS[b])
                       }
                       onClick={() => setPicked(isPicked ? null : { d, b })}
                     />
@@ -315,10 +337,7 @@ export function BestTimesSection({
             <Cell
               key={i}
               icon={<span className="phone-an-rank">{i + 1}</span>}
-              label={labels.slotLabel(
-                DAY_FULL[data.labels_days[s.day]] ?? data.labels_days[s.day],
-                data.labels_hours[s.hour],
-              )}
+              label={labels.slotLabel(dayFull(data.labels_days[s.day]), data.labels_hours[s.hour])}
               value={labels.slotValue(s.value, s.postCount)}
             />
           ))}
@@ -331,19 +350,17 @@ export function BestTimesSection({
 /* ---------------- Saves ---------------- */
 
 export function SavesSection({ posts }: { posts: PostAnalytics[] }) {
+  const { t } = useTranslation('analyticsAccount');
   return (
     <>
-      <p className="phone-an-sheet__summary">
-        Salvamentos indicam que alguém guardou o conteúdo para uma decisão de saúde. É a métrica
-        mais subestimada para conteúdo médico.
-      </p>
-      <GroupedList aria-label="Posts mais salvos">
+      <p className="phone-an-sheet__summary">{t('ps.savesHelp')}</p>
+      <GroupedList aria-label={t('ps.topSaved')}>
         {posts.map((p) => (
           <Cell
             key={p.id}
-            label={p.caption || 'Sem legenda'}
-            subtitle={`${formatPct(p.saves_rate)}% taxa de salvamento`}
-            value={`${fmtNumber(p.saved)} salv.`}
+            label={p.caption || t('page.noCaption')}
+            subtitle={t('ps.saveRate', { rate: formatPct(p.saves_rate) })}
+            value={t('ps.savedShort', { value: fmtNumber(p.saved) })}
           />
         ))}
       </GroupedList>
@@ -368,62 +385,58 @@ export function TypeTopicSection({
   onRemoveTag: (tag: PostTag) => void;
   onNewTag: () => void;
 }) {
+  const { t } = useTranslation('analyticsAccount');
   return (
     <>
       {typeBreakdown.length === 0 ? (
-        <p className="phone-an-empty">Sem dados.</p>
+        <p className="phone-an-empty">{t('page.noData')}</p>
       ) : (
         <BarList
-          header="Desempenho por tipo"
-          footer={`Engajamento médio · últimos ${days} dias`}
-          items={typeBreakdown.map((t) => ({
-            key: t.type,
-            label: t.type,
-            subtitle: `${t.count} post${t.count !== 1 ? 's' : ''}`,
-            value: t.avgEngagement,
-            valueLabel: `${formatPct(t.avgEngagement)}%`,
+          header={t('ps.byType')}
+          footer={t('ps.avgDays', { days })}
+          items={typeBreakdown.map((row) => ({
+            key: row.type,
+            label: row.type,
+            subtitle: t('count.posts', { count: row.count }),
+            value: row.avgEngagement,
+            valueLabel: `${formatPct(row.avgEngagement)}%`,
           }))}
         />
       )}
       {topicStats.length > 0 ? (
         <BarList
-          header="Desempenho por tópico"
-          items={topicStats.map((t) => ({
-            key: String(t.id),
-            label: t.tag_name,
-            subtitle: `${t.count} post${t.count !== 1 ? 's' : ''}`,
-            value: t.avgEngagement,
-            valueLabel: `${t.avgEngagement.toFixed(2).replace('.', ',')}%`,
-            color: t.color,
+          header={t('ps.byTopic')}
+          items={topicStats.map((topic) => ({
+            key: String(topic.id),
+            label: topic.tag_name,
+            subtitle: t('count.posts', { count: topic.count }),
+            value: topic.avgEngagement,
+            valueLabel: `${
+              getIntlLocale() === 'en-US'
+                ? topic.avgEngagement.toFixed(2)
+                : topic.avgEngagement.toFixed(2).replace('.', ',')
+            }%`,
+            color: topic.color,
           }))}
         />
       ) : (
         <p className="phone-an-sheet__summary">
-          {tags.length === 0
-            ? 'Crie tags e atribua aos posts para descobrir quais temas engajam mais.'
-            : 'Atribua tags aos posts para ver o desempenho por tópico.'}
+          {tags.length === 0 ? t('topic.hintNoTags') : t('topic.hintAssign')}
         </p>
       )}
-      <GroupedList
-        header="Tags"
-        footer={
-          tags.length > 0
-            ? 'Atribua tags na ficha de cada post, em Performance de conteúdo.'
-            : undefined
-        }
-      >
-        {tags.map((t) => (
+      <GroupedList header={t('ps.tags')} footer={tags.length > 0 ? t('ps.tagsFooter') : undefined}>
+        {tags.map((tag) => (
           <Cell
-            key={t.id}
-            icon={<span className="phone-an-tag__dot" style={{ background: t.color }} />}
-            label={t.tag_name}
+            key={tag.id}
+            icon={<span className="phone-an-tag__dot" style={{ background: tag.color }} />}
+            label={tag.tag_name}
             accessory={<Trash2 aria-hidden="true" className="phone-an-tone--muted" />}
-            aria-label={`Remover a tag ${t.tag_name}`}
+            aria-label={t('ps.removeTagAria', { name: tag.tag_name })}
             aria-haspopup="dialog"
-            onClick={() => onRemoveTag(t)}
+            onClick={() => onRemoveTag(tag)}
           />
         ))}
-        <Cell icon={<Plus />} label="Nova tag" aria-haspopup="dialog" onClick={onNewTag} />
+        <Cell icon={<Plus />} label={t('ps.newTag')} aria-haspopup="dialog" onClick={onNewTag} />
       </GroupedList>
     </>
   );
@@ -432,33 +445,34 @@ export function TypeTopicSection({
 /* ---------------- Stories ---------------- */
 
 export function StoriesSectionPhone({ data }: { data: StoriesAnalyticsResponse }) {
+  const { t } = useTranslation('analyticsAccount');
   const { current, previous } = data.kpis;
   return (
     <>
       <StatCardGrid maxCols={4}>
         <StatCard
-          label="Stories publicados"
+          label={t('stories.published')}
           value={current.stories_count}
           icon={Film}
           tone="blue"
           delta={toStatDelta(current.stories_count, previous?.stories_count)}
         />
         <StatCard
-          label="Alcance de Stories"
+          label={t('stories.reach')}
           value={fmtNumber(current.total_reach)}
           icon={Eye}
           tone="violet"
           delta={toStatDelta(current.total_reach, previous?.total_reach)}
         />
         <StatCard
-          label="Taxa de retenção"
+          label={t('stories.retention')}
           value={`${(current.avg_retention_rate * 100).toFixed(1)}%`}
           icon={ChevronRight}
           tone="green"
           delta={toStatDelta(current.avg_retention_rate, previous?.avg_retention_rate)}
         />
         <StatCard
-          label="Respostas"
+          label={t('stories.replies')}
           value={current.total_replies}
           icon={MessageCircle}
           tone="pink"
@@ -466,7 +480,7 @@ export function StoriesSectionPhone({ data }: { data: StoriesAnalyticsResponse }
         />
       </StatCardGrid>
       {data.stories.length > 0 && (
-        <GroupedList header="Detalhamento por story" footer="Valor à direita: taxa de retenção.">
+        <GroupedList header={t('stories.breakdown')} footer={t('ps.storiesBreakdownFooter')}>
           {[...data.stories]
             .sort((a, b) => new Date(b.posted_at).getTime() - new Date(a.posted_at).getTime())
             .map((s) => {
@@ -474,15 +488,20 @@ export function StoriesSectionPhone({ data }: { data: StoriesAnalyticsResponse }
               return (
                 <Cell
                   key={s.instagram_media_id}
-                  label={new Date(s.posted_at).toLocaleDateString('pt-BR', {
+                  label={new Date(s.posted_at).toLocaleDateString(getIntlLocale(), {
                     day: '2-digit',
                     month: 'short',
                   })}
                   subtitle={
                     <span className="phone-an-cell-sub phone-an-cell-sub--wrap">
-                      Alcance {fmtNumber(s.reach)} · Impressões {fmtNumber(s.impressions)} ·
-                      Avançaram {s.taps_forward} · Voltaram {s.taps_back} · Saídas {s.exits} ·
-                      Respostas {s.replies}
+                      {t('ps.storyRow', {
+                        reach: fmtNumber(s.reach),
+                        impressions: fmtNumber(s.impressions),
+                        forward: s.taps_forward,
+                        back: s.taps_back,
+                        exits: s.exits,
+                        replies: s.replies,
+                      })}
                     </span>
                   }
                   value={
@@ -501,23 +520,12 @@ export function StoriesSectionPhone({ data }: { data: StoriesAnalyticsResponse }
 
 /* ---------------- Baseline ---------------- */
 
-const RATE_STRIP_LABELS: Record<RateKey, string> = {
-  share_rate: 'Compartilhamentos',
-  like_rate: 'Curtidas',
-  save_rate: 'Salvos',
-  comment_rate: 'Comentários',
-};
-const FORMAT_LABELS: Record<string, string> = {
-  VIDEO: 'Reels',
-  CAROUSEL_ALBUM: 'Carrossel',
-  IMAGE: 'Imagem',
-};
-
 export function BaselineSection({ baseline }: { baseline: Baseline }) {
+  const { t } = useTranslation('analyticsAccount');
   return (
     <GroupedList
-      header={`Histórico completo · ${baseline.sample_size} posts · por visualização`}
-      footer="Heurística interna alinhada ao IG (compart. > curt. > salvos > coment.), não são os pesos oficiais do Instagram. Taxa de skip e repost não estão na API. Pontuado vs. o histórico completo do cliente, igual ao que o agente vê."
+      header={t('ps.baselineHeader', { count: baseline.sample_size })}
+      footer={t('ps.baselineFooter')}
     >
       {(['share_rate', 'like_rate', 'save_rate', 'comment_rate'] as RateKey[]).map((key) => {
         const q = baseline.overall[key].quartiles;
@@ -526,7 +534,7 @@ export function BaselineSection({ baseline }: { baseline: Baseline }) {
         const perFormat = Object.entries(baseline.by_format)
           .map(([fmt, m]) => {
             const fq = m[key].quartiles;
-            return `${FORMAT_LABELS[fmt] ?? fmt} ${fq ? formatRate(fq.p50) : 'n<5'}`;
+            return `${['VIDEO', 'CAROUSEL_ALBUM', 'IMAGE'].includes(fmt) ? t(`baseline.format.${fmt}`) : fmt} ${fq ? formatRate(fq.p50) : 'n<5'}`;
           })
           .join(' · ');
         return (
@@ -534,14 +542,14 @@ export function BaselineSection({ baseline }: { baseline: Baseline }) {
             <div className="phone-an-strip-rate">
               <div className="phone-an-strip-rate__top">
                 <span>
-                  <strong>{RATE_STRIP_LABELS[key]}</strong>{' '}
+                  <strong>{t(`baseline.rate.${key}`)}</strong>{' '}
                   <span className="phone-an-tone--muted">
-                    peso {Math.round(IG_RATE_WEIGHTS[key] * 100)}%
+                    {t('baseline.weight', { pct: Math.round(IG_RATE_WEIGHTS[key] * 100) })}
                   </span>
                 </span>
                 <span>
-                  <strong>{q ? formatRate(q.p50) : 'Sem dado'}</strong>{' '}
-                  <span className="phone-an-tone--muted">mediana</span>
+                  <strong>{q ? formatRate(q.p50) : t('ps.noData')}</strong>{' '}
+                  <span className="phone-an-tone--muted">{t('baseline.median')}</span>
                 </span>
               </div>
               <div className="phone-an-strip-rate__track" aria-hidden="true">
@@ -563,8 +571,8 @@ export function BaselineSection({ baseline }: { baseline: Baseline }) {
               </div>
               <div className="phone-an-strip-rate__meta">
                 {q
-                  ? `p25 ${formatRate(q.p25)} · p75 ${formatRate(q.p75)} · `
-                  : 'Amostra insuficiente · '}
+                  ? tr('ps.quartiles', { p25: formatRate(q.p25), p75: formatRate(q.p75) })
+                  : t('ps.insufficient')}
                 {perFormat}
               </div>
             </div>
@@ -589,23 +597,23 @@ export interface ContaAILabels {
   captionDiagnostic: string;
 }
 
-const CONTA_AI_LABELS: ContaAILabels = {
-  topPerformer: 'Melhor post',
-  worstPerformer: 'Pior post',
-  captionDiagnostic: 'Diagnóstico de legendas',
-};
+const contaAILabels = (): ContaAILabels => ({
+  topPerformer: tr('ps.aiTopPerformer'),
+  worstPerformer: tr('ps.aiWorstPerformer'),
+  captionDiagnostic: tr('ps.aiCaptionDiagnostic'),
+});
 
 /** The account analysis payload (untyped JSON) in the shared phone shape. */
 export function contaAIView(
   a: any,
-  labels: ContaAILabels = CONTA_AI_LABELS,
+  labels: ContaAILabels = contaAILabels(),
 ): AIAnalysisView | null {
   if (!a) return null;
   return {
     score: a.healthScore
       ? {
           value: a.healthScore.score ?? 0,
-          label: 'Health Score',
+          label: tr('ai.healthScore'),
           summary: String(a.healthScore.summary ?? ''),
         }
       : undefined,
@@ -618,14 +626,14 @@ export function contaAIView(
     sections: [
       { title: labels.topPerformer, text: a.performanceMap?.topPerformer },
       { title: labels.worstPerformer, text: a.performanceMap?.worstPerformer },
-      { title: 'Mix de conteúdo', text: a.performanceMap?.contentMix },
+      { title: tr('ps.aiContentMix'), text: a.performanceMap?.contentMix },
       { title: labels.captionDiagnostic, text: a.captionDiagnostic },
-      { title: 'Trajetória de crescimento', text: a.growthAnalysis?.trajectory },
-      { title: 'Projeção', text: a.growthAnalysis?.projection },
+      { title: tr('ps.aiTrajectory'), text: a.growthAnalysis?.trajectory },
+      { title: tr('ai.projection'), text: a.growthAnalysis?.projection },
     ],
     actions: Array.isArray(a.actionPlan)
       ? {
-          title: 'Plano de ação',
+          title: tr('ps.aiActionPlan'),
           items: a.actionPlan.map((p: any) => ({
             badge: String(p.prioridade ?? ''),
             tone: priorityTone(p.prioridade),

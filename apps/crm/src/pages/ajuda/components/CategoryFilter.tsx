@@ -1,4 +1,5 @@
-import { CATEGORY_LABELS, ALL_CATEGORIES } from '../categoryConfig';
+import { useTranslation } from 'react-i18next';
+import { CATEGORY_LABELS, ALL_CATEGORIES, categoryLabel } from '../categoryConfig';
 export { CATEGORY_LABELS, ALL_CATEGORIES };
 
 interface CategoryFilterProps {
@@ -7,6 +8,7 @@ interface CategoryFilterProps {
 }
 
 export function CategoryFilter({ selected, onChange }: CategoryFilterProps) {
+  const { t } = useTranslation('help');
   return (
     <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
       <button
@@ -18,7 +20,7 @@ export function CategoryFilter({ selected, onChange }: CategoryFilterProps) {
         }`}
         onClick={() => onChange(null)}
       >
-        Todos
+        {t('filterAll')}
       </button>
       {ALL_CATEGORIES.map((cat) => (
         <button
@@ -31,7 +33,7 @@ export function CategoryFilter({ selected, onChange }: CategoryFilterProps) {
           }`}
           onClick={() => onChange(cat)}
         >
-          {CATEGORY_LABELS[cat]}
+          {categoryLabel(t, cat)}
         </button>
       ))}
     </div>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { BottomSheet } from '@/components/mobile/BottomSheet';
 import { Cell, GroupedList } from '@/components/mobile/GroupedList';
 import { FormRow } from '@/components/mobile/FormRow';
@@ -31,6 +32,7 @@ export function PostDetailSheet({
   onNewTag: () => void;
   dists?: RateDistributions;
 }) {
+  const { t } = useTranslation('analyticsAccount');
   // Keeps the last post while the sheet animates out.
   const [shown, setShown] = useState<PostAnalytics | null>(post);
   const [busyTag, setBusyTag] = useState<number | null>(null);
@@ -42,26 +44,26 @@ export function PostDetailSheet({
   const p = post ?? shown;
   if (!p) return null;
 
-  const assigned = new Set(p.tags.map((t) => t.id));
+  const assigned = new Set(p.tags.map((tag) => tag.id));
 
   const tagsGroup = (
-    <GroupedList header="Tags">
+    <GroupedList header={t('tag.heading')}>
       {tags.length > 0 && (
         <li className="phone-cell">
-          <div className="phone-an-tags" role="group" aria-label="Tags do post">
-            {tags.map((t) => {
-              const on = assigned.has(t.id);
+          <div className="phone-an-tags" role="group" aria-label={t('tag.postTags')}>
+            {tags.map((tag) => {
+              const on = assigned.has(tag.id);
               return (
                 <button
-                  key={t.id}
+                  key={tag.id}
                   type="button"
                   className="phone-an-tag"
                   aria-pressed={on}
                   disabled={busyTag !== null}
                   onClick={async () => {
-                    setBusyTag(t.id);
+                    setBusyTag(tag.id);
                     try {
-                      await onToggleTag(p, t, on);
+                      await onToggleTag(p, tag, on);
                     } finally {
                       setBusyTag(null);
                     }
@@ -69,17 +71,17 @@ export function PostDetailSheet({
                 >
                   <span
                     className="phone-an-tag__dot"
-                    style={{ background: t.color }}
+                    style={{ background: tag.color }}
                     aria-hidden="true"
                   />
-                  {t.tag_name}
+                  {tag.tag_name}
                 </button>
               );
             })}
           </div>
         </li>
       )}
-      <Cell icon={<Plus />} label="Nova tag" onClick={onNewTag} aria-haspopup="dialog" />
+      <Cell icon={<Plus />} label={t('tag.new')} onClick={onNewTag} aria-haspopup="dialog" />
     </GroupedList>
   );
 
@@ -87,7 +89,7 @@ export function PostDetailSheet({
     <BottomSheet
       open={post !== null}
       onOpenChange={onOpenChange}
-      title="Métricas do post"
+      title={t('pm.title')}
       detents={['large']}
       className="phone-an-sheet"
       headerTrailing={
@@ -120,6 +122,7 @@ export function NewTagSheet({
   /** Resolves true when the tag was created (the sheet then closes). */
   onCreate: (name: string) => Promise<boolean>;
 }) {
+  const { t } = useTranslation('analyticsAccount');
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
   useEffect(() => {
@@ -138,7 +141,7 @@ export function NewTagSheet({
     <BottomSheet
       open={open}
       onOpenChange={onOpenChange}
-      title="Nova tag"
+      title={t('tag.new')}
       detents={['fit']}
       className="phone-an-sheet"
     >
@@ -149,21 +152,21 @@ export function NewTagSheet({
           void submit();
         }}
       >
-        <GroupedList aria-label="Nova tag">
+        <GroupedList aria-label={t('tag.new')}>
           <FormRow
-            label="Nome"
-            helper="Ex: Educativo, Procedimento, Bastidores"
+            label={t('tag.name')}
+            helper={t('tag.example')}
             input={{
               value: name,
               autoFocus: true,
               maxLength: 40,
-              placeholder: 'Nome da tag',
+              placeholder: t('tag.namePlaceholder'),
               onChange: (e) => setName(e.target.value),
             }}
           />
         </GroupedList>
         <button type="submit" className="phone-an-primary-button" disabled={!name.trim() || saving}>
-          {saving ? 'Criando…' : 'Criar tag'}
+          {saving ? t('tag.creating') : t('tag.create')}
         </button>
       </form>
     </BottomSheet>

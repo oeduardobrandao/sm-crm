@@ -2,6 +2,7 @@ import { useContext, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useQuery, useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import {
   proposeMapping,
   type ImportBundle,
@@ -30,7 +31,7 @@ import {
 } from '@/services/dataImport';
 import { buildCommitRows, type ExistingCliente } from './buildCommitRows';
 import { mergeAiProposal, summarizeBundle } from './mapping';
-import { ParseFilesError, UNREADABLE_MESSAGE, parseFiles } from './parseFiles';
+import { ParseFilesError, unreadableMessage, parseFiles } from './parseFiles';
 import { sourceGuide } from './sourceGuides';
 import StepOrigem from './components/StepOrigem';
 import StepUpload, { type UploadError } from './components/StepUpload';
@@ -86,13 +87,7 @@ function invalidateImportedData(queryClient: QueryClient) {
 
 type Step = 'origem' | 'upload' | 'mapeamento' | 'previa' | 'commit';
 
-const STEP_TITLES: [Step, string][] = [
-  ['origem', 'Origem'],
-  ['upload', 'Arquivos'],
-  ['mapeamento', 'Mapeamento'],
-  ['previa', 'Prévia'],
-  ['commit', 'Importar'],
-];
+const STEPS: Step[] = ['origem', 'upload', 'mapeamento', 'previa', 'commit'];
 
 /**
  * The wizard creates clients, which a member restricted to assigned clients never does
@@ -105,6 +100,8 @@ export default function ImportarPage() {
 }
 
 function ImportarWizard() {
+  const { t } = useTranslation('importWizard');
+  const stepTitles: [Step, string][] = STEPS.map((s) => [s, t(`steps.${s}`)]);
   const queryClient = useQueryClient();
   // Phones (below 768px) get the kit wizard; 768 and up keep the desktop page.
   const isPhone = !useIsDesktop(768);
@@ -159,7 +156,7 @@ function ImportarWizard() {
       setUploadError(
         err instanceof ParseFilesError
           ? { message: err.message, details: err.details }
-          : { message: UNREADABLE_MESSAGE, details: [] },
+          : { message: unreadableMessage(), details: [] },
       );
     } finally {
       setBusy(false);
@@ -205,7 +202,7 @@ function ImportarWizard() {
       const names = unassigned
         .map((m) => bundle.collections.find((c) => c.id === m.collectionId)?.name ?? m.collectionId)
         .join(', ');
-      setMappingError(`Escolha o cliente de: ${names}.`);
+      setMappingError(t('mapping.pickClientError', { names }));
       return;
     }
     setMappingError(null);
@@ -265,9 +262,7 @@ function ImportarWizard() {
     // of the guard is one comparison and the cost of the hole is a permanently
     // stuck job, so it stays.
     if (rows.length === 0 && existingJobId == null) {
-      setCommitError(
-        'Nenhum registro para importar — volte e ajuste o mapeamento antes de tentar de novo.',
-      );
+      setCommitError(t('commit.nothingToImport'));
       return;
     }
     try {
@@ -295,7 +290,7 @@ function ImportarWizard() {
       }
       setResults(acc);
       const failed = acc.filter((r) => r.failed).length;
-      if (failed === 0) toast.success('Importação concluída.');
+      if (failed === 0) toast.success(t('commit.success'));
       // A retried/idempotent batch can come back with every row `skipped`
       // (already committed by an earlier attempt) or `failed` (plan-limit
       // refusal) — neither actually changed the database, so invalidating
@@ -331,9 +326,9 @@ function ImportarWizard() {
   }
 
   const guide = sourceGuide(source ?? 'csv');
-  const currentIndex = STEP_TITLES.findIndex(([s]) => s === step);
+  const currentIndex = stepTitles.findIndex(([s]) => s === step);
 
-  const inToolbar = usePageToolbar({ title: 'Importar dados' });
+  const inToolbar = usePageToolbar({ title: t('title') });
 
   if (isPhone) {
     // Same steps, same handlers and the same enable rules as the desktop footers below;
@@ -342,14 +337,14 @@ function ImportarWizard() {
       back: (() => void) | null,
       next: { label: string; disabled: boolean; onClick: () => void },
     ) => (
-      <BottomActionBar aboveTabBar aria-label="Navegação do assistente" role="group">
+      <BottomActionBar aboveTabBar aria-label={t('nav.group')} role="group">
         {back && (
           <button
             type="button"
             className="phone-imp-bar__button phone-imp-bar__button--back"
             onClick={back}
           >
-            Voltar
+            {t('nav.back')}
           </button>
         )}
         <button
@@ -366,11 +361,15 @@ function ImportarWizard() {
     return (
       <div className="phone-imp">
         <PhonePageHeader
-          title="Importar dados"
-          subtitle={`Passo ${currentIndex + 1} de ${STEP_TITLES.length} · ${STEP_TITLES[currentIndex][1]}`}
+          title={t('title')}
+          subtitle={t('nav.stepOf', {
+            current: currentIndex + 1,
+            total: stepTitles.length,
+            title: stepTitles[currentIndex][1],
+          })}
         >
-          <ol className="phone-imp-steps" aria-label="Passos">
-            {STEP_TITLES.map(([id, label], i) => (
+          <ol className="phone-imp-steps" aria-label={t('nav.steps')}>
+            {stepTitles.map(([id, label], i) => (
               <li
                 key={id}
                 aria-label={label}
@@ -381,12 +380,12 @@ function ImportarWizard() {
           </ol>
         </PhonePageHeader>
 
-        <FeatureGate flag="feature_csv_import" label="A importação de dados">
+        <FeatureGate flag="feature_csv_import" label={t('featureLabel')}>
           {step === 'origem' && (
             <>
               <PhoneStepOrigem source={source} onSelect={setSource} />
               {bar(null, {
-                label: 'Continuar',
+                label: t('nav.next'),
                 disabled: !source,
                 onClick: () => setStep('upload'),
               })}
@@ -403,7 +402,7 @@ function ImportarWizard() {
                 onFiles={(files) => void handleFiles(files)}
               />
               {bar(() => setStep('origem'), {
-                label: 'Continuar',
+                label: t('nav.next'),
                 disabled: !bundle || busy,
                 onClick: () => void goToMapping(),
               })}
@@ -422,7 +421,7 @@ function ImportarWizard() {
                 onChange={setProposal}
               />
               {bar(() => setStep('upload'), {
-                label: 'Continuar',
+                label: t('nav.next'),
                 disabled: clientesStatus !== 'ready',
                 onClick: () => void goToPreview(),
               })}
@@ -438,7 +437,7 @@ function ImportarWizard() {
                 error={previewError}
               />
               {bar(() => setStep('mapeamento'), {
-                label: `Importar ${rowCount} ${rowCount === 1 ? 'registro' : 'registros'}`,
+                label: t('nav.importCount', { count: rowCount }),
                 disabled: !preview || busy || rowCount === 0,
                 onClick: startCommit,
               })}
@@ -464,11 +463,11 @@ function ImportarWizard() {
   return (
     <div className={`mx-auto max-w-4xl space-y-6${inToolbar ? '' : ' p-6'}`}>
       <div>
-        {!inToolbar && <h1 className="text-2xl font-bold">Importar dados</h1>}
+        {!inToolbar && <h1 className="text-2xl font-bold">{t('title')}</h1>}
         <ol
           className={`${inToolbar ? '' : 'mt-2 '}flex flex-wrap gap-x-3 gap-y-1 text-xs uppercase text-muted-foreground`}
         >
-          {STEP_TITLES.map(([id, label], i) => (
+          {stepTitles.map(([id, label], i) => (
             <li
               key={id}
               // Colour alone carried "which step am I on"; aria-current states it
@@ -483,7 +482,7 @@ function ImportarWizard() {
         </ol>
       </div>
 
-      <FeatureGate flag="feature_csv_import" label="A importação de dados">
+      <FeatureGate flag="feature_csv_import" label={t('featureLabel')}>
         {step === 'origem' && (
           <StepOrigem source={source} onSelect={setSource} onNext={() => setStep('upload')} />
         )}

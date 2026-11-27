@@ -159,7 +159,8 @@
       "noneConnected": "No Instagram account connected. Connect one to see client health.",
       "filtered": "No clients in this filter."
     },
-    "error": "Could not load client health."
+    "error": "Could not load client health.",
+    "actionsLabel": "Actions"
   },
   "today": {
     "title": "Today",
@@ -235,6 +236,11 @@
     "semCliente": "No client",
     "semResponsavel": "Unassigned",
     "semData": "No date",
+    "dateFmt": {
+      "day": "EEEE, MMMM d",
+      "dayShort": "EEE, MMM d",
+      "weekday": "EEE"
+    },
     "groupMeta": {
       "oldest_one": "Oldest was due {{count}} day ago",
       "oldest_other": "Oldest was due {{count}} days ago",
@@ -284,6 +290,7 @@
       "showing": "Showing {{shown}} of {{total}}",
       "showAll": "Show all",
       "showLess": "Show less"
-    }
+    },
+    "title": "Home"
   }
 }

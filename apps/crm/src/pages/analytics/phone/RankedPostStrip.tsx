@@ -1,9 +1,10 @@
 import { useId, useState } from 'react';
 import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { useTranslation } from 'react-i18next';
+import { useDateFnsLocale } from '@mesaas/i18n';
 import { InstagramLinkButton } from '@/components/instagram/InstagramLinkButton';
 import { sanitizeUrl } from '../../../utils/security';
-import { SectionHead, fmtNumber, mediaTypeLabel } from './shared';
+import { SectionHead, fmtFixed, fmtNumber, mediaTypeLabel } from './shared';
 
 /** What a ranked-post card needs; both analytics pages' post types fit it. */
 export interface RankedPostLike {
@@ -20,7 +21,7 @@ export interface RankedPostLike {
   engagement_rate: number | null;
 }
 
-const formatEng = (v: number | null) => (v === null ? '—' : `${v.toFixed(1).replace('.', ',')}%`);
+const formatEng = (v: number | null) => (v === null ? '—' : `${fmtFixed(v, 1)}%`);
 const formatViews = (v: number | null) => (v === null ? '—' : fmtNumber(v));
 
 /**
@@ -33,7 +34,7 @@ export function RankedPostCard<P extends RankedPostLike>({
   title,
   tone,
   typeLabel,
-  openLabel = 'abrir no Instagram',
+  openLabel,
   onSelect,
 }: {
   post: P;
@@ -47,10 +48,14 @@ export function RankedPostCard<P extends RankedPostLike>({
   /** Opens the post in the page instead of linking out. */
   onSelect?: (post: P) => void;
 }) {
+  const { t } = useTranslation(['analyticsPhone', 'analyticsAccount']);
+  const dateFnsLocale = useDateFnsLocale();
   const [failed, setFailed] = useState(false);
   const type = typeLabel ?? mediaTypeLabel(post.media_type);
   const date = post.posted_at
-    ? format(new Date(post.posted_at), "d 'de' MMM", { locale: ptBR })
+    ? format(new Date(post.posted_at), t('analyticsAccount:phone.dateShort'), {
+        locale: dateFnsLocale,
+      })
     : null;
   const body = (
     <>
@@ -79,7 +84,11 @@ export function RankedPostCard<P extends RankedPostLike>({
       </span>
     </>
   );
-  const label = `${type} de ${title}, ${formatViews(post.views)} visualizações`;
+  const label = t('analyticsPhone:rank.cardLabel', {
+    type,
+    title,
+    views: formatViews(post.views),
+  });
   if (onSelect) {
     return (
       <div className="phone-an-post-card-wrap">
@@ -106,7 +115,7 @@ export function RankedPostCard<P extends RankedPostLike>({
       target="_blank"
       rel="noopener noreferrer"
       className="phone-an-post-card"
-      aria-label={`${label}, ${openLabel}`}
+      aria-label={`${label}, ${openLabel ?? t('analyticsPhone:rank.openInstagram')}`}
     >
       {body}
     </a>
@@ -124,7 +133,7 @@ export function RankedPostStrip<P extends RankedPostLike>({
   tone,
   titleOf,
   onSeeMore,
-  seeMoreLabel = 'Ver mais',
+  seeMoreLabel,
   typeLabel,
   openLabel,
   onSelect,
@@ -142,6 +151,7 @@ export function RankedPostStrip<P extends RankedPostLike>({
   /** Opens a post in the page; without it each card links to the platform. */
   onSelect?: (post: P) => void;
 }) {
+  const { t } = useTranslation('analyticsAccount');
   const headingId = useId();
   if (posts.length === 0) return null;
   return (
@@ -153,7 +163,7 @@ export function RankedPostStrip<P extends RankedPostLike>({
         trailing={
           onSeeMore ? (
             <button type="button" className="phone-an-link-button" onClick={onSeeMore}>
-              {seeMoreLabel}
+              {seeMoreLabel ?? t('page.seeMore')}
             </button>
           ) : undefined
         }

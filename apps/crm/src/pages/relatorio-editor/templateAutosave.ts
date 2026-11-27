@@ -1,6 +1,7 @@
 // Autosave do editor de modelo (spec 2026-09-25 §3): grava em report_templates.
 // O texto de IA nunca vai para um modelo, e o nome não pode ficar vazio
 // (coluna NOT NULL): em branco, mantém o último nome salvo.
+import { tr } from './editorText';
 import { updateReportTemplate } from '../../services/reportTemplates';
 import { sanitizeLayoutForTemplate } from './templateOps';
 import type { AutosaveTarget } from './useLayoutAutosave';
@@ -19,7 +20,7 @@ export const TEMPLATE_AUTOSAVE_TARGET: AutosaveTarget = {
   },
   cacheKey: (id) => ['report-template', id],
   titleField: 'name',
-  errorMessage: 'Erro ao salvar o modelo',
+  errorMessage: () => tr('toast.templateSaveError'),
   // F2 (revisão final): sem isso, Configuração › Relatórios mostra o nome
   // antigo / contagem de blocos antiga até um reload manual -- nada
   // invalidava ['report-templates'] depois de um save no editor.

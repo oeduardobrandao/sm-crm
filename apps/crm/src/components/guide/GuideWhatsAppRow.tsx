@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { Check, ExternalLink, MessageCircle } from 'lucide-react';
 import { getEffectivePlanWithSource } from '../../services/billing';
 import { isWhatsAppSupportEnabled } from '../../lib/whatsapp';
@@ -26,6 +27,7 @@ export function GuideWhatsAppRow({
   /** Phone sheet: a short button label, so the title keeps its line. */
   compact?: boolean;
 }) {
+  const { t } = useTranslation('guide');
   const enabled = isWhatsAppSupportEnabled();
   // Mesma chave do TrialNudgeCard e do /comecar: no dashboard já está em cache.
   const { data, isLoading } = useQuery({
@@ -66,9 +68,7 @@ export function GuideWhatsAppRow({
         <MessageCircle className="h-5 w-5" />
       </span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ margin: 0, fontSize: '0.86rem', fontWeight: 600 }}>
-          Fale com a gente no WhatsApp
-        </p>
+        <p style={{ margin: 0, fontSize: '0.86rem', fontWeight: 600 }}>{t('whatsapp.title')}</p>
         <p style={{ margin: '2px 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
           {opened ? (
             <>
@@ -82,12 +82,12 @@ export function GuideWhatsAppRow({
                 }}
               >
                 <Check className="h-3 w-3" aria-hidden="true" style={{ color: 'var(--success)' }} />
-                Conversa aberta.
+                {t('whatsapp.opened')}
               </span>{' '}
-              Se não enviou, é só abrir de novo.
+              {t('whatsapp.openedHint')}
             </>
           ) : (
-            'Uma pessoa do time ajuda a configurar sua conta, sem robô no meio.'
+            t('whatsapp.invite')
           )}
         </p>
       </div>
@@ -101,10 +101,10 @@ export function GuideWhatsAppRow({
         style={opened ? { textDecoration: 'none' } : CTA_STYLE}
         label={
           opened ? (
-            'Abrir de novo'
+            t('whatsapp.openAgain')
           ) : (
             <>
-              {compact ? 'Abrir' : 'Abrir WhatsApp'}
+              {compact ? t('whatsapp.openShort') : t('whatsapp.open')}
               <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
             </>
           )

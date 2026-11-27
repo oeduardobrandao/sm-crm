@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { ChevronRight, MoreHorizontal } from 'lucide-react';
 import {
   ContextMenu,
@@ -50,6 +51,7 @@ function RowBody({
   openMenuRef: RefObject<(() => void) | undefined>;
   hasSwipeActions: boolean;
 }) {
+  const { t } = useTranslation();
   const openMenu = triggerProps?.onClick;
   useEffect(() => {
     openMenuRef.current = openMenu;
@@ -82,7 +84,7 @@ function RowBody({
           {...triggerProps}
           tabIndex={hasSwipeActions ? -1 : undefined}
           className="phone-el-row__more"
-          aria-label={`Mais ações de ${title}`}
+          aria-label={t('entity.moreActions', { title })}
         >
           <MoreHorizontal aria-hidden="true" />
         </button>
@@ -109,6 +111,7 @@ export function PhoneEntityRow({
   trailingActions = [],
   moreAction = false,
 }: PhoneEntityRowProps) {
+  const { t } = useTranslation();
   const openMenuRef = useRef<(() => void) | undefined>(undefined);
   const sections = menuSections.filter((s) => s.length > 0);
   const hasMenu = sections.length > 0;
@@ -116,7 +119,7 @@ export function PhoneEntityRow({
     hasMenu && moreAction
       ? [
           {
-            label: 'Mais',
+            label: t('entity.more'),
             icon: <MoreHorizontal aria-hidden="true" />,
             tone: 'neutral',
             onAction: () => openMenuRef.current?.(),

@@ -6,14 +6,14 @@ import type { TikTokAccount } from '../../services/tiktok';
 import { openModal, closeModal, escapeHTML, sanitizeUrl } from '../../router';
 import { toast } from 'sonner';
 import { formatDate } from '../../store';
-import { i18n } from '@mesaas/i18n';
+import { i18n, getIntlLocale } from '@mesaas/i18n';
 
 function t(key: string, opts?: Record<string, unknown>) {
   return i18n.t(key, { ns: 'clients', ...opts });
 }
 
 function numFmt(n: number | null | undefined) {
-  const locale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
+  const locale = getIntlLocale();
   return (n ?? 0).toLocaleString(locale);
 }
 

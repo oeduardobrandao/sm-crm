@@ -84,7 +84,10 @@
     "no": "Não",
     "search": "Buscar",
     "importCsv": "Importar CSV",
-    "back": "Voltar"
+    "back": "Voltar",
+    "closeSearch": "Fechar busca",
+    "noResults": "Nenhum resultado",
+    "openInstagram": "Abrir no Instagram"
   },
   "status": {
     "ativo": "Ativo",
@@ -282,7 +285,8 @@
   },
   "plan": {
     "limitReached": "Limite do plano atingido.",
-    "csvLocked": "Importação CSV não está disponível no seu plano."
+    "csvLocked": "Importação CSV não está disponível no seu plano.",
+    "limitReachedTitle": "Limite do plano atingido"
   },
   "optional": "(opcional)",
   "usage": {
@@ -290,7 +294,8 @@
     "ofLabel": "{{used}} de {{limit}} {{label}}",
     "notIncluded": "Não incluído no plano",
     "unlimited": "Ilimitado",
-    "upgrade": "Fazer upgrade"
+    "upgrade": "Fazer upgrade",
+    "planUsageAria": "Uso do plano: {{label}}"
   },
   "paywall": {
     "notAvailable": "{{label}} não está disponível no seu plano.",
@@ -327,5 +332,42 @@
     "pushOffTitle": "Notificações desligadas neste iPhone",
     "pushOffEnable": "Ativar",
     "pushOffSettings": "Abrir Ajustes"
+  },
+  "notFound": {
+    "documentTitle": "Página não encontrada — Mesaas",
+    "title": "Página não encontrada",
+    "body": "O endereço que você acessou não existe ou mudou de lugar.",
+    "home": "Ir para a página inicial",
+    "login": "Entrar no Mesaas"
+  },
+  "gate": {
+    "reportsAnalytics": "Relatórios e Analytics",
+    "postScheduling": "Agendamento de Posts",
+    "csvImport": "Importação CSV"
+  },
+  "incident": {
+    "lead": "Instabilidade no acesso ao workspace:",
+    "body": "alguns usuários viram o erro \"Não foi possível confirmar seu acesso\". A correção já está no ar — se o erro aparecer, recarregue a página.",
+    "dismiss": "Dispensar aviso"
+  },
+  "queryError": {
+    "title": "Não foi possível carregar os dados.",
+    "description": "Verifique sua conexão e tente novamente.",
+    "retry": "Tentar novamente"
+  },
+  "mediaUnavailable": "Mídia indisponível",
+  "copyPostLink": {
+    "label": "Copiar link da postagem",
+    "copied": "Link copiado!",
+    "failed": "Não foi possível copiar o link."
+  },
+  "platformChips": {
+    "soon": "em breve",
+    "pickOne": "Escolha pelo menos uma plataforma.",
+    "generalHint": "Geral é conteúdo para baixar, sem publicação automática."
+  },
+  "entity": {
+    "moreActions": "Mais ações de {{title}}",
+    "more": "Mais"
   }
 }

@@ -1,5 +1,7 @@
 import { useCallback, useState } from 'react';
 import { Zap } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { getIntlLocale } from '@mesaas/i18n';
 import { Cell, GroupedList } from '@/components/mobile/GroupedList';
 import { cn } from '@/lib/utils';
 import { BulletTextPhone, TextCell } from './shared';
@@ -74,6 +76,11 @@ export function AIAnalysisPhone({
   emptyText: string;
   onGenerate: () => void;
 }) {
+  const { t } = useTranslation(['analyticsPhone', 'analyticsAccount']);
+  const generatedAt = (iso: string) =>
+    t('analyticsPhone:ai.generatedAt', {
+      when: new Date(iso).toLocaleString(getIntlLocale(), { timeZone: 'America/Sao_Paulo' }),
+    });
   return (
     <div className="phone-an-ai">
       <GroupedList
@@ -88,7 +95,13 @@ export function AIAnalysisPhone({
       >
         <Cell
           icon={<Zap />}
-          label={loading ? 'Gerando análise…' : view ? 'Gerar nova análise IA' : 'Gerar Análise IA'}
+          label={
+            loading
+              ? t('analyticsPhone:ai.generating')
+              : view
+                ? t('analyticsPhone:ai.generateNew')
+                : t('analyticsPhone:ai.generate')
+          }
           disabled={loading}
           aria-busy={loading || undefined}
           onClick={onGenerate}
@@ -132,7 +145,7 @@ export function AIAnalysisPhone({
           )}
 
           {view.sections.some((s) => s.text) && (
-            <GroupedList aria-label="Análise">
+            <GroupedList aria-label={t('analyticsPhone:ai.analysis')}>
               {view.sections
                 .filter((s) => s.text)
                 .map((s) => (
@@ -146,13 +159,7 @@ export function AIAnalysisPhone({
           {view.actions && view.actions.items.length > 0 && (
             <GroupedList
               header={view.actions.title}
-              footer={
-                view.generatedAt
-                  ? `Gerado em ${new Date(view.generatedAt).toLocaleString('pt-BR', {
-                      timeZone: 'America/Sao_Paulo',
-                    })}`
-                  : undefined
-              }
+              footer={view.generatedAt ? generatedAt(view.generatedAt) : undefined}
             >
               {view.actions.items.map((item, i) => (
                 <AIItem key={i} {...item} />
@@ -160,12 +167,7 @@ export function AIAnalysisPhone({
             </GroupedList>
           )}
           {(!view.actions || view.actions.items.length === 0) && view.generatedAt && (
-            <p className="phone-an-footnote">
-              Gerado em{' '}
-              {new Date(view.generatedAt).toLocaleString('pt-BR', {
-                timeZone: 'America/Sao_Paulo',
-              })}
-            </p>
+            <p className="phone-an-footnote">{generatedAt(view.generatedAt)}</p>
           )}
         </>
       )}

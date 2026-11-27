@@ -1,5 +1,7 @@
 import { useMemo, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 
+import i18n from 'i18next';
 import { PessoaAvatar } from '@/components/PessoaAvatar';
 import { Badge } from '@/components/ui/badge';
 import type { EquipeAgg } from '@/services/workflowAnalytics';
@@ -9,7 +11,7 @@ import {
   formatDiasDecimal,
   formatPontualidadeMembro,
   MIN_AVALIADAS,
-  POUCOS_DADOS_TOOLTIP,
+  poucosDadosTooltip,
 } from '../format';
 import { SectionCard, SectionEmpty } from './SectionCard';
 
@@ -25,7 +27,7 @@ function PontualidadeCell({ membro }: { membro: EquipeAgg }) {
   const label = formatPontualidadeMembro(membro.no_prazo, membro.avaliadas);
   if (membro.avaliadas < MIN_AVALIADAS) {
     return (
-      <Badge variant="neutral" data-tooltip={POUCOS_DADOS_TOOLTIP}>
+      <Badge variant="neutral" data-tooltip={poucosDadosTooltip()}>
         {label}
       </Badge>
     );
@@ -42,7 +44,7 @@ function MembroCell({
   membro: Membro | undefined;
   size?: number;
 }): ReactNode {
-  const nome = membro?.nome ?? 'Membro removido';
+  const nome = membro?.nome ?? i18n.t('analyticsFlows:team.removedMember');
   // No photo, no avatar: this table has always been name-only for those rows.
   if (!membro?.avatar_url) return nome;
   return (
@@ -54,23 +56,24 @@ function MembroCell({
 }
 
 export function EquipeTable({ equipe, membrosById, eventosDesde }: EquipeTableProps) {
+  const { t } = useTranslation('analyticsFlows');
   const ordenada = useMemo(() => [...equipe].sort((a, b) => b.concluidas - a.concluidas), [equipe]);
   const desde = formatDataCurta(eventosDesde);
   // Short on purpose, and repeated in the caption: the table sits in an
   // `overflow-x: auto` wrapper, which clips absolutely-positioned tooltips on
   // BOTH axes. The caption is outside that wrapper and always readable.
   const retrabalhoTooltip = desde
-    ? `Devoluções desde ${desde}`
-    : 'Nenhuma devolução registrada ainda';
-  const atividadeTooltip = desde ? `Eventos desde ${desde}` : 'Nenhuma atividade registrada ainda';
-  const caption = desde
-    ? `sem 100% falso: pouca amostra vira Poucos dados · retrabalho e atividade desde ${desde}`
-    : 'sem 100% falso: pouca amostra vira Poucos dados';
+    ? t('team.reworkTooltip', { date: desde })
+    : t('team.reworkTooltipNone');
+  const atividadeTooltip = desde
+    ? t('team.activityTooltip', { date: desde })
+    : t('team.activityTooltipNone');
+  const caption = desde ? t('team.caption', { date: desde }) : t('team.captionNoSince');
 
   return (
-    <SectionCard title="Desempenho da equipe" caption={caption}>
+    <SectionCard title={t('team.title')} caption={caption}>
       {ordenada.length === 0 ? (
-        <SectionEmpty>Nenhuma etapa concluída com responsável no período.</SectionEmpty>
+        <SectionEmpty>{t('team.empty')}</SectionEmpty>
       ) : (
         <>
           <div className="fluxos-team-desktop">
@@ -78,33 +81,33 @@ export function EquipeTable({ equipe, membrosById, eventosDesde }: EquipeTablePr
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Membro</th>
-                    <th>Concluídas</th>
-                    <th>Tempo médio</th>
-                    <th>Pontualidade</th>
-                    <th data-tooltip={retrabalhoTooltip}>Retrabalho</th>
-                    <th data-tooltip={atividadeTooltip}>Atividade</th>
+                    <th>{t('team.member')}</th>
+                    <th>{t('team.done')}</th>
+                    <th>{t('kpi.avgTime')}</th>
+                    <th>{t('kpi.onTime')}</th>
+                    <th data-tooltip={retrabalhoTooltip}>{t('kpi.rework')}</th>
+                    <th data-tooltip={atividadeTooltip}>{t('team.activity')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {ordenada.map((linha) => (
                     <tr key={linha.membro_id}>
-                      <td data-label="Membro">
+                      <td data-label={t('team.member')}>
                         <MembroCell membro={membrosById.get(linha.membro_id)} />
                       </td>
-                      <td data-label="Concluídas">{linha.concluidas}</td>
-                      <td data-label="Tempo médio">{formatDiasDecimal(linha.media_dias)}</td>
-                      <td data-label="Pontualidade">
+                      <td data-label={t('team.done')}>{linha.concluidas}</td>
+                      <td data-label={t('kpi.avgTime')}>{formatDiasDecimal(linha.media_dias)}</td>
+                      <td data-label={t('kpi.onTime')}>
                         <PontualidadeCell membro={linha} />
                       </td>
                       {/* Both are counts, not percentages: the RPC COALESCEs
                           them to 0, so a zero here really is "nothing recorded
                           for this member", never a missing value. */}
-                      <td data-label="Retrabalho" style={{ color: 'var(--text-muted)' }}>
+                      <td data-label={t('kpi.rework')} style={{ color: 'var(--text-muted)' }}>
                         {linha.retrabalho}
                       </td>
-                      <td data-label="Atividade" style={{ color: 'var(--text-muted)' }}>
-                        {linha.atividade} eventos
+                      <td data-label={t('team.activity')} style={{ color: 'var(--text-muted)' }}>
+                        {t('team.eventsCount', { count: linha.atividade })}
                       </td>
                     </tr>
                   ))}
@@ -141,20 +144,21 @@ export function EquipeTable({ equipe, membrosById, eventosDesde }: EquipeTablePr
                 >
                   <span>
                     <strong style={{ color: 'var(--text-main)' }}>{linha.concluidas}</strong>{' '}
-                    concluídas
+                    {t('team.doneLabel')}
                   </span>
                   <span>
                     <strong style={{ color: 'var(--text-main)' }}>
                       {formatDiasDecimal(linha.media_dias)}
                     </strong>{' '}
-                    média
+                    {t('team.avgLabel')}
                   </span>
                   <span>
                     <strong style={{ color: 'var(--text-main)' }}>{linha.retrabalho}</strong>{' '}
-                    devoluções
+                    {t('team.returnsLabel')}
                   </span>
                   <span>
-                    <strong style={{ color: 'var(--text-main)' }}>{linha.atividade}</strong> eventos
+                    <strong style={{ color: 'var(--text-main)' }}>{linha.atividade}</strong>{' '}
+                    {t('team.eventsLabel')}
                   </span>
                 </div>
               </div>

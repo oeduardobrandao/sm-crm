@@ -3,6 +3,7 @@ import { Badge } from '@/components/ui/badge';
 import type { GbpRatingDistribution } from '../../../services/gbpAnalytics';
 import { GbpCard, QueryBody, Stars, type GbpQuery } from './GbpCard';
 import { formatRating, pctOf } from './gbpTabFormat';
+import { getIntlLocale } from '@mesaas/i18n';
 
 const STARS = ['5', '4', '3', '2', '1'] as const;
 
@@ -41,7 +42,7 @@ export function GbpRatingCard({
                 <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
                   {t('rating.count', {
                     count: dist.total,
-                    formattedCount: dist.total.toLocaleString('pt-BR'),
+                    formattedCount: dist.total.toLocaleString(getIntlLocale()),
                   })}
                 </span>
               </div>
@@ -83,7 +84,7 @@ export function GbpRatingCard({
                         />
                       </span>
                       <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                        {count.toLocaleString('pt-BR')}
+                        {count.toLocaleString(getIntlLocale())}
                       </span>
                     </li>
                   );
@@ -94,7 +95,7 @@ export function GbpRatingCard({
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
                 {newReviews !== null && newReviews > 0 && (
                   <Badge variant="success" size="sm">
-                    {t('rating.newInPeriod', { n: newReviews.toLocaleString('pt-BR') })}
+                    {t('rating.newInPeriod', { n: newReviews.toLocaleString(getIntlLocale()) })}
                   </Badge>
                 )}
                 {dist.partial && (

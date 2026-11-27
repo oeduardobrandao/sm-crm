@@ -1,8 +1,9 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Star, StarOff, Trash2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { useDateFnsLocale } from '@mesaas/i18n';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ListSkeleton } from '@/components/ui/skeletons';
@@ -26,6 +27,8 @@ export function ApplyTemplateDialog({
   onApply,
   warnImagesRemoved,
 }: ApplyTemplateDialogProps) {
+  const { t } = useTranslation('reportEditor');
+  const dateLocale = useDateFnsLocale();
   const qc = useQueryClient();
   // enabled: open evita chamar listReportTemplates enquanto o dialog nunca foi
   // aberto (este componente fica sempre montado na topbar do editor).
@@ -43,27 +46,27 @@ export function ApplyTemplateDialog({
     try {
       await setDefaultReportTemplate(id);
       refresh();
-      toast.success('Template padrão definido.');
+      toast.success(t('applyTemplate.defaultSet'));
     } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : 'Erro ao definir template padrão.';
+      const message = e instanceof Error ? e.message : t('applyTemplate.defaultError');
       toast.error(message);
     }
   }
 
   async function handleDelete(id: string) {
-    if (!window.confirm('Excluir este template? Essa ação não pode ser desfeita.')) return;
+    if (!window.confirm(t('applyTemplate.deleteConfirm'))) return;
     try {
       await deleteReportTemplate(id);
       refresh();
-      toast.success('Template excluído.');
+      toast.success(t('applyTemplate.deleted'));
     } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : 'Erro ao excluir template.';
+      const message = e instanceof Error ? e.message : t('applyTemplate.deleteError');
       toast.error(message);
     }
   }
 
-  function handleApply(t: ReportTemplateRow) {
-    onApply(t);
+  function handleApply(tpl: ReportTemplateRow) {
+    onApply(tpl);
     onOpenChange(false);
   }
 
@@ -71,48 +74,48 @@ export function ApplyTemplateDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Aplicar template</DialogTitle>
+          <DialogTitle>{t('applyTemplate.title')}</DialogTitle>
         </DialogHeader>
         {warnImagesRemoved && (
-          <p className="text-sm text-muted-foreground">
-            As imagens deste relatório serão removidas. Elas continuam nos Arquivos do cliente.
-          </p>
+          <p className="text-sm text-muted-foreground">{t('applyTemplate.imagesWarning')}</p>
         )}
         {isLoading ? (
           <ListSkeleton rows={3} />
         ) : templates.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-4">
-            Nenhum template salvo ainda. Use Salvar como template no editor.
-          </p>
+          <p className="text-sm text-muted-foreground py-4">{t('applyTemplate.empty')}</p>
         ) : (
           <div className="space-y-2">
-            {templates.map((t) => (
+            {templates.map((tpl) => (
               <div
-                key={t.id}
+                key={tpl.id}
                 data-testid="template-row"
                 className="flex items-center justify-between border rounded-lg p-3 gap-2"
               >
                 <div className="min-w-0">
                   <p className="text-sm font-medium truncate flex items-center gap-1.5">
-                    {t.is_default && (
+                    {tpl.is_default && (
                       <Star className="h-3.5 w-3.5 fill-primary text-primary shrink-0" />
                     )}
-                    {t.name}
-                    {t.is_default && (
-                      <span className="text-xs text-primary font-semibold">Padrão</span>
+                    {tpl.name}
+                    {tpl.is_default && (
+                      <span className="text-xs text-primary font-semibold">
+                        {t('applyTemplate.defaultBadge')}
+                      </span>
                     )}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {format(new Date(t.created_at), "d 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                    {format(new Date(tpl.created_at), t('applyTemplate.dateFormat'), {
+                      locale: dateLocale,
+                    })}
                   </p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  {!t.is_default && (
+                  {!tpl.is_default && (
                     <Button
                       size="sm"
                       variant="ghost"
-                      aria-label="Definir como padrão"
-                      onClick={() => handleSetDefault(t.id)}
+                      aria-label={t('applyTemplate.setDefaultAria')}
+                      onClick={() => handleSetDefault(tpl.id)}
                     >
                       <StarOff className="h-3.5 w-3.5" />
                     </Button>
@@ -120,13 +123,13 @@ export function ApplyTemplateDialog({
                   <Button
                     size="sm"
                     variant="ghost"
-                    aria-label="Excluir template"
-                    onClick={() => handleDelete(t.id)}
+                    aria-label={t('applyTemplate.deleteAria')}
+                    onClick={() => handleDelete(tpl.id)}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
-                  <Button size="sm" onClick={() => handleApply(t)}>
-                    Aplicar
+                  <Button size="sm" onClick={() => handleApply(tpl)}>
+                    {t('applyTemplate.apply')}
                   </Button>
                 </div>
               </div>

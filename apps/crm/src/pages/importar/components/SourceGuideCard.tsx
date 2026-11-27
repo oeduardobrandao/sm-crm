@@ -1,4 +1,5 @@
 import { Info } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
 import type { SourceGuide } from '../sourceGuides';
@@ -6,6 +7,7 @@ import type { SourceGuide } from '../sourceGuides';
 export const KB_SLUG = 'como-exportar-seus-dados-do-notion-trello-e-clickup';
 
 function GuideContent({ guide }: { guide: SourceGuide }) {
+  const { t } = useTranslation('importWizard');
   return (
     <>
       <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
@@ -25,7 +27,7 @@ function GuideContent({ guide }: { guide: SourceGuide }) {
       )}
       <p className="mt-3 text-xs">
         <Link to={`/ajuda/${KB_SLUG}`} className="text-primary hover:underline">
-          Ver o guia completo na Central de Ajuda
+          {t('guide.fullGuide')}
         </Link>
       </p>
     </>
@@ -39,8 +41,9 @@ export default function SourceGuideCard({
   guide: SourceGuide;
   collapsible?: boolean;
 }) {
+  const { t } = useTranslation('importWizard');
   const Icon = guide.icon;
-  const heading = `Como exportar do ${guide.label}`;
+  const heading = t('guide.heading', { label: guide.label });
 
   if (collapsible) {
     return (

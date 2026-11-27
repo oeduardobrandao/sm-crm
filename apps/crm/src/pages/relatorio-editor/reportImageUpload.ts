@@ -1,6 +1,9 @@
 // Validação e redução no navegador das imagens do bloco de relatório (spec
 // 2026-10-02, "Envio"). Diferente de reportSplash.downscaleImage, que sempre
 // achata em JPEG sobre fundo fixo: aqui PNG mantém transparência.
+import { getIntlLocale } from '@mesaas/i18n';
+import { tr } from './editorText';
+
 export const REPORT_IMAGE_MIMES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 export const REPORT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 const MAX_SIDE = 2400;
@@ -8,14 +11,14 @@ const JPEG_QUALITY = 0.85;
 
 export function validateReportImage(file: File): string | null {
   if (!(REPORT_IMAGE_MIMES as readonly string[]).includes(file.type)) {
-    return 'Formato não suportado. Use JPG, PNG ou WebP.';
+    return tr('image.unsupported');
   }
   if (file.size > REPORT_IMAGE_MAX_BYTES) {
     // Arredonda para cima na primeira casa: 10,04 MB vira "10,1", nunca "10"
     // (que leria igual ao limite). Inteiros saem sem casa decimal.
     const mb = Math.ceil((file.size / (1024 * 1024)) * 10) / 10;
-    const label = mb.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
-    return `Esta imagem tem ${label} MB. O limite é 10 MB.`;
+    const size = mb.toLocaleString(getIntlLocale(), { maximumFractionDigits: 1 });
+    return tr('image.tooLarge', { size });
   }
   return null;
 }

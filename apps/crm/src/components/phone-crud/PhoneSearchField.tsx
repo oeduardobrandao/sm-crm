@@ -1,4 +1,5 @@
 import { useRef, useState, type Ref } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Search, X } from 'lucide-react';
 import { PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
 import './phoneCrud.css';
@@ -9,12 +10,13 @@ import './phoneCrud.css';
  * clears it, so a hidden field never filters the list.
  */
 export function usePhoneSearch(search: string, onSearchChange: (value: string) => void) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(() => search !== '');
   const inputRef = useRef<HTMLInputElement>(null);
 
   const button = (
     <PhoneIconButton
-      label={open ? 'Fechar busca' : 'Buscar'}
+      label={open ? t('actions.closeSearch') : t('actions.search')}
       aria-expanded={open}
       onClick={() => {
         if (open) {

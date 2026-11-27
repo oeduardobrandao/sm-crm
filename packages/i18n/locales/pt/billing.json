@@ -293,5 +293,11 @@
       "nativeNotice": "Só para consulta no Free.",
       "cta": "Recuperar o Pro"
     }
+  },
+  "lockedScreen": {
+    "lockedTitle": "{{label}} não está no seu plano",
+    "unlockHint": "Faça upgrade para desbloquear este recurso.",
+    "upgrade": "Fazer upgrade",
+    "askOwner": "Fale com o dono do workspace para liberar este recurso."
   }
 }

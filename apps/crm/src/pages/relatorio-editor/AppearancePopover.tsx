@@ -3,6 +3,7 @@
 // flui por onChange -> applyLayout -> autosave; preview é imediato porque os
 // tokens são CSS vars no canvas (Task 5).
 import { Palette } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ColorPicker } from '@/components/shared/ColorPicker';
@@ -19,16 +20,17 @@ export interface AppearancePopoverProps {
 }
 
 export function AppearancePopover({ layout, snapshot, onChange }: AppearancePopoverProps) {
+  const { t } = useTranslation('reportEditor');
   return (
     <Popover>
       <PopoverTrigger asChild>
         <Button size="sm">
-          <Palette className="h-3.5 w-3.5" /> Aparência
+          <Palette className="h-3.5 w-3.5" /> {t('appearance.button')}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="rb-appearance">
-        <p className="rb-appearance-label">Fontes</p>
-        <div role="radiogroup" aria-label="Fontes do relatório">
+        <p className="rb-appearance-label">{t('appearance.fonts')}</p>
+        <div role="radiogroup" aria-label={t('appearance.fontsAria')}>
           {REPORT_FONT_IDS.map((id: ReportFontId) => (
             <button
               key={id}
@@ -45,18 +47,18 @@ export function AppearancePopover({ layout, snapshot, onChange }: AppearancePopo
               >
                 Ag
               </span>
-              {FONT_PAIRINGS[id].label}
+              {id === 'system' ? t('appearance.fontSystem') : FONT_PAIRINGS[id].label}
             </button>
           ))}
         </div>
-        <p className="rb-appearance-label">Cor de destaque</p>
+        <p className="rb-appearance-label">{t('appearance.accent')}</p>
         <div className="rb-appearance-accent">
           <ColorPicker
             value={layout.accent ?? snapshot.branding.accent_color}
             onChange={(hex, opts) => onChange(setLayoutAccent(layout, hex), opts?.coalesceKey)}
             brandColors={[snapshot.branding.accent_color]}
             allowAlpha={false}
-            label="Cor de destaque"
+            label={t('appearance.accent')}
           />
           {layout.accent && (
             <button
@@ -64,7 +66,7 @@ export function AppearancePopover({ layout, snapshot, onChange }: AppearancePopo
               className="rb-appearance-reset"
               onClick={() => onChange(setLayoutAccent(layout, undefined))}
             >
-              usar cor da marca
+              {t('appearance.resetAccent')}
             </button>
           )}
         </div>

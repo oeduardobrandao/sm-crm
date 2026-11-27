@@ -1,5 +1,6 @@
 import { formatDistanceToNow } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { useTranslation } from 'react-i18next';
+import { useDateFnsLocale } from '@mesaas/i18n';
 import { X } from 'lucide-react';
 import type { Notification } from '../../store';
 import { NOTIFICATION_TONE_COLOR, getNotificationDisplay } from '../../lib/notification-config';
@@ -17,6 +18,8 @@ export default function NotificationItem({
   onDismiss,
   onNavigate,
 }: NotificationItemProps) {
+  const { t } = useTranslation('shell');
+  const dateLocale = useDateFnsLocale();
   const display = getNotificationDisplay(notification.type, notification.metadata);
   const Icon = display.icon;
   const color = NOTIFICATION_TONE_COLOR[display.tone];
@@ -111,7 +114,7 @@ export default function NotificationItem({
           >
             {formatDistanceToNow(new Date(notification.created_at), {
               addSuffix: true,
-              locale: ptBR,
+              locale: dateLocale,
             })}
           </span>
         </span>
@@ -134,7 +137,7 @@ export default function NotificationItem({
 
       <button
         type="button"
-        aria-label="Dispensar"
+        aria-label={t('notifications.dismiss')}
         onClick={handleDismiss}
         style={{
           position: 'absolute',

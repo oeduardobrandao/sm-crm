@@ -86,6 +86,7 @@ import { TOUR_STEPS } from '../tour/tourSteps';
 // react-i18next is mocked to echo keys, so the shared close-confirm copy renders as its keys.
 const CONFIRM_CLOSE_TITLE = 'ui.confirmClose.title';
 const CONFIRM_CLOSE_DISCARD = 'ui.confirmClose.discard';
+const BACK_LABEL = 'actions.back';
 
 const CLIENTES = [{ id: 7, nome: 'Clinica X', sigla: 'CX', cor: '#3ecf8e' }];
 
@@ -179,7 +180,7 @@ describe('AutomationFormDialog on phones', () => {
     const dialog = await screen.findByRole('dialog', { name: 'form.createTitle' });
     expect(dialog).toHaveClass('phone-af', 'phone-kit');
     expect(dialog.className).toContain('inset-0');
-    expect(screen.getByRole('button', { name: 'Voltar' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: BACK_LABEL })).toBeInTheDocument();
     for (const header of [
       'form.targetLabel',
       'form.keywordsLabel',
@@ -274,7 +275,7 @@ describe('AutomationFormDialog on phones', () => {
     const { onOpenChange } = renderForm();
     await screen.findByRole('dialog', { name: 'form.createTitle' });
     fireEvent.change(screen.getByLabelText('form.nameLabel'), { target: { value: 'Rascunho' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Voltar' }));
+    fireEvent.click(screen.getByRole('button', { name: BACK_LABEL }));
     expect(onOpenChange).not.toHaveBeenCalled();
     const confirm = await screen.findByRole('dialog', { name: CONFIRM_CLOSE_TITLE });
     fireEvent.click(within(confirm).getByRole('button', { name: CONFIRM_CLOSE_DISCARD }));

@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Search } from 'lucide-react';
 import { PhoneIconButton } from '@/components/mobile/LargeTitleHeader';
 import { PhonePageHeader } from '@/components/mobile/PhonePageHeader';
@@ -25,6 +26,7 @@ interface Props {
  * the finance tiles.
  */
 export function DashboardPhone({ isAgent, cards, footer }: Props) {
+  const { t } = useTranslation('dashboard');
   // "Só meus" (the Vidro Início toggle): agents only ever see their own, so no chip.
   const [onlyMine, setOnlyMine] = useState(false);
   const today = useTodayCard({ onlyMine: !isAgent && onlyMine });
@@ -34,11 +36,11 @@ export function DashboardPhone({ isAgent, cards, footer }: Props) {
   return (
     <div className="phone-home">
       <PhonePageHeader
-        title="Início"
+        title={t('inicio.title')}
         subtitle={today.summary}
         actions={
           <PhoneIconButton
-            label="Buscar"
+            label={t('actions.search', { ns: 'common' })}
             aria-haspopup="dialog"
             onClick={() => {
               setSearchMounted(true);

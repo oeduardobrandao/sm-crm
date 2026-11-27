@@ -1,3 +1,5 @@
+import { getIntlLocale } from '@mesaas/i18n';
+
 export type MeterState = 'ok' | 'warning' | 'danger' | 'blocked' | 'unlimited';
 
 export interface MeterInfo {
@@ -33,12 +35,12 @@ export const METER_FILL: Record<MeterState, string> = {
   unlimited: 'var(--success)',
 };
 
-/** "4,2 GB" / "100 MB", pt-BR decimals. Same tiering as CobrancaPage.formatStorage. */
+/** "4,2 GB" (pt) / "4.2 GB" (en) / "100 MB", decimals in the UI language. Same tiering as CobrancaPage.formatStorage. */
 export function formatStorageBytes(bytes: number): string {
   const gb = bytes / 1024 ** 3;
   if (gb >= 1) {
     const v = Number.isInteger(gb) ? gb : Number(gb.toFixed(1));
-    return `${v.toLocaleString('pt-BR')} GB`;
+    return `${v.toLocaleString(getIntlLocale())} GB`;
   }
   return `${Math.round(bytes / 1024 ** 2)} MB`;
 }
