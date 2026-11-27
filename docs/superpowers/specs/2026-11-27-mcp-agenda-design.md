@@ -1,7 +1,7 @@
 # Agenda in the workspace MCP
 
 **Date:** 2026-11-27
-**Status:** approach and product decisions approved in conversation; revised after a builder check against the code; written spec pending approval.
+**Status:** approach and product decisions approved in conversation; revised after a builder check and an external review (both verified against the code); written spec pending approval.
 
 ## Intent and why
 
@@ -97,17 +97,24 @@ Inside each core, every identity-dependent call becomes explicit:
   participant`), not `agenda_pode_ver_evento`; `p_privados = false` adds its own branch there.
   The 4-arg `agenda_pode_ver_evento` overload serves editar/excluir's visibility checks.
 
-**Triggers.** `guard_agenda_evento_scope` / `guard_agenda_participante_scope` return early
-when `auth.uid()` is NULL, which is the MCP's case. The `_as` path therefore runs the same
-checks explicitly before writing (client of the new or edited event accessible to `p_user`, no
-moving an event between clients the actor cannot access, the participant rule,
-`author_immutable`). The CRM path keeps relying on the triggers as today.
+**Triggers: actor from a transaction-local setting.** `guard_agenda_evento_scope` /
+`guard_agenda_participante_scope` return early when `auth.uid()` is NULL, the MCP's case.
+Re-specifying their rules in the cores would drift: the CRM rule is per operation (create is
+strict, including client-less events for a restricted member; a restricted organizer may edit
+content of their own event of an unassigned client; relocation between clients is strict; the
+`seguintes` series-split copy inherits the source; the participant rule has its own series
+exception; `author_immutable`). So the triggers resolve the actor as
+`coalesce(auth.uid(), nullif(current_setting('mesaas.agenda_actor', true), '')::uuid)`, and the
+`_as` wrappers `set_config('mesaas.agenda_actor', p_user::text, true)` before calling the core.
+This can only tighten: an authenticated caller always has `auth.uid()`, which wins, and a
+service-role caller without the setting behaves as today. The workspace in the triggers comes
+from the row, so it is right for the MCP. The wrapper clears the setting after the core returns.
+The `99_acesso_por_cliente_agenda.sql` cases (create strict, edit own unassigned event ok,
+relocation denied, series split) are replayed through the `_as` path in the new suite.
 
 **`p_privados boolean`** (the API-key rule). The CRM wrapper passes `true`. The `_as`
 wrappers pass what the MCP sends (`true` for OAuth, `false` for API keys). With `false`:
-- list/get: every private event is masked (title "Ocupado", no description, client, location,
-  link or answers), including the actor's own; masked rows are still returned so the agent
-  sees busy time.
+- list/get: every private event is masked, including the actor's own.
 - edit/delete of a private event: refused (`agenda: evento privado indisponível nesta conexão`).
 - create with `privado: true`, or an edit that sets it: refused with the same error.
 
@@ -122,6 +129,13 @@ Everything the cores call that already takes explicit arguments (`agenda_validar
 `agenda_definir_participantes`, `agenda_notificar`, `agenda_cliente_enfileirar`,
 `agenda_envios_enfileirar`, `agenda_materializar`, `agenda_regenerar`, `agenda_pode_editar`)
 is unchanged, so notifications, Hub sharing, client and guest emails behave as in the CRM.
+
+**What a masked row carries in the MCP output** (any masked row: another person's private
+event on any connection, or every private event on an API key): only `occurrence_id`,
+`event_id`, `start`, `end`, `all_day`, `start_date`/`end_date`, `timezone`, `private: true`,
+`masked: true`, `title: "Ocupado"`, `can_edit: false`. No organizer, participants, answers,
+recurrence, client, reminders or guest count: who meets whom is content too. The CRM keeps its
+current masked shape; the trimming happens in the MCP formatter. *(my call)*
 
 ### MCP scopes
 
@@ -143,14 +157,36 @@ Ids only, English argument names like the rest (`client_id`). Actor = `ctx.creat
 |---|---|---|---|
 | `list_agenda_events` | `agenda:read` | `from`, `to` (ISO, ≤ 100 days apart), `client_id?` | Occurrences in the window, by start. `client_id` filters after the RPC. |
 | `get_agenda_event` | `agenda:read` | `occurrence_id` | One occurrence, same shape. |
-| `create_agenda_event` | `agenda:write` | `title`; timing (`start`/`end` ISO, or `all_day` + `start_date`/`end_date`); `timezone?` (default `America/Sao_Paulo`); `description?`, `location?`, `meeting_link?`, `type?`, `color?`, `client_id?`, `share_with_client?`, `private?`, `reminders?` (minutes), `recurrence?` (`freq`, `interval`, `weekdays`, `monthly_mode`, `until`/`count`), `participant_member_ids?` | Organizer = actor. Participants are `membros.id` from `list_members`, mapped to their login (`crm_user_id`); a member without a login is an error naming it. |
-| `update_agenda_event` | `agenda:write` | `occurrence_id`, `scope` (`this` / `this_and_following` / `all` → `esta` / `seguintes` / `todas`), any create field | Patch semantics: omitted fields keep their value (the builder checks how `agenda_evento_editar` treats a partial `p_evento` and adapts). Guests untouched. |
+| `create_agenda_event` | `agenda:write` | `title`; timing (`start`/`end`, or `all_day` + `start_date`/`end_date`, see time contract); `timezone?` (default `America/Sao_Paulo`); `description?`, `location?`, `meeting_link?`, `type?`, `color?`, `client_id?`, `share_with_client?`, `private?`, `reminders?` (minutes), `recurrence?` (`freq`, `interval`, `weekdays`, `monthly_mode`, `until`/`count`), `participant_member_ids?` | Organizer = actor. Participants: see people ids. |
+| `update_agenda_event` | `agenda:write` | `occurrence_id`, `scope` (`this` / `this_and_following` / `all` → `esta` / `seguintes` / `todas`), any create field except `timezone` | Patch (see time contract). Guests untouched. |
 | `delete_agenda_event` | `agenda:write` | `occurrence_id`, `scope` | `destructive: true`. |
+
+**Time contract (adapter in `agenda.ts`).** The RPC takes timezone-less wall-clock
+`inicio_local`/`fim_local` in the event's timezone, start and end together, and ignores `tz` on
+edit.
+- Timed: `start`/`end` are local wall clock `YYYY-MM-DDTHH:MM` in the event's timezone. If the
+  agent sends an offset or `Z`, the adapter converts the instant to wall clock in that timezone
+  (create: `timezone` arg or `America/Sao_Paulo`; update: the event's stored `tz`, read first).
+  DST gaps and overlaps are resolved by Postgres `AT TIME ZONE`, as in the CRM. The tool
+  description states the convention.
+- All-day: `start_date` and `end_date` are **inclusive** in the MCP (an agent says "the 3rd to
+  the 5th"); the adapter sends `fim_local = end_date + 1 day` (the RPC's end is exclusive) and
+  the output converts back.
+- Update: `start` and `end` (or `start_date` and `end_date`) only together; switching `all_day`
+  requires the new pair (the RPC refuses otherwise). Update has **no** `timezone` argument (a
+  series' timezone is fixed at creation). Edits are patches: `agenda_validar_payload` merges
+  onto the stored event (`p_base`), so omitted keys keep their value.
+
+**People ids.** Agenda stores auth user UUIDs; MCP members are `membros.id` linked by nullable
+`membros.crm_user_id`, and a workspace member may have no `membros` row. Output therefore gives
+`organizer` and each participant as `{ user_id, member_id | null, name | null }` (name from
+`membros`, else the profile). Input `participant_member_ids` is mapped through `crm_user_id`;
+a member without a login is an error naming it.
 
 Output per occurrence: `occurrence_id`, `event_id`, `title`, `start`, `end`, `all_day`,
 `start_date`/`end_date` (local), `timezone`, `type`, `color`, `description`, `location`,
 `meeting_link`, `client_id`, `client_name`, `private`, `masked`, `recurring`, `recurrence`,
-`reminders`, `organizer_member_id`, `participants` (`member_id`, `name`, `answer`),
+`reminders`, `organizer`, `participants` (with `answer`),
 `my_answer`, `can_edit`, `shared_with_client`, `client_answer`, `guest_count`. Guest emails
 are **not** returned. *(field list: my call)*
 
@@ -189,6 +225,3 @@ connector with "Agenda" ticked. The support reply to the customer should say so.
 
 - Mechanics for passing `p_user` to `agenda_definir_convidados` and
   `agenda_cliente_substituir_pedidos` (extra argument vs overload).
-- Whether the explicit trigger-equivalent checks live in the cores (behind an MCP flag) or in
-  the `_as` wrappers, as long as the CRM path behaves identically.
-- Partial-update mapping after reading `agenda_evento_editar`.
