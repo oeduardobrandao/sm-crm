@@ -11,6 +11,7 @@ import { pickAccentFg } from '@mesaas/report-blocks/theme';
 import { coverDefaults, type ReportPlatform } from '@mesaas/report-blocks/platform';
 import type { ReportBlock, ReportDocSnapshot } from '@mesaas/report-blocks/types';
 import { normalizeCoverColorPatch, stepCoverLogoSize } from './layoutOps';
+import { useReportLang } from '@mesaas/report-blocks/i18n';
 
 const LOGO_SIZE_DEFAULT = 36;
 const COVER_INK_FALLBACK = '#171717';
@@ -32,7 +33,8 @@ export function CoverEditor({
   const { t } = useTranslation('reportEditor');
   const b = snapshot.branding;
   const config = (block.config ?? {}) as CoverConfig;
-  const defaults = coverDefaults(snapshot, layoutPlatforms);
+  const reportLang = useReportLang();
+  const defaults = coverDefaults(snapshot, layoutPlatforms, reportLang);
   const kicker = typeof config.kicker === 'string' ? config.kicker : defaults.kicker;
   const title = typeof config.title === 'string' ? config.title : snapshot.period.label;
   const subtitle =

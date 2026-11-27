@@ -57,6 +57,7 @@ import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
 import { ReportExportBar, ReportPhoneView } from './phone/ReportPhoneView';
 import { compactHubToken } from '@/lib/hubLinks';
+import { WorkspaceReportLang } from './WorkspaceReportLang';
 
 /** Opções da seção padrão de uma plataforma a partir do snapshot, as mesmas
  * do generate (report-docs/generate.ts). */
@@ -433,7 +434,7 @@ function EditorBody({ doc }: { doc: ReportDocumentRow }) {
   );
 }
 
-export default function RelatorioEditorPage() {
+function RelatorioEditorPageContent() {
   const { t } = useTranslation('reportEditor');
   // Arquivo solto fora das áreas de soltar não pode descarregar o editor.
   usePreventStrayFileDrop();
@@ -463,4 +464,13 @@ export default function RelatorioEditorPage() {
   }
 
   return <EditorBody key={doc.id} doc={doc} />;
+}
+
+/** Blocos no idioma do workspace, o mesmo do PDF e do Hub. */
+export default function RelatorioEditorPage() {
+  return (
+    <WorkspaceReportLang>
+      <RelatorioEditorPageContent />
+    </WorkspaceReportLang>
+  );
 }

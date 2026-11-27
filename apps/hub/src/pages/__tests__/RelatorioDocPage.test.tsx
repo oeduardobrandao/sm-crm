@@ -38,11 +38,11 @@ function createQueryClient() {
   return new QueryClient({ defaultOptions: { queries: { retry: false } } });
 }
 
-function renderDocPage(docId = 'doc-1') {
+function renderDocPage(docId = 'doc-1', hub = hubValue) {
   const queryClient = createQueryClient();
   return render(
     <QueryClientProvider client={queryClient}>
-      <HubContext.Provider value={hubValue}>
+      <HubContext.Provider value={hub}>
         <MemoryRouter initialEntries={[`/mesaas/hub/token-publico/relatorios/doc/${docId}`]}>
           <Routes>
             <Route
@@ -123,5 +123,40 @@ describe('RelatorioDocPage', () => {
     expect(screen.getByTestId('current-path')).toHaveTextContent(
       '/mesaas/hub/token-publico/relatorios',
     );
+  });
+
+  describe('document language', () => {
+    const kpiLayout: ReportLayout = {
+      version: 1,
+      blocks: [{ id: 'k', type: 'kpi_reach', size: 'third' }],
+    };
+    const docWithKpi = {
+      doc: {
+        id: 'doc-1',
+        title: 'Report',
+        layout: kpiLayout,
+        data_snapshot: makeSnapshotFixture(),
+        period_start: '2026-07-01',
+      },
+    } as never;
+    const withLanguage = (language: unknown) =>
+      ({
+        ...(hubValue as object),
+        bootstrap: { ...(hubValue as { bootstrap: object }).bootstrap, language },
+      }) as never;
+
+    it('renders the blocks in the workspace language from bootstrap', async () => {
+      mockedFetchReportDoc.mockResolvedValue(docWithKpi);
+      const { container } = renderDocPage('doc-1', withLanguage('en'));
+      expect(await screen.findByText('Cumulative reach')).toBeInTheDocument();
+      expect(container.textContent).toContain('45,200');
+    });
+
+    it('stays in Portuguese without a workspace language', async () => {
+      mockedFetchReportDoc.mockResolvedValue(docWithKpi);
+      const { container } = renderDocPage('doc-1', withLanguage(undefined));
+      expect(await screen.findByText('Alcance acumulado')).toBeInTheDocument();
+      expect(container.textContent).toContain('45.200');
+    });
   });
 });

@@ -3,7 +3,7 @@ import { render } from '@testing-library/react';
 import { BlockRenderer } from '../BlockRenderer';
 import { makeSnapshotFixture } from '../fixtures';
 import { BLOCK_TYPES, type ReportBlock, type ReportLayout } from '../types';
-import { REPORT_TEXT, normalizeReportLang } from '../i18n';
+import { REPORT_TEXT, ReportLangContext, normalizeReportLang } from '../i18n';
 import { fmtCount, fmtPct, fmtPeriodStamp, fmtSignedPct } from '../format';
 import {
   fmtDayMonth,
@@ -130,6 +130,29 @@ describe('BlockRenderer com lang', () => {
     expect(text).toContain('45,200');
     expect(text).toContain('Follower growth');
     expect(text).toContain('Monthly report');
+  });
+
+  it('sem lang herda o idioma do ReportLangContext em volta (editor do CRM)', () => {
+    const { container } = render(
+      <ReportLangContext.Provider value="en">
+        <BlockRenderer layout={allBlocksLayout} snapshot={makeSnapshotFixture()} mode="view" />
+      </ReportLangContext.Provider>,
+    );
+    expect(container.textContent).toContain('Cumulative reach');
+  });
+
+  it('lang explícito vence o contexto', () => {
+    const { container } = render(
+      <ReportLangContext.Provider value="en">
+        <BlockRenderer
+          layout={allBlocksLayout}
+          snapshot={makeSnapshotFixture()}
+          mode="view"
+          lang="pt"
+        />
+      </ReportLangContext.Provider>,
+    );
+    expect(container.textContent).toContain('Alcance acumulado');
   });
 
   it('lang="en" não deixa nenhum texto fixo em português no documento', () => {

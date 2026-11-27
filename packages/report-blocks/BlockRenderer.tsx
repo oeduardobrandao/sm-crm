@@ -34,7 +34,7 @@ import { AccountHealthBlock } from './blocks/AccountHealthBlock';
 import { isFullWidthOnly } from './catalog';
 import { instagramAbsent, layoutPlatforms, tiktokBlockView, type ReportPlatform } from './platform';
 import { sectionVisibleInView } from './data-presence';
-import { ReportLangContext, type ReportLang } from './i18n';
+import { ReportLangContext, useReportLang, type ReportLang } from './i18n';
 
 export interface BlockProps {
   block: ReportBlock;
@@ -126,11 +126,14 @@ export interface BlockRendererProps {
   layout: ReportLayout;
   snapshot: ReportDocSnapshot;
   mode: 'view' | 'print';
-  /** Idioma dos rótulos e números (o do workspace do documento). Ausente = 'pt'. */
+  /** Idioma dos rótulos e números (o do workspace do documento). Ausente = o do
+   * ReportLangContext em volta, que sem provider é 'pt'. */
   lang?: ReportLang;
 }
 
-export function BlockRenderer({ layout, snapshot, mode, lang = 'pt' }: BlockRendererProps) {
+export function BlockRenderer({ layout, snapshot, mode, lang: langProp }: BlockRendererProps) {
+  const inherited = useReportLang();
+  const lang = langProp ?? inherited;
   // Tema/fontes/accent do documento: fonte única, compartilhada com o editor
   // (EditorCanvas) e o print. Modo herdado emite só accent (byte-idêntico).
   const theme = resolveReportTheme(layout, snapshot);
