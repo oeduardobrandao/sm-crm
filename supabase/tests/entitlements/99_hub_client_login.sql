@@ -193,7 +193,8 @@ begin
     'public.hub_login_issue(bigint,text,text)',
     'public.hub_session_touch(text)',
     'public.hub_session_delete(text)',
-    'public.hub_login_cleanup()'
+    'public.hub_login_cleanup()',
+    'public._hub_login_capped(bigint,text)'
   ] loop
     assert not has_function_privilege('authenticated', v_fn, 'execute')
        and not has_function_privilege('anon', v_fn, 'execute')
@@ -398,6 +399,56 @@ begin
   perform pg_temp.as_user(v_owner, format('select public.hub_people_remove(%L::uuid)', v_p4));
   assert not exists (select 1 from hub_sessions where email = 'dupla@x.com'),
     'remove_ends_sessions: session survived removal from the last client';
+
+  -- daily_cap (migration 20261211000001): 20 tentativas em 24h no par (cliente, e-mail)
+  v_px := pg_temp.as_user(v_owner, format('select public.hub_people_add(%s, %L, %L)', c2, 'Teto', 'teto@x.com'))::uuid;
+  for i in 1..3 loop
+    perform pg_temp.svc(format('select public.hub_login_issue(%s, %L, %L)', c2, 'teto@x.com', '482913'));
+    for j in 1..5 loop
+      perform pg_temp.svc(format('select public.hub_login_verify(%s, %L, %L, %L)', c2, 'teto@x.com', '000000', repeat('9', 64)));
+    end loop;
+  end loop;
+  perform pg_temp.svc(format('select public.hub_login_issue(%s, %L, %L)', c2, 'teto@x.com', '482913'));
+  for j in 1..4 loop
+    perform pg_temp.svc(format('select public.hub_login_verify(%s, %L, %L, %L)', c2, 'teto@x.com', '000000', repeat('9', 64)));
+  end loop;
+  -- 19 gastas: ainda emite, e a 20ª tentativa (errada) fecha o teto
+  assert pg_temp.svc(format('select public.hub_login_issue(%s, %L, %L)', c2, 'teto@x.com', '777777')) = 'true',
+    'daily_cap: issue refused below the cap';
+  perform pg_temp.svc(format('select public.hub_login_verify(%s, %L, %L, %L)', c2, 'teto@x.com', '000000', repeat('9', 64)));
+  assert (select sum(attempts) from hub_login_codes where cliente_id = c2 and email = 'teto@x.com') = 20,
+    'daily_cap: expected 20 attempts recorded';
+  -- o código vigente tem 1 tentativa (abaixo do teto por código) e mesmo assim não vale mais
+  v_res := pg_temp.svc(format('select public.hub_login_verify(%s, %L, %L, %L)', c2, 'teto@x.com', '777777', repeat('9', 64)))::jsonb;
+  assert v_res->>'ok' = 'false', 'daily_cap: right code accepted past the cap ' || v_res::text;
+  assert (select sum(attempts) from hub_login_codes where cliente_id = c2 and email = 'teto@x.com') = 20,
+    'daily_cap: a capped attempt was counted';
+  assert pg_temp.svc(format('select public.hub_login_issue(%s, %L, %L)', c2, 'teto@x.com', '888888')) = 'false',
+    'daily_cap: issued past the cap';
+  -- o teto é do par: outro e-mail do mesmo cliente segue livre
+  v_p4 := pg_temp.as_user(v_owner, format('select public.hub_people_add(%s, %L, %L)', c2, 'Livre', 'livre@x.com'))::uuid;
+  assert pg_temp.svc(format('select public.hub_login_issue(%s, %L, %L)', c2, 'livre@x.com', '999999')) = 'true',
+    'daily_cap: cap leaked to another email';
+  -- passadas 24 horas o par volta a entrar
+  update hub_login_codes set created_at = now() - interval '25 hours'
+   where cliente_id = c2 and email = 'teto@x.com';
+  assert pg_temp.svc(format('select public.hub_login_issue(%s, %L, %L)', c2, 'teto@x.com', '888888')) = 'true',
+    'daily_cap: still capped after 24h';
+  v_res := pg_temp.svc(format('select public.hub_login_verify(%s, %L, %L, %L)', c2, 'teto@x.com', '888888', repeat('9', 64)))::jsonb;
+  assert v_res->>'ok' = 'true', 'daily_cap: login after 24h ' || v_res::text;
+
+  -- cleanup_orphans: sessão de e-mail fora de toda lista some; a de e-mail listado fica
+  assert exists (select 1 from hub_sessions where token_hash = repeat('f', 64)), 'cleanup_orphans: fixture';
+  perform pg_temp.svc('select public.hub_login_cleanup()');
+  assert not exists (select 1 from hub_sessions where token_hash = repeat('f', 64)),
+    'cleanup_orphans: orphan session survived';
+  assert exists (select 1 from hub_sessions where token_hash = repeat('9', 64)),
+    'cleanup_orphans: listed email lost its session';
+  -- pessoas apagadas por fora da RPC (o cascade de excluir um cliente): o cleanup encerra a sessão
+  delete from hub_client_people where cliente_id = c2 and email = 'teto@x.com';
+  perform pg_temp.svc('select public.hub_login_cleanup()');
+  assert not exists (select 1 from hub_sessions where token_hash = repeat('9', 64)),
+    'cleanup_orphans: session survived the cascade';
 
   raise notice 'PASS 99_hub_client_login';
 end $$;

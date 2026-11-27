@@ -1,6 +1,6 @@
 import { trackUnsavedWork } from '@mesaas/app-lifecycle';
 import type { ReferenceErrorCode, ReferenceFileKind, ReferenceItem } from '../types/postReferences';
-import { hubHeaders, notifyLoginRequired } from '../api';
+import { hubHeaders, notifyLoginRequired, sessionOf } from '../api';
 import { prepareReferenceMedia, type ReferenceMedia } from './referenceMedia';
 
 const BASE = import.meta.env.VITE_SUPABASE_URL as string;
@@ -150,11 +150,12 @@ export async function call<T>(
 ): Promise<T> {
   const url = new URL(`${BASE}/functions/v1/${FN}${path}`);
   for (const [k, v] of Object.entries(opts.query ?? {})) url.searchParams.set(k, v);
+  const headers = hubHeaders(opts.body === undefined ? {} : { 'Content-Type': 'application/json' });
   let res: Response;
   try {
     res = await fetch(url.toString(), {
       method,
-      headers: hubHeaders(opts.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      headers,
       body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
       signal: opts.signal,
     });
@@ -168,7 +169,7 @@ export async function call<T>(
   // The login gate answers { error: <message>, code: 'login_required' }, unlike this
   // function's own { error: <code> } shape.
   if (res.status === 401 && body.code === 'login_required') {
-    throw notifyLoginRequired(new PostReferenceError('login_required'));
+    throw notifyLoginRequired(new PostReferenceError('login_required'), sessionOf(headers));
   }
   const code =
     typeof body.error === 'string' && ERROR_CODES.has(body.error)

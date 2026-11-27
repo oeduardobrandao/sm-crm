@@ -1,4 +1,4 @@
-import { render as rtlRender, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render as rtlRender, screen, waitFor } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -166,7 +166,9 @@ describe('HubShell', () => {
   });
 
   it('renders the invalid link state when bootstrap fails', async () => {
-    mockedFetchBootstrap.mockRejectedValue(new Error('Link inválido.'));
+    mockedFetchBootstrap.mockRejectedValue(
+      Object.assign(new Error('Link inválido.'), { status: 404 }),
+    );
 
     render(
       <MemoryRouter initialEntries={['/mesaas/hub/token-invalido']}>
@@ -183,6 +185,44 @@ describe('HubShell', () => {
     });
 
     expect(screen.getByText('Link inválido.')).toBeInTheDocument();
+  });
+
+  it('offers a retry, not the invalid link screen, when the portal failed to load without an answer', async () => {
+    mockedFetchBootstrap.mockRejectedValue(new TypeError('Failed to fetch'));
+
+    render(
+      <MemoryRouter initialEntries={['/mesaas/hub/token-publico']}>
+        <Routes>
+          <Route path="/:workspace/hub/:token" element={<HubShell />}>
+            <Route index element={<Outlet />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Não foi possível carregar o portal.')).toBeInTheDocument();
+    expect(screen.queryByText('Link inválido ou expirado.')).not.toBeInTheDocument();
+    expect(screen.queryByText('Failed to fetch')).not.toBeInTheDocument();
+    const calls = mockedFetchBootstrap.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
+    await waitFor(() => expect(mockedFetchBootstrap.mock.calls.length).toBe(calls + 1));
+  });
+
+  it.each([500, 429])('treats a %i as a load failure, not an invalid link', async (status) => {
+    mockedFetchBootstrap.mockRejectedValue(Object.assign(new Error('Erro'), { status }));
+
+    render(
+      <MemoryRouter initialEntries={['/mesaas/hub/token-publico']}>
+        <Routes>
+          <Route path="/:workspace/hub/:token" element={<HubShell />}>
+            <Route index element={<Outlet />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Não foi possível carregar o portal.')).toBeInTheDocument();
+    expect(screen.queryByText('Link inválido ou expirado.')).not.toBeInTheDocument();
   });
 
   it('renders the disabled state when the hub access is inactive', async () => {

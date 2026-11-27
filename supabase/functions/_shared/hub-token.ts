@@ -58,6 +58,7 @@ async function agencyNameOf(db: SupabaseClient, contaId: string): Promise<string
  * Pass expectedContaId when the caller already resolved the workspace
  * (hub-bootstrap resolves by slug) to preserve the slug<->token binding, and
  * knownAgencyName when it already holds workspaces.name (saves a lookup).
+ * Throws when the token lookup itself fails (callers answer 500, never "invalid").
  */
 export async function resolveHubToken(
   db: SupabaseClient,
@@ -70,7 +71,15 @@ export async function resolveHubToken(
     .select("cliente_id, conta_id, is_active")
     .eq("token", token).gt("expires_at", now);
   if (expectedContaId) q = q.eq("conta_id", expectedContaId);
-  const { data } = await q.maybeSingle();
+  const { data, error } = await q.maybeSingle();
+  // A failed lookup is not an invalid link: thrown, so resolveHubAccess answers 500 (the Hub
+  // then offers a retry) instead of a 404 that tells the client their link is gone.
+  // 22P02: the token column is a uuid, so a mistyped or truncated link fails the cast. That
+  // one IS an invalid link (404 plus the bad-token limit), as it always was.
+  if (error) {
+    if ((error as { code?: unknown }).code === "22P02") return { ok: false, reason: "invalid" };
+    throw new Error("hub token lookup failed");
+  }
   if (!data || data.is_active !== true) return { ok: false, reason: "invalid" };
   const contaId = data.conta_id as string;
   if (await hubWorkspacePaused(db, contaId)) {
@@ -193,6 +202,16 @@ export async function hubAccessDenied(
     return ctx.json(hubPausedBody(name), 403);
   }
   if (reason === "login_required") {
+    // A session that was sent and refused is the only guessable input here, so only that case
+    // is limited (per IP, same budget as a bad token). A visitor with no session is simply
+    // logged out and always gets the 401. hub-bootstrap answers its own 401 (it carries the
+    // login screen's branding) and is never limited: a 429 there would hide the login screen
+    // and keep a stale session stored. An honest stale tab spends a handful of these before
+    // the Hub drops the session.
+    if (ctx.req.headers.get(HUB_SESSION_HEADER)) {
+      const ok = await ctx.rateLimit(ctx.db, `hub-badsession:${getClientIP(ctx.req)}`, 30, 600);
+      if (!ok) return ctx.json({ error: "Muitas tentativas. Aguarde alguns minutos." }, 429);
+    }
     return ctx.json({ error: "Login necessário.", code: "login_required" }, 401);
   }
   if (reason === "error") return ctx.json({ error: "Erro interno." }, 500);

@@ -277,6 +277,11 @@ export function handleLoginRequired(queryClient: QueryClient, error: unknown) {
     if (bootstrapOk) void queryClient.invalidateQueries({ queryKey: ['hub-bootstrap'] });
     return;
   }
+  // A late answer about a session that is no longer the stored one (api.ts notifyLoginRequired):
+  // a login finished meanwhile, so the stored session is newer than the one refused. Keep it.
+  // (When the stored one is gone instead, e.g. signed out in another tab, the branch above
+  // already sent the shell to the login screen.)
+  if ((error as { staleSession?: unknown }).staleSession === true) return;
   clearHubSession();
   void queryClient.invalidateQueries({ queryKey: ['hub-bootstrap'] });
 }

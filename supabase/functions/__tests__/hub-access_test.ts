@@ -212,6 +212,26 @@ Deno.test("hubAccessDenied: login_required -> 401 with code, error -> 500", asyn
   assertEquals(called, 0);
 });
 
+Deno.test("hubAccessDenied: a refused session debits hub-badsession per IP; past the budget it answers 429", async () => {
+  const keys: string[] = [];
+  let allow = true;
+  const rateLimit = async (_db: unknown, key: string, max: number, windowSeconds: number) => {
+    keys.push(`${key}|${max}|${windowSeconds}`);
+    return allow;
+  };
+  const req = new Request("http://x", { headers: { "x-hub-session": "stale", "x-forwarded-for": "9.9.9.9" } });
+  const a = await hubAccessDenied("login_required", { db: {}, req, json, rateLimit });
+  assertEquals(a.status, 401);
+  assertEquals(await a.json(), { error: "Login necessário.", code: "login_required" });
+  assertEquals(keys, ["hub-badsession:9.9.9.9|30|600"]);
+
+  allow = false;
+  const b = await hubAccessDenied("login_required", { db: {}, req, json, rateLimit });
+  assertEquals(b.status, 429);
+  // No login_required code: the Hub clears its stored session only on that code.
+  assertEquals(await b.json(), { error: "Muitas tentativas. Aguarde alguns minutos." });
+});
+
 Deno.test("paused_workspace_returns_paused: resolveHubAccess -> paused with the agency name, no access rpc", async () => {
   const { db, calls } = makeDb({ paused: true });
   const r = await resolveHubAccess(db, req("abc"), TOKEN, NOW);
@@ -265,4 +285,34 @@ Deno.test("not paused -> normal access", async () => {
 Deno.test("cors allows the x-hub-session header", () => {
   const h = buildCorsHeaders(new Request("http://x"))["Access-Control-Allow-Headers"];
   assert(h.includes("x-hub-session"));
+});
+
+Deno.test("resolveHubToken: a failed token lookup throws (never 'invalid'); resolveHubAccess answers error", async () => {
+  const failing = {
+    from: () => {
+      const q: Record<string, unknown> = {};
+      q.select = () => q; q.eq = () => q; q.gt = () => q;
+      q.maybeSingle = async () => ({ data: null, error: { code: "57014" } });
+      return q;
+    },
+    rpc: async () => ({ data: null, error: null }),
+  };
+  // deno-lint-ignore no-explicit-any
+  const r = await resolveHubAccess(failing as any, new Request("http://x"), "tok", new Date().toISOString());
+  assertEquals(r, { ok: false, reason: "error" });
+});
+
+Deno.test("resolveHubToken: a token that is not a uuid (22P02) stays an invalid link", async () => {
+  const malformed = {
+    from: () => {
+      const q: Record<string, unknown> = {};
+      q.select = () => q; q.eq = () => q; q.gt = () => q;
+      q.maybeSingle = async () => ({ data: null, error: { code: "22P02" } });
+      return q;
+    },
+    rpc: async () => ({ data: null, error: null }),
+  };
+  // deno-lint-ignore no-explicit-any
+  const r = await resolveHubAccess(malformed as any, new Request("http://x"), "abc", new Date().toISOString());
+  assertEquals(r, { ok: false, reason: "invalid" });
 });

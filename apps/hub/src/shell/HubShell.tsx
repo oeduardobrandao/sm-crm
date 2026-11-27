@@ -35,6 +35,18 @@ function loginPayloadOf(error: unknown): HubLoginPayload | null {
   return login as HubLoginPayload;
 }
 
+/**
+ * True when the server answered the bootstrap with a refusal a retry cannot change: a 4xx
+ * other than 408/429 (unknown workspace, invalid or expired link, hub turned off). Anything
+ * else (no answer at all, a 5xx, a rate limit) says nothing about the link.
+ */
+function isDefinitiveAnswer(error: unknown): boolean {
+  const status = (error as { status?: unknown } | null)?.status;
+  return (
+    typeof status === 'number' && status >= 400 && status < 500 && status !== 408 && status !== 429
+  );
+}
+
 export function HubShell() {
   const { workspace, token: urlToken } = useParams<{ workspace: string; token: string }>();
   // The URL carries the compact token (see compactHubToken); the API and the
@@ -223,6 +235,26 @@ export function HubShell() {
 
   // A refetch error other than login_required keeps the cached portal; only a missing
   // bootstrap (or a login_required with no usable payload) is the invalid-link screen.
+  if (!loginRequired && !bootstrap && !isDefinitiveAnswer(bootstrapQuery.error)) {
+    // The portal never loaded and the server did not say why (offline, a timeout, a 5xx, a
+    // 429): the link may be perfectly good, so offer a retry instead of calling it invalid.
+    return (
+      <div className="hub-root min-h-screen flex flex-col items-center justify-center gap-3 px-6 text-center">
+        <p className="font-display text-2xl font-medium hub-txt">{t('hub.loadFailed')}</p>
+        <p className="text-sm hub-tx2">{t('hub.loadFailedHint')}</p>
+        <button
+          type="button"
+          onClick={() => void bootstrapQuery.refetch()}
+          disabled={bootstrapQuery.isFetching}
+          className="mt-2 min-h-[44px] rounded-lg px-4 py-2.5 text-sm font-medium disabled:opacity-60"
+          style={{ background: 'var(--hub-acc)', color: 'var(--hub-acc-fg)' }}
+        >
+          {t('hub.tryAgain')}
+        </button>
+      </div>
+    );
+  }
+
   if (loginRequired || !bootstrap) {
     return (
       <div className="hub-root min-h-screen flex flex-col items-center justify-center gap-3 px-6 text-center">

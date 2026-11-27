@@ -64,11 +64,15 @@ async function resolveLink(
   deps: HubAuthDeps, db: DbClient, req: Request, json: JsonResponder,
   workspaceSlug: string, token: string,
 ): Promise<LinkResult> {
-  const { data: conta } = await db
+  const { data: conta, error: contaError } = await db
     .from("workspaces")
     .select("id, name, logo_url, brand_color, hub_enabled, language")
     .eq("slug", workspaceSlug)
     .maybeSingle();
+  if (contaError) {
+    console.error("[hub-auth] workspace lookup failed", errorCode(contaError));
+    return { ok: false, response: json(internal("pt"), 500) };
+  }
   if (!conta) return { ok: false, response: json({ error: hubLoginText("pt").workspaceNotFound }, 404) };
   const lang = resolveLang(conta.language);
   if (!conta.hub_enabled) return { ok: false, response: json({ error: hubLoginText(lang).hubDisabled }, 403) };
