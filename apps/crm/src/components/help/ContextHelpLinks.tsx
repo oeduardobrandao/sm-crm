@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { BookOpen, ChevronRight } from 'lucide-react';
 import { getContextLinksForRoutes, type KbContextLink } from '@/store/kb';
 import { Button } from '@/components/ui/button';
@@ -36,10 +37,11 @@ function ArticleMenu({ links }: { links: KbContextLink[] }) {
  * history entry is gone, so Back from the article returns to the page, not to a dead step.
  */
 function PhoneArticleList({ links }: { links: KbContextLink[] }) {
+  const { t } = useTranslation('help');
   const navigate = useNavigate();
   const { closeThen } = useSheetActions();
   return (
-    <GroupedList aria-label="Artigos relacionados">
+    <GroupedList aria-label={t('article.related')}>
       {links.map((link) => {
         const slug = link.article!.slug.trim();
         return (
@@ -57,6 +59,10 @@ function PhoneArticleList({ links }: { links: KbContextLink[] }) {
 }
 
 export function ContextHelpLinks() {
+  const { t, i18n } = useTranslation('help');
+  // Help Center articles exist only in Portuguese: in any other language the pill would
+  // send the user to Portuguese pages, so it stays off.
+  const contentAvailable = i18n.language === 'pt';
   const { pathname } = useLocation();
   const isPhone = usePhoneViewport();
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -75,7 +81,7 @@ export function ContextHelpLinks() {
     queryKey: ['kb-context-links', ...candidateRoutes],
     queryFn: () => getContextLinksForRoutes(candidateRoutes),
     staleTime: 5 * 60 * 1000,
-    enabled: baseRoute !== '/',
+    enabled: contentAvailable && baseRoute !== '/',
   });
 
   const validLinks = links.filter((link) => {
@@ -83,12 +89,12 @@ export function ContextHelpLinks() {
     return Boolean(slug && slug.trim());
   });
 
-  if (validLinks.length === 0) return null;
+  if (!contentAvailable || validLinks.length === 0) return null;
 
   const trigger = (
     <Button variant="ghost" size="sm" className="context-help__trigger">
       <BookOpen className="h-4 w-4" aria-hidden="true" />
-      <span className="context-help__label">Artigos relacionados</span>
+      <span className="context-help__label">{t('article.related')}</span>
       <span className="context-help__count">{validLinks.length}</span>
     </Button>
   );
@@ -102,13 +108,13 @@ export function ContextHelpLinks() {
             variant="ghost"
             size="sm"
             className="context-help__trigger"
-            aria-label={`Artigos relacionados, ${validLinks.length}`}
+            aria-label={`${t('article.related')}, ${validLinks.length}`}
             aria-haspopup="dialog"
             aria-expanded={sheetOpen}
             onClick={() => setSheetOpen(true)}
           >
             <BookOpen className="h-4 w-4" aria-hidden="true" />
-            <span className="context-help__label">Artigos relacionados</span>
+            <span className="context-help__label">{t('article.related')}</span>
             <span className="context-help__count" aria-hidden="true">
               {validLinks.length}
             </span>
@@ -116,8 +122,8 @@ export function ContextHelpLinks() {
           <BottomSheet
             open={sheetOpen}
             onOpenChange={setSheetOpen}
-            title="Artigos relacionados"
-            description="Escolha um artigo relacionado para abrir."
+            title={t('article.related')}
+            description={t('article.relatedSheetDescription')}
             detents={['medium', 'large']}
             className="context-help__sheet"
             returnFocusRef={triggerRef}

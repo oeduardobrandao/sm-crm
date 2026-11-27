@@ -5,6 +5,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { WorkspaceLanguageSync } from '../../boot/WorkspaceLanguageSync';
+import { AppDocumentTitle } from '../../boot/AppDocumentTitle';
 import { useAuth } from '../../context/AuthContext';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { PageSkeleton } from '@/components/ui/skeletons';
@@ -177,6 +178,7 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
       {/* Only here: an authenticated user. It mounts on /workspace-setup too (which is a protected
           page), and covers the protected pages outside AppLayout (/comecar, /oauth/consent). */}
       <WorkspaceLanguageSync />
+      <AppDocumentTitle />
       {children}
       <ReverseTrialWelcomeDialog
         endsAt={reverseTrial.welcomeEndsAt}

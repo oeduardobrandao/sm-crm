@@ -245,7 +245,7 @@ export function ClientesPhone(props: ClientesPhoneProps) {
         subtitle={
           usageLimit != null ? (
             <PhoneUsageLine
-              label="clientes"
+              label={t('usageLabel')}
               used={clientes.length}
               limit={usageLimit}
               showUpgradeCta={isOwner}
