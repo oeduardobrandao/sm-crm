@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { BoardScroller } from '@/components/BoardScroller';
 import { useTranslation } from 'react-i18next';
 import {
   DndContext,
@@ -202,7 +203,7 @@ export function TarefaBoard({
   return (
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div className="board-rows-wrapper animate-up">
-        <div className="board-container">
+        <BoardScroller>
           {columns.map((col) => (
             <div key={col.dropId} className="board-column">
               <div
@@ -261,7 +262,7 @@ export function TarefaBoard({
               </DroppableColumnBody>
             </div>
           ))}
-        </div>
+        </BoardScroller>
       </div>
       <DragOverlay>
         {activeTarefa && (

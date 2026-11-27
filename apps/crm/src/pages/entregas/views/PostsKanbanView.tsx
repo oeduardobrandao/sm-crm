@@ -1,4 +1,5 @@
 import { Fragment, memo, useCallback, useMemo, useState, type CSSProperties } from 'react';
+import { BoardScroller } from '@/components/BoardScroller';
 import { useVidroShell } from '@/components/layout/PageToolbarContext';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -1160,7 +1161,7 @@ export function PostsKanbanView({
         }}
       >
         <div className="board-rows-wrapper animate-up">
-          <div className="board-container">
+          <BoardScroller>
             {registry.options.map((option) => (
               <PostBoardColumn
                 key={option.key}
@@ -1184,7 +1185,7 @@ export function PostsKanbanView({
                 multiplatformEnabled={multiplatformEnabled}
               />
             ))}
-          </div>
+          </BoardScroller>
         </div>
         <DragOverlay>
           {activePost && (
