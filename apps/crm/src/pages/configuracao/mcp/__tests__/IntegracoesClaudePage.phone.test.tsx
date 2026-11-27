@@ -151,6 +151,7 @@ describe('IntegracoesClaudePage on phones', () => {
           'ideias:read',
           'tarefas:read',
           'membros:read',
+          'agenda:read',
           'posts:write',
         ],
         expires_at: null,
