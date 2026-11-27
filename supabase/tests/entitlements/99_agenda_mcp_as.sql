@@ -199,15 +199,20 @@ begin
      and not has_function_privilege('authenticated', 'public._agenda_listar_core(uuid, uuid, boolean, timestamptz, timestamptz, bigint)', 'EXECUTE')
      and not has_function_privilege('service_role', 'public._agenda_listar_core(uuid, uuid, boolean, timestamptz, timestamptz, bigint)', 'EXECUTE'),
     'listar_core_not_executable_by_api_roles';
-  assert not has_function_privilege('anon', 'public._agenda_cliente_context_for(uuid, uuid, bigint)', 'EXECUTE')
-     and not has_function_privilege('authenticated', 'public._agenda_cliente_context_for(uuid, uuid, bigint)', 'EXECUTE')
-     and not has_function_privilege('service_role', 'public._agenda_cliente_context_for(uuid, uuid, bigint)', 'EXECUTE'),
-    'cliente_context_for_not_executable_by_api_roles';
+  assert not has_function_privilege('anon', 'public._can_see_cliente_context_core(uuid, uuid, bigint)', 'EXECUTE')
+     and not has_function_privilege('authenticated', 'public._can_see_cliente_context_core(uuid, uuid, bigint)', 'EXECUTE')
+     and not has_function_privilege('service_role', 'public._can_see_cliente_context_core(uuid, uuid, bigint)', 'EXECUTE'),
+    'context_core_not_executable_by_api_roles';
   -- the _as wrapper: service_role only
   assert not has_function_privilege('anon', 'public.agenda_listar_as(uuid, uuid, boolean, timestamptz, timestamptz, bigint)', 'EXECUTE')
      and not has_function_privilege('authenticated', 'public.agenda_listar_as(uuid, uuid, boolean, timestamptz, timestamptz, bigint)', 'EXECUTE')
      and has_function_privilege('service_role', 'public.agenda_listar_as(uuid, uuid, boolean, timestamptz, timestamptz, bigint)', 'EXECUTE'),
     'listar_as_service_role_only';
+  -- can_see_cliente_context(bigint), now a wrapper over the core, keeps its ACL
+  assert not has_function_privilege('anon', 'public.can_see_cliente_context(bigint)', 'EXECUTE')
+     and has_function_privilege('authenticated', 'public.can_see_cliente_context(bigint)', 'EXECUTE')
+     and has_function_privilege('service_role', 'public.can_see_cliente_context(bigint)', 'EXECUTE'),
+    'can_see_cliente_context_keeps_acl';
   -- the CRM RPC keeps its ACL
   assert not has_function_privilege('anon', 'public.agenda_listar(timestamptz, timestamptz, bigint)', 'EXECUTE')
      and has_function_privilege('authenticated', 'public.agenda_listar(timestamptz, timestamptz, bigint)', 'EXECUTE')
@@ -218,8 +223,8 @@ begin
             from pg_proc p where p.oid = 'public._agenda_listar_core(uuid, uuid, boolean, timestamptz, timestamptz, bigint)'::regprocedure),
     'listar_core_has_no_session_identity';
   assert (select p.prosrc !~ '(auth\.uid|get_my_conta_id|my_membro_ids|can_access_cliente\(p_cliente_id\))'
-            from pg_proc p where p.oid = 'public._agenda_cliente_context_for(uuid, uuid, bigint)'::regprocedure),
-    'cliente_context_for_has_no_session_identity';
+            from pg_proc p where p.oid = 'public._can_see_cliente_context_core(uuid, uuid, bigint)'::regprocedure),
+    'context_core_has_no_session_identity';
 end $$;
 
 -- creates an event through the CRM RPC as p_user; returns its id
@@ -380,6 +385,25 @@ begin
   v_v := pg_temp.svc_val(null, format(
     'select count(*)::text from public.agenda_listar_as(%L, %L, true, null, null, %s) l', v_ws, v_restr, v_oc));
   assert v_v = '0', 'listar_as_single_occurrence_hidden_client: ' || v_v;
+  -- ---- context_wrapper_parity: can_see_cliente_context(cli) as the user =
+  -- _can_see_cliente_context_core(user, conta, cli), for an assigned client (A),
+  -- one with his own item only (C), one without (B) and no client
+  foreach v_u in array array[v_owner, v_todos, v_restr] loop
+    foreach v_v in array array[v_ca::text, v_cc::text, v_cb::text, 'null'] loop
+      v_crm := pg_temp.val_as(v_u, null, format('select public.can_see_cliente_context(%s::bigint)::text', v_v));
+      execute format('select public._can_see_cliente_context_core(%L, %L, %s::bigint)::text', v_u, v_ws, v_v) into v_mcp;
+      assert v_crm = v_mcp, format('context_wrapper_parity (%s, %s): %s vs %s', v_u, v_v, v_crm, v_mcp);
+    end loop;
+  end loop;
+  -- the expected values for the restricted agent, so the parity is not vacuous
+  v_v := pg_temp.val_as(v_restr, null, format(
+    'select concat_ws('','', public.can_see_cliente_context(%s), public.can_see_cliente_context(%s), public.can_see_cliente_context(%s), public.can_see_cliente_context(null))',
+    v_ca, v_cc, v_cb));
+  assert v_v = 't,t,f,f', 'context_wrapper_restricted_values: ' || v_v;
+  -- no jwt: true, as before
+  v_v := pg_temp.svc_val(null, format('select public.can_see_cliente_context(%s)::text', v_cb));
+  assert v_v = 'true', 'context_wrapper_without_jwt_true: ' || coalesce(v_v, 'null');
+
   -- the CRM error with no session stays
   v_err := pg_temp.svc(null, format('select * from public.agenda_listar(%s)', v_win));
   assert v_err = 'agenda: sessão sem workspace ativo', 'crm_listar_without_session_raises: ' || coalesce(v_err, 'allowed');

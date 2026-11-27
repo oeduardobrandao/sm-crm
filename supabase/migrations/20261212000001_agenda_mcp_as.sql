@@ -23,9 +23,11 @@
 --    assinatura, retorno, ACL e o erro de sessão sem workspace; agenda_listar_as é a variante
 --    do MCP (só service_role) e recusa quem não é membro de p_conta com o mesmo erro.
 --    can_see_cliente_context_for, citada na spec, saiu em 20261117000012 (e
---    99_acesso_por_cliente_notificacoes exige que continue fora): o core usa
---    _agenda_cliente_context_for, espelho de can_see_cliente_context com usuário e conta
---    explícitos, sem EXECUTE para nenhum papel da API.
+--    99_acesso_por_cliente_notificacoes exige que continue fora). Para não haver dois corpos,
+--    a regra de contexto de cliente passa a viver só em _can_see_cliente_context_core(usuário,
+--    conta, cliente), sem EXECUTE para nenhum papel da API; can_see_cliente_context(bigint)
+--    vira um wrapper fino com a mesma assinatura, ACL e semântica (auth.uid() nulo = true,
+--    como antes) e o core da listagem chama o núcleo direto.
 --
 -- 3. (escrita: cores, wrappers *_as e CRM) entra em tarefa seguinte.
 
@@ -309,8 +311,8 @@ GRANT EXECUTE ON FUNCTION public.agenda_definir_convidados(bigint, jsonb) TO ser
 
 -- ============================================================ 2. listagem
 
--- [mcp] espelho de can_see_cliente_context(bigint) com usuário e conta explícitos; só o core chama
-CREATE OR REPLACE FUNCTION public._agenda_cliente_context_for(p_user uuid, p_conta uuid, p_cliente_id bigint)
+-- [mcp] corpo de can_see_cliente_context(bigint) com usuário e conta explícitos; a única cópia da regra
+CREATE OR REPLACE FUNCTION public._can_see_cliente_context_core(p_user uuid, p_conta uuid, p_cliente_id bigint)
  RETURNS boolean
  LANGUAGE plpgsql
  STABLE SECURITY DEFINER
@@ -357,7 +359,23 @@ BEGIN
     );
 END;
 $function$;
-REVOKE ALL ON FUNCTION public._agenda_cliente_context_for(uuid, uuid, bigint) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public._can_see_cliente_context_core(uuid, uuid, bigint) FROM PUBLIC, anon, authenticated, service_role;
+
+-- [mcp] wrapper fino sobre o núcleo; mesma assinatura, volatilidade, search_path e ACL
+CREATE OR REPLACE FUNCTION public.can_see_cliente_context(p_cliente_id bigint)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  -- [mcp] sem jwt, can_access_cliente(bigint) dava true e a versão anterior devolvia true
+  IF auth.uid() IS NULL THEN RETURN true; END IF;
+  RETURN public._can_see_cliente_context_core(auth.uid(), public.get_my_conta_id(), p_cliente_id);  -- [mcp]
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.can_see_cliente_context(bigint) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.can_see_cliente_context(bigint) TO authenticated, service_role;
 
 -- [mcp] núcleo com conta, usuário e máscara explícitos
 CREATE OR REPLACE FUNCTION public._agenda_listar_core(p_conta uuid, p_user uuid, p_privados boolean, p_de timestamp with time zone, p_ate timestamp with time zone, p_ocorrencia_id bigint)
@@ -422,7 +440,7 @@ BEGIN
     CASE WHEN m.mascarado THEN NULL ELSE e.cliente_id END,
     -- [escopo] o nome de um cliente que ele não acessa só pelo contexto
     CASE WHEN m.mascarado THEN NULL
-         WHEN v_all OR public._agenda_cliente_context_for(p_user, p_conta, e.cliente_id) THEN c.nome END,  -- [mcp]
+         WHEN v_all OR public._can_see_cliente_context_core(p_user, p_conta, e.cliente_id) THEN c.nome END,  -- [mcp]
     e.privado, m.mascarado, e.freq IS NOT NULL,
     CASE WHEN m.mascarado OR e.freq IS NULL THEN NULL
          ELSE jsonb_build_object('freq', e.freq, 'intervalo', e.intervalo, 'dias_semana', e.dias_semana,

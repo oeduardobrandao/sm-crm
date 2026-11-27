@@ -2172,7 +2172,6 @@ DROP FUNCTION IF EXISTS
   public.agenda_listar(timestamptz, timestamptz, bigint),
   public.agenda_listar_as(uuid, uuid, boolean, timestamptz, timestamptz, bigint),
   public._agenda_listar_core(uuid, uuid, boolean, timestamptz, timestamptz, bigint),
-  public._agenda_cliente_context_for(uuid, uuid, bigint),
   public.agenda_evento_criar(jsonb, uuid[]),
   public.agenda_validar_payload(uuid, jsonb, public.agenda_eventos),
   public.agenda_notificar(uuid, bigint, bigint, text, uuid[], uuid, jsonb),
@@ -2194,6 +2193,7 @@ DROP TABLE IF EXISTS public.agenda_eventos;
 DROP FUNCTION IF EXISTS
   public.agenda_pode_ver_evento(bigint, boolean, uuid),
   public.agenda_pode_ver_evento(bigint, boolean, uuid, uuid),
+  public._agenda_actor(),
   public.agenda_eventos_guard(),
   public.agenda_hoje(text);
 
