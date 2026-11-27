@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { GlobalPopup, PopupInteraction } from '../../store/popups';
-import { isHiddenForever, isHiddenToday, pickPopup, sameLocalDay } from '../pickPopup';
+import {
+  NEW_ACCOUNT_GRACE_MS,
+  filterForAudience,
+  isHiddenForever,
+  isHiddenToday,
+  pickPopup,
+  sameLocalDay,
+} from '../pickPopup';
 
 function popup(over: Partial<GlobalPopup>): GlobalPopup {
   return {
@@ -128,5 +135,45 @@ describe('prioridade do gatilho', () => {
     expect(pickPopup([plain, trig], [], session())?.id).toBe('trig');
     expect(pickPopup([plain, trig, trig2], [], session())?.id).toBe('trig2');
     expect(pickPopup([plain, trig], [ix('trig', 'closed')], session())?.id).toBe('plain');
+  });
+});
+
+describe('filterForAudience', () => {
+  const now = new Date('2026-11-27T12:00:00Z');
+  const ago = (ms: number) => new Date(now.getTime() - ms).toISOString();
+  const all = popup({ id: 'all', target_mode: 'all' });
+  const plan = popup({ id: 'plan', target_mode: 'plan' });
+  const trig = popup({ id: 'trig', target_mode: 'plan', trigger: 'trial_ending' });
+  const ids = (ps: GlobalPopup[]) => ps.map((p) => p.id);
+
+  it('conta com menos de 3 dias não vê anúncio, só popup com gatilho', () => {
+    const out = filterForAudience([all, plan, trig], { accountCreatedAt: ago(60_000) }, now);
+    expect(ids(out)).toEqual(['trig']);
+  });
+
+  it('a carência acaba aos 3 dias', () => {
+    const out = filterForAudience(
+      [all, plan],
+      { accountCreatedAt: ago(NEW_ACCOUNT_GRACE_MS) },
+      now,
+    );
+    expect(ids(out)).toEqual(['all', 'plan']);
+  });
+
+  it('teste reverso não vê popup direcionado por plano sem gatilho', () => {
+    const out = filterForAudience(
+      [all, plan, trig],
+      { accountCreatedAt: ago(5 * 86_400_000), reverseTrial: true },
+      now,
+    );
+    expect(ids(out)).toEqual(['all', 'trig']);
+  });
+
+  it('sem data de criação (ou inválida) e fora do teste: nada muda', () => {
+    expect(ids(filterForAudience([all, plan], {}, now))).toEqual(['all', 'plan']);
+    expect(ids(filterForAudience([all, plan], { accountCreatedAt: 'x' }, now))).toEqual([
+      'all',
+      'plan',
+    ]);
   });
 });

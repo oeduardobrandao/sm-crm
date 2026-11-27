@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { PopupCard, defaultSecondaryLabel } from '@mesaas/ui/PopupCard';
 import { Dialog, DialogOverlay, DialogPortal } from '@/components/ui/dialog';
@@ -12,7 +13,9 @@ import { isNativeApp } from '@/native/platform';
 import { containsBlockedLink, isBlockedInNativeApp } from '@/native/blockedPaths';
 import type { GlobalPopup } from '@/store/popups';
 import { usePopups } from '@/hooks/usePopups';
-import { pickPopup, sameLocalDay } from '@/hooks/pickPopup';
+import { filterForAudience, pickPopup, sameLocalDay } from '@/hooks/pickPopup';
+import { getEffectivePlanWithSource } from '@/services/billing';
+import { isReverseTrialRunning } from '@/lib/reverseTrial';
 import {
   markPopupClosed,
   markPopupShown,
@@ -65,10 +68,17 @@ interface Decision {
  * DialogContent do CRM: ele força padding e um X próprio que não desligam.
  */
 export default function GlobalPopupHost({ openDelayMs = 800 }: { openDelayMs?: number }) {
-  const { loading } = useAuth();
+  const { loading, user } = useAuth();
   const guide = useGuide();
   const navigate = useNavigate();
   const { popupsQuery, interactionsQuery, record } = usePopups();
+  // Mesma chave do useEffectiveNavFeatures: uma chamada só. Erro aqui não segura popup
+  // nenhum (cai no comportamento de antes: não é teste reverso).
+  const planQuery = useQuery({
+    queryKey: ['billing', 'effective-plan-with-source'],
+    queryFn: getEffectivePlanWithSource,
+    enabled: Boolean(user),
+  });
   const [decision, setDecision] = useState<Decision | null>(null);
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState(0);
@@ -82,6 +92,7 @@ export default function GlobalPopupHost({ openDelayMs = 800 }: { openDelayMs?: n
     !loading &&
     popupsQuery.status !== 'pending' &&
     interactionsQuery.status !== 'pending' &&
+    (!user || planQuery.status !== 'pending') &&
     guideState !== 'unknown';
 
   // Snapshot dos valores no momento da decisão: o efeito depende só de `ready`,
@@ -93,6 +104,10 @@ export default function GlobalPopupHost({ openDelayMs = 800 }: { openDelayMs?: n
     guideOpen: guide?.isOpen ?? false,
     popups: popupsQuery.data,
     interactions: interactionsQuery.data,
+    audience: {
+      accountCreatedAt: user?.created_at ?? null,
+      reverseTrial: isReverseTrialRunning(planQuery.data),
+    },
     error: popupsQuery.status === 'error' || interactionsQuery.status === 'error',
   };
   const latest = useRef(snapshot);
@@ -122,7 +137,7 @@ export default function GlobalPopupHost({ openDelayMs = 800 }: { openDelayMs?: n
     }
 
     const interactions = snap.interactions ?? [];
-    const popups = snap.popups ?? [];
+    const popups = filterForAudience(snap.popups ?? [], snap.audience);
     const candidates = isNativeApp()
       ? popups.filter((p) => !sellsInNativeApp(p) && !promotesAppStore(p))
       : popups;

@@ -22,6 +22,8 @@ export interface GlobalPopup {
   require_ack: boolean;
   /** A RLS já aplicou a condição; aqui só serve para prioridade e analytics. */
   trigger: PopupTrigger | null;
+  /** Quem a RLS deixou ver; o CRM só usa para não tratar teste reverso como cliente do plano. */
+  target_mode?: 'all' | 'plan' | 'workspace';
   created_at: string;
 }
 
@@ -35,7 +37,7 @@ export interface PopupInteraction {
 }
 
 const COLUMNS =
-  'id, pages, cta_label, cta_url, cta_style, secondary_label, frequency, require_ack, trigger, created_at';
+  'id, pages, cta_label, cta_url, cta_style, secondary_label, frequency, require_ack, trigger, target_mode, created_at';
 
 /** A RLS já filtra ativo + janela + targeting. Só o platform-admin escreve `pages`,
  * mas um dado inesperado nunca pode derrubar o shell: linha malformada é descartada. */
