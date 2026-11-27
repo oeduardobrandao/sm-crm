@@ -6,6 +6,7 @@
 // `profiles` só busca nomes de user ids que vieram das linhas do RPC, já restritas a `p_conta`.
 import { McpInputError } from "../_shared/mcp-token.ts";
 import type { McpKeyContext } from "../_shared/mcp-token.ts";
+import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 import type { Deps } from "./queries.ts";
 
 export const AGENDA_DEFAULT_TZ = "America/Sao_Paulo";
@@ -100,7 +101,7 @@ async function rpcAs(d: Deps, name: string, params: Record<string, unknown>): Pr
 
 const WALL_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?$/;
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
-const INSTANT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/i;
+const INSTANT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/;
 const pad = (n: number) => String(n).padStart(2, "0");
 
 function validCalendar(y: number, m: number, d: number): boolean {
@@ -384,10 +385,20 @@ export function formatOcorrencia(row: any, people: People): AgendaOccurrence {
 
 // ---- ferramentas -------------------------------------------------------------------------------
 
+/** `agenda_listar_as` não levanta erro com a flag desligada: devolve zero linhas. Lista vazia
+ * consulta a flag para distinguir "nada aqui" de "Agenda desligada". */
+async function agendaEnabled(d: Deps): Promise<boolean> {
+  try {
+    return await effectivePlanFeature(d.db as any, d.ctx.conta_id, "feature_agenda");
+  } catch (e) {
+    agendaFail(e);
+  }
+}
+
 async function readOccurrence(d: Deps, occurrenceId: number): Promise<any> {
   const data = await rpcAs(d, "agenda_listar_as", { p_de: null, p_ate: null, p_ocorrencia_id: occurrenceId });
   const row = ((data ?? []) as any[])[0];
-  if (!row) throw new McpInputError(NOT_FOUND);
+  if (!row) throw new McpInputError((await agendaEnabled(d)) ? NOT_FOUND : AGENDA_FLAG_OFF);
   return row;
 }
 
@@ -397,14 +408,10 @@ export async function listAgendaEvents(
 ): Promise<{ events: AgendaOccurrence[]; note?: string }> {
   const de = windowBound(a.from, false);
   const ate = windowBound(a.to, true);
-  let data: unknown;
-  try {
-    data = await rpcAs(d, "agenda_listar_as", { p_de: de, p_ate: ate, p_ocorrencia_id: null });
-  } catch (e) {
-    if (e instanceof McpInputError && e.message === AGENDA_FLAG_OFF) return { events: [], note: AGENDA_FLAG_OFF };
-    throw e;
-  }
+  const data = await rpcAs(d, "agenda_listar_as", { p_de: de, p_ate: ate, p_ocorrencia_id: null });
   let rows = (data ?? []) as any[];
+  if (rows.length === 0 && !(await agendaEnabled(d))) return { events: [], note: AGENDA_FLAG_OFF };
+  // Linha mascarada sai de propósito no filtro por cliente: o cliente dela é oculto para o ator.
   if (a.client_id != null) rows = rows.filter((r) => !r.mascarado && Number(r.cliente_id) === Number(a.client_id));
   const people = await loadPeople(d, rows);
   return { events: rows.map((r) => formatOcorrencia(r, people)) };
@@ -429,7 +436,9 @@ export async function createAgendaEvent(
   const participantes = participantesMemberIds ? await resolveParticipants(d, participantesMemberIds) : [];
   const data = await rpcAs(d, "agenda_evento_criar_as", { p_evento: evento, p_participantes: participantes });
   const row = (Array.isArray(data) ? data[0] : data) as any;
-  return { event_id: row?.evento_id, occurrence_id: row?.ocorrencia_id };
+  // Sem linha de volta é estado inesperado: erro genérico do MCP, nunca um sucesso com ids vazios.
+  if (!row || row.evento_id == null || row.ocorrencia_id == null) throw new Error("agenda_evento_criar_as returned no row");
+  return { event_id: row.evento_id, occurrence_id: row.ocorrencia_id };
 }
 
 export async function updateAgendaEvent(

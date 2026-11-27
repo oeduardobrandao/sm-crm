@@ -331,12 +331,62 @@ Deno.test("listAgendaEvents: people resolved with one membros query", async () =
   assertEquals(out.events[1].participants, [{ user_id: "user-2", member_id: null, name: "Beto", answer: "sim" }]);
 });
 
-Deno.test("listAgendaEvents: flag off returns an empty list with the note", async () => {
-  const { db } = makeFakeDb({}, {
-    agenda_listar_as: [{ data: null, error: { message: "feature_disabled:feature_agenda" } }],
+Deno.test("listAgendaEvents: flag off (listar returns no rows) gives an empty list with the note", async () => {
+  const { db, calls } = makeFakeDb({}, {
+    agenda_listar_as: [{ data: [], error: null }],
+    effective_plan_feature: [{ data: false, error: null }],
   });
   const out = await listAgendaEvents(makeDeps(db), { from: "2026-12-01", to: "2026-12-10" });
   assertEquals(out, { events: [], note: AGENDA_FLAG_OFF });
+  assertEquals(rpcArgs(calls, "effective_plan_feature"), { ws_id: "workspace-A", feature_key: "feature_agenda" });
+});
+
+Deno.test("listAgendaEvents: empty window with flag on has no note", async () => {
+  const { db } = makeFakeDb({}, {
+    agenda_listar_as: [{ data: [], error: null }],
+    effective_plan_feature: [{ data: true, error: null }],
+  });
+  const out = await listAgendaEvents(makeDeps(db), { from: "2026-12-01", to: "2026-12-10" });
+  assertEquals(out, { events: [] });
+});
+
+Deno.test("listAgendaEvents: rows present skip the flag lookup", async () => {
+  const { db, calls } = makeFakeDb({}, { agenda_listar_as: [{ data: [row()], error: null }] });
+  await listAgendaEvents(makeDeps(db), { from: "2026-12-01", to: "2026-12-10" });
+  assert(!calls.some((c) => c.table === "rpc:effective_plan_feature"));
+});
+
+Deno.test("getAgendaEvent: flag off gives the flag copy", async () => {
+  const { db } = makeFakeDb({}, {
+    agenda_listar_as: [{ data: [], error: null }],
+    effective_plan_feature: [{ data: false, error: null }],
+  });
+  await assertRejects(() => getAgendaEvent(makeDeps(db), { occurrence_id: 1 }), McpInputError, AGENDA_FLAG_OFF);
+});
+
+Deno.test("updateAgendaEvent: flag off gives the flag copy and never edits", async () => {
+  const { db, calls } = makeFakeDb({}, {
+    agenda_listar_as: [{ data: [], error: null }],
+    effective_plan_feature: [{ data: false, error: null }],
+  });
+  await assertRejects(
+    () => updateAgendaEvent(makeDeps(db), { occurrence_id: 1, scope: "this", title: "x" }),
+    McpInputError,
+    AGENDA_FLAG_OFF,
+  );
+  assert(!calls.some((c) => c.table === "rpc:agenda_evento_editar_as"));
+});
+
+Deno.test("createAgendaEvent: no row back is a generic error", async () => {
+  const { db } = makeFakeDb({}, { agenda_evento_criar_as: [{ data: [], error: null }] });
+  const e = await assertRejects(() =>
+    createAgendaEvent(makeDeps(db), { title: "R", start: "2026-12-03T10:00", end: "2026-12-03T11:00" })
+  );
+  assert(!(e instanceof McpInputError));
+});
+
+Deno.test("toWallClock: lowercase z is refused", () => {
+  assertThrows(() => toWallClock("2026-12-03T13:00:00z", SP), McpInputError);
 });
 
 Deno.test("listAgendaEvents: bad from throws", async () => {
