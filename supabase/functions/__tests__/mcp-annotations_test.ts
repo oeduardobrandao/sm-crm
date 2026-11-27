@@ -29,7 +29,7 @@ Deno.test("mcp-annotations: every tool has a title and annotations", () => {
   const server = recordingServer();
   registerTools(server, allScopesDeps());
   const names = Object.keys(server.tools);
-  assertEquals(names.length, 49);
+  assertEquals(names.length, 54);
   for (const name of names) {
     const { config } = server.tools[name];
     assert(typeof config.title === "string" && config.title.length > 0, `${name}: title`);
@@ -42,7 +42,7 @@ Deno.test("mcp-annotations: every tool has a title and annotations", () => {
     if (/^(list|get)_/.test(name)) assertEquals(config.annotations.readOnlyHint, true, `${name}: read-only`);
     if (config.annotations.readOnlyHint) assertEquals(config.annotations.destructiveHint, false, `${name}: read-only is not destructive`);
   }
-  for (const name of ["delete_lancamento", "delete_funcao", "fechar_periodo"]) {
+  for (const name of ["delete_lancamento", "delete_funcao", "fechar_periodo", "delete_agenda_event"]) {
     assertEquals(server.tools[name].config.annotations.destructiveHint, true, name);
   }
   assertEquals(server.tools["create_post"].config.annotations.readOnlyHint, false);

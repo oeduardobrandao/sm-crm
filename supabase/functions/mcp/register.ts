@@ -64,7 +64,7 @@ export async function audit(deps: Deps, name: string, args: Record<string, unkno
     resource_id: String(
       (args.post_id ?? args.client_id ?? args.workflow_id ?? args.task_id ?? args.member_id ?? args.template_id ??
         args.lancamento_id ?? args.recorrente_id ?? args.membro_id ?? args.cliente_id ?? args.funcao_id ??
-        args.inicio ?? "") || "",
+        args.occurrence_id ?? args.inicio ?? "") || "",
     ),
     metadata: { key_id: deps.ctx.key_id, tool: name, args }, // args = ids/filters only, no payload
   });

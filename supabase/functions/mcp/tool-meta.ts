@@ -37,6 +37,12 @@ const BASE_TOOL_META: Record<string, ToolMeta> = {
   create_client: { title: "Criar cliente", readOnly: false },
   list_members: { title: "Listar membros", readOnly: true },
   create_member: { title: "Criar membro", readOnly: false },
+  // ---- agenda-tools.ts ----
+  list_agenda_events: { title: "Listar eventos da agenda", readOnly: true },
+  get_agenda_event: { title: "Ver evento da agenda", readOnly: true },
+  create_agenda_event: { title: "Criar evento na agenda", readOnly: false },
+  update_agenda_event: { title: "Editar evento da agenda", readOnly: false },
+  delete_agenda_event: { title: "Excluir evento da agenda", readOnly: false, destructive: true },
   // ---- financeiro-tools.ts ----
   list_lancamentos: { title: "Listar lançamentos", readOnly: true },
   list_recorrentes: { title: "Listar recorrentes", readOnly: true },
