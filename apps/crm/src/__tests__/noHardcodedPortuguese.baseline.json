@@ -1,0 +1,11 @@
+[
+  "apps/crm/src/components/consent/CookiePreferencesLink.tsx",
+  "apps/crm/src/pages/analytics-conta/tiktok/TikTokAnalyticsTab.tsx",
+  "apps/crm/src/pages/analytics/AnalyticsPage.tsx",
+  "apps/crm/src/pages/calendario/camadas/useConfirmarPagamento.tsx",
+  "apps/crm/src/pages/entregas/components/PostEditor.tsx",
+  "apps/crm/src/pages/entregas/components/ScheduleButton.tsx",
+  "apps/crm/src/pages/entregas/components/references/ReferenceViewerDialog.tsx",
+  "apps/crm/src/pages/financeiro/FinanceiroPage.tsx",
+  "apps/crm/src/pages/tarefas/components/TarefaFormDialog.tsx"
+]

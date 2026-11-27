@@ -204,16 +204,26 @@ export async function getCurrentWorkspace(): Promise<{
   id: string;
   name: string;
   logo_url: string | null;
+  language: WorkspaceLanguage;
 } | null> {
   const profile = await getCurrentProfile();
   if (!profile?.conta_id) return null;
   const { data, error } = await supabase
     .from('workspaces')
-    .select('id, name, logo_url')
+    .select('id, name, logo_url, language')
     .eq('id', profile.conta_id)
     .single();
   if (error) return null;
-  return data;
+  return { ...data, language: data.language === 'en' ? 'en' : 'pt' };
+}
+
+export type WorkspaceLanguage = 'pt' | 'en';
+
+/** Owner only. Goes through the RPC: the DB guard refuses a direct UPDATE of `language`. */
+export async function setWorkspaceLanguage(lang: WorkspaceLanguage): Promise<WorkspaceLanguage> {
+  const { data, error } = await supabase.rpc('workspace_set_language', { p_language: lang });
+  if (error) throw error;
+  return data === 'en' ? 'en' : 'pt';
 }
 
 /**

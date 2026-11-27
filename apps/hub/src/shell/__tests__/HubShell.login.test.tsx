@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Outlet, Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../api', async () => {
   const actual = await vi.importActual<typeof import('../../api')>('../../api');
@@ -35,6 +35,7 @@ import { clearHubSession } from '../../lib/hubSession';
 import { createHubQueryClient, hubBootstrapQuery } from '../../queries';
 import type { HubBootstrap, HubLoginPayload } from '../../types';
 import { HubShell } from '../HubShell';
+import { i18n, setActiveWorkspaceLanguage } from '@mesaas/i18n';
 
 const mockedBootstrap = vi.mocked(fetchBootstrap);
 const mockedLogout = vi.mocked(logoutHub);
@@ -295,5 +296,41 @@ describe('HubShell login', () => {
     expect(screen.getByText(/marina@clinicavida\.com\.br/)).toBeInTheDocument();
     expect(within(document.body).queryByLabelText('E-mail')).not.toBeInTheDocument();
     expect(mockedBootstrap.mock.calls.length).toBe(callsBefore);
+  });
+  describe('workspace language', () => {
+    beforeEach(async () => {
+      setActiveWorkspaceLanguage(null);
+      await i18n.changeLanguage('pt');
+    });
+    afterEach(async () => {
+      setActiveWorkspaceLanguage(null);
+      await i18n.changeLanguage('pt');
+    });
+
+    it('Hub renders English for an en workspace without explicit choice', async () => {
+      mockedBootstrap.mockResolvedValue({ ...BOOTSTRAP, language: 'en', is_active: false });
+      mount();
+      expect(await screen.findByText('Access disabled.')).toBeInTheDocument();
+      expect(i18n.language).toBe('en');
+    });
+
+    it('applies the language of the login_required payload to the login screen', async () => {
+      mockedBootstrap.mockRejectedValue(
+        new HubApiError('Login necessário.', 401, 'login_required', {
+          login: { ...LOGIN, workspace: { ...LOGIN.workspace, language: 'en' } },
+        }),
+      );
+      mount();
+      expect(await screen.findByText('Sign in to your portal')).toBeInTheDocument();
+      expect(i18n.language).toBe('en');
+    });
+
+    it('explicit pt toggle wins', async () => {
+      localStorage.setItem('mesaas-language', 'pt');
+      mockedBootstrap.mockResolvedValue({ ...BOOTSTRAP, language: 'en', is_active: false });
+      mount();
+      expect(await screen.findByText('Acesso desativado.')).toBeInTheDocument();
+      expect(i18n.language).toBe('pt');
+    });
   });
 });

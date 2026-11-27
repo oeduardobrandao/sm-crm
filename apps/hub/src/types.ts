@@ -7,7 +7,13 @@ export interface WorkspaceInfo {
 
 /** Body of the 401 `login_required` answer: what the login screen needs to brand itself. */
 export type HubLoginPayload = {
-  workspace: { name: string; logo_url: string | null; brand_color: string };
+  workspace: {
+    name: string;
+    logo_url: string | null;
+    brand_color: string;
+    /** Workspace language. Absent on an older function = Portuguese. */
+    language?: 'pt' | 'en';
+  };
   hub_theme: HubBootstrap['hub_theme'];
 };
 
@@ -25,6 +31,8 @@ export interface HubThemeInfo {
 }
 
 export interface HubBootstrap {
+  /** Workspace language the portal opens in (an explicit toggle wins). Absent on an older function = Portuguese. */
+  language?: 'pt' | 'en';
   workspace: WorkspaceInfo;
   cliente_nome: string;
   /** The client's connected Instagram avatar; null when no account is linked. */

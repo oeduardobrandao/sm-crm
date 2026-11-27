@@ -23,6 +23,7 @@ import { isClientScoped } from '@/lib/permissions';
 import { supabase } from '../../../lib/supabase';
 import { getCurrentWorkspace, updateWorkspace } from '../../../store';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { WorkspaceLanguageField } from '../components/WorkspaceLanguageField';
 import { WorkspacePhone } from './phone/WorkspacePhone';
 
 /** Workspace identity (name + logo) and the Instagram auto-sync switch. */
@@ -274,6 +275,7 @@ export default function WorkspaceTab() {
               {t('actions.save')}
             </Button>
           </div>
+          <WorkspaceLanguageField variant="desktop" />
         </div>
       )}
 

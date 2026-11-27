@@ -241,7 +241,11 @@
       "noLogo": "Sem logo",
       "autoSync": "Sincronização automática",
       "logoMenuTitle": "Logo do workspace"
-    }
+    },
+    "language": "Idioma do workspace",
+    "languageHint": "Define o idioma dos e-mails e do portal do cliente para a equipe e os clientes.",
+    "languageUpdated": "Idioma do workspace atualizado.",
+    "languageError": "Não foi possível salvar o idioma. Tente novamente."
   },
   "membros": {
     "roleUpdated": "Função atualizada!",

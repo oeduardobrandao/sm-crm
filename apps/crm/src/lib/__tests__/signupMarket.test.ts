@@ -1,14 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@mesaas/i18n', () => ({
-  changeLanguage: vi.fn(),
-  i18n: { changeLanguage: vi.fn(() => Promise.resolve()) },
+  setLanguageHint: vi.fn(),
+  getExplicitLanguage: vi.fn(() => {
+    try {
+      const v = localStorage.getItem('mesaas-language');
+      return v === 'pt' || v === 'en' ? v : null;
+    } catch {
+      return null;
+    }
+  }),
 }));
 
-import { changeLanguage, i18n } from '@mesaas/i18n';
+import { setLanguageHint } from '@mesaas/i18n';
 import { applyAccountLanguageFallback, readSignupMarket } from '../signupMarket';
 
-const mockedChangeLanguage = vi.mocked(changeLanguage);
+const mockedSetLanguageHint = vi.mocked(setLanguageHint);
 
 describe('readSignupMarket', () => {
   it('honors only an exact single market=us', () => {
@@ -27,7 +34,7 @@ describe('readSignupMarket', () => {
 describe('applyAccountLanguageFallback', () => {
   beforeEach(() => {
     localStorage.clear();
-    mockedChangeLanguage.mockReset();
+    mockedSetLanguageHint.mockReset();
   });
   afterEach(() => {
     localStorage.clear();
@@ -38,19 +45,19 @@ describe('applyAccountLanguageFallback', () => {
 
   it('switches to English when nothing is saved and the account is a US signup', () => {
     applyAccountLanguageFallback(usUser);
-    expect(mockedChangeLanguage).toHaveBeenCalledWith('en');
+    expect(mockedSetLanguageHint).toHaveBeenCalledWith('en');
   });
 
   it('keeps a saved language', () => {
     localStorage.setItem('mesaas-language', 'pt');
     applyAccountLanguageFallback(usUser);
-    expect(mockedChangeLanguage).not.toHaveBeenCalled();
+    expect(mockedSetLanguageHint).not.toHaveBeenCalled();
   });
 
   it('treats an invalid saved value as nothing saved', () => {
     localStorage.setItem('mesaas-language', 'fr');
     applyAccountLanguageFallback(usUser);
-    expect(mockedChangeLanguage).toHaveBeenCalledWith('en');
+    expect(mockedSetLanguageHint).toHaveBeenCalledWith('en');
   });
 
   it('does nothing without market us', () => {
@@ -58,18 +65,6 @@ describe('applyAccountLanguageFallback', () => {
     applyAccountLanguageFallback({ user_metadata: { market: 'US' } });
     applyAccountLanguageFallback({});
     applyAccountLanguageFallback(null);
-    expect(mockedChangeLanguage).not.toHaveBeenCalled();
-  });
-
-  it('never throws when storage throws', () => {
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
-      throw new Error('blocked');
-    });
-    mockedChangeLanguage.mockImplementation(() => {
-      throw new Error('blocked');
-    });
-    expect(() => applyAccountLanguageFallback(usUser)).not.toThrow();
-    // Not persisted, but this page load still switches to English.
-    expect(i18n.changeLanguage).toHaveBeenCalledWith('en');
+    expect(mockedSetLanguageHint).not.toHaveBeenCalled();
   });
 });

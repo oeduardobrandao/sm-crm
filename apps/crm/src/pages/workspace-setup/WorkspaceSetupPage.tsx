@@ -26,6 +26,7 @@ type SetupField = 'nome' | 'empresa' | 'telefone';
 const FIELDS: readonly SetupField[] = ['nome', 'empresa', 'telefone'];
 
 /** Same cache entry Cobrança and /comecar read, so a repaired currency reaches them too. */
+const CURRENT_WORKSPACE_KEY = ['currentWorkspace'] as const;
 const EFFECTIVE_PLAN_KEY = ['billing', 'effective-plan-with-source'] as const;
 
 /** Phone rules follow the workspace currency: BRL is a Brazilian number, USD a US/international one. */
@@ -101,6 +102,13 @@ export default function WorkspaceSetupPage() {
         old ? { ...old, billingCurrency: 'usd' } : old,
       );
       void queryClient.invalidateQueries({ queryKey: EFFECTIVE_PLAN_KEY });
+      // /workspace-setup sits inside ProtectedRoute, so WorkspaceLanguageSync has already cached
+      // the workspace as 'pt' (the repair also sets language 'en'). Left stale, that 'pt' would
+      // beat the /en hint: flip it now (only if cached, to avoid a flash) and refetch.
+      queryClient.setQueryData<{ language?: string } | null>(CURRENT_WORKSPACE_KEY, (old) =>
+        old ? { ...old, language: 'en' } : old,
+      );
+      void queryClient.invalidateQueries({ queryKey: CURRENT_WORKSPACE_KEY });
       setRepair('done');
       return;
     }

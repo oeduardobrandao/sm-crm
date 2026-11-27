@@ -23,6 +23,10 @@ interface HubBootstrapHandlerDeps {
   trackPaused?: (contaId: string) => void;
 }
 
+// Anything but 'en' reads as Portuguese (null or an unknown value). A missing column is not
+// covered: the select errors and `conta` comes back null (404), so deploy the migration first.
+const workspaceLanguage = (value: unknown): "pt" | "en" => (value === "en" ? "en" : "pt");
+
 const NEUTRAL_HUB_THEME = {
   customized: false,
   surface: "neutral",
@@ -86,7 +90,7 @@ export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
       .select(
         "id, name, logo_url, brand_color, hub_enabled, hub_surface_theme, hub_font_display, " +
           "hub_font_body, hub_radius, hub_card_style, hub_logo_style, hub_logo_dark_url, " +
-          "hub_hide_branding, hub_default_appearance",
+          "hub_hide_branding, hub_default_appearance, language",
       )
       .eq("slug", workspaceSlug)
       .maybeSingle();
@@ -131,6 +135,7 @@ export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
               name: conta.name,
               logo_url: conta.logo_url,
               brand_color: conta.brand_color ?? "#1a1a2e",
+              language: workspaceLanguage(conta.language),
             },
             hub_theme: buildHubTheme(conta, brand),
           },
@@ -221,6 +226,8 @@ export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
     const clienteFotoUrl = cliente?.foto_url || igFotoUrl || null;
 
     return json({
+      // The portal opens in the workspace's language (an explicit toggle in the browser wins).
+      language: workspaceLanguage(conta.language),
       workspace: {
         name: conta.name,
         logo_url: conta.logo_url,
