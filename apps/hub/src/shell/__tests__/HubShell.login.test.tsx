@@ -312,6 +312,7 @@ describe('HubShell login', () => {
       mount();
       expect(await screen.findByText('Access disabled.')).toBeInTheDocument();
       expect(i18n.language).toBe('en');
+      await waitFor(() => expect(document.title).toBe('Client hub'));
     });
 
     it('applies the language of the login_required payload to the login screen', async () => {

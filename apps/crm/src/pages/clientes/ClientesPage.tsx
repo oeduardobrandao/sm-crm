@@ -370,7 +370,7 @@ export default function ClientesPage() {
     !clientScoped && !isLoading && limits && limits.max_clients !== null ? (
       <UsageMeter
         size="compact"
-        label="clientes"
+        label={t('usageLabel')}
         used={clientes.length}
         limit={limits.max_clients}
         showUpgradeCta={isOwner}

@@ -114,6 +114,12 @@ export function HubShell() {
     if (i18n.language !== target) void i18n.changeLanguage(target);
   }, [workspaceLanguage]);
 
+  // index.html ships the Portuguese title; follow the active language (ConvitePage sets its own).
+  const portalTitle = t('hub.clientPortal');
+  useEffect(() => {
+    document.title = portalTitle;
+  }, [portalTitle]);
+
   useEffect(() => {
     if (!bootstrap?.workspace.logo_url) return;
     let link = document.querySelector<HTMLLinkElement>("link[rel~='icon']");

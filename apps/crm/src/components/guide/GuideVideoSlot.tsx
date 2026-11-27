@@ -46,10 +46,13 @@ export function GuideVideoSlot({
   pageId: string;
   variant: 'featured' | 'inline';
 }) {
+  const { i18n } = useTranslation();
   const { data: series } = useKbVideoSeries();
   const { progress, save, isLoading: progressLoading } = useVideoProgress();
   const openInHelpCenter = useOpenInHelpCenter(pageId);
   const video = useMemo(() => findVideoBySlug(series ?? [], slug), [series, slug]);
+  // Os vídeos (título e narração) só existem em português.
+  if (i18n.language !== 'pt') return null;
   // O progresso semeia o player uma vez, na montagem: sem esperar, um clique rápido perde o retomar.
   if (!video || progressLoading) return null;
   return (
@@ -68,10 +71,11 @@ export function GuideVideoSlot({
 
 /** Bloco da página de fechamento que aponta para a próxima série. */
 export function GuideMoreVideos({ seriesSlug, pageId }: { seriesSlug: string; pageId: string }) {
-  const { t } = useTranslation('guide');
+  const { t, i18n } = useTranslation('guide');
   const { data: series } = useKbVideoSeries();
   const openInHelpCenter = useOpenInHelpCenter(pageId);
   const s = series?.find((x) => x.slug === seriesSlug);
+  if (i18n.language !== 'pt') return null;
   if (!s || s.videos.length === 0) return null;
   const count = s.videos.length;
   return (

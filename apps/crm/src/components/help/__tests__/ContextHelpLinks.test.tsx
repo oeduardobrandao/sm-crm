@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation } from 'react-router-dom';
+import i18n from 'i18next';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ContextHelpLinks } from '../ContextHelpLinks';
 import { getContextLinksForRoutes } from '@/store/kb';
@@ -70,6 +71,19 @@ describe('ContextHelpLinks', () => {
         removeEventListener: vi.fn(),
       })),
     );
+  });
+
+  it('stays hidden and never queries outside Portuguese (articles are pt-only)', async () => {
+    vi.mocked(getContextLinksForRoutes).mockResolvedValue([article('1', 'adicionar-clientes')]);
+    await i18n.changeLanguage('en');
+    try {
+      renderHelp();
+      await new Promise((r) => setTimeout(r, 0));
+      expect(screen.queryByRole('button', { name: /Related articles/ })).not.toBeInTheDocument();
+      expect(getContextLinksForRoutes).not.toHaveBeenCalled();
+    } finally {
+      await i18n.changeLanguage('pt');
+    }
   });
 
   it('renders one trigger and reveals all valid articles', async () => {

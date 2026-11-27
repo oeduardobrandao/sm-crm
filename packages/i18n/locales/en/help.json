@@ -13,6 +13,7 @@
   "article": {
     "notFound": "Article not found.",
     "related": "Related articles",
+    "relatedSheetDescription": "Pick a related article to open.",
     "readMinutes": "{{minutes}} min read",
     "draft": "Draft",
     "count_one": "{{count}} article",
