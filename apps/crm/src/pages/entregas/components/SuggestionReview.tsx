@@ -111,7 +111,9 @@ function FieldNote({ tone, children }: { tone: 'amber' | 'muted'; children: Reac
       role="note"
       className={cn(
         'flex items-start gap-2 rounded-lg px-2.5 py-2 text-[12px]',
-        tone === 'amber' ? 'bg-amber-100 text-amber-900' : 'bg-stone-100 text-stone-700',
+        tone === 'amber'
+          ? 'bg-amber-100 text-amber-900'
+          : 'bg-stone-100 text-stone-700 dark:bg-[var(--surface-3)] dark:text-[color:var(--text-main)]',
       )}
     >
       {children}
@@ -181,7 +183,7 @@ export function SuggestionFieldDiff({
     <div
       role="group"
       aria-label={t('suggestionReview.compareAria', { field: fieldName(field, 'heading') })}
-      className="flex gap-0.5 rounded-lg bg-stone-100 p-0.5"
+      className="flex gap-0.5 rounded-lg bg-stone-100 dark:bg-[var(--surface-2)] p-0.5"
     >
       {(['live', 'original'] as const).map((value) => (
         <button
@@ -192,8 +194,8 @@ export function SuggestionFieldDiff({
           className={cn(
             'rounded-md px-2.5 py-[3px] text-[11px] transition-colors',
             base === value
-              ? 'bg-white font-semibold text-stone-900 shadow-sm'
-              : 'font-medium text-stone-600 hover:text-stone-900',
+              ? 'bg-white font-semibold text-stone-900 shadow-sm dark:bg-[var(--surface-3)] dark:text-[color:var(--text-main)]'
+              : 'font-medium text-stone-600 hover:text-stone-900 dark:text-[color:var(--text-muted)] dark:hover:text-[color:var(--text-main)]',
           )}
         >
           {value === 'live'
@@ -291,7 +293,7 @@ export function UnchangedFieldsLine({
   const unchanged = reviewable.filter((f) => !states.find((st) => st.field === f)?.changed);
   if (unchanged.length === 0) return null;
   return (
-    <p className={cn('text-[12px] text-stone-500', className)}>
+    <p className={cn('text-[12px] text-stone-500 dark:text-[color:var(--text-muted)]', className)}>
       {t('suggestionReview.unchangedFields', {
         fields: capitalize(joinList(unchanged.map((f) => fieldName(f, 'plain')))),
       })}

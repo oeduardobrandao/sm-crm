@@ -1072,10 +1072,13 @@ export function PostMediaGallery({
       {uploadQueue.size > 0 && (
         <div className="space-y-1.5">
           {[...uploadQueue.entries()].map(([uid, item]) => (
-            <div key={uid} className="rounded-xl bg-stone-50 ring-1 ring-stone-200/80 px-3 py-2">
-              <div className="flex items-center justify-between text-[11.5px] text-stone-600 mb-1">
+            <div
+              key={uid}
+              className="rounded-xl bg-stone-50 ring-1 ring-stone-200/80 dark:bg-[var(--surface-2)] dark:ring-[color:var(--border-color)] px-3 py-2"
+            >
+              <div className="flex items-center justify-between text-[11.5px] text-stone-600 dark:text-[color:var(--text-muted)] mb-1">
                 <span className="truncate pr-2">{item.name}</span>
-                <span className="tabular-nums font-medium text-stone-900">
+                <span className="tabular-nums font-medium text-stone-900 dark:text-[color:var(--text-main)]">
                   {item.status === 'done'
                     ? '✓'
                     : item.status === 'error'
@@ -1085,9 +1088,9 @@ export function PostMediaGallery({
                         : `${item.pct}%`}
                 </span>
               </div>
-              <div className="h-1.5 rounded-full bg-stone-200 overflow-hidden">
+              <div className="h-1.5 rounded-full bg-stone-200 dark:bg-[var(--surface-3)] overflow-hidden">
                 <div
-                  className={`h-full transition-all ${item.status === 'error' ? 'bg-red-500' : item.status === 'done' ? 'bg-emerald-500' : 'bg-stone-900'}`}
+                  className={`h-full transition-all ${item.status === 'error' ? 'bg-red-500' : item.status === 'done' ? 'bg-emerald-500' : 'bg-stone-900 dark:bg-[var(--cta-bg)]'}`}
                   style={{ width: `${item.status === 'error' ? 100 : item.pct}%` }}
                 />
               </div>

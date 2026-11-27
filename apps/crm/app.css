@@ -2098,7 +2098,7 @@ select.form-input {
 }
 
 select.form-input option {
-  background: var(--bg-card);
+  background: var(--card-bg);
   color: var(--text-main);
   font-family: inherit;
 }
