@@ -8,10 +8,11 @@
 --    (adicionado_por e o audit_log) leem o ator por _agenda_actor() =
 --    coalesce(auth.uid(), setting). Só aperta: quem está logado sempre tem auth.uid(), que
 --    vence a setting, e o service_role sem a setting segue como antes (sem restrição).
---    agenda_pode_ver_evento ganha a forma de 4 argumentos com o usuário explícito, para os
---    cores; a de 3 argumentos segue com auth.uid() (é ela que a RLS usa) e delega.
+--    agenda_pode_ver_evento ganha a forma de 4 argumentos com o usuário explícito, só para
+--    os cores (EXECUTE só service_role: aberta a authenticated, deixaria sondar se qualquer
+--    usuário participa de qualquer evento). A de 3 argumentos não muda (é ela que a RLS usa).
 --    Os corpos são cópias das versões vigentes (20261117000006, 20261007000001,
---    20261008000002, 20261005000001) com as linhas do ator marcadas com [mcp].
+--    20261008000002) com as linhas do ator marcadas com [mcp].
 --
 -- 2 e 3. (cores, wrappers *_as e CRM) entram em tarefas seguintes.
 
@@ -40,19 +41,8 @@ AS $function$
       OR EXISTS (SELECT 1 FROM public.agenda_participantes ap
                  WHERE ap.evento_id = p_evento_id AND ap.user_id = p_user);
 $function$;
-REVOKE ALL ON FUNCTION public.agenda_pode_ver_evento(bigint, boolean, uuid, uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.agenda_pode_ver_evento(bigint, boolean, uuid, uuid) TO authenticated, service_role;
-
-CREATE OR REPLACE FUNCTION public.agenda_pode_ver_evento(p_evento_id bigint, p_privado boolean, p_organizador uuid)
- RETURNS boolean
- LANGUAGE sql
- STABLE SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-  SELECT public.agenda_pode_ver_evento(p_evento_id, p_privado, p_organizador, auth.uid());  -- [mcp] delega
-$function$;
-REVOKE ALL ON FUNCTION public.agenda_pode_ver_evento(bigint, boolean, uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.agenda_pode_ver_evento(bigint, boolean, uuid) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.agenda_pode_ver_evento(bigint, boolean, uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.agenda_pode_ver_evento(bigint, boolean, uuid, uuid) TO service_role;
 
 CREATE OR REPLACE FUNCTION public.guard_agenda_evento_scope()
  RETURNS trigger

@@ -22,9 +22,11 @@ begin
     'agenda_actor_executable_by_authenticated_and_service_role';
   assert not has_function_privilege('anon', 'public.agenda_pode_ver_evento(bigint, boolean, uuid, uuid)', 'EXECUTE'),
     'pode_ver_evento_4arg_not_executable_by_anon';
-  assert has_function_privilege('authenticated', 'public.agenda_pode_ver_evento(bigint, boolean, uuid, uuid)', 'EXECUTE')
+  assert not has_function_privilege('authenticated', 'public.agenda_pode_ver_evento(bigint, boolean, uuid, uuid)', 'EXECUTE')
      and has_function_privilege('service_role', 'public.agenda_pode_ver_evento(bigint, boolean, uuid, uuid)', 'EXECUTE'),
-    'pode_ver_evento_4arg_acl_as_3arg';
+    'pode_ver_evento_4arg_service_role_only';
+  assert has_function_privilege('authenticated', 'public.agenda_pode_ver_evento(bigint, boolean, uuid)', 'EXECUTE'),
+    'pode_ver_evento_3arg_keeps_authenticated';
   assert not has_function_privilege('authenticated', 'public.agenda_definir_convidados(bigint, jsonb)', 'EXECUTE')
      and not has_function_privilege('authenticated', 'public.agenda_cliente_substituir_pedidos(bigint, bigint, date)', 'EXECUTE')
      and not has_function_privilege('authenticated', 'public.guard_agenda_evento_scope()', 'EXECUTE')
@@ -63,6 +65,22 @@ begin
   end;
   execute 'reset role';
   perform set_config('mesaas.agenda_actor', '', true);
+  return null;
+end $f$;
+-- SQLSTATE raised by a statement as p_user (authenticated), or NULL on success
+create or replace function pg_temp.err_as(p_user uuid, p_sql text) returns text language plpgsql as $f$
+begin
+  perform set_config('request.jwt.claims', json_build_object('sub', p_user, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  begin
+    execute p_sql;
+  exception when others then
+    execute 'reset role';
+    perform set_config('request.jwt.claims', '', true);
+    return sqlstate;
+  end;
+  execute 'reset role';
+  perform set_config('request.jwt.claims', '', true);
   return null;
 end $f$;
 -- value of an expression as service_role with no jwt claims and mesaas.agenda_actor = p_actor
@@ -156,6 +174,9 @@ begin
   assert v_v = 'true', 'pode_ver_evento_4arg_participant: ' || coalesce(v_v, 'null');
   v_v := pg_temp.svc_val(null, format('select public.agenda_pode_ver_evento(%s, false, %L, %L)::text', v_ev, v_a, v_b));
   assert v_v = 'true', 'pode_ver_evento_4arg_public_event: ' || coalesce(v_v, 'null');
+  -- pode_ver_evento_4arg_denied_to_authenticated (et_grant_hosted_parity does not touch function ACLs)
+  v_err := pg_temp.err_as(v_a, format('select public.agenda_pode_ver_evento(%s, true, %L, %L)', v_ev, v_a, v_b));
+  assert v_err = '42501', 'pode_ver_evento_4arg_denied_to_authenticated: ' || coalesce(v_err, 'allowed');
   -- 3-arg keeps auth.uid()
   v_v := pg_temp.val_as(v_part, null, format('select public.agenda_pode_ver_evento(%s, true, %L)::text', v_ev, v_a));
   assert v_v = 'true', 'pode_ver_evento_3arg_participant: ' || coalesce(v_v, 'null');
