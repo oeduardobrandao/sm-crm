@@ -76,6 +76,16 @@ function makeFakeDb(opts: {
   /** claim_nurture_email result keyed `${workspace_id}/${step}`; default attempts + 1. */
   claimResults?: Record<string, number | null>;
   claimError?: string;
+  confirmCandidates?: Array<{
+    user_id: string;
+    email: string | null;
+    nome?: string | null;
+    email_type: string;
+    attempts?: number;
+  }>;
+  confirmRpcError?: string;
+  /** claim_confirm_reminder result keyed `${user_id}/${email_type}`; default attempts + 1. */
+  confirmClaimResults?: Record<string, number | null>;
 }) {
   type Row = {
     email_type: string;
@@ -96,7 +106,9 @@ function makeFakeDb(opts: {
   const nurtureUpdates: Array<{ patch: { delivered_at: string }; filters: Record<string, string> }> =
     [];
   const fromCalls: string[] = [];
+  const lifecycleUpdates: Array<Record<string, string>> = [];
   const db = {
+    lifecycleUpdates,
     rows,
     rpcCalls,
     nurtureUpdates,
@@ -125,6 +137,25 @@ function makeFakeDb(opts: {
           })),
           error: null,
         });
+      }
+      if (name === "get_confirm_reminder_candidates") {
+        if (opts.confirmRpcError) {
+          return Promise.resolve({ data: null, error: { message: opts.confirmRpcError } });
+        }
+        return Promise.resolve({
+          data: (opts.confirmCandidates ?? []).map((c) => ({ nome: "Ana Souza", attempts: 0, ...c })),
+          error: null,
+        });
+      }
+      if (name === "claim_confirm_reminder") {
+        const key = `${args?.p_user_id}/${args?.p_email_type}`;
+        const c = (opts.confirmCandidates ?? []).find(
+          (x) => x.user_id === args?.p_user_id && x.email_type === args?.p_email_type,
+        );
+        const result = opts.confirmClaimResults && key in opts.confirmClaimResults
+          ? opts.confirmClaimResults[key]
+          : (c?.attempts ?? 0) + 1;
+        return Promise.resolve({ data: result, error: null });
       }
       if (name === "claim_nurture_email") {
         if (opts.claimError) {
@@ -277,6 +308,7 @@ function makeFakeDb(opts: {
               return chain;
             },
             then(resolve: (v: { error: null }) => void) {
+              lifecycleUpdates.push({ ...filters });
               const r = find(filters.email_type, filters.user_id ?? filters.workspace_id);
               if (r) r.delivered = true;
               resolve({ error: null });
@@ -341,6 +373,9 @@ function makeDeps(db: ReturnType<typeof makeFakeDb>, overrides?: Partial<Lifecyc
       reminders.push({ to: p.to, subject: p.subject, html: p.html, key: p.idempotencyKey });
       return Promise.resolve();
     },
+    confirmReminderEnabled: false,
+    generateConfirmLink: () => Promise.reject(new Error("generateConfirmLink not stubbed")),
+    sendConfirmReminder: () => Promise.reject(new Error("sendConfirmReminder not stubbed")),
     nurtureEnabled: false,
     nurtureUnsubLinks: (userId) =>
       Promise.resolve({ page: `https://app.test/descadastrar/${userId}`, oneClick: `https://unsub.test/${userId}` }),
@@ -1219,4 +1254,146 @@ Deno.test("nurture ex-trial b1-b3 carry the _ex_trial tag; other steps and non-e
   for (const m of nurtureSent.slice(0, 3)) {
     assert(!/grátis/i.test(m.html) && m.html.includes("/comecar?recomendado=pro"), m.idempotencyKey);
   }
+});
+
+// --- Confirmation reminder sweep ---------------------------------------------
+
+const CONFIRM_1H = { user_id: "u-c1", email: "novo@x.test", nome: "Ana Souza", email_type: "confirm_reminder_1h" };
+
+function confirmHarness(
+  db: ReturnType<typeof makeFakeDb>,
+  overrides?: Partial<LifecycleCronDeps>,
+) {
+  const links: Array<{ email: string; redirectTo: string }> = [];
+  const confirmSent: Array<{ to: string; subject: string; html: string; idempotencyKey: string; type: string }> = [];
+  const made = makeDeps(db, {
+    confirmReminderEnabled: true,
+    appBaseUrl: "https://app.mesaas.com.br/",
+    generateConfirmLink: (email, redirectTo) => {
+      links.push({ email, redirectTo });
+      return Promise.resolve({ actionLink: "https://sb.test/verify?x=1", userId: "u-c1", confirmed: false });
+    },
+    sendConfirmReminder: (p) => {
+      confirmSent.push({ ...p });
+      return Promise.resolve();
+    },
+    ...overrides,
+  });
+  return { ...made, links, confirmSent };
+}
+
+Deno.test("confirm reminder off never calls the rpc", async () => {
+  const db = makeFakeDb({ confirmCandidates: [CONFIRM_1H] });
+  const { deps } = makeDeps(db);
+  const result = await runLifecycleEmailCron(deps);
+  assertEquals(result.confirmRemindersSent, 0);
+  assert(!db.rpcCalls.some((c) => c.name === "get_confirm_reminder_candidates"));
+  assert(!db.rpcCalls.some((c) => c.name === "claim_confirm_reminder"));
+});
+
+Deno.test("confirm reminder 1h claims, builds the link, sends and marks delivered", async () => {
+  const db = makeFakeDb({ confirmCandidates: [CONFIRM_1H] });
+  const { deps, links, confirmSent } = confirmHarness(db);
+  const nowIso = deps.now().toISOString();
+  const result = await runLifecycleEmailCron(deps);
+  assertEquals(result.confirmRemindersSent, 1);
+  assertEquals(result.failed, 0);
+
+  assertEquals(db.rpcCalls.find((c) => c.name === "get_confirm_reminder_candidates")?.args, { p_now: nowIso });
+  assertEquals(db.rpcCalls.find((c) => c.name === "claim_confirm_reminder")?.args, {
+    p_user_id: "u-c1",
+    p_email_type: "confirm_reminder_1h",
+    p_now: nowIso,
+  });
+  assertEquals(links, [{ email: "novo@x.test", redirectTo: "https://app.mesaas.com.br/login" }]);
+  assertEquals(confirmSent.length, 1);
+  assertEquals(confirmSent[0].to, "novo@x.test");
+  assertEquals(confirmSent[0].type, "confirm_reminder_1h");
+  assertEquals(confirmSent[0].idempotencyKey, "confirm_reminder_1h/u-c1/1");
+  assert(confirmSent[0].html.includes("https://sb.test/verify?x=1"));
+  assertEquals(db.lifecycleUpdates, [{ email_type: "confirm_reminder_1h", user_id: "u-c1" }]);
+});
+
+Deno.test("confirm reminder: claim refused sends no link and no mail", async () => {
+  const db = makeFakeDb({
+    confirmCandidates: [CONFIRM_1H],
+    confirmClaimResults: { "u-c1/confirm_reminder_1h": null },
+  });
+  const { deps, links, confirmSent } = confirmHarness(db);
+  const result = await runLifecycleEmailCron(deps);
+  assertEquals(result.confirmRemindersSent, 0);
+  assertEquals(result.failed, 0);
+  assertEquals(links.length, 0);
+  assertEquals(confirmSent.length, 0);
+});
+
+for (
+  const [label, link] of [
+    ["already confirmed", { actionLink: "https://sb.test/v", userId: "u-c1", confirmed: true }],
+    ["another user id", { actionLink: "https://sb.test/v", userId: "other", confirmed: false }],
+  ] as const
+) {
+  Deno.test(`confirm reminder: link ${label} skips silently`, async () => {
+    const db = makeFakeDb({ confirmCandidates: [CONFIRM_1H] });
+    const { deps, confirmSent } = confirmHarness(db, { generateConfirmLink: () => Promise.resolve(link) });
+    const result = await runLifecycleEmailCron(deps);
+    assertEquals(result.confirmRemindersSent, 0);
+    assertEquals(result.failed, 0);
+    assertEquals(confirmSent.length, 0);
+    assertEquals(db.lifecycleUpdates.length, 0);
+  });
+}
+
+Deno.test("confirm reminder: generateConfirmLink throwing is reported per account", async () => {
+  const db = makeFakeDb({ confirmCandidates: [CONFIRM_1H] });
+  const reports: CronReportDetail[] = [];
+  const { deps, confirmSent } = confirmHarness(db, {
+    generateConfirmLink: () => Promise.reject(new Error("generateLink failed")),
+    report: (d) => {
+      reports.push(d);
+      return Promise.resolve();
+    },
+  });
+  const result = await runLifecycleEmailCron(deps);
+  assertEquals(result.confirmRemindersSent, 0);
+  assertEquals(result.failed, 1);
+  assertEquals(reports[0].errors[0].accountId, "u-c1");
+  assertEquals(confirmSent.length, 0);
+  assertEquals(db.lifecycleUpdates.length, 0);
+});
+
+Deno.test("confirm reminder: send throwing is reported and not marked delivered", async () => {
+  const db = makeFakeDb({ confirmCandidates: [CONFIRM_1H] });
+  const reports: CronReportDetail[] = [];
+  const { deps } = confirmHarness(db, {
+    sendConfirmReminder: () => Promise.reject(new Error("resend down")),
+    report: (d) => {
+      reports.push(d);
+      return Promise.resolve();
+    },
+  });
+  const result = await runLifecycleEmailCron(deps);
+  assertEquals(result.confirmRemindersSent, 0);
+  assertEquals(result.failed, 1);
+  assertEquals(reports[0].errors[0].accountId, "u-c1");
+  assertEquals(db.lifecycleUpdates.length, 0);
+});
+
+Deno.test("confirm reminder: candidates rpc error is recorded and other sweeps still run", async () => {
+  const db = makeFakeDb({
+    confirmRpcError: "boom",
+    welcomeCandidates: [{ user_id: "u1", email: "ana@x.test", nome: "Ana" }],
+  });
+  const reports: CronReportDetail[] = [];
+  const { deps, sent } = confirmHarness(db, {
+    report: (d) => {
+      reports.push(d);
+      return Promise.resolve();
+    },
+  });
+  const result = await runLifecycleEmailCron(deps);
+  assertEquals(result.failed, 1);
+  assert(reports[0].errors[0].error?.includes("confirm reminder candidates: boom"));
+  assertEquals(result.welcomeSent, 1);
+  assertEquals(sent.length, 1);
 });

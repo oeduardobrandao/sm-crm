@@ -12,13 +12,17 @@
  */
 
 import {
+  buildConfirmReminderEmail,
   buildReverseTrialEmail,
   buildTrialReminderEmail,
+  CONFIRM_REMINDER_TYPES,
+  type ConfirmReminderType,
   firstNameFrom,
   formatChargeDate,
   formatFirstCharge,
   REVERSE_TRIAL_EMAIL_TYPES,
   type ReverseTrialEmailType,
+  type sendConfirmReminderEmail,
 } from "../_shared/lifecycle-emails.ts";
 import { buildNurtureEmail, NURTURE_SAMPLE, type NurtureStep, nurtureTagType } from "../_shared/nurture-emails.ts";
 import type { Lang } from "../_shared/i18n/lang.ts";
@@ -130,6 +134,20 @@ export interface LifecycleCronDeps {
     idempotencyKey: string;
     type: ReverseTrialEmailType;
   }) => Promise<void>;
+  // Signup-confirmation reminders (1h, 24h). Read per run from RESEND_API_KEY;
+  // false skips the sweep entirely (no RPC call).
+  confirmReminderEnabled: boolean;
+  /**
+   * Fresh Supabase magic link for an unconfirmed address. `confirmed` and
+   * `userId` let the sweep drop a person who confirmed (or whose address now
+   * belongs to someone else) between the candidate read and the send. Throws
+   * when no link could be generated.
+   */
+  generateConfirmLink: (
+    email: string,
+    redirectTo: string,
+  ) => Promise<{ actionLink: string; userId: string; confirmed: boolean }>;
+  sendConfirmReminder: typeof sendConfirmReminderEmail;
   // Nurture (owners who never subscribed). Read per run from NURTURE_EMAILS;
   // false skips the sweep entirely (no RPC call).
   nurtureEnabled: boolean;
@@ -162,6 +180,18 @@ interface WelcomeCandidate {
   // Reverse trial: the workspace would get the automatic 14-day Pro on the
   // first visit. Optional so the function tolerates the pre-migration RPC.
   reverse_trial_offer?: boolean | null;
+}
+
+interface ConfirmReminderCandidate {
+  user_id: string;
+  email: string | null;
+  nome: string | null;
+  email_type: string;
+  attempts: number;
+}
+
+function isConfirmReminderType(t: string): t is ConfirmReminderType {
+  return (CONFIRM_REMINDER_TYPES as readonly string[]).includes(t);
 }
 
 interface ThankCandidate {
@@ -412,6 +442,7 @@ export async function runLifecycleEmailCron(
 ): Promise<
   {
     welcomeSent: number;
+    confirmRemindersSent: number;
     thanksSent: number;
     trialRemindersSent: number;
     reverseTrialSent: number;
@@ -420,6 +451,7 @@ export async function runLifecycleEmailCron(
   }
 > {
   let welcomeSent = 0;
+  let confirmRemindersSent = 0;
   let thanksSent = 0;
   let trialRemindersSent = 0;
   let reverseTrialSent = 0;
@@ -459,6 +491,68 @@ export async function runLifecycleEmailCron(
           accountId: c.user_id,
           error: e instanceof Error ? e.message : String(e),
         });
+      }
+    }
+  }
+
+  // --- Signup confirmation reminders ---------------------------------------
+  // People who signed up and never confirmed their e-mail. Eligibility and the
+  // 1h / 24h windows live in get_confirm_reminder_candidates; the claim RPC
+  // re-checks eligibility and returns the attempt count (null = not ours).
+  // Same clock for both RPCs, as in the nurture sweep.
+  if (deps.confirmReminderEnabled) {
+    const nowIso = deps.now().toISOString();
+    const confirm = await deps.db.rpc("get_confirm_reminder_candidates", { p_now: nowIso });
+    if (confirm.error) {
+      errors.push({ error: `confirm reminder candidates: ${confirm.error.message}` });
+    } else {
+      for (const c of (confirm.data ?? []) as ConfirmReminderCandidate[]) {
+        try {
+          const type = c.email_type;
+          if (!isConfirmReminderType(type)) {
+            throw new Error(`confirm reminder: unknown type ${String(type)}`);
+          }
+          const to = (c.email ?? "").trim();
+          if (!to) throw new Error(`${type}: candidate has no email`);
+
+          const claimed = await deps.db.rpc("claim_confirm_reminder", {
+            p_user_id: c.user_id,
+            p_email_type: type,
+            p_now: nowIso,
+          });
+          if (claimed.error) throw new Error(`confirm reminder claim failed: ${claimed.error.message}`);
+          if (claimed.data == null) continue;
+          const attempts = claimed.data as number;
+
+          // appBaseUrl may end in "/": never build "//login".
+          const redirectTo = `${deps.appBaseUrl.replace(/\/+$/, "")}/login`;
+          const link = await deps.generateConfirmLink(to, redirectTo);
+          // Confirmed since the read, or the address now resolves to another
+          // account: nothing to send, and the claim stays undelivered.
+          if (link.confirmed || link.userId !== c.user_id) continue;
+
+          const lang = await langOf.owner(c.user_id);
+          const { subject, html } = buildConfirmReminderEmail({
+            type,
+            firstName: firstNameFrom(c.nome),
+            actionLink: link.actionLink,
+            lang,
+          });
+          await deps.sendConfirmReminder({
+            to,
+            subject,
+            html,
+            idempotencyKey: `${type}/${c.user_id}/${attempts}`,
+            type,
+          });
+          await markDelivered(deps, type, "user_id", c.user_id);
+          confirmRemindersSent++;
+        } catch (e) {
+          errors.push({
+            accountId: c.user_id,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
       }
     }
   }
@@ -731,5 +825,5 @@ export async function runLifecycleEmailCron(
     console.error(`[lifecycle-email-cron] ${errors.length} failure(s)`, errors);
     await deps.report({ failed: errors.length, errors });
   }
-  return { welcomeSent, thanksSent, trialRemindersSent, reverseTrialSent, nurtureSent, failed: errors.length };
+  return { welcomeSent, confirmRemindersSent, thanksSent, trialRemindersSent, reverseTrialSent, nurtureSent, failed: errors.length };
 }
