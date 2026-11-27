@@ -124,6 +124,8 @@ export default function LoginPage() {
   const [existingAccount, setExistingAccount] = useState(false);
   // Login refused because this address is still unconfirmed.
   const [unconfirmedEmail, setUnconfirmedEmail] = useState('');
+  // Arrived through a dead confirmation or sign-in link (Supabase puts the error in the URL hash).
+  const [linkExpired, setLinkExpired] = useState(false);
   const [resending, setResending] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
 
@@ -132,6 +134,17 @@ export default function LoginPage() {
     const id = window.setTimeout(() => setResendCooldown((s) => s - 1), 1000);
     return () => window.clearTimeout(id);
   }, [resendCooldown]);
+
+  // Read once on mount, never during render: this page is prerendered on the server. Only the
+  // dead-link codes count; any other hash error stays silent as before.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    if (params.get('error_code') !== 'otp_expired' && params.get('error') !== 'access_denied') {
+      return;
+    }
+    setLinkExpired(true);
+    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+  }, []);
 
   const confirmRedirectPath = intentQuery ? `/login?${intentQuery}` : '/login';
 
@@ -375,7 +388,7 @@ export default function LoginPage() {
       type="button"
       variant="outline"
       className="auth-secondary"
-      disabled={resending || resendCooldown > 0}
+      disabled={!email || resending || resendCooldown > 0}
       onClick={() => handleResend(email)}
     >
       {resending && <Spinner size="sm" />}
@@ -467,6 +480,13 @@ export default function LoginPage() {
                     />
                   </div>
                 </div>
+                {linkExpired && (
+                  <div role="status" className="auth-notice">
+                    <p className="auth-notice-title">{t('linkExpired.title')}</p>
+                    <p className="auth-notice-text">{t('linkExpired.description')}</p>
+                    {resendButton(loginEmail.trim())}
+                  </div>
+                )}
                 {unconfirmedEmail && (
                   <div role="status" className="auth-notice">
                     <p className="auth-notice-title">{t('unconfirmed.title')}</p>

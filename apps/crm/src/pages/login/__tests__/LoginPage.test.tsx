@@ -938,3 +938,54 @@ describe('signup acquisition metadata', () => {
     expect(window.localStorage.getItem('mesaas:acq')).not.toBeNull();
   });
 });
+
+describe('expired confirmation link notice', () => {
+  const TITLE = 'Este link expirou ou já foi usado';
+
+  beforeEach(() => {
+    mockedResend.mockReset();
+    mockedUseAuth.mockReset();
+    mockedUseAuth.mockReturnValue({ user: null, loading: false } as never);
+  });
+
+  afterEach(() => {
+    window.history.replaceState(null, '', '/');
+  });
+
+  function landWithHash(hash: string) {
+    window.history.replaceState(null, '', `/login${hash}`);
+  }
+
+  it('shows the notice, clears the hash, and resends to the typed email', async () => {
+    mockedResend.mockResolvedValue({ error: null } as never);
+    landWithHash('#error=access_denied&error_code=otp_expired&error_description=x');
+    renderLoginPage();
+
+    await screen.findByText(TITLE);
+    expect(screen.getByRole('status')).toHaveTextContent(TITLE);
+    expect(window.location.hash).toBe('');
+    expect(window.location.pathname).toBe('/login');
+
+    const resend = screen.getByRole('button', { name: 'Reenviar e-mail de confirmação' });
+    expect(resend).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText('E-mail'), { target: { value: ' ana@mesaas.com ' } });
+    expect(resend).toBeEnabled();
+    fireEvent.click(resend);
+
+    await waitFor(() => expect(mockedResend).toHaveBeenCalledTimes(1));
+    expect(mockedResend.mock.calls[0][0]).toBe('ana@mesaas.com');
+  });
+
+  it('shows no notice without an error hash', () => {
+    landWithHash('');
+    renderLoginPage();
+    expect(screen.queryByText(TITLE)).not.toBeInTheDocument();
+  });
+
+  it('ignores unrelated hash errors', () => {
+    landWithHash('#error=server_error&error_code=unexpected_failure');
+    renderLoginPage();
+    expect(screen.queryByText(TITLE)).not.toBeInTheDocument();
+  });
+});
