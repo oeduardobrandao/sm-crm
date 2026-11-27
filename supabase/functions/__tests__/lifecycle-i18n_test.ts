@@ -48,6 +48,13 @@ Deno.test("pt unchanged: trial reminder and reverse trial", () => {
   }
 });
 
+Deno.test("pt locked: confirm reminders", () => {
+  for (const [k, v] of Object.entries(C.CONFIRM_CASES)) {
+    const r = L.buildConfirmReminderEmail({ ...v, lang: "pt" });
+    assertEquals(r.html, FIX[k], k);
+  }
+});
+
 Deno.test("pt unchanged: every nurture variant", () => {
   for (const [k, v] of Object.entries(C.NURTURE_CASES)) {
     assertEquals(buildNurtureEmail({ ...v, lang: "pt" }), FIX[k], k);

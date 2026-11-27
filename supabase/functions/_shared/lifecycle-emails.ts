@@ -3,7 +3,7 @@ import { escapeHtml } from "./report-template/escape.ts";
 import { fetchStripeAmount } from "./stripe-amount.ts";
 import { whatsAppSupportUrl } from "./whatsapp.ts";
 import { mesaasEmail } from "./email/shell.ts";
-import { button, callout, featureGrid, heading, link, paragraph, paragraphHtml, sectionTitle, signature, spacer, steps } from "./email/blocks.ts";
+import { button, callout, featureGrid, fallbackLink, heading, link, paragraph, paragraphHtml, sectionTitle, signature, spacer, steps } from "./email/blocks.ts";
 import { lifecycleText } from "./i18n/catalogs/lifecycle.ts";
 import { formatDate, formatMoney as formatMoneyIntl, type Lang } from "./i18n/lang.ts";
 
@@ -541,6 +541,50 @@ export async function sendWelcomeEmail(
     undefined,
     undefined,
     { type: "welcome" },
+  );
+}
+
+export type ConfirmReminderType = "confirm_reminder_1h" | "confirm_reminder_24h";
+export const CONFIRM_REMINDER_TYPES: readonly ConfirmReminderType[] = ["confirm_reminder_1h", "confirm_reminder_24h"];
+
+export const CONFIRM_REMINDER_1H_SUBJECT = lifecycleText("pt").confirm.subject1h;
+export const CONFIRM_REMINDER_24H_SUBJECT = lifecycleText("pt").confirm.subject24h;
+
+/** Reminder to confirm the signup e-mail; `actionLink` is a fresh Supabase magic link. */
+export function buildConfirmReminderEmail(
+  p: { type: ConfirmReminderType; firstName: string | null; actionLink: string; lang: Lang },
+): { subject: string; html: string } {
+  const t = lifecycleText(p.lang).confirm;
+  const first = p.type === "confirm_reminder_1h";
+  const html = mesaasEmail({
+    lang: p.lang,
+    preheader: t.preheader,
+    eyebrow: t.eyebrow,
+    sections: [
+      heading(p.firstName ? t.greetNamed(p.firstName) : t.greetAnon) +
+        paragraph(first ? t.body1h : t.body24h, "body", "0 0 20px") +
+        button(p.actionLink, t.button) +
+        fallbackLink(p.actionLink, p.lang),
+      paragraph(t.note, "small", "0 0 6px") + paragraph(t.ignore, "small", "0") + spacer(8) + signature(p.lang),
+    ],
+    footerLines: [t.footer],
+  });
+  return { subject: first ? t.subject1h : t.subject24h, html };
+}
+
+export async function sendConfirmReminderEmail(
+  p: { to: string; subject: string; html: string; idempotencyKey: string; type: ConfirmReminderType },
+): Promise<void> {
+  await sendViaResend(
+    p.to,
+    p.subject,
+    p.html,
+    p.idempotencyKey,
+    LIFECYCLE_FROM,
+    undefined,
+    undefined,
+    undefined,
+    { type: p.type },
   );
 }
 

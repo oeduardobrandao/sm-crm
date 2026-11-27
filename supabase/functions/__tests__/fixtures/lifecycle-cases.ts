@@ -99,3 +99,11 @@ NURTURE_CASES["n-b2-nowho"] = { ...NURTURE_BASE, step: "b2", firstClientName: nu
 NURTURE_CASES["n-b3-noig"] = { ...NURTURE_BASE, step: "b3", hasInstagram: false };
 NURTURE_CASES["n-b3-ig-ex"] = { ...NURTURE_BASE, step: "b3", exReverseTrial: true };
 NURTURE_CASES["n-a4-nowa"] = { ...NURTURE_BASE, step: "a4", whatsappUrl: null };
+
+export const CONFIRM_LINK =
+  "https://example.supabase.co/auth/v1/verify?token=abc&type=magiclink&redirect_to=https://app.mesaas.com.br/login";
+
+export const CONFIRM_CASES = {
+  "confirm-1h-pt": { type: "confirm_reminder_1h", firstName: "Ana", actionLink: CONFIRM_LINK },
+  "confirm-24h-pt": { type: "confirm_reminder_24h", firstName: null, actionLink: CONFIRM_LINK },
+} as const;

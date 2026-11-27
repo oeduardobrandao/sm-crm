@@ -10,6 +10,7 @@ import { clientEventSubject } from "../_shared/client-event-email.ts";
 import { CONNECT_LINK_SUBJECT, CONNECTED_NOTICE_SUBJECT } from "../_shared/instagram-connect-email.ts";
 import { DEMO_ACCESS_SUBJECT } from "../_shared/invite-email.ts";
 import {
+  buildConfirmReminderEmail,
   buildReverseTrialEmail,
   buildTrialReminderEmail,
   THANKYOU_SUBJECT,
@@ -209,4 +210,19 @@ Deno.test("teste reverso: assuntos dos builders casam sem tag (eduardo@)", () =>
     appBaseUrl: "https://x.test",
   });
   assertEquals(classifyEmail({ from: EDUARDO, subject: reminder.subject }).type, "trial_reminder");
+});
+
+Deno.test("lembrete de confirmação: assunto pt e en classifica sem tag", () => {
+  for (const lang of ["pt", "en"] as const) {
+    for (const type of ["confirm_reminder_1h", "confirm_reminder_24h"] as const) {
+      const { subject } = buildConfirmReminderEmail({ type, firstName: null, actionLink: "https://x.test/a", lang });
+      assertEquals(classifyEmail({ from: EDUARDO, subject }), { category: "ciclo_de_vida", type });
+    }
+  }
+});
+
+Deno.test("lembrete de confirmação: tags no catálogo", () => {
+  for (const type of ["confirm_reminder_1h", "confirm_reminder_24h"]) {
+    assertEquals(classifyEmail({ tags: { type }, from: "x <a@b.c>", subject: "x" }), { category: "ciclo_de_vida", type });
+  }
 });
