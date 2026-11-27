@@ -89,24 +89,21 @@ na memória). Use o mesmo layout, botão e rodapé do template em português.
 
 ### Assunto
 
-O campo Subject do Supabase é uma linha só e **não ramifica** como o corpo (achado do runbook do
-site em inglês, `docs/us-english-site-runbook.md`). O plano dizia "o mesmo vale para os
-assuntos"; isso não é possível. Duas opções:
+O assunto **ramifica** igual ao corpo: o template "Confirm signup" de produção já usa
+`{{ if eq (printf "%v" .Data.market) "us" }}Confirm your email{{ else }}...{{ end }}` no Subject.
+Use a mesma condição do corpo, com o assunto em português atual, sem alterar, no `else`:
 
-- **Assunto neutro nos dois idiomas** (a mesma abordagem do runbook do site): um americano que
-  recebe só português pode achar que é spam. **Isto muda a linha de assunto que todo usuário
-  brasileiro recebe hoje, então precisa da aprovação do dono antes do deploy.**
-- **Manter o assunto em português**: é a opção que preserva a saída atual em `pt`, ao custo de
-  a lacuna no assunto dos e-mails em inglês.
-
-Decisão a registrar no deploy.
-Sugestão de assuntos (confirme o assunto atual de cada template e preserve o texto em português):
-
-| Template | Assunto sugerido |
+| Template | Assunto em inglês |
 | --- | --- |
-| Reset password | `Reset your password / Redefina sua senha` |
-| Invite user | `You have been invited to Mesaas / Você foi convidado para o Mesaas` |
-| Magic link | `Your Mesaas sign-in link / Seu link de acesso ao Mesaas` |
+| Reset password | `Reset your password` |
+| Invite user | `You've been invited to Mesaas` |
+
+**Aplicado em 2026-11-26** (staging e prod) via Management API (`PATCH /v1/projects/<ref>/config/auth`,
+campos `mailer_subjects_recovery`, `mailer_templates_recovery_content`, `mailer_subjects_invite`,
+`mailer_templates_invite_content`), depois de conferir os quatro templates com o parser de templates
+do Go nos casos da verificação abaixo. O corpo em inglês é a tradução do HTML de produção em
+português, com o mesmo layout e o link de privacidade em `/en/privacy`. Magic link ficou como está
+(o padrão do Supabase, em inglês nos dois projetos e sem uso no produto).
 
 ### Corpo em inglês: Reset password
 
@@ -183,8 +180,7 @@ ramo `else` já é o texto antigo, então deixar o template novo no ar com funct
 seguro: sem `language` no metadata, o e-mail sai em português). O metadata `language` que já foi
 gravado nos usuários pode ficar.
 
-## Pendências a fechar na Tarefa 18
+## Pendências
 
-- Confirmar o assunto atual de cada template do painel e o texto em português de cada um (o
-  runbook não os reproduz de propósito: o `else` é a cópia literal do painel).
-- Registrar a decisão do assunto (neutro nos dois idiomas ou só português).
+Nenhuma do lado do Auth: os templates foram aplicados em staging e prod em 2026-11-26 (seção
+"Assunto" acima).
