@@ -83,3 +83,15 @@ describe('financeiro scopes (owner-only)', () => {
     expect(SCOPE_OPTIONS.map((s) => s.value)).toEqual(edge);
   });
 });
+
+describe('agenda scopes', () => {
+  it('offers agenda:read and agenda:write, not owner-only', () => {
+    for (const v of ['agenda:read', 'agenda:write']) {
+      expect(SCOPE_OPTIONS.find((s) => s.value === v)?.ownerOnly).toBe(false);
+    }
+  });
+  it('adds agenda:read to the preset but keeps agenda:write out', () => {
+    expect(AGENT_PRESET).toContain('agenda:read');
+    expect(AGENT_PRESET).not.toContain('agenda:write');
+  });
+});
