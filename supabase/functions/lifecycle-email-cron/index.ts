@@ -108,6 +108,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
       sendFounderSubscription: sendFounderSubscriptionNotice,
       // Read per run, like nurture. No Resend key (staging, local) = no sweep.
       confirmReminderEnabled: Boolean(Deno.env.get("RESEND_API_KEY")),
+      // GoTrue's error.message can quote the address and would land in cron_failures and the
+      // alert email, so only status/code travel. A magiclink for an address deleted between the
+      // candidate read and this call may create a new auth user (GoTrue behaviour); the id check
+      // in the handler stops the email. The window is seconds, accepted.
       generateConfirmLink: async (email, redirectTo) => {
         const { data, error } = await svc.auth.admin.generateLink({
           type: "magiclink",
@@ -116,7 +120,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
         });
         const link = data?.properties?.action_link;
         if (error || !link || !data?.user) {
-          throw new Error(`generateLink failed: ${error?.message ?? "no action_link"}`);
+          const detail = error
+            ? `status ${error.status ?? "?"}, code ${error.code ?? "?"}`
+            : "no action_link";
+          throw new Error(`generateLink failed (${detail})`);
         }
         return {
           actionLink: link,

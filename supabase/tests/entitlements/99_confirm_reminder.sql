@@ -135,6 +135,11 @@ begin;
     if exists (select 1 from get_confirm_reminder_candidates(v_t) c where c.user_id = u) then
       raise exception 'sso: nao deveria listar';
     end if;
+    u := et_confirm_fixture(interval '2 hours');
+    update auth.users set is_anonymous = true where id = u;
+    if exists (select 1 from get_confirm_reminder_candidates(v_t) c where c.user_id = u) then
+      raise exception 'anonimo: nao deveria listar';
+    end if;
   end $$;
 rollback;
 

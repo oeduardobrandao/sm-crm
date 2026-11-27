@@ -142,8 +142,10 @@ Vale para o e-mail original do Supabase também. pt/en pelo catálogo do CRM.
 
 ## Deploy
 
-Ordem: migration → `lifecycle-email-cron` (cron, `--no-verify-jwt`) → `resend-webhook` e
-`platform-admin` (empacotam `email-classify.ts`) → merge (o merge leva só o rótulo do Admin).
+Ordem: migration `20261213000001` → `resend-webhook` e `platform-admin` (empacotam
+`email-classify.ts`; `classifyEmail` só honra tags presentes no `EMAIL_TYPES` empacotado, então
+vão antes do cron) → `lifecycle-email-cron` (cron, `--no-verify-jwt`) → merge (o merge leva só o
+rótulo do Admin).
 Antes, em staging: migration + function e o teste manual do link (staging não tem
 `RESEND_API_KEY`, então o link é conferido gerando-o à mão com a service role num usuário de
 teste não confirmado). Portão de staging (bloqueia o merge), com um usuário de teste não confirmado e o link gerado à

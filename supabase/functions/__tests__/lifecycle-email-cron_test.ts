@@ -1314,6 +1314,20 @@ Deno.test("confirm reminder 1h claims, builds the link, sends and marks delivere
   assertEquals(db.lifecycleUpdates, [{ email_type: "confirm_reminder_1h", user_id: "u-c1" }]);
 });
 
+Deno.test("confirm reminder 24h sends the 24h subject, tag and key", async () => {
+  const db = makeFakeDb({
+    confirmCandidates: [{ ...CONFIRM_1H, email_type: "confirm_reminder_24h" }],
+  });
+  const { deps, confirmSent } = confirmHarness(db);
+  const result = await runLifecycleEmailCron(deps);
+  assertEquals(result.confirmRemindersSent, 1);
+  assertEquals(confirmSent.length, 1);
+  assertEquals(confirmSent[0].subject, "Sua conta no Mesaas está esperando por você");
+  assertEquals(confirmSent[0].type, "confirm_reminder_24h");
+  assertEquals(confirmSent[0].idempotencyKey, "confirm_reminder_24h/u-c1/1");
+  assertEquals(db.lifecycleUpdates, [{ email_type: "confirm_reminder_24h", user_id: "u-c1" }]);
+});
+
 Deno.test("confirm reminder: claim refused sends no link and no mail", async () => {
   const db = makeFakeDb({
     confirmCandidates: [CONFIRM_1H],
@@ -1383,6 +1397,12 @@ Deno.test("confirm reminder: candidates rpc error is recorded and other sweeps s
   const db = makeFakeDb({
     confirmRpcError: "boom",
     welcomeCandidates: [{ user_id: "u1", email: "ana@x.test", nome: "Ana" }],
+    thankCandidates: [{
+      workspace_id: "w1",
+      workspace_name: "Agencia X",
+      owner_email: "dono@x.test",
+      owner_nome: "Bruno Lima",
+    }],
   });
   const reports: CronReportDetail[] = [];
   const { deps, sent } = confirmHarness(db, {
@@ -1395,5 +1415,7 @@ Deno.test("confirm reminder: candidates rpc error is recorded and other sweeps s
   assertEquals(result.failed, 1);
   assert(reports[0].errors[0].error?.includes("confirm reminder candidates: boom"));
   assertEquals(result.welcomeSent, 1);
-  assertEquals(sent.length, 1);
+  assertEquals(result.thanksSent, 1);
+  assertEquals(sent.length, 2);
+  assert(sent.some((m) => m.kind === "thanks"));
 });
