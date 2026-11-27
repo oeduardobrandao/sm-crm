@@ -22,8 +22,9 @@ const TONE_BY_STATUS: Partial<Record<WorkflowPost['status'], TimelineTone>> = {
   falha_publicacao: 'failed',
 };
 
-function actorLabelFor(ev: PostStatusEvent): string {
-  if (ev.source === 'client') return i18n.t('postEditor:postTimeline.client');
+/** `personName`: the Hub person who signed the linked approval (client login), when there is one. */
+function actorLabelFor(ev: PostStatusEvent, personName?: string | null): string {
+  if (ev.source === 'client') return personName || i18n.t('postEditor:postTimeline.client');
   if (ev.source === 'system') return i18n.t('postEditor:postTimeline.system');
   return ev.actor_name ?? '—';
 }
@@ -97,10 +98,11 @@ export function buildPostTimeline(
   const approvalById = new Map(approvals.map((a) => [a.id, a]));
 
   for (const ev of events) {
-    const comment =
-      ev.post_approval_id != null
-        ? (approvalById.get(ev.post_approval_id)?.comentario ?? null)
-        : null;
+    // A client status change always comes from an approval row (record_client_approval*), and
+    // that row carries the person's name when the client was logged in on the Hub.
+    const approval =
+      ev.post_approval_id != null ? approvalById.get(ev.post_approval_id) : undefined;
+    const comment = approval?.comentario ?? null;
     nodes.push({
       key: `event-${ev.id}`,
       kind: 'status',
@@ -108,7 +110,7 @@ export function buildPostTimeline(
       // still comes from the canonical status underneath.
       label: ev.to_custom_nome ?? STATUS_LABELS[ev.to_status] ?? ev.to_status,
       at: ev.created_at,
-      actorLabel: actorLabelFor(ev),
+      actorLabel: actorLabelFor(ev, approval?.is_workspace_user ? null : approval?.hub_person_nome),
       comment,
       tone: TONE_BY_STATUS[ev.to_status] ?? 'neutral',
     });

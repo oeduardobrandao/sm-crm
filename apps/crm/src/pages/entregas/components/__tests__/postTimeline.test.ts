@@ -99,6 +99,25 @@ describe('buildPostTimeline', () => {
     expect(node.tone).toBe('correction');
     expect(node.comment).toBe('Ajuste o título');
   });
+
+  it('names the Hub person on a client status change, from the linked approval', () => {
+    const approvals = [
+      { id: 7, is_workspace_user: false, hub_person_nome: 'Marina Costa', comentario: null },
+      { id: 8, is_workspace_user: false, hub_person_nome: null, comentario: null },
+    ] as PostApproval[];
+    const [, named, anonymous, unlinked] = buildPostTimeline(
+      post,
+      [
+        ev({ id: 1, source: 'client', to_status: 'aprovado_cliente', post_approval_id: 7 }),
+        ev({ id: 2, source: 'client', to_status: 'correcao_cliente', post_approval_id: 8 }),
+        ev({ id: 3, source: 'client', to_status: 'aprovado_cliente', post_approval_id: null }),
+      ],
+      approvals,
+    );
+    expect(named.actorLabel).toBe('Marina Costa');
+    expect(anonymous.actorLabel).toBe('Cliente');
+    expect(unlinked.actorLabel).toBe('Cliente');
+  });
 });
 
 function pev(partial: Partial<PostProcessEvent>): PostProcessEvent {
