@@ -87,6 +87,12 @@ Deno.test("toWallClock: wall clock passes through unchanged", () => {
   assertEquals(toWallClock("2026-12-03T10:00", SP), "2026-12-03T10:00");
 });
 
+Deno.test("toWallClock: seconds without offset are local wall clock, truncated", () => {
+  assertEquals(toWallClock("2026-12-03T10:00:00", SP), "2026-12-03T10:00");
+  assertEquals(toWallClock("2026-12-03T10:00:00.000", SP), "2026-12-03T10:00");
+  assertThrows(() => toWallClock("2026-12-03T10:00:61", SP), McpInputError);
+});
+
 Deno.test("toWallClock: Z instant converts to the timezone", () => {
   assertEquals(toWallClock("2026-12-03T13:00:00Z", SP), "2026-12-03T10:00");
 });

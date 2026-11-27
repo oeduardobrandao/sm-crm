@@ -98,7 +98,7 @@ async function rpcAs(d: Deps, name: string, params: Record<string, unknown>): Pr
 
 // ---- tempo -------------------------------------------------------------------------------------
 
-const WALL_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
+const WALL_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?$/;
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const INSTANT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/i;
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -128,14 +128,16 @@ function wallParts(date: Date, tz: string): Record<string, number> {
   return p as Record<string, number>;
 }
 
-/** Hora local `YYYY-MM-DDTHH:MM` no fuso do evento. Um instante com `Z`/offset é convertido. */
+/** Hora local `YYYY-MM-DDTHH:MM` no fuso do evento. Segundos sem offset são truncados; um instante com `Z`/offset é convertido. */
 export function toWallClock(input: string, tz: string): string {
   const s = String(input ?? "").trim();
   const w = WALL_RE.exec(s);
   if (w) {
-    const [y, m, d, h, mi] = w.slice(1).map(Number);
-    if (!validCalendar(y, m, d) || h > 23 || mi > 59) throw new McpInputError(WALL_CLOCK_COPY);
-    return s;
+    const [y, m, d, h, mi] = w.slice(1, 6).map(Number);
+    const sec = w[6] === undefined ? 0 : Number(w[6]);
+    if (!validCalendar(y, m, d) || h > 23 || mi > 59 || sec > 59) throw new McpInputError(WALL_CLOCK_COPY);
+    // Segundos sem offset são hora local; o banco trunca no minuto de qualquer jeito.
+    return s.slice(0, 16);
   }
   if (INSTANT_RE.test(s)) {
     const t = new Date(s);
