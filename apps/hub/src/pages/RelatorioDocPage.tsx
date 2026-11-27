@@ -6,6 +6,7 @@ import { ArrowLeft } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { BlockRenderer } from '@mesaas/report-blocks/BlockRenderer';
 import type { ReportDocSnapshot, ReportLayout } from '@mesaas/report-blocks/types';
+import { normalizeReportLang } from '@mesaas/report-blocks/i18n';
 import '@mesaas/report-blocks/styles.css';
 import { useHub } from '../HubContext';
 import { compactHubToken } from '../lib/hubLinks';
@@ -13,7 +14,10 @@ import { fetchReportDoc } from '../api';
 import { ReportSkeleton } from '../components/Skeleton';
 
 export function RelatorioDocPage() {
-  const { token } = useHub();
+  const { token, bootstrap } = useHub();
+  // Workspace language, as in the PDF: the AI narrative and period label come in it too, so the
+  // document stays in one language even when the client switched the portal UI.
+  const reportLang = normalizeReportLang(bootstrap.language);
   const { workspace, docId } = useParams<{ workspace: string; token: string; docId: string }>();
   const navigate = useNavigate();
   const base = `/${workspace}/hub/${compactHubToken(token)}`;
@@ -51,6 +55,7 @@ export function RelatorioDocPage() {
             layout={doc.layout as ReportLayout}
             snapshot={doc.data_snapshot as ReportDocSnapshot}
             mode="view"
+            lang={reportLang}
           />
         </div>
       )}

@@ -42,6 +42,7 @@ import { useIsTabletShell } from '@/lib/phoneShell';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
 import { ReportPhoneView } from './phone/ReportPhoneView';
+import { WorkspaceReportLang } from './WorkspaceReportLang';
 
 const SETTINGS_PATH = '/configuracao/relatorios';
 // Modelo vale para qualquer cliente: "Adicionar seção" oferece todas as
@@ -288,7 +289,7 @@ function ModeloEditorBody({ template }: { template: ReportTemplateRow }) {
   );
 }
 
-export default function ModeloEditorPage() {
+function ModeloEditorPageContent() {
   const { t } = useTranslation('reportEditor');
   // Arquivo solto fora das áreas de soltar não pode descarregar o editor.
   usePreventStrayFileDrop();
@@ -340,4 +341,13 @@ export default function ModeloEditorPage() {
   }
 
   return <ModeloEditorBody key={template.id} template={template} />;
+}
+
+/** Blocos no idioma do workspace, o mesmo do PDF e do Hub. */
+export default function ModeloEditorPage() {
+  return (
+    <WorkspaceReportLang>
+      <ModeloEditorPageContent />
+    </WorkspaceReportLang>
+  );
 }

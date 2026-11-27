@@ -1,12 +1,7 @@
 import type { BlockProps } from '../BlockRenderer';
 import type { SnapshotTopPost } from '../types';
 import { fmtCount } from '../format';
-
-const TYPE_LABELS: Record<SnapshotTopPost['type'], string> = {
-  reel: 'Reel',
-  carousel: 'Carrossel',
-  image: 'Imagem',
-};
+import { useReportLang, reportText, type ReportLang } from '../i18n';
 const DEFAULT_COUNT = 6;
 
 // Contagem PAR em bloco de largura cheia: linhas equilibradas (6 -> 2x3,
@@ -18,18 +13,23 @@ export function balancedColumns(n: number): number | null {
   return null;
 }
 
-function metricsLine(post: SnapshotTopPost, tiktok: boolean): string {
-  const tail = `♥ ${fmtCount(post.likes)} · Com. ${fmtCount(post.comments)}`;
+function metricsLine(post: SnapshotTopPost, tiktok: boolean, lang: ReportLang): string {
+  const t = reportText(lang).topPosts;
+  const n = (v: number | undefined) => fmtCount(v as number, lang);
+  const tail = `♥ ${n(post.likes)} · ${t.comments} ${n(post.comments)}`;
   // TikTok: sem alcance nem salvamentos na Display API; compartilhamentos no lugar.
-  if (tiktok) return `Vis. ${fmtCount(post.views)} · ${tail} · Comp. ${fmtCount(post.shares)}`;
+  if (tiktok) return `${t.views} ${n(post.views)} · ${tail} · ${t.shares} ${n(post.shares)}`;
   return typeof post.views === 'number'
-    ? `Vis. ${fmtCount(post.views)} · ${tail} · Salv. ${fmtCount(post.saves)}`
-    : `Alc. ${fmtCount(post.reach)} · ${tail} · Salv. ${fmtCount(post.saves)}`;
+    ? `${t.views} ${n(post.views)} · ${tail} · ${t.saves} ${n(post.saves)}`
+    : `${t.reach} ${n(post.reach)} · ${tail} · ${t.saves} ${n(post.saves)}`;
 }
 
 export function TopPostsBlock({ block, snapshot, platform }: BlockProps) {
   const tiktok = platform === 'tiktok';
-  const typeLabel = (post: SnapshotTopPost) => (tiktok ? 'Vídeo' : TYPE_LABELS[post.type]);
+  const lang = useReportLang();
+  const text = reportText(lang);
+  const typeLabel = (post: SnapshotTopPost) =>
+    tiktok ? text.topPosts.video : text.topPosts.types[post.type];
   const raw = block.config?.count;
   const count = typeof raw === 'number' && raw >= 1 && raw <= 12 ? raw : DEFAULT_COUNT;
   const posts = snapshot.top_posts.slice(0, count);
@@ -72,7 +72,7 @@ export function TopPostsBlock({ block, snapshot, platform }: BlockProps) {
           <div style={{ padding: '0.6rem' }}>
             <p
               style={{ margin: 0, fontSize: '0.7rem', opacity: 0.6 }}
-            >{`${i + 1}º · ${typeLabel(post)}`}</p>
+            >{`${text.ordinal(i + 1)} · ${typeLabel(post)}`}</p>
             <p
               style={{
                 margin: '0.2rem 0 0',
@@ -87,7 +87,7 @@ export function TopPostsBlock({ block, snapshot, platform }: BlockProps) {
               {post.caption_preview}
             </p>
             <p style={{ margin: '0.4rem 0 0', fontSize: '0.72rem', opacity: 0.75 }}>
-              {metricsLine(post, tiktok)}
+              {metricsLine(post, tiktok, lang)}
             </p>
           </div>
         </article>

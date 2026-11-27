@@ -1,6 +1,8 @@
 import type { BlockProps } from '../BlockRenderer';
+import { useReportText } from '../i18n';
 
 export function AudienceAgeBlock({ snapshot }: BlockProps) {
+  const title = useReportText().audience.age;
   const rows = snapshot.audience?.top_age_ranges ?? [];
   if (rows.length === 0) return null;
   const max = Math.max(...rows.map((r) => r.pct), 1);
@@ -10,7 +12,7 @@ export function AudienceAgeBlock({ snapshot }: BlockProps) {
         className="rb-card-title"
         style={{ margin: '0 0 0.5rem', fontSize: '0.85rem', fontWeight: 600 }}
       >
-        Faixa etária
+        {title}
       </p>
       {rows.map((row) => (
         <div

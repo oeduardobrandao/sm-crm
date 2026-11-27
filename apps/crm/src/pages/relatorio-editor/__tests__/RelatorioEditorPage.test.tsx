@@ -767,3 +767,26 @@ describe('RelatorioEditorPage: seções', () => {
     expect(cellIdsIn(tt).length).toBeGreaterThanOrEqual(8);
   });
 });
+
+describe('RelatorioEditorPage: idioma dos blocos', () => {
+  it('blocos no idioma do workspace (currentWorkspace), não no da interface', async () => {
+    getReportDocMock.mockResolvedValue(doc());
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    // Sem refetch no mount: o supabase de teste não tem workspace e zeraria o idioma.
+    qc.setQueryDefaults(['currentWorkspace'], { staleTime: Infinity });
+    qc.setQueryData(['currentWorkspace'], { id: 'w1', name: 'W', logo_url: null, language: 'en' });
+    const { container } = renderPage(qc);
+    expect(await screen.findByText('Cumulative reach')).toBeInTheDocument();
+    expect(container.textContent).toContain('45,200');
+    expect(container.textContent).not.toContain('Alcance acumulado');
+  });
+
+  it('sem idioma do workspace carregado, blocos em português', async () => {
+    getReportDocMock.mockResolvedValue(doc());
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryDefaults(['currentWorkspace'], { staleTime: Infinity });
+    qc.setQueryData(['currentWorkspace'], { id: 'w1', name: 'W', logo_url: null, language: 'pt' });
+    renderPage(qc);
+    expect(await screen.findByText('Alcance acumulado')).toBeInTheDocument();
+  });
+});

@@ -18,9 +18,10 @@ import { useSampleSnapshot } from './useSampleSnapshot';
 import { withAiSampleText } from './templateOps';
 import { PhoneNavBar } from '@/components/mobile/PhoneNavBar';
 import { ReportPhoneView } from './phone/ReportPhoneView';
+import { WorkspaceReportLang } from './WorkspaceReportLang';
 
 const SETTINGS_PATH = '/configuracao/relatorios';
-export default function ModeloPadraoPage() {
+function ModeloPadraoPageContent() {
   const { t } = useTranslation('reportEditor');
   const systemName = t('template.systemName');
   // Tablet (shell do celular a partir de 768x600): a prévia de desktop dentro do shell.
@@ -142,5 +143,14 @@ export default function ModeloPadraoPage() {
         <BlockRenderer layout={previewLayout} snapshot={snapshot} mode="view" />
       </div>
     </div>
+  );
+}
+
+/** Blocos no idioma do workspace, o mesmo do PDF e do Hub. */
+export default function ModeloPadraoPage() {
+  return (
+    <WorkspaceReportLang>
+      <ModeloPadraoPageContent />
+    </WorkspaceReportLang>
   );
 }

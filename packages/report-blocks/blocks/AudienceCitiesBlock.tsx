@@ -1,6 +1,8 @@
 import type { BlockProps } from '../BlockRenderer';
+import { useReportText } from '../i18n';
 
 export function AudienceCitiesBlock({ snapshot }: BlockProps) {
+  const title = useReportText().audience.cities;
   const rows = snapshot.audience?.top_cities ?? [];
   if (rows.length === 0) return null;
   return (
@@ -9,7 +11,7 @@ export function AudienceCitiesBlock({ snapshot }: BlockProps) {
         className="rb-card-title"
         style={{ margin: '0 0 0.5rem', fontSize: '0.85rem', fontWeight: 600 }}
       >
-        Cidades
+        {title}
       </p>
       {rows.map((row) => (
         <div

@@ -2,17 +2,13 @@ import type { BlockProps } from '../../BlockRenderer';
 import type { GbpSurface } from '../../types';
 import { fmtCount, fmtPct } from '../../format';
 import { GbpCardHeader } from './GbpCardHeader';
-import { fmtWindowStamp, googleWithData, plural } from './format';
-
-const SURFACE_LABELS: Record<GbpSurface, string> = {
-  mobile_search: 'Pesquisa Google no celular',
-  mobile_maps: 'Google Maps no celular',
-  desktop_search: 'Pesquisa Google no computador',
-  desktop_maps: 'Google Maps no computador',
-};
+import { fmtWindowStamp, googleWithData } from './format';
+import { useReportLang, reportText } from '../../i18n';
 
 /** Onde viram o perfil: as quatro superfícies do Google, da maior para a menor. */
 export function GbpSurfacesBlock({ snapshot }: BlockProps) {
+  const lang = useReportLang();
+  const text = reportText(lang).gbp.surfaces;
   const google = googleWithData(snapshot);
   if (!google) return null;
   const total = google.surfaces.reduce((sum, s) => sum + s.value, 0);
@@ -27,16 +23,16 @@ export function GbpSurfacesBlock({ snapshot }: BlockProps) {
   return (
     <div className="rb-gbp-card rb-card rb-card--pad">
       <GbpCardHeader
-        title="Onde viram o perfil"
-        stamp={fmtWindowStamp(google.window, snapshot.period.endExclusive)}
-        sub={`${fmtCount(total)} ${plural(total, 'visualização', 'visualizações')} no período`}
+        title={text.title}
+        stamp={fmtWindowStamp(google.window, snapshot.period.endExclusive, lang)}
+        sub={text.sub(fmtCount(total, lang), total)}
       />
       <div className="rb-gbp-rows">
         {rows.map((row) => (
           <div key={row.surface} className="rb-gbp-surface">
             <div className="rb-gbp-row-line">
-              <span>{SURFACE_LABELS[row.surface]}</span>
-              <span className="rb-gbp-num">{`${fmtCount(row.value)} · ${fmtPct(row.pct)}`}</span>
+              <span>{text.labels[row.surface]}</span>
+              <span className="rb-gbp-num">{`${fmtCount(row.value, lang)} · ${fmtPct(row.pct, lang)}`}</span>
             </div>
             <div className="rb-gbp-track">
               <div className="rb-gbp-fill" style={{ width: `${(row.value / max) * 100}%` }} />
@@ -44,9 +40,7 @@ export function GbpSurfacesBlock({ snapshot }: BlockProps) {
           </div>
         ))}
       </div>
-      <p className="rb-gbp-foot">
-        {`${mobile}% pelo celular. Maps responde por ${maps}% das visualizações.`}
-      </p>
+      <p className="rb-gbp-foot">{text.foot(mobile, maps)}</p>
     </div>
   );
 }

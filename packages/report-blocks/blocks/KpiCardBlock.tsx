@@ -1,8 +1,9 @@
 import type { BlockProps } from '../BlockRenderer';
 import type { KpiEntry, ReportKpiId } from '../types';
 import { KPI_LABELS_PT } from '../types';
-import { TIKTOK_KPI_LABELS_PT, TIKTOK_KPI_TOOLTIPS_PT, tiktokKpiId } from '../platform';
-import { deltaPct, fmtCount, fmtPct, fmtPeriodStamp } from '../format';
+import { tiktokKpiId } from '../platform';
+import { deltaPct, fmtCount, fmtPct, fmtPeriodStamp, fmtSignedPct } from '../format';
+import { useReportLang, reportText, type ReportLang } from '../i18n';
 
 // Fonte única em _shared/report-docs/kpis.ts (o bloco de metas da IA usa o
 // MESMO mapa); reexport mantém os consumidores existentes.
@@ -13,31 +14,31 @@ export const KPI_LABELS: Record<ReportKpiId, string> = KPI_LABELS_PT;
 // `engagement_rate` porque a fórmula (contas engajadas ÷ alcance acumulado)
 // não é óbvia olhando só o número. title = enhancement only -- o texto
 // visível (label + estampa de período) já carrega a informação essencial.
-const KPI_TOOLTIPS: Partial<Record<ReportKpiId, string>> = {
-  reach:
-    'Soma do alcance diário do mês. O app do Instagram mostra visitantes únicos, um número menor.',
-  engagement_rate: 'Contas engajadas ÷ alcance acumulado · análise Mesaas',
-};
+// Textos por idioma em ../i18n.ts (kpi.tooltips).
 
 function kpiIdFromBlockType(type: string): ReportKpiId {
   return type.replace(/^kpi_/, '') as ReportKpiId;
 }
 
-function fmtValue(entry: KpiEntry): string {
-  return entry.unit === 'pct' ? fmtPct(entry.value as number) : fmtCount(entry.value as number);
+function fmtValue(entry: KpiEntry, lang: ReportLang): string {
+  return entry.unit === 'pct'
+    ? fmtPct(entry.value as number, lang)
+    : fmtCount(entry.value as number, lang);
 }
 
 export function KpiCardBlock({ block, snapshot, platform }: BlockProps) {
+  const lang = useReportLang();
+  const text = reportText(lang).kpi;
   const id = kpiIdFromBlockType(block.type);
   const entry = snapshot.kpis[id];
   if (!entry || entry.value === null) return null;
   // Visão TikTok (tiktokBlockView): kpis é o registro TikTok, o id é um TikTokKpiId.
   const tiktok = platform === 'tiktok';
-  const label = tiktok ? TIKTOK_KPI_LABELS_PT[tiktokKpiId(block.type)] : KPI_LABELS[id];
-  const tooltip = tiktok ? TIKTOK_KPI_TOOLTIPS_PT[tiktokKpiId(block.type)] : KPI_TOOLTIPS[id];
+  const label = tiktok ? text.tiktokLabels[tiktokKpiId(block.type)] : text.labels[id];
+  const tooltip = tiktok ? text.tiktokTooltips[tiktokKpiId(block.type)] : text.tooltips[id];
 
   const delta = entry.prev !== null ? deltaPct(entry.value, entry.prev) : null;
-  const periodStamp = fmtPeriodStamp(snapshot.period);
+  const periodStamp = fmtPeriodStamp(snapshot.period, lang);
   return (
     <div className="rb-kpi rb-card rb-card--pad" title={tooltip}>
       {periodStamp !== null ? (
@@ -49,7 +50,9 @@ export function KpiCardBlock({ block, snapshot, platform }: BlockProps) {
         </p>
       ) : null}
       <p style={{ margin: 0, fontSize: '0.78rem', opacity: 0.7 }}>{label}</p>
-      <p style={{ margin: '0.2rem 0 0', fontSize: '1.5rem', fontWeight: 700 }}>{fmtValue(entry)}</p>
+      <p style={{ margin: '0.2rem 0 0', fontSize: '1.5rem', fontWeight: 700 }}>
+        {fmtValue(entry, lang)}
+      </p>
       {delta !== null ? (
         <p
           className="rb-kpi-delta"
@@ -60,7 +63,7 @@ export function KpiCardBlock({ block, snapshot, platform }: BlockProps) {
             color: delta >= 0 ? '#0a7d43' : '#b3261e',
           }}
         >
-          {`${delta >= 0 ? '+' : '-'}${Math.abs(delta).toFixed(1).replace('.', ',')}%`}
+          {fmtSignedPct(delta, lang)}
         </p>
       ) : null}
       {entry.prev !== null ? (
@@ -68,7 +71,7 @@ export function KpiCardBlock({ block, snapshot, platform }: BlockProps) {
           className="rb-kpi-prev"
           style={{ margin: '0.15rem 0 0', fontSize: '0.72rem', opacity: 0.6 }}
         >
-          {`Anterior: ${fmtValue({ ...entry, value: entry.prev })}`}
+          {`${reportText(lang).previous}: ${fmtValue({ ...entry, value: entry.prev }, lang)}`}
         </p>
       ) : null}
     </div>

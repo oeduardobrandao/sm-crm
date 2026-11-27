@@ -3,7 +3,7 @@
 // acima do section_header, que dentro dela vira subtítulo. Sem data-block-id: não é bloco,
 // então as regras de célula do styles.css (colapso :empty, flex) não o pegam.
 import type { ReportDocSnapshot, ReportSection } from '../types';
-import { PLATFORM_NAMES } from '../platform';
+import { useReportText } from '../i18n';
 import { PlatformIcon } from '../PlatformIcon';
 
 export function PlatformSectionHeading({
@@ -13,12 +13,13 @@ export function PlatformSectionHeading({
   section: ReportSection;
   snapshot: ReportDocSnapshot;
 }) {
+  const names = useReportText().platformNames;
   if (section.kind === 'general') return null;
   const platform = section.kind;
   const title =
     typeof section.marker.config?.title === 'string' && section.marker.config.title.trim()
       ? section.marker.config.title
-      : PLATFORM_NAMES[platform];
+      : names[platform];
   // Handle da conta da plataforma; TikTok sem dado no snapshot fica sem (nunca o do Instagram).
   // Google Meu Negócio não tem @.
   const handle =

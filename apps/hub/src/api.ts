@@ -546,12 +546,17 @@ export interface HubReportDoc {
   period_start: string;
 }
 
+/** Print payload: also carries the workspace language the PDF renders in (hub-report-docs). */
+export interface HubPrintReportDoc extends HubReportDoc {
+  language?: 'pt' | 'en';
+}
+
 export function fetchReportDoc(token: string, docId: string) {
   return get<{ doc: HubReportDoc }>(`hub-report-docs/doc/${docId}`, { token });
 }
 
 export function fetchPrintReportDoc(docId: string, pt: string) {
-  return get<{ doc: HubReportDoc }>(`hub-report-docs/print-doc/${docId}`, { pt });
+  return get<{ doc: HubPrintReportDoc }>(`hub-report-docs/print-doc/${docId}`, { pt });
 }
 
 export function fetchMensagens(token: string, cursor?: MensagensCursor) {
