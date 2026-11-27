@@ -12,7 +12,9 @@ const {
   resolveInlineImageUrlsMock,
   captureEventMock,
   navigateMock,
+  getEffectivePlanWithSourceMock,
 } = vi.hoisted(() => ({
+  getEffectivePlanWithSourceMock: vi.fn(),
   useAuthMock: vi.fn(),
   useGuideMock: vi.fn(),
   getActivePopupsMock: vi.fn(),
@@ -32,6 +34,9 @@ vi.mock('../../../store/popups', () => ({
 }));
 vi.mock('../../../services/inlineImage', () => ({
   resolveInlineImageUrls: resolveInlineImageUrlsMock,
+}));
+vi.mock('../../../services/billing', () => ({
+  getEffectivePlanWithSource: getEffectivePlanWithSourceMock,
 }));
 vi.mock('../../../lib/analytics', () => ({ captureEvent: captureEventMock }));
 vi.mock('react-router-dom', async (importOriginal) => ({
@@ -79,6 +84,54 @@ describe('GlobalPopupHost', () => {
     getMyPopupInteractionsMock.mockResolvedValue([]);
     recordPopupInteractionMock.mockResolvedValue(undefined);
     resolveInlineImageUrlsMock.mockResolvedValue({ 'contas/x/files/a.png': 'https://img/a.png' });
+    getEffectivePlanWithSourceMock.mockResolvedValue({
+      planId: 'pro',
+      planSource: 'stripe',
+      reverseTrial: null,
+    });
+  });
+
+  it('conta criada há menos de 3 dias não vê popup de anúncio', async () => {
+    useAuthMock.mockReturnValue({
+      loading: false,
+      user: { id: 'u1', created_at: new Date(Date.now() - 60_000).toISOString() },
+    });
+    renderHost();
+    await waitFor(() => expect(getEffectivePlanWithSourceMock).toHaveBeenCalled());
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(recordPopupInteractionMock).not.toHaveBeenCalled();
+  });
+
+  it('teste reverso não vê popup direcionado por plano', async () => {
+    useAuthMock.mockReturnValue({
+      loading: false,
+      user: { id: 'u1', created_at: '2026-01-01T00:00:00Z' },
+    });
+    getEffectivePlanWithSourceMock.mockResolvedValue({
+      planId: 'pro',
+      planSource: 'trial',
+      reverseTrial: { endsAt: '2099-01-01T00:00:00Z' },
+    });
+    getActivePopupsMock.mockResolvedValue([{ ...popup, target_mode: 'plan' }]);
+    renderHost();
+    await waitFor(() => expect(getEffectivePlanWithSourceMock).toHaveBeenCalled());
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('conta antiga paga continua vendo o popup', async () => {
+    useAuthMock.mockReturnValue({
+      loading: false,
+      user: { id: 'u1', created_at: '2026-01-01T00:00:00Z' },
+    });
+    getActivePopupsMock.mockResolvedValue([{ ...popup, target_mode: 'plan' }]);
+    renderHost();
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
   });
 
   it('abre o popup elegível, resolve a imagem, grava seen e captura popup_shown', async () => {

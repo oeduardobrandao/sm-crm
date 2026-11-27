@@ -34,6 +34,37 @@ export function isHiddenToday(
   );
 }
 
+/** Dias em que uma conta nova não vê popup de anúncio: o primeiro contato é o produto. */
+export const NEW_ACCOUNT_GRACE_MS = 3 * 24 * 60 * 60 * 1000;
+
+export interface PopupAudience {
+  /** `created_at` do usuário logado (auth). Ausente ou inválido = conta antiga. */
+  accountCreatedAt?: string | null;
+  /** Workspace no teste reverso (`plan_source = 'trial'`). */
+  reverseTrial?: boolean;
+}
+
+/**
+ * Popups de anúncio são para quem já usa o produto. Uma conta com menos de 3 dias não vê
+ * nenhum, e o teste reverso (que resolve como Pro) não vê os direcionados por plano, que
+ * falam com quem paga ("o valor da sua assinatura não muda"). Popup com gatilho de cobrança
+ * é contextual e passa sempre.
+ */
+export function filterForAudience(
+  popups: GlobalPopup[],
+  audience: PopupAudience,
+  now: Date = new Date(),
+): GlobalPopup[] {
+  const created = audience.accountCreatedAt ? Date.parse(audience.accountCreatedAt) : NaN;
+  const isNewAccount = Number.isFinite(created) && now.getTime() - created < NEW_ACCOUNT_GRACE_MS;
+  return popups.filter((p) => {
+    if (p.trigger) return true;
+    if (isNewAccount) return false;
+    if (audience.reverseTrial && p.target_mode === 'plan') return false;
+    return true;
+  });
+}
+
 export function pickPopup(
   popups: GlobalPopup[],
   interactions: PopupInteraction[],
