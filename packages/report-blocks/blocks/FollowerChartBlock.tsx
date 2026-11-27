@@ -1,20 +1,21 @@
 import type { BlockProps } from '../BlockRenderer';
 import { fmtCount } from '../format';
+import { fmtDayShort } from './gbp/format';
+import { useReportLang, reportText } from '../i18n';
 
 const W = 640;
 const H = 180;
 const PAD = 12;
 
-// follower_history.date é TEXT YYYY-MM-DD; split evita o pisão de timezone do
-// Date.parse (um new Date('2026-07-01') em UTC-3 imprimiria 30/06).
-function fmtDay(date: string): string {
-  const [, m, d] = date.split('-');
-  return m && d ? `${d}/${m}` : date;
-}
+// follower_history.date é TEXT YYYY-MM-DD; fmtDayShort usa split, o que evita o pisão de
+// timezone do Date.parse (um new Date('2026-07-01') em UTC-3 imprimiria 30/06).
 
 export function FollowerChartBlock({ snapshot }: BlockProps) {
+  const lang = useReportLang();
+  const title = reportText(lang).followers.title;
   const points = snapshot.follower_trend;
   if (points.length === 0) return null;
+  const fmtDay = (date: string) => fmtDayShort(date, lang);
 
   const counts = points.map((p) => p.count);
   const min = Math.min(...counts);
@@ -31,13 +32,13 @@ export function FollowerChartBlock({ snapshot }: BlockProps) {
         className="rb-card-title"
         style={{ margin: '0 0 0.5rem', fontSize: '0.85rem', fontWeight: 600 }}
       >
-        Evolução de seguidores
+        {title}
       </p>
       <svg
         viewBox={`0 0 ${W} ${H}`}
         style={{ width: '100%', height: 'auto' }}
         role="img"
-        aria-label="Evolução de seguidores"
+        aria-label={title}
       >
         <polyline
           points={coords}
@@ -56,8 +57,8 @@ export function FollowerChartBlock({ snapshot }: BlockProps) {
           opacity: 0.7,
         }}
       >
-        <span>{fmtCount(points[0].count)}</span>
-        <span>{fmtCount(points[points.length - 1].count)}</span>
+        <span>{fmtCount(points[0].count, lang)}</span>
+        <span>{fmtCount(points[points.length - 1].count, lang)}</span>
       </div>
       <div
         className="rb-chart-dates"

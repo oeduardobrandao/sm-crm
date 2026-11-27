@@ -2,6 +2,7 @@ import type { BlockProps } from '../../BlockRenderer';
 import { fmtCount } from '../../format';
 import { GbpCardHeader } from './GbpCardHeader';
 import { fmtDayShort, fmtWindowStamp, googleWithData } from './format';
+import { useReportLang, reportText } from '../../i18n';
 
 const W = 640;
 const H = 170;
@@ -9,14 +10,16 @@ const PAD = 12;
 
 // Mesmas cores da aba GMN (GbpActionsChart): legíveis em fundo claro e escuro e na impressão.
 const SERIES = [
-  { field: 'calls', label: 'Ligações', color: '#2563eb' },
-  { field: 'directions', label: 'Rotas', color: '#d97706' },
-  { field: 'websiteClicks', label: 'Site', color: '#16a34a' },
-  { field: 'messages', label: 'Mensagens', color: '#7c3aed' },
+  { field: 'calls', color: '#2563eb' },
+  { field: 'directions', color: '#d97706' },
+  { field: 'websiteClicks', color: '#16a34a' },
+  { field: 'messages', color: '#7c3aed' },
 ] as const;
 
 /** Ações por dia: barras empilhadas de ligações, rotas, site e mensagens. */
 export function GbpActionsChartBlock({ snapshot }: BlockProps) {
+  const lang = useReportLang();
+  const text = reportText(lang).gbp.actions;
   const google = googleWithData(snapshot);
   if (!google) return null;
   const days = google.daily;
@@ -33,15 +36,15 @@ export function GbpActionsChartBlock({ snapshot }: BlockProps) {
   return (
     <div className="rb-gbp-card rb-card rb-card--pad">
       <GbpCardHeader
-        title="Ações por dia"
-        stamp={fmtWindowStamp(google.window, snapshot.period.endExclusive)}
-        sub="O que as pessoas fizeram depois de ver o perfil"
+        title={text.title}
+        stamp={fmtWindowStamp(google.window, snapshot.period.endExclusive, lang)}
+        sub={text.sub}
       />
       <svg
         viewBox={`0 0 ${W} ${H}`}
         style={{ width: '100%', height: 'auto' }}
         role="img"
-        aria-label="Gráfico de barras empilhadas: ligações, rotas, cliques no site e mensagens por dia"
+        aria-label={text.aria}
       >
         {days.map((d, i) => {
           const x = PAD + i * slot + (slot - barW) / 2;
@@ -68,15 +71,15 @@ export function GbpActionsChartBlock({ snapshot }: BlockProps) {
         })}
       </svg>
       <div className="rb-gbp-axis">
-        <span>{fmtDayShort(days[0].date)}</span>
-        {days.length > 1 ? <span>{fmtDayShort(days[days.length - 1].date)}</span> : null}
+        <span>{fmtDayShort(days[0].date, lang)}</span>
+        {days.length > 1 ? <span>{fmtDayShort(days[days.length - 1].date, lang)}</span> : null}
       </div>
       <ul className="rb-gbp-legend">
         {SERIES.map((s, i) => (
           <li key={s.field}>
             <span className="rb-gbp-swatch" style={{ background: s.color }} aria-hidden="true" />
-            <span>{s.label}</span>
-            <span className="rb-gbp-num">{fmtCount(totals[i])}</span>
+            <span>{text.series[s.field]}</span>
+            <span className="rb-gbp-num">{fmtCount(totals[i], lang)}</span>
           </li>
         ))}
       </ul>

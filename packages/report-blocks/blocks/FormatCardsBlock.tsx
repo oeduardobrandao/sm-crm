@@ -1,11 +1,14 @@
 import type { BlockProps } from '../BlockRenderer';
 import { fmtCount } from '../format';
+import { useReportLang, reportText } from '../i18n';
 
-const FORMAT_LABELS = { reels: 'Reels', carousels: 'Carrosséis', images: 'Imagens' } as const;
-type FormatKey = keyof typeof FORMAT_LABELS;
+const FORMAT_KEYS = ['reels', 'carousels', 'images'] as const;
+type FormatKey = (typeof FORMAT_KEYS)[number];
 
 export function FormatCardsBlock({ snapshot }: BlockProps) {
-  const entries = (Object.keys(FORMAT_LABELS) as FormatKey[])
+  const lang = useReportLang();
+  const text = reportText(lang).formats;
+  const entries = [...FORMAT_KEYS]
     .map((key) => ({ key, data: snapshot.content_breakdown[key] }))
     .filter((e): e is { key: FormatKey; data: NonNullable<typeof e.data> } =>
       Boolean(e.data && e.data.count > 0),
@@ -30,7 +33,7 @@ export function FormatCardsBlock({ snapshot }: BlockProps) {
       {entries.map(({ key, data }) => (
         <div key={key} className="rb-card rb-card--pad">
           <p className="rb-card-title" style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600 }}>
-            {FORMAT_LABELS[key]}
+            {text.labels[key]}
             {key === leader.key ? (
               <span
                 style={{
@@ -42,14 +45,14 @@ export function FormatCardsBlock({ snapshot }: BlockProps) {
                   padding: '0.1rem 0.5rem',
                 }}
               >
-                Formato líder
+                {text.leader}
               </span>
             ) : null}
           </p>
           <p style={{ margin: '0.35rem 0 0', fontSize: '0.78rem', opacity: 0.75 }}>
             {hasViews
-              ? `${fmtCount(data.count)} publicações · média de ${fmtCount(data.avg_views)} visualizações`
-              : `${fmtCount(data.count)} publicações · alcance médio ${fmtCount(data.avg_reach)}`}
+              ? text.withViews(fmtCount(data.count, lang), fmtCount(data.avg_views, lang))
+              : text.withReach(fmtCount(data.count, lang), fmtCount(data.avg_reach, lang))}
           </p>
         </div>
       ))}

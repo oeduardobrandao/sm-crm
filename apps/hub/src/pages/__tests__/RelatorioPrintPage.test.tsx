@@ -9,6 +9,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { makeSnapshotFixture } from '@mesaas/report-blocks/fixtures';
 import type { ReportLayout } from '@mesaas/report-blocks/types';
+import { LANGUAGE_EXPLICIT_KEY, i18n } from '@mesaas/i18n';
 
 vi.mock('../../api', () => ({ fetchPrintReportDoc: vi.fn() }));
 
@@ -43,8 +44,11 @@ beforeEach(() => {
   delete (window as { __REPORT_READY?: boolean }).__REPORT_READY;
 });
 
-afterEach(() => {
+afterEach(async () => {
+  vi.restoreAllMocks();
   vi.clearAllMocks();
+  await i18n.changeLanguage('pt');
+  document.documentElement.lang = '';
   focusManager.setFocused(undefined);
   onlineManager.setOnline(true);
 });
@@ -179,6 +183,85 @@ describe('RelatorioPrintPage', () => {
     });
     await waitFor(() => {
       expect(container.querySelector('.rb-grid.rb-mode-print')).not.toBeNull();
+    });
+  });
+  describe('document language', () => {
+    const kpiLayout: ReportLayout = {
+      version: 1,
+      blocks: [
+        { id: 'b1', type: 'cover', size: 'full' },
+        { id: 'b2', type: 'kpi_reach', size: 'third' },
+      ],
+    };
+    const docWith = (language?: unknown) => ({
+      doc: {
+        id: 'doc-1',
+        title: 'Report for July 2026',
+        layout: kpiLayout,
+        data_snapshot: makeSnapshotFixture(),
+        period_start: '2026-07-01',
+        ...(language === undefined ? {} : { language }),
+      },
+    });
+
+    it('renders an en document in English, with en-US numbers and <html lang="en">, without saving the choice', async () => {
+      localStorage.removeItem(LANGUAGE_EXPLICIT_KEY);
+      mockedFetchPrintReportDoc.mockResolvedValue(docWith('en') as never);
+
+      const { container } = renderPrintPage();
+
+      await waitFor(() => {
+        expect(window.__REPORT_READY).toBe(true);
+      });
+      const text = container.textContent ?? '';
+      expect(text).toContain('Cumulative reach');
+      expect(text).toContain('45,200');
+      expect(text).toContain('Monthly report');
+      expect(text).not.toContain('Alcance acumulado');
+      expect(document.documentElement.lang).toBe('en');
+      expect(i18n.language).toBe('en');
+      expect(localStorage.getItem(LANGUAGE_EXPLICIT_KEY)).toBeNull();
+    });
+
+    it('falls back to Portuguese when the payload has no or an unknown language', async () => {
+      for (const language of [undefined, 'fr']) {
+        mockedFetchPrintReportDoc.mockResolvedValue(docWith(language) as never);
+        const { container, unmount } = renderPrintPage();
+        await waitFor(() => {
+          expect(window.__REPORT_READY).toBe(true);
+        });
+        expect(container.textContent).toContain('Alcance acumulado');
+        expect(container.textContent).toContain('45.200');
+        expect(document.documentElement.lang).toBe('pt-BR');
+        unmount();
+        delete (window as { __REPORT_READY?: boolean }).__REPORT_READY;
+      }
+    });
+
+    it('renders nothing and stays not-ready until the language change resolves', async () => {
+      let resolve!: () => void;
+      const pending = new Promise<void>((r) => {
+        resolve = r;
+      });
+      vi.spyOn(i18n, 'changeLanguage').mockImplementation(
+        () => pending as unknown as ReturnType<typeof i18n.changeLanguage>,
+      );
+      mockedFetchPrintReportDoc.mockResolvedValue(docWith('en') as never);
+
+      const { container } = renderPrintPage();
+
+      await waitFor(() => {
+        expect(i18n.changeLanguage).toHaveBeenCalledWith('en');
+      });
+      expect(container.querySelector('.rb-grid')).toBeNull();
+      expect(window.__REPORT_READY).not.toBe(true);
+
+      resolve();
+
+      await waitFor(() => {
+        expect(window.__REPORT_READY).toBe(true);
+      });
+      expect(container.textContent).toContain('Cumulative reach');
     });
   });
 });

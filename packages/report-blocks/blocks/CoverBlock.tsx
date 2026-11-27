@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { BlockProps } from '../BlockRenderer';
 import { pickAccentFg } from '../theme';
 import { coverDefaults } from '../platform';
+import { useReportLang } from '../i18n';
 
 const LOGO_SIZE_DEFAULT = 36;
 const COVER_INK_FALLBACK = '#171717';
@@ -67,7 +68,8 @@ export function CoverBlock({ block, snapshot, layoutPlatforms }: BlockProps) {
   const b = snapshot.branding;
   const config = (block.config ?? {}) as CoverConfig;
   // Kicker e handle derivados das plataformas do layout; config.kicker vence.
-  const defaults = coverDefaults(snapshot, layoutPlatforms);
+  const lang = useReportLang();
+  const defaults = coverDefaults(snapshot, layoutPlatforms, lang);
   const kicker = typeof config.kicker === 'string' ? config.kicker : defaults.kicker;
   const title = typeof config.title === 'string' ? config.title : snapshot.period.label;
   // Sem handle (capa só do Google Meu Negócio): sem "@" solto, só a especialidade.

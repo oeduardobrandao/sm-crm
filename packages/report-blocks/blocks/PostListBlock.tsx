@@ -1,7 +1,9 @@
 import type { BlockProps } from '../BlockRenderer';
 import { fmtCount } from '../format';
+import { useReportLang, reportText } from '../i18n';
 
 export function PostListBlock({ block, snapshot, platform }: BlockProps) {
+  const lang = useReportLang();
   const raw = block.config?.count;
   const count = typeof raw === 'number' && raw >= 1 && raw <= 12 ? raw : 12;
   const posts = snapshot.top_posts.slice(0, count);
@@ -19,7 +21,9 @@ export function PostListBlock({ block, snapshot, platform }: BlockProps) {
             borderBottom: i < posts.length - 1 ? '1px solid rgba(0,0,0,0.06)' : 'none',
           }}
         >
-          <span style={{ fontSize: '0.75rem', opacity: 0.6, width: 24 }}>{i + 1}º</span>
+          <span style={{ fontSize: '0.75rem', opacity: 0.6, width: 24 }}>
+            {reportText(lang).ordinal(i + 1)}
+          </span>
           <span
             style={{
               flex: 1,
@@ -35,6 +39,7 @@ export function PostListBlock({ block, snapshot, platform }: BlockProps) {
             {/* TikTok: sempre visualizações (reach é 0 na visão TikTok). */}
             {fmtCount(
               platform === 'tiktok' || typeof post.views === 'number' ? post.views : post.reach,
+              lang,
             )}
           </span>
         </div>

@@ -2,13 +2,15 @@
 // Fonte do PDF (spec §9): mesma render do viewer, sem chrome do portal, com o
 // contrato de prontidão que o Gotenberg espera via waitForExpression. Auth
 // própria por print token HMAC (?pt=); NUNCA token de portal.
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { focusManager, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { htmlLangFor, i18n } from '@mesaas/i18n';
 import { BlockRenderer } from '@mesaas/report-blocks/BlockRenderer';
 import { resolveReportTheme } from '@mesaas/report-blocks/theme';
 import type { ReportDocSnapshot, ReportLayout } from '@mesaas/report-blocks/types';
+import { normalizeReportLang, type ReportLang } from '@mesaas/report-blocks/i18n';
 import '@mesaas/report-blocks/styles.css';
 import { fetchPrintReportDoc } from '../api';
 
@@ -49,8 +51,31 @@ export function RelatorioPrintPage() {
   });
 
   const doc = data?.doc;
+  // Idioma do workspace do documento (hub-report-docs /print-doc). Aplicado com o
+  // i18n.changeLanguage que NÃO grava a escolha no localStorage (o changeLanguage do
+  // @mesaas/i18n grava, e o Chromium do Gotenberg não deve "escolher" nada). Ausente ou
+  // desconhecido = pt. Nada renderiza, e __REPORT_READY não sobe, antes de o idioma valer:
+  // sem isso o Gotenberg poderia imprimir um quadro em português.
+  const lang = normalizeReportLang(doc?.language);
+  const [appliedLang, setAppliedLang] = useState<ReportLang | null>(null);
   useEffect(() => {
     if (!doc) return;
+    let cancelled = false;
+    const done = () => {
+      if (cancelled) return;
+      document.documentElement.lang = htmlLangFor(lang);
+      setAppliedLang(lang);
+    };
+    if (i18n.language === lang) done();
+    else Promise.resolve(i18n.changeLanguage(lang)).then(done, done);
+    return () => {
+      cancelled = true;
+    };
+  }, [doc, lang]);
+
+  const langReady = appliedLang === lang;
+  useEffect(() => {
+    if (!doc || !langReady) return;
     let cancelled = false;
     (async () => {
       // Fontes e imagens resolvidas ANTES de declarar prontidão: sem isso o
@@ -64,7 +89,7 @@ export function RelatorioPrintPage() {
     return () => {
       cancelled = true;
     };
-  }, [doc]);
+  }, [doc, langReady]);
 
   if (isError) {
     return (
@@ -73,7 +98,7 @@ export function RelatorioPrintPage() {
       </p>
     );
   }
-  if (!doc || doc.data_snapshot == null) return null;
+  if (!doc || doc.data_snapshot == null || !langReady) return null;
   const theme = resolveReportTheme(
     doc.layout as ReportLayout,
     doc.data_snapshot as ReportDocSnapshot,
@@ -94,6 +119,7 @@ export function RelatorioPrintPage() {
         layout={doc.layout as ReportLayout}
         snapshot={doc.data_snapshot as ReportDocSnapshot}
         mode="print"
+        lang={lang}
       />
     </div>
   );

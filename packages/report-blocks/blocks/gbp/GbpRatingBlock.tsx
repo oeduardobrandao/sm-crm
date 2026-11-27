@@ -1,17 +1,19 @@
 import type { BlockProps } from '../../BlockRenderer';
 import { fmtCount } from '../../format';
 import { GbpCardHeader } from './GbpCardHeader';
-import { fmtDayMonth, fmtRating, googleWithData, plural } from './format';
+import { fmtDayMonth, fmtRating, googleWithData } from './format';
+import { useReportLang, reportText } from '../../i18n';
 
 const STAR_KEYS = ['5', '4', '3', '2', '1'] as const;
 
 /** Estrelas cheias pela nota arredondada (como a aba GMN), o resto apagado. */
 export function GbpStars({ rating, className }: { rating: number; className?: string }) {
+  const stars = reportText(useReportLang()).gbp.rating.stars;
   const n = Math.max(0, Math.min(5, Math.round(rating)));
   return (
     <span
       role="img"
-      aria-label={`${n} de 5 estrelas`}
+      aria-label={stars(n)}
       className={`rb-gbp-stars${className ? ` ${className}` : ''}`}
     >
       {'★'.repeat(n)}
@@ -22,6 +24,8 @@ export function GbpStars({ rating, className }: { rating: number; className?: st
 
 /** Avaliações: nota média, total, novas no período e distribuição 5 a 1. */
 export function GbpRatingBlock({ snapshot }: BlockProps) {
+  const lang = useReportLang();
+  const text = reportText(lang).gbp.rating;
   const google = googleWithData(snapshot);
   const avg = google?.kpis.avg_rating?.value ?? null;
   if (!google || avg === null) return null;
@@ -29,8 +33,8 @@ export function GbpRatingBlock({ snapshot }: BlockProps) {
   const total = google.unit_rows.reduce((sum, u) => sum + (u.reviews ?? 0), 0);
   const fresh = google.kpis.new_reviews?.value ?? null;
   const countLine = [
-    total > 0 ? `${fmtCount(total)} ${plural(total, 'avaliação', 'avaliações')}` : null,
-    fresh !== null ? `+${fmtCount(fresh)} no período` : null,
+    total > 0 ? text.reviews(fmtCount(total, lang), total) : null,
+    fresh !== null ? text.inPeriod(fmtCount(fresh, lang)) : null,
   ]
     .filter(Boolean)
     .join(' · ');
@@ -40,12 +44,12 @@ export function GbpRatingBlock({ snapshot }: BlockProps) {
   return (
     <div className="rb-gbp-card rb-card rb-card--pad">
       <GbpCardHeader
-        title="Avaliações"
-        stamp={google.window ? `Situação em ${fmtDayMonth(google.window.end)}` : null}
+        title={text.title}
+        stamp={google.window ? text.stamp(fmtDayMonth(google.window.end, lang)) : null}
       />
       <div className="rb-gbp-rating">
         <div className="rb-gbp-rating-summary">
-          <p className="rb-gbp-rating-value">{fmtRating(avg)}</p>
+          <p className="rb-gbp-rating-value">{fmtRating(avg, lang)}</p>
           <GbpStars rating={avg} />
           {countLine ? <p className="rb-gbp-sub">{countLine}</p> : null}
         </div>
@@ -60,15 +64,15 @@ export function GbpRatingBlock({ snapshot }: BlockProps) {
                     style={{ width: `${(dist.counts[k] / max) * 100}%` }}
                   />
                 </div>
-                <span className="rb-gbp-num rb-gbp-dist-count">{fmtCount(dist.counts[k])}</span>
+                <span className="rb-gbp-num rb-gbp-dist-count">
+                  {fmtCount(dist.counts[k], lang)}
+                </span>
               </div>
             ))}
           </div>
         ) : null}
       </div>
-      {dist?.partial ? (
-        <p className="rb-gbp-foot">Distribuição das últimas 200 avaliações por unidade.</p>
-      ) : null}
+      {dist?.partial ? <p className="rb-gbp-foot">{text.partial}</p> : null}
     </div>
   );
 }

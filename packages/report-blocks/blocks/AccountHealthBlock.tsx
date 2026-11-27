@@ -7,10 +7,9 @@ import { Minus, TrendingDown, TrendingUp } from 'lucide-react';
 import type { BlockProps } from '../BlockRenderer';
 import { safeHttpsUrl } from '../format';
 import { isRenderableSrc } from '../image';
+import { intlLocale, reportText, useReportLang, type ReportLang } from '../i18n';
 import {
   HEALTH_METRIC_ORDER,
-  HEALTH_METRIC_TITLES,
-  HEALTH_NULL_REASONS,
   bandLabel,
   formatMetric,
   healthHasData,
@@ -24,24 +23,23 @@ import {
   type VerdictTone,
 } from '../health';
 
-const TITLE = 'Saúde do Instagram';
-const QUESTION = 'Seu Instagram está indo bem?';
 const SOURCE_MARK: Record<BenchmarkSource, string> = { mesaas: '*', mercado: '†' };
-const SOURCE_BADGE: Record<BenchmarkSource, string> = { mesaas: 'Mesaas', mercado: 'Mercado' };
 
-const ratioFormatter = new Intl.NumberFormat('pt-BR', {
-  minimumFractionDigits: 1,
-  maximumFractionDigits: 1,
-});
+function fmtRatio(n: number, lang: ReportLang): string {
+  return new Intl.NumberFormat(intlLocale(lang), {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(n);
+}
 
-/** "Até 31/07" a partir do effectiveEnd (ISO à meia-noite UTC; getters UTC). */
-function stampFor(effectiveEnd: string | undefined): string | null {
+/** "Até 31/07" / "Through 07/31" a partir do effectiveEnd (ISO à meia-noite UTC; getters UTC). */
+function stampFor(effectiveEnd: string | undefined, lang: ReportLang): string | null {
   if (!effectiveEnd) return null;
   const d = new Date(effectiveEnd);
   if (Number.isNaN(d.getTime())) return null;
   const dd = String(d.getUTCDate()).padStart(2, '0');
   const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
-  return `Até ${dd}/${mm}`;
+  return reportText(lang).health.stamp(dd, mm);
 }
 
 function ToneIcon({ tone }: { tone: VerdictTone }) {
@@ -62,11 +60,12 @@ function HealthBar({
   size: 'lg' | 'sm';
   approx: boolean;
 }) {
+  const text = reportText(useReportLang()).health;
   const clamped = Math.min(100, Math.max(0, pct));
   return (
     <div
       role="img"
-      aria-label={`À frente de ${approx ? 'cerca de ' : ''}${clamped}% das contas do seu tamanho`}
+      aria-label={text.ahead(approx ? text.approx : '', clamped)}
       className={`rb-health-bar rb-health-bar--${size} rb-health-tone-${tone}`}
     >
       <span className="rb-health-bar__fill" style={{ width: `${clamped}%` }} />
@@ -84,6 +83,8 @@ function BestPostThumb({ src }: { src: string }) {
 }
 
 export function AccountHealthBlock({ snapshot }: BlockProps) {
+  const lang = useReportLang();
+  const text = reportText(lang).health;
   const health = readInstagramHealth(snapshot);
   if (!healthHasData(health)) return null;
   const band = health.band!;
@@ -92,19 +93,20 @@ export function AccountHealthBlock({ snapshot }: BlockProps) {
   const overall = overallPercentile(scored.map((m) => m.pct));
   if (overall == null) return null;
 
-  const verdict = verdictFor(overall);
+  const verdict = verdictFor(overall, lang);
   const sources = new Set(scored.map((m) => m.benchmark.source));
   const mixed = sources.size > 1;
   const overallApprox = sources.size === 1 && sources.has('mercado');
   const n = scored.length;
-  const summaryLead = n === 1 ? 'Pela métrica disponível' : `Somando as ${n} métricas`;
+  const summaryLead = n === 1 ? text.leadOne : text.leadMany(n);
 
   // Maior percentil; empate fica com a primeira na ordem fixa.
   const top = scored.reduce((best, m) => (m.pct > best.pct ? m : best));
   const topLine = highlightLine(
     top.key,
-    formatMetric(top.key, top.value),
-    formatMetric(top.key, top.benchmark.cuts[49]),
+    formatMetric(top.key, top.value, lang),
+    formatMetric(top.key, top.benchmark.cuts[49], lang),
+    lang,
   );
 
   const mesaasSamples = scored
@@ -117,17 +119,17 @@ export function AccountHealthBlock({ snapshot }: BlockProps) {
   const showBest = best != null && best.ratio >= 1;
   const permalink = showBest ? safeHttpsUrl(best.permalink) : null;
   const thumb = showBest && isRenderableSrc(best.thumbnail_url) ? best.thumbnail_url : null;
-  const stamp = stampFor(snapshot.period.effectiveEnd);
+  const stamp = stampFor(snapshot.period.effectiveEnd, lang);
 
   return (
-    <section className="rb-health rb-card" aria-label={TITLE}>
+    <section className="rb-health rb-card" aria-label={text.title}>
       <div className="rb-health-head">
-        <p className="rb-card-title rb-health-title">{TITLE}</p>
+        <p className="rb-card-title rb-health-title">{text.title}</p>
         {stamp ? <p className="rb-health-stamp">{stamp}</p> : null}
       </div>
 
       <div className="rb-health-top">
-        <p className="rb-health-q">{QUESTION}</p>
+        <p className="rb-health-q">{text.question}</p>
         <div className={`rb-health-verdict rb-health-tone-${verdict.tone}`}>
           <ToneIcon tone={verdict.tone} />
           <span>{verdict.label}</span>
@@ -136,24 +138,24 @@ export function AccountHealthBlock({ snapshot }: BlockProps) {
           <HealthBar pct={overall} tone={verdict.tone} size="lg" approx={overallApprox} />
         </div>
         <p className="rb-health-sum">
-          {`${summaryLead}, você está à frente de ${overallApprox ? 'cerca de ' : ''}${overall}% das contas do seu tamanho.`}
+          {text.summary(summaryLead, overallApprox ? text.approx : '', overall)}
         </p>
         <p className="rb-health-line">{topLine}</p>
       </div>
 
       <div className="rb-health-grid">
         {HEALTH_METRIC_ORDER.map((key) => {
-          const title = HEALTH_METRIC_TITLES[key];
+          const title = text.metricTitles[key];
           const value = health.metrics[key];
           if (value == null) {
-            const reason = HEALTH_NULL_REASONS[key];
+            const reason = text.nullReasons[key];
             return (
               <div key={key} className="rb-health-m">
                 <p className="rb-health-m__t">
                   <span>{title}</span>
                 </p>
                 <p className="rb-health-m__empty">
-                  <span>Sem dados suficientes.</span>
+                  <span>{text.noData}</span>
                   {reason && (
                     <>
                       {' '}
@@ -174,46 +176,40 @@ export function AccountHealthBlock({ snapshot }: BlockProps) {
                 </p>
                 <div className="rb-health-kv">
                   <div className="rb-health-kv__you">
-                    Você: <b>{formatMetric(key, value)}</b>
+                    {text.you} <b>{formatMetric(key, value, lang)}</b>
                   </div>
                 </div>
-                <p className="rb-health-m__empty">
-                  Ainda sem referência para contas do seu tamanho.
-                </p>
+                <p className="rb-health-m__empty">{text.noReference}</p>
               </div>
             );
           }
 
-          const v = verdictFor(m.pct);
+          const v = verdictFor(m.pct, lang);
           const source = m.benchmark.source;
           const approx = source === 'mercado';
           return (
             <div key={key} className="rb-health-m">
               <p className="rb-health-m__t">
                 <span>{title}</span>
-                {mixed && <span className="rb-health-src">{SOURCE_BADGE[source]}</span>}
+                {mixed && <span className="rb-health-src">{text.sourceBadge[source]}</span>}
               </p>
               <div className={`rb-health-m__v rb-health-tone-${v.tone}`}>
                 <ToneIcon tone={v.tone} />
                 <span>{v.label}</span>
               </div>
               <HealthBar pct={m.pct} tone={v.tone} size="sm" approx={approx} />
-              <p className="rb-health-m__ahead">
-                {`À frente de ${approx ? 'cerca de ' : ''}${m.pct}% das contas do seu tamanho`}
-              </p>
+              <p className="rb-health-m__ahead">{text.ahead(approx ? text.approx : '', m.pct)}</p>
               <div className="rb-health-kv">
                 <div className="rb-health-kv__you">
-                  Você: <b>{formatMetric(key, value)}</b>
+                  {text.you} <b>{formatMetric(key, value, lang)}</b>
                 </div>
                 <div>
-                  {`Contas do seu tamanho${SOURCE_MARK[source]}:`}{' '}
-                  <b>{formatMetric(key, m.benchmark.cuts[49])}</b>
+                  {text.peers(SOURCE_MARK[source])}{' '}
+                  <b>{formatMetric(key, m.benchmark.cuts[49], lang)}</b>
                 </div>
               </div>
               {key === 'engagement_rate' && (
-                <p className="rb-health-m__help">
-                  Mediana de curtidas + comentários dos seus posts recentes ÷ seguidores.
-                </p>
+                <p className="rb-health-m__help">{text.engagementHelp}</p>
               )}
             </div>
           );
@@ -224,18 +220,18 @@ export function AccountHealthBlock({ snapshot }: BlockProps) {
         {sources.has('mesaas') && (
           <p className="rb-health-fine">
             {mesaasCount != null
-              ? `*Comparado com ${roundedSampleLabel(mesaasCount)} contas do seu tamanho no Mesaas (${bandLabel(band)}).`
-              : `*Comparado com contas do seu tamanho no Mesaas (${bandLabel(band)}).`}
+              ? text.fineMesaasCount(roundedSampleLabel(mesaasCount, lang), bandLabel(band, lang))
+              : text.fineMesaas(bandLabel(band, lang))}
           </p>
         )}
         {sources.has('mercado') && (
-          <p className="rb-health-fine">{`†Estimativa de mercado para contas ${bandLabel(band)}, a partir de estudos públicos com métricas parecidas.`}</p>
+          <p className="rb-health-fine">{text.fineMarket(bandLabel(band, lang))}</p>
         )}
         {showBest && (
           <div className="rb-health-best">
             {thumb ? <BestPostThumb key={thumb} src={thumb} /> : null}
             <p>
-              {`Seu melhor post do período teve ${ratioFormatter.format(best.ratio)}x o resultado normal da conta.`}
+              {text.bestPost(fmtRatio(best.ratio, lang))}
               {permalink ? (
                 <>
                   {' '}
@@ -245,7 +241,7 @@ export function AccountHealthBlock({ snapshot }: BlockProps) {
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    Ver no Instagram
+                    {text.viewOnInstagram}
                   </a>
                 </>
               ) : null}

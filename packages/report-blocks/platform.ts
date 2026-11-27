@@ -17,6 +17,7 @@ import type {
   SnapshotTopPost,
   TikTokKpiId,
 } from './types';
+import { reportText, type ReportLang } from './i18n';
 
 export type ReportPlatform = NonNullable<ReturnType<typeof blockPlatform>>;
 
@@ -133,10 +134,10 @@ export const PLATFORM_NAMES: Record<ReportPlatform, string> = {
   google: 'Google Meu Negócio',
 };
 
-/** "A", "A e B", "A, B e C". */
-function joinNames(names: string[]): string {
-  if (names.length <= 2) return names.join(' e ');
-  return `${names.slice(0, -1).join(', ')} e ${names[names.length - 1]}`;
+/** "A", "A e B", "A, B e C" ("and" em inglês). */
+function joinNames(names: string[], conj: string): string {
+  if (names.length <= 2) return names.join(` ${conj} `);
+  return `${names.slice(0, -1).join(', ')} ${conj} ${names[names.length - 1]}`;
 }
 
 /** Kicker, handle e foto padrão da capa. Plataformas do layout sem dado no
@@ -149,6 +150,7 @@ function joinNames(names: string[]): string {
 export function coverDefaults(
   snapshot: ReportDocSnapshot,
   platforms: readonly ReportPlatform[] | undefined,
+  lang: ReportLang = 'pt',
 ): { kicker: string; handle: string; avatarUrl: string | null } {
   const tiktok = snapshot.tiktok;
   const hasData: Record<ReportPlatform, boolean> = {
@@ -158,7 +160,8 @@ export function coverDefaults(
   };
   const withData = (platforms ?? []).filter((p) => hasData[p]);
   const list: readonly ReportPlatform[] = withData.length ? withData : ['instagram'];
-  const names = PLATFORM_ORDER.filter((p) => list.includes(p)).map((p) => PLATFORM_NAMES[p]);
+  const text = reportText(lang);
+  const names = PLATFORM_ORDER.filter((p) => list.includes(p)).map((p) => text.platformNames[p]);
   const account =
     list[0] === 'tiktok' && tiktok
       ? tiktokAccount(snapshot, tiktok)
@@ -166,7 +169,7 @@ export function coverDefaults(
         ? { ...snapshot.account, handle: '' }
         : snapshot.account;
   return {
-    kicker: `Relatório mensal · ${joinNames(names)}`,
+    kicker: text.coverKicker(joinNames(names, text.and)),
     handle: account.handle,
     avatarUrl: account.profile_picture_url ?? null,
   };

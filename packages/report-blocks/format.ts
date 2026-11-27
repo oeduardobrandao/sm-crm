@@ -1,11 +1,27 @@
-const countFmt = new Intl.NumberFormat('pt-BR');
+import { intlLocale, reportText, type ReportLang } from './i18n';
 
-export function fmtCount(n: number): string {
-  return countFmt.format(Math.round(n));
+const countFmt: Record<ReportLang, Intl.NumberFormat> = {
+  pt: new Intl.NumberFormat(intlLocale('pt')),
+  en: new Intl.NumberFormat(intlLocale('en')),
+};
+
+export function fmtCount(n: number, lang: ReportLang = 'pt'): string {
+  return countFmt[lang].format(Math.round(n));
 }
 
-export function fmtPct(n: number): string {
-  return `${n.toFixed(1).replace('.', ',')}%`;
+/** Uma casa decimal com o separador do idioma: "12,3" / "12.3". */
+export function fmtDecimal1(n: number, lang: ReportLang = 'pt'): string {
+  const s = n.toFixed(1);
+  return lang === 'pt' ? s.replace('.', ',') : s;
+}
+
+export function fmtPct(n: number, lang: ReportLang = 'pt'): string {
+  return `${fmtDecimal1(n, lang)}%`;
+}
+
+/** Variação com sinal: "+12,3%" / "-4.0%". */
+export function fmtSignedPct(n: number, lang: ReportLang = 'pt'): string {
+  return `${n >= 0 ? '+' : '-'}${fmtDecimal1(Math.abs(n), lang)}%`;
 }
 
 /** Delta percentual value vs prev; null quando não computável (prev <= 0). */
@@ -39,20 +55,23 @@ export const MONTHS_PT_LOWER = [
  * retorna null -- o chamador não estampa período nenhum (mesmo guard do
  * campo `views` nos top posts).
  */
-export function fmtPeriodStamp(period: {
-  start: string;
-  endExclusive: string;
-  effectiveEnd?: string;
-}): string | null {
+export function fmtPeriodStamp(
+  period: {
+    start: string;
+    endExclusive: string;
+    effectiveEnd?: string;
+  },
+  lang: ReportLang = 'pt',
+): string | null {
   if (!period.effectiveEnd) return null;
   const start = new Date(period.start);
   const effectiveEnd = new Date(period.effectiveEnd);
   const lastDayOfMonthMs = Date.parse(period.endExclusive) - 86_400_000;
   const startDay = String(start.getUTCDate()).padStart(2, '0');
   const endDay = String(effectiveEnd.getUTCDate()).padStart(2, '0');
-  const monthName = MONTHS_PT_LOWER[effectiveEnd.getUTCMonth()];
-  const range = `${startDay}–${endDay} de ${monthName}`;
-  return effectiveEnd.getTime() >= lastDayOfMonthMs ? range : `${range} · parcial`;
+  const text = reportText(lang);
+  const range = text.dayRange(startDay, endDay, effectiveEnd.getUTCMonth() + 1);
+  return effectiveEnd.getTime() >= lastDayOfMonthMs ? range : `${range} · ${text.partial}`;
 }
 
 /** Link externo seguro para href: só https, sem credenciais; qualquer outra coisa vira null
