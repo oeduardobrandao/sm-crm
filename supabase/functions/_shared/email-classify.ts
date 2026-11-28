@@ -8,6 +8,8 @@ import { clientEventSubject } from "./client-event-email.ts";
 import { CONNECT_LINK_SUBJECT, CONNECTED_NOTICE_SUBJECT } from "./instagram-connect-email.ts";
 import { DEMO_ACCESS_SUBJECT } from "./invite-email.ts";
 import {
+  CONFIRM_REMINDER_1H_SUBJECT,
+  CONFIRM_REMINDER_24H_SUBJECT,
   REVERSE_TRIAL_ENDED_SUBJECT,
   REVERSE_TRIAL_HUB_PAUSING_SUBJECT,
   reverseTrialEndingSubject,
@@ -21,6 +23,7 @@ import {
   NURTURE_STEPS,
   nurtureSubject,
 } from "./nurture-emails.ts";
+import { lifecycleText } from "./i18n/catalogs/lifecycle.ts";
 import { REPORT_FROM_ADDRESS } from "./report-template/email.ts";
 
 export type EmailCategory =
@@ -53,6 +56,8 @@ export const EMAIL_TYPES: Record<string, EmailCategory> = {
   welcome: "ciclo_de_vida",
   thank_you: "ciclo_de_vida",
   trial_reminder: "ciclo_de_vida",
+  confirm_reminder_1h: "ciclo_de_vida",
+  confirm_reminder_24h: "ciclo_de_vida",
   reverse_trial_ending: "ciclo_de_vida",
   reverse_trial_ended: "ciclo_de_vida",
   reverse_trial_hub_pausing: "ciclo_de_vida",
@@ -142,6 +147,10 @@ function nurtureMatchers(): SubjectMatcher[] {
 const FOUNDER_SUBJECTS: SubjectMatcher[] = [
   exact("welcome", WELCOME_SUBJECT),
   exact("thank_you", THANKYOU_SUBJECT),
+  exact("confirm_reminder_1h", CONFIRM_REMINDER_1H_SUBJECT),
+  exact("confirm_reminder_24h", CONFIRM_REMINDER_24H_SUBJECT),
+  exact("confirm_reminder_1h", lifecycleText("en").confirm.subject1h),
+  exact("confirm_reminder_24h", lifecycleText("en").confirm.subject24h),
   trialMatcher(),
   sentinelMatcher("reverse_trial_ending", reverseTrialEndingSubject),
   exact("reverse_trial_ended", REVERSE_TRIAL_ENDED_SUBJECT),

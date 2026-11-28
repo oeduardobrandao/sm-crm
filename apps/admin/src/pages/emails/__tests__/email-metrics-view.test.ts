@@ -38,6 +38,8 @@ describe('typeLabel', () => {
     expect(typeLabel('xyz')).toBe('xyz');
     expect(typeLabel('nurture_a3_b1')).toBe('Nurture A3 ou B1');
     expect(typeLabel('alerta_interno')).toBe('Alerta interno');
+    expect(typeLabel('confirm_reminder_1h')).toBe('Confirmação de e-mail (1 h)');
+    expect(typeLabel('confirm_reminder_24h')).toBe('Confirmação de e-mail (24 h)');
   });
 });
 

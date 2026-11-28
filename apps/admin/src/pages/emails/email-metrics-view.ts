@@ -27,6 +27,8 @@ export const EMAIL_TYPE_LABELS: Record<string, string> = {
   welcome: 'Boas-vindas',
   thank_you: 'Agradecimento de assinatura',
   trial_reminder: 'Fim do teste',
+  confirm_reminder_1h: 'Confirmação de e-mail (1 h)',
+  confirm_reminder_24h: 'Confirmação de e-mail (24 h)',
   reverse_trial_ending: 'Teste reverso: termina em 3 dias',
   reverse_trial_ended: 'Teste reverso: terminou',
   reverse_trial_hub_pausing: 'Teste reverso: portal pausa amanhã',

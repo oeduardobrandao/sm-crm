@@ -10,6 +10,7 @@ import type { Lang } from "../_shared/i18n/lang.ts";
 import { nurtureUnsubPageUrl, nurtureUnsubUrl, signNurtureUnsubToken } from "../_shared/nurture-unsub-token.ts";
 import {
   LIFECYCLE_FROM,
+  sendConfirmReminderEmail,
   sendFounderSignupNotice,
   sendFounderSubscriptionNotice,
   sendReverseTrialEmail,
@@ -105,6 +106,32 @@ Deno.serve(async (req: Request): Promise<Response> => {
       sendReverseTrial: sendReverseTrialEmail,
       sendFounderSignup: sendFounderSignupNotice,
       sendFounderSubscription: sendFounderSubscriptionNotice,
+      // Read per run, like nurture. No Resend key (staging, local) = no sweep.
+      confirmReminderEnabled: Boolean(Deno.env.get("RESEND_API_KEY")),
+      // GoTrue's error.message can quote the address and would land in cron_failures and the
+      // alert email, so only status/code travel. A magiclink for an address deleted between the
+      // candidate read and this call may create a new auth user (GoTrue behaviour); the id check
+      // in the handler stops the email. The window is seconds, accepted.
+      generateConfirmLink: async (email, redirectTo) => {
+        const { data, error } = await svc.auth.admin.generateLink({
+          type: "magiclink",
+          email,
+          options: { redirectTo },
+        });
+        const link = data?.properties?.action_link;
+        if (error || !link || !data?.user) {
+          const detail = error
+            ? `status ${error.status ?? "?"}, code ${error.code ?? "?"}`
+            : "no action_link";
+          throw new Error(`generateLink failed (${detail})`);
+        }
+        return {
+          actionLink: link,
+          userId: data.user.id,
+          confirmed: Boolean(data.user.email_confirmed_at),
+        };
+      },
+      sendConfirmReminder: sendConfirmReminderEmail,
       // Read per run: flipping the secret needs no deploy. Anything but "on" is off.
       nurtureEnabled: Deno.env.get("NURTURE_EMAILS") === "on",
       nurtureUnsubLinks: async (userId) => {

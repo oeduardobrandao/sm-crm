@@ -4,6 +4,7 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  buildConfirmReminderEmail,
   buildFounderSignupNotice,
   buildFounderSubscriptionNotice,
   buildReverseTrialEmail,
@@ -928,4 +929,32 @@ Deno.test("reverse-trial ending email states the price in the workspace currency
   };
   assert(buildReverseTrialEmail({ ...input, currency: "usd" }).html.includes("US$ 29,00 por mês"));
   assert(buildReverseTrialEmail({ ...input, priceCents: 14900 }).html.includes("R$ 149,00 por mês"));
+});
+
+const CLINK = "https://example.supabase.co/auth/v1/verify?token=abc&type=magiclink&redirect_to=https://app.mesaas.com.br/login";
+
+Deno.test("buildConfirmReminderEmail pt 1h: assunto, link escapado, botão, nota, sem travessão", () => {
+  const r = buildConfirmReminderEmail({ type: "confirm_reminder_1h", firstName: "Ana", actionLink: CLINK, lang: "pt" });
+  assertEquals(r.subject, "Falta 1 clique para ativar sua conta no Mesaas");
+  assertStringIncludes(r.html, `href="${CLINK.replace(/&/g, "&amp;")}"`);
+  assertStringIncludes(r.html, "Confirmar e entrar");
+  assertStringIncludes(r.html, "O link vale por 24 horas.");
+  assertStringIncludes(r.html, "Se não foi você que criou a conta, é só ignorar este e-mail.");
+  assert(!r.html.includes("—"));
+});
+
+Deno.test("buildConfirmReminderEmail escapa o nome e pt 24h tem o assunto certo", () => {
+  const r = buildConfirmReminderEmail({ type: "confirm_reminder_24h", firstName: "<b>Ana</b>", actionLink: CLINK, lang: "pt" });
+  assertEquals(r.subject, "Sua conta no Mesaas está esperando por você");
+  assertStringIncludes(r.html, "&lt;b&gt;Ana&lt;/b&gt;");
+  assert(!r.html.includes("<b>Ana</b>"));
+});
+
+Deno.test("buildConfirmReminderEmail en 24h e link inseguro some", () => {
+  const r = buildConfirmReminderEmail({ type: "confirm_reminder_24h", firstName: null, actionLink: CLINK, lang: "en" });
+  assertEquals(r.subject, "Your Mesaas account is waiting for you");
+  assertStringIncludes(r.html, "Confirm and sign in");
+  assert(!r.html.includes("—"));
+  const bad = buildConfirmReminderEmail({ type: "confirm_reminder_1h", firstName: null, actionLink: "javascript:alert(1)", lang: "pt" });
+  assert(!bad.html.includes("javascript:"));
 });
